@@ -311,7 +311,7 @@ enclii ps --wide
 
 **Detection signals:**
 - HTTP 401/403 errors across multiple services simultaneously
-- `enclii auth verify` fails
+- A freshly logged-in CLI gets 401 from `enclii projects list`
 - JWKS endpoint unreachable: `curl https://auth.madfam.io/.well-known/jwks.json` returns error
 - Users report being unable to log in to app.enclii.dev or admin.enclii.dev
 
@@ -370,8 +370,10 @@ curl -s https://auth.madfam.io/.well-known/jwks.json | jq '.keys | length'
 # Expected: >= 1
 
 # Verify authentication flow
-enclii auth verify
-# Expected: Token valid, displays user info
+enclii whoami 2>&1
+# Expected: the stored identity and expiry (local check only)
+ENCLII_API_ENDPOINT=https://api.enclii.dev enclii projects list
+# Expected: succeeds, which proves the token is accepted by the API
 
 # Verify login works end-to-end
 curl -s -o /dev/null -w "%{http_code}" https://app.enclii.dev

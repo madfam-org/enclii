@@ -125,7 +125,7 @@ domain authority path.
 
 ### Prerequisites
 
-- Go 1.25+
+- Go 1.26+ (`packages/cli/go.mod` declares `go 1.26.0`)
 
 ### Building
 
@@ -167,7 +167,7 @@ golangci-lint run
 
 ## Configuration
 
-OAuth credentials are stored at `~/.enclii/credentials.json` (mode `0600`):
+OAuth credentials are stored per profile (mode `0600`): `~/.enclii/credentials.json` for the default profile, `~/.enclii/profiles/<name>/credentials.json` for `--profile <name>` / `ENCLII_PROFILE=<name>`. See [`login`](../../docs/cli/commands/login.md#several-identities-profiles-and-account-switching).
 
 ```json
 {
@@ -179,11 +179,11 @@ OAuth credentials are stored at `~/.enclii/credentials.json` (mode `0600`):
 }
 ```
 
-Tokens auto-refresh on the next CLI invocation when within 60 seconds of expiry, provided a refresh token is present (see `internal/config/config.go`).
+Tokens auto-refresh on the next CLI invocation when within 60 seconds of expiry, provided a refresh token is present; the new token is written back to the same profile's file (see `internal/config/config.go`).
 
-Other defaults come from environment variables (`ENCLII_API_ENDPOINT`, `ENCLII_API_TOKEN` (or legacy `ENCLII_TOKEN`), `ENCLII_OIDC_ISSUER`, `ENCLII_OIDC_CLIENT_ID`, `ENCLII_LOG_LEVEL`, `ENCLII_PROJECT`) or the global flags (`--api-endpoint`, `--api-token`, `--log-level`).
+Other defaults come from environment variables (`ENCLII_API_ENDPOINT`, `ENCLII_API_TOKEN` (or legacy `ENCLII_TOKEN`), `ENCLII_OIDC_ISSUER`, `ENCLII_OIDC_CLIENT_ID`, `ENCLII_PROFILE`, `ENCLII_BROWSER`, `ENCLII_LOG_LEVEL`, `ENCLII_PROJECT`) or the global flags (`--api-endpoint`, `--api-token`, `--log-level`, `--profile`).
 
-When `ENCLII_ENVIRONMENT=development` and `ENCLII_API_ENDPOINT` is unset, the CLI targets `http://localhost:4200` (aligned with `switchyard-ui`). See `docs/contracts/DEV_ENV_ALIGNMENT.md`.
+`ENCLII_ENVIRONMENT` defaults to `development`, and in `development` with `ENCLII_API_ENDPOINT` unset the CLI targets `http://localhost:4200` (aligned with `switchyard-ui`). Set `ENCLII_API_ENDPOINT=https://api.enclii.dev` to reach the hosted API. See `docs/contracts/DEV_ENV_ALIGNMENT.md`.
 
 Timetable (`enclii jobs`) and Junction (`enclii junctions`) commands use the same `apiRequest` / `apiRequestResponse` helpers as billing and admin commands.
 
@@ -193,11 +193,12 @@ The CLI uses OAuth 2.0 with PKCE:
 
 ```
 1. CLI generates code_verifier and code_challenge
-2. Opens browser to auth.madfam.io/authorize
-3. User authenticates with Janua SSO
-4. Janua redirects to localhost callback
+2. Opens the browser (or, with --no-browser, prints the URL) at Janua's
+   authorize endpoint, adding prompt=select_account|login when --prompt is set
+3. User authenticates with Janua SSO, or Janua answers from the browser session
+4. Janua redirects to the local callback on 127.0.0.1 (port 8080, or 3000)
 5. CLI exchanges code for tokens
-6. Tokens stored in config file
+6. Tokens are saved to the active profile's credentials file
 ```
 
 ## API Client
@@ -215,8 +216,9 @@ The CLI prefers domain-appropriate human output (tables via `text/tabwriter`) an
 ## Release Process
 
 1. Ensure `go test ./packages/cli/...` passes.
-2. Create a `v*` git tag, for example `git tag v1.0.0-alpha.1`.
-3. Push the tag with `git push origin v1.0.0-alpha.1`.
+2. Create an annotated `v*` tag on the commit to release, with a message that
+   lists what changed, for example `git tag -a v1.0.0-alpha.11 <commit>`.
+3. Push the tag, for example `git push origin v1.0.0-alpha.11`.
 4. The `CLI Release` workflow builds Linux, macOS, and Windows archives and
    publishes checksums to the GitHub release.
 
@@ -232,4 +234,5 @@ adapters are present and monitored.
 
 ## License
 
-Apache 2.0 - See [LICENSE](../../LICENSE)
+AGPL-3.0: see [LICENSE](../../LICENSE). Commercial terms are in
+[COMMERCIAL_LICENSE.md](../../COMMERCIAL_LICENSE.md).

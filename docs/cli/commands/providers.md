@@ -11,13 +11,13 @@ Cloudflare, Porkbun, and Hetzner tooling in MADFAM operations.
 Mutating commands are dry-run by default. Use `--apply --reason "..."` only
 when the corresponding provider adapter is wired and the audit reason is clear.
 
-:::note `--tenant` needs a CLI built from `main`
+:::note `--tenant` needs CLI `v1.0.0-alpha.9` or later
 
 `--tenant` and `providers porkbun ping` landed in
-[#527](https://github.com/madfam-org/enclii/pull/527), which is **not** in
-`v1.0.0-alpha.8`. On that release the flag is rejected as unknown and `ping`
-does not exist. Build from `main` (`go build -o ~/bin/enclii
-./packages/cli/cmd/enclii`) until **`v1.0.0-alpha.9`** carries them.
+[#527](https://github.com/madfam-org/enclii/pull/527) and first shipped in
+**`v1.0.0-alpha.9`**. On `v1.0.0-alpha.8` and older the flag is rejected as
+unknown and `ping` does not exist. Check with `enclii version 2>&1` and upgrade
+from the [releases page](https://github.com/madfam-org/enclii/releases).
 
 :::
 

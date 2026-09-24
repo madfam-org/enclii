@@ -35,7 +35,7 @@ domains, secrets, provider operations, scaling, rollback, and remediation.
 
 ### Linux/macOS release archive
 ```bash
-VERSION=v1.0.0-alpha.1
+VERSION=v1.0.0-alpha.10
 OS=linux   # use darwin for macOS
 ARCH=amd64 # use arm64 on Apple Silicon or ARM Linux
 curl -LO "https://github.com/madfam-org/enclii/releases/download/${VERSION}/enclii_${VERSION}_${OS}_${ARCH}.tar.gz"
@@ -43,7 +43,7 @@ tar -xzf "enclii_${VERSION}_${OS}_${ARCH}.tar.gz"
 sudo install -m 0755 "enclii_${VERSION}_${OS}_${ARCH}/enclii" /usr/local/bin/enclii
 ```
 
-### Linux / from source (any OS with Go 1.25+)
+### Linux / from source (any OS with Go 1.26+)
 ```bash
 git clone https://github.com/madfam-org/enclii.git
 cd enclii
@@ -180,7 +180,7 @@ These flags are available for all commands:
 
 | Flag | Description |
 |------|-------------|
-| `--api-endpoint` | API endpoint URL (default `https://api.enclii.dev`) |
+| `--api-endpoint` | API endpoint URL. Without it or `ENCLII_API_ENDPOINT`, the CLI targets `http://localhost:4200` while `ENCLII_ENVIRONMENT` is `development` (the default), and `https://api.enclii.dev` otherwise |
 | `--api-token` | Authentication token (overrides stored credentials) |
 | `--log-level` | Log level: `debug`, `info`, `warn`, `error` |
 | `--profile` | Stored identity to use; each profile keeps its own login (default `default`, or `ENCLII_PROFILE`). See [`login`](commands/login.md#several-identities-profiles-and-account-switching) |
@@ -192,20 +192,25 @@ Most read subcommands across the CLI accept a `--json` flag for stable, machine-
 
 | Variable | Description |
 |----------|-------------|
-| `ENCLII_API_ENDPOINT` | API endpoint (default: `https://api.enclii.dev`) |
+| `ENCLII_API_ENDPOINT` | API endpoint. Set `https://api.enclii.dev` for the hosted API: when unset, the default `development` environment targets `http://localhost:4200` |
 | `ENCLII_API_TOKEN` | Authentication token (alternative to `enclii login`) |
 | `ENCLII_OIDC_ISSUER` | OIDC issuer URL for self-hosted deployments (default: `https://auth.madfam.io`) |
-| `ENCLII_OIDC_CLIENT_ID` | OIDC client ID for self-hosted deployments |
+| `ENCLII_OIDC_CLIENT_ID` | OAuth client used for token refresh in self-hosted deployments; log in with the same value via `enclii login --client-id` |
 | `ENCLII_PROFILE` | Stored identity to use, like `--profile` (for example `admin`) |
 | `ENCLII_BROWSER` | Command that opens login URLs, for example `open -na "Google Chrome" --args --incognito` |
 | `ENCLII_VAULT_ADDR` / `VAULT_ADDR` | Override Vault address for `enclii vault status` |
 | `ENCLII_PROJECT` | Default project slug |
-| `ENCLII_ENVIRONMENT` | Default environment |
+| `ENCLII_ENVIRONMENT` | Default environment (`development` unless set) |
 | `ENCLII_LOG_LEVEL` | Logging verbosity: `debug`, `info`, `warn`, `error` |
 
 ## Credentials Storage
 
-OAuth credentials are persisted to `~/.enclii/credentials.json` (mode `0600`):
+`enclii login` saves OAuth credentials per [profile](commands/login.md#several-identities-profiles-and-account-switching), with mode `0600`:
+
+| Profile | Credentials file |
+|---------|------------------|
+| `default` (no `--profile`, no `ENCLII_PROFILE`) | `~/.enclii/credentials.json` |
+| any other name, for example `admin` | `~/.enclii/profiles/admin/credentials.json` |
 
 ```json
 {
@@ -217,7 +222,7 @@ OAuth credentials are persisted to `~/.enclii/credentials.json` (mode `0600`):
 }
 ```
 
-Tokens are auto-refreshed on the next CLI invocation when within 60 seconds of expiry, provided a refresh token is present. Run `enclii login` again if the refresh token has been revoked.
+Tokens are auto-refreshed on the next CLI invocation when within 60 seconds of expiry, provided a refresh token is present, and the new token is written back to the same profile's file. Refresh uses the built-in CLI client unless `ENCLII_OIDC_CLIENT_ID` is set. Run `enclii login` again (with the same `--profile`) if the refresh token has been revoked.
 
 ## Exit Codes
 

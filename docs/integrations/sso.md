@@ -102,6 +102,16 @@ cookies cleared — see [Logout](#logout).
 > **Ecosystem directive:** every MADFAM platform adopts this «Switch account /
 > Sign in as someone else» sign-in model, **except Crea Tu Mundo MAP**.
 
+### CLI sign-in (account switching)
+
+The `enclii` CLI offers the same two choices from `v1.0.0-alpha.10`:
+`enclii login --prompt select_account` and `enclii login --prompt login`. It can
+also hold several identities at once, because each `--profile` keeps its own
+login. An operator can keep an everyday account as the default profile and an
+administrator account in `--profile admin`, logging that one in with
+`--no-browser` in a private window so the browser's session is left as it is.
+See [`enclii login`](../cli/commands/login.md#several-identities-profiles-and-account-switching).
+
 ---
 
 ## Configuration
@@ -119,15 +129,14 @@ ENCLII_OIDC_JWKS_URL: https://auth.madfam.io/.well-known/jwks.json
 
 ### CLI Configuration
 
-The CLI is pre-configured for Janua SSO:
+The CLI is pre-configured for Janua SSO and needs no configuration file:
 
-```yaml
-# ~/.enclii/config.yaml (managed automatically)
-auth:
-  issuer: https://auth.madfam.io
-  client_id: enclii-cli
-  redirect_uri: http://localhost:9999/callback
-```
+| Setting | Default | Override |
+|---------|---------|----------|
+| Issuer | `https://auth.madfam.io` | `--issuer` or `ENCLII_OIDC_ISSUER` |
+| OAuth client | the built-in public (PKCE) Enclii CLI client | `enclii login --client-id`; token refresh reads `ENCLII_OIDC_CLIENT_ID` |
+| Redirect URI | `http://127.0.0.1:8080/callback` (port 3000 if 8080 is busy) | none |
+| Credentials | `~/.enclii/credentials.json`, or `~/.enclii/profiles/<name>/credentials.json` for `--profile <name>` | `--profile` or `ENCLII_PROFILE` |
 
 ---
 
@@ -251,32 +260,27 @@ router.POST("/api/v1/deployments",
 
 ### Token Refresh
 
-Access tokens expire after 15 minutes. The CLI automatically refreshes:
-
-```go
-// Check if token needs refresh
-if time.Now().After(token.ExpiresAt.Add(-5 * time.Minute)) {
-    newToken, err := refreshToken(refreshToken)
-    if err != nil {
-        // Prompt re-login
-        return login()
-    }
-    saveToken(newToken)
-}
-```
+Access tokens are short-lived. On each invocation the CLI refreshes the active
+profile's access token when it is within 60 seconds of expiry and a refresh
+token is stored, then writes the new token back to the same profile's file
+(`packages/cli/internal/config/config.go`). A failed refresh is not fatal: the
+CLI keeps the old token, the API answers 401 once it has expired, and
+`enclii login` (with the same `--profile`) starts over.
 
 ### Logout
 
-Logging out terminates both local and SSO sessions:
+The web consoles sign out with Janua's RP-Initiated Logout (`end_session`), so
+the shared SSO session ends as well as the console's own cookies.
+
+The CLI's logout is local only:
 
 ```bash
-enclii logout
+enclii logout                   # deletes ~/.enclii/credentials.json
+enclii --profile admin logout   # deletes only the "admin" profile's credentials
 ```
 
-This:
-1. Clears local tokens from `~/.enclii/config.yaml`
-2. Initiates RP-Initiated Logout with Janua
-3. Janua terminates the SSO session
+It does not revoke the tokens server-side and does not end the Janua browser
+session; sign out in the browser, or revoke sessions as below, for that.
 
 ### Session Revocation
 
@@ -295,21 +299,17 @@ curl -X POST https://auth.madfam.io/api/v1/sessions/revoke-all \
 
 Janua supports multiple MFA methods:
 
+MFA is set up in Janua, not in the Enclii CLI: sign in at `auth.madfam.io` and
+use the account's security settings.
+
 ### TOTP (Time-based One-Time Password)
 
-```bash
-# Enable TOTP
-enclii auth mfa enable totp
-# Scan QR code with authenticator app
-```
+Enable TOTP in Janua's security settings and scan the QR code with an
+authenticator app.
 
 ### WebAuthn/Passkeys
 
-```bash
-# Register a passkey
-enclii auth passkey register
-# Follow browser prompts
-```
+Register a passkey in Janua's security settings and follow the browser prompts.
 
 ### Device Verification
 
@@ -345,8 +345,8 @@ Expires: Never
 ### Use API Token
 
 ```bash
-# Environment variable
-export ENCLII_TOKEN="enclii_abc123xyz..."
+# Environment variable (legacy ENCLII_TOKEN is also accepted)
+export ENCLII_API_TOKEN="enclii_abc123xyz..."
 
 # Or header
 curl -H "Authorization: Bearer enclii_abc123xyz..." \
@@ -390,14 +390,18 @@ ENCLII_OIDC_CLIENT_SECRET: secret  # For backend-to-backend if needed
 
 ### CLI Configuration
 
-```yaml
-# ~/.enclii/config.yaml
-auth:
-  issuer: https://your-idp.example.com
-  client_id: enclii-cli
-  redirect_uri: http://localhost:9999/callback
-  scopes: ["openid", "profile", "email"]
+The CLI has no configuration file for this; point it at the provider with the
+environment and a client ID:
+
+```bash
+export ENCLII_OIDC_ISSUER=https://your-idp.example.com
+export ENCLII_OIDC_CLIENT_ID=<cli-client-id>   # used for token refresh
+enclii login --client-id <cli-client-id>
 ```
+
+Register the client as public (PKCE) with the redirect URIs
+`http://127.0.0.1:8080/callback` and `http://127.0.0.1:3000/callback`; the CLI
+listens on 8080, or on 3000 when 8080 is busy.
 
 ---
 
@@ -417,9 +421,9 @@ curl https://auth.madfam.io/.well-known/jwks.json
 
 ### Login Loop
 
-1. Clear local tokens:
+1. Clear the active profile's local tokens and log in again:
    ```bash
-   rm ~/.enclii/config.yaml
+   enclii logout
    enclii login
    ```
 
@@ -427,19 +431,18 @@ curl https://auth.madfam.io/.well-known/jwks.json
 
 ### API Returns 401
 
-1. Verify token is being sent:
+1. Check which identity and expiry the active profile holds (stderr):
    ```bash
-   enclii whoami
+   enclii whoami 2>&1
    ```
 
-2. Check token expiration:
-   ```bash
-   enclii tokens info
-   ```
+2. Check that an `ENCLII_API_TOKEN` (or `--api-token`) is not overriding the
+   login: an explicit token always wins over stored credentials.
 
-3. Refresh token:
+3. The CLI refreshes the access token by itself near expiry. If the refresh
+   token was revoked, log in again:
    ```bash
-   enclii auth refresh
+   enclii login
    ```
 
 ---

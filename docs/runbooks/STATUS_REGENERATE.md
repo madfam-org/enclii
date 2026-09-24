@@ -1,5 +1,11 @@
 # Status Configmap Regeneration Runbook
 
+> **Boundary checkpoint (2026-09-24, platform ops):** public-safe procedure for
+> regenerating the status ConfigMaps through the Switchyard API. Operator
+> identities, tokens and cluster internals stay out of this repo; they live in
+> `madfam-org/internal-devops`. Policy: `docs/PUBLIC_REPO_BOUNDARY.md` and the
+> canonical repo-boundary contract in `madfam-org/internal-devops`.
+
 _Last updated: 2026-05-18 — onboarding now stores status entries in the DB snapshot; runtime ConfigMap projection is the default zero-touch path._
 
 ## Why this exists
@@ -57,7 +63,7 @@ operator action.
 | `EncliiRepoOwner` configured | required only in `gitops` mode; typically `madfam-org` |
 | `EncliiRepoName` configured | required only in `gitops` mode; typically `enclii` |
 | Runtime ConfigMap RBAC present | required only in `runtime` mode; see `switchyard-status-config-manager` |
-| Caller has `admin` JWT role | issued by Janua; verify with `enclii auth verify` |
+| Caller has `admin` JWT role | issued by Janua; check the identity with `enclii whoami 2>&1` (or `enclii --profile <name> whoami 2>&1` for a separate operator login) |
 | ArgoCD self-heal enabled for the `status-*` apps | required for `gitops`; `kubectl get application status-madfam -n argocd -o jsonpath='{.spec.syncPolicy.automated.selfHeal}'` |
 
 ## Run the regenerate
@@ -74,7 +80,7 @@ operator credentials and prints the API response as JSON.
 If the CLI is unavailable, use the API directly:
 
 ```bash
-JWT=$(enclii auth token)            # or pull from ~/.enclii/auth.json
+JWT=$(jq -r .access_token ~/.enclii/credentials.json)   # a named profile: ~/.enclii/profiles/<name>/credentials.json
 
 curl -sS -X POST \
   -H "Authorization: Bearer $JWT" \

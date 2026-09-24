@@ -114,18 +114,23 @@ wrong about all of it.
   old zone pointed at a CDN) for up to the old NS TTL. Do not cut over
   redirects, and do not "fix" a record that already reads correctly at the
   zone's own nameservers, until public resolvers agree.
-- CLI: `enclii whoami`/`login`/`logout` print on **stderr** (cobra
+- CLI: `enclii whoami`/`login`/`logout`/`version` print on **stderr** (cobra
   `cmd.Println` -> `OutOrStderr()`; the CLI never calls `SetOut`), so
-  `whoami > file` captures nothing. `enclii login` resolves whichever Janua
-  identity the browser session holds — log out of a client app first.
-  **No release carries 2026-09-07's work.** `v1.0.0-alpha.8` was cut 2026-09-06
-  from the commit before it, so `--tenant` / `providers porkbun ping` (#527)
-  and `dns-apply --priority` plus the non-destructive multi-record fix (#536)
-  are all absent. Build from `main` (`go build -o ~/bin/enclii
-  ./packages/cli/cmd/enclii`) until `v1.0.0-alpha.9` exists (issue #537). This
-  matters beyond missing flags: an alpha.8 `dns-apply` still keys TXT/MX by
-  name+type and will destructively overwrite a sibling record that the current
-  runbook says is safe to add.
+  `whoami > file` captures nothing. A plain `enclii login` resolves whichever
+  Janua identity the browser session holds. Since `v1.0.0-alpha.10` (#612),
+  `--prompt select_account|login` chooses the account, and `--profile NAME`
+  (or `ENCLII_PROFILE`) keeps each identity's login in its own file
+  (`~/.enclii/profiles/NAME/credentials.json`; the default profile stays at
+  `~/.enclii/credentials.json`). `enclii --profile admin login --no-browser
+  --prompt login` plus a private window holds an operator identity without
+  touching the browser's session.
+  Check the binary with `enclii version 2>&1`. `v1.0.0-alpha.9` (2026-09-08)
+  was the first release with `--tenant` / `providers porkbun ping` (#527) and
+  `dns-apply --priority` plus the non-destructive multi-record fix (#536);
+  `v1.0.0-alpha.10` adds profiles and the `provision oidc` redirect reconcile
+  (#561). An alpha.8 `dns-apply` still keys TXT/MX by name+type and will
+  destructively overwrite a sibling record that the current runbook says is
+  safe to add.
 - Per-tenant Porkbun (#527): merging does NOT apply the Vault policy. Run
   `scripts/apply-switchyard-vault-policy-remote.sh` (token on stdin, never
   argv) before the first `--tenant` call, or it 403s and reads as "credentials
