@@ -76,9 +76,10 @@ ESO sources: `enclii-secrets`, `janua-secrets`, `madfam-site-secrets`, `phynd-cr
 | `angelia/courier-producer-keys` | `secret/angelia` | `courier_producer_key_alarms`, `courier_producer_key_enclii_ops`, `courier_producer_key_tulana`, `courier_producer_key_madfam_site` |
 | `angelia/courier-channel-tokens` | `secret/angelia` | `courier_telegram_bot_token`, `courier_slack_bot_token` |
 | `angelia/courier-alertmanager` | `secret/angelia` | `courier_alertmanager_secret` |
+| `angelia/courier-database-url` | `secret/angelia` | `courier_database_url` |
 | `angelia/courier-webhook-signing-keys` | `secret/angelia` | `courier_webhook_signing_key_alarms`, `courier_webhook_signing_key_enclii_ops`, `courier_webhook_signing_key_tulana`, `courier_webhook_signing_key_madfam_site` |
 
-**Angelia OWNS all four Courier targets** (verifier-owns): Angelia verifies every
+**Angelia OWNS all five Courier targets** (verifier-owns): Angelia verifies every
 one of these credentials, so `secret/angelia` is their single writable home, and
 producers read their own `courier_producer_key_<producer>` cross-path through
 their own ExternalSecret rather than holding a second copy that drifts on
@@ -98,6 +99,14 @@ HMAC-SHA256 per producer. The property **suffix is the pairing mechanism**:
 authenticates and is refused `503 not_provisioned` on that channel alone. **Run
 this target only after O21** (one real page delivered through Courier) — R23 is
 sequenced behind it, and running it earlier arms a channel nothing has verified.
+
+`angelia/courier-database-url` (2026-09-23) is Courier Part A, the durable
+ledger. It carries a connection string with the angelia role's password, so
+submit it with `--value-file` and never with `--generate`. The value is inert
+until angelia-api runs with `COURIER_LEDGER=postgres`. With that env set and the
+value absent, the api refuses to start. Apply angelia's ledger migrations
+0001–0004 before setting the env (angelia `docs/runbooks/courier-provisioning.md`,
+Step 0).
 
 `symbiosis-hcm` is the **producer** of the absence feed; `crea-map` cross-reads
 `map_absence_feed_key` and consumes it as `HCM_FEED_API_KEY`. One copy at the
