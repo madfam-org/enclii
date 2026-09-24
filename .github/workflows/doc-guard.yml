@@ -42,7 +42,7 @@ jobs:
       - uses: actions/checkout@v7
 
       - name: Run DocGuard (${{ matrix.doc-path }})
-        uses: madfam-org/solarpunk-foundry/.github/actions/doc-guard@2ab1074779f04e6bd474bc3a41eece197b1d9a2e # main (2026-09-23)
+        uses: madfam-org/solarpunk-foundry/.github/actions/doc-guard@c000eed9a0872be59687dadda0b2ee7a994889cb # main (2026-09-23)
         with:
           doc-path: './${{ matrix.doc-path }}'
           strict: true
