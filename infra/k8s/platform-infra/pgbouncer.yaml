@@ -23,13 +23,22 @@ data:
     auth_file = /etc/pgbouncer/userlist.txt
     pool_mode = transaction
     max_client_conn = 400
-    default_pool_size = 20
-    min_pool_size = 2
-    reserve_pool_size = 5
+    ; SERVER-SIDE SIZING (2026-09-24). Postgres has max_connections = 100
+    ; (3 reserved for superusers) for ~25 databases. With min_pool_size = 2,
+    ; server_idle_timeout = 600 and pools of 20-40 per database, this pooler
+    ; alone held 60 of the 99 open connections, all idle. Every :00 cron burst
+    ; then hit "remaining connection slots are reserved": karafiel's health
+    ; check failed (2 of 3 API pods unready), a CTM CFDI PDF fetch 500'd, and
+    ; HCM's avisos sweep raised "too many clients". In transaction mode an idle
+    ; server connection serves nobody, so: keep none warm (min 0), release idle
+    ; ones after a minute (60), and bound each database lower (10/2/15).
+    default_pool_size = 10
+    min_pool_size = 0
+    reserve_pool_size = 2
     reserve_pool_timeout = 3
-    max_db_connections = 40
+    max_db_connections = 15
     server_lifetime = 3600
-    server_idle_timeout = 600
+    server_idle_timeout = 60
     server_connect_timeout = 15
     server_login_retry = 1
     query_timeout = 300
@@ -84,6 +93,11 @@ spec:
         app.kubernetes.io/name: pgbouncer
         app.kubernetes.io/component: connection-pooler
         app.kubernetes.io/part-of: enclii
+      annotations:
+        # pgbouncer.ini is mounted with subPath, so a ConfigMap edit never
+        # reaches the running pod. Bump this with every pgbouncer.ini change
+        # to roll the pod (maxSurge 1 / maxUnavailable 0).
+        enclii.dev/pgbouncer-ini-rev: "2026-09-24-release-idle-server-connections"
     spec:
       securityContext:
         runAsNonRoot: true
