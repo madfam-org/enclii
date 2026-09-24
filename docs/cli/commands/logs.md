@@ -72,7 +72,7 @@ enclii logs --env staging
 
 ## Server version for `--since`
 
-The one-shot history endpoint only honours `since` on a switchyard-api deployed after this parameter was added (PR_LINK_PENDING). An older server ignores the parameter and returns the last `--lines` lines whatever the window, with no error. Against such a server, `--since 24h` without `--follow` can show lines older than 24 hours.
+The one-shot history endpoint only honours `since` on a switchyard-api that includes [#622](https://github.com/madfam-org/enclii/pull/622). An older server ignores the parameter and returns the last `--lines` lines whatever the window, with no error. Against such a server, `--since 24h` without `--follow` can show lines older than 24 hours.
 
 The server accepts `since` as an RFC3339 timestamp, which is what the CLI sends, or as a positive Go duration such as `24h` for direct API callers. It rejects anything else, and timestamps in the future, with HTTP `400`. The response shape does not change.
 
