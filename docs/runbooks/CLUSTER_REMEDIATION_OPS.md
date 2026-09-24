@@ -342,7 +342,7 @@ kubectl get application vault -n argocd
 
 ## Section 4 -- Cosign Enforce Activation (P1)
 
-**Context:** The Kyverno ClusterPolicy `verify-image-signatures` is committed to git at `infra/k8s/base/kyverno/policies/image-policies.yaml` with `validationFailureAction: Enforce`. It uses keyless Cosign verification with GitHub Actions OIDC (`issuer: https://token.actions.githubusercontent.com`) and a `subjectRegExp` scoped to MADFAM GitHub Actions workflows on `main` or version tags. The policy only applies to namespaces with the label `enclii.dev/verify-signatures: "true"`.
+**Context:** The Kyverno ClusterPolicy `verify-image-signatures` is committed to git at `infra/k8s/base/kyverno/policies/image-policies.yaml` with `validationFailureAction: Enforce`. It uses keyless Cosign verification with GitHub Actions OIDC (`issuer: https://token.actions.githubusercontent.com`). Since commit `c7205639` (2026-05-17) the policy is **issuer-only**: it no longer carries a `subjectRegExp`, so it does not check which repository, workflow, or ref signed the image. See [Kyverno Policies](../infrastructure/KYVERNO_POLICIES.md#image-signature-verification-verify-image-signatures) for what that means and for the constraint on restoring subject enforcement. The policy only applies to namespaces with the label `enclii.dev/verify-signatures: "true"`.
 
 **Pre-conditions:**
 - PR #47 merged (Kyverno policy in Enforce mode)
@@ -360,11 +360,14 @@ kubectl get pods -A -o jsonpath='{range .items[*]}{range .spec.containers[*]}{.i
   | grep ghcr.io/madfam-org | sort -u
 
 # Verify each image has a cosign signature from an approved MADFAM workflow
-# (replace image references from the output above)
+# (replace image references from the output above). This regexp is stricter
+# than the issuer-only admission policy. Its ref part also accepts a 40-hex
+# commit SHA, because build-publish callers may pin by SHA since #620 and sign
+# as `.../build-publish.yml@<sha>`; without it those images report UNSIGNED.
 for img in $(kubectl get pods -A -o jsonpath='{range .items[*]}{range .spec.containers[*]}{.image}{"\n"}{end}{end}' | grep ghcr.io/madfam-org | sort -u); do
   echo -n "$img: "
   cosign verify \
-    --certificate-identity-regexp="^https://github\\.com/madfam-org/[A-Za-z0-9_.-]+/\\.github/workflows/[A-Za-z0-9_.-]+\\.ya?ml@refs/(heads/main|tags/v[0-9].*)$" \
+    --certificate-identity-regexp="^https://github\\.com/madfam-org/[A-Za-z0-9_.-]+/\\.github/workflows/[A-Za-z0-9_.-]+\\.ya?ml@(refs/(heads/main|tags/v[0-9].*)|[0-9a-f]{40})$" \
     --certificate-oidc-issuer="https://token.actions.githubusercontent.com" \
     "$img" 2>/dev/null && echo "SIGNED" || echo "UNSIGNED"
 done

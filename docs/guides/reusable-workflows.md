@@ -181,7 +181,10 @@ The controls that do hold are elsewhere:
   `infra/k8s/base/kyverno/policies/image-policies.yaml`). That policy does
   not look at the workflow ref, so a SHA-pinned signature is admitted
   exactly as a tag-pinned one was before. Pushing to `ghcr.io/madfam-org`
-  still requires that org's package write access.
+  still requires that org's package write access. If that policy regains a
+  subject pattern, the pattern must accept `@<40-hex sha>` refs or SHA-pinned
+  callers' pods are refused at admission; see
+  [Kyverno Policies](../infrastructure/KYVERNO_POLICIES.md#restoring-subject-enforcement-accept-sha-pinned-callers).
 
 When you pin a SHA, check it before merging:
 `git ls-remote https://github.com/madfam-org/enclii.git 'refs/tags/vX.Y.Z^{}'`
