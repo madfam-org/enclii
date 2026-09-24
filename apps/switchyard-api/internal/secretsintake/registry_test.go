@@ -11,7 +11,7 @@ import (
 func TestLoadRegistry(t *testing.T) {
 	reg, err := LoadRegistry()
 	require.NoError(t, err)
-	assert.Len(t, reg, 34)
+	assert.Len(t, reg, 35)
 	assert.Contains(t, reg, "ceq/vast-api-key")
 	assert.Contains(t, reg, "karafiel/web-oidc-janua")
 	tgt := reg["ceq/vast-api-key"]
@@ -32,7 +32,7 @@ func TestGetTarget(t *testing.T) {
 func TestListTargetsSorted(t *testing.T) {
 	list, err := ListTargets()
 	require.NoError(t, err)
-	require.Len(t, list, 34)
+	require.Len(t, list, 35)
 	for i := 1; i < len(list); i++ {
 		assert.Less(t, list[i-1].ID, list[i].ID, "targets should be sorted by id")
 	}
@@ -43,6 +43,7 @@ func TestListTargetsSorted(t *testing.T) {
 	assert.Equal(t, []string{
 		"angelia/courier-alertmanager",
 		"angelia/courier-channel-tokens",
+		"angelia/courier-database-url",
 		"angelia/courier-producer-keys",
 		"angelia/courier-webhook-signing-keys",
 		"ceq/janua-client-secret",
@@ -195,7 +196,7 @@ func TestCreaMap303Targets(t *testing.T) {
 	}
 }
 
-// The 2026-09-05 Courier batch. Angelia OWNS these four targets: it verifies
+// The 2026-09-05 Courier batch (+ the 2026-09-23 ledger URL). Angelia OWNS these targets: it verifies
 // every one of the credentials, so secret/angelia is the single writable home
 // and every consumer reads that copy cross-path. Pinning the routing here makes
 // a rename a test failure rather than a silent write to the wrong Vault path —
@@ -217,6 +218,12 @@ func TestCourierTargets(t *testing.T) {
 		}},
 		{"angelia/courier-alertmanager", []string{
 			"courier_alertmanager_secret",
+		}},
+		// Courier Part A (2026-09-23): the durable ledger's connection string.
+		// angelia-courier-secrets projects it as DATABASE_URL; a wrong property
+		// name here is an api that refuses to start once COURIER_LEDGER=postgres.
+		{"angelia/courier-database-url", []string{
+			"courier_database_url",
 		}},
 		// R23 (2026-09-05): the webhook channel's signing keys. One per producer,
 		// suffix-paired with the producer key above — pinned side by side so a

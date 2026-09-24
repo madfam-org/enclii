@@ -350,7 +350,7 @@ targets:
   # (internal-devops decisions/2026-09-05-third-party-messaging-via-angelia-courier.md,
   # angelia docs/adr/0010-courier-outbound-comms-substrate.md).
   #
-  # ANGELIA OWNS ALL THREE. The "verifier-owns, cross-path read" pattern the
+  # ANGELIA OWNS ALL OF THEM. The "verifier-owns, cross-path read" pattern the
   # estate already uses for phynd ↔ selva: the platform that VERIFIES a
   # credential owns its canonical property, and every consumer reads that one
   # copy cross-path through its own ExternalSecret rather than holding a second
@@ -397,6 +397,23 @@ targets:
     external_secret: angelia-courier-secrets
     keys:
       - courier_alertmanager_secret
+
+  # Courier Part A — the durable delivery ledger (angelia
+  # docs/runbooks/courier-provisioning.md, Step 0). With COURIER_LEDGER=postgres
+  # angelia-api reads DATABASE_URL for PgLedger and REFUSES TO START without it
+  # (no silent fall-back to in-memory); with COURIER_LEDGER unset the value is
+  # ignored, so writing it first is safe. It is a connection string that
+  # carries the angelia role's password, hence a secret and not a ConfigMap
+  # value. Submit it with --value-file; --generate would mint random bytes that
+  # are not a URL.
+  angelia/courier-database-url:
+    label: Angelia Courier ledger database URL
+    description: Postgres connection string for Courier's durable ledger (PgLedger + retry worker) against the angelia database, never synapse. Carries the role password. angelia-courier-secrets projects it as DATABASE_URL on angelia-api. Inert until COURIER_LEDGER=postgres; apply migrations 0001-0004 before setting that env.
+    vault_path: secret/angelia
+    namespace: angelia
+    external_secret: angelia-courier-secrets
+    keys:
+      - courier_database_url
 
   # R23 (internal-devops docket, ruled 2026-09-05, sequenced AFTER O21):
   # customer-facing notification webhooks go through Courier's `webhook`
