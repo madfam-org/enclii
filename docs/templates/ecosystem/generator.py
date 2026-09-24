@@ -269,6 +269,7 @@ ECOSYSTEM_MAP_TAIL = dedent("""
 
     **Operational access** (SSH, kubeconfigs, node identity, estate counts, cost
     ledger): private repo `madfam-org/internal-devops`. Not in any public repo.
+    Policy: the repo-boundary contract, `internal-devops/docs/repo-boundary-contract.md`.
 """).strip()
 
 
@@ -496,6 +497,11 @@ def render(repo: str, meta: dict, projection: dict | None = None) -> str:
     production_truth = (meta.get("production_truth") or "").strip()
     if production_truth:
         cluster = f"{cluster}\n\n{production_truth}"
+
+    # `section_appendix`: repo-specific subsections (auth status, extractor
+    # notes, env caveats) rendered at the end of section 1.
+    appendix = (meta.get("section_appendix") or "").strip()
+    env_md = f"{env_md}\n\n{appendix}" if appendix else env_md
 
     provenance = PROVENANCE
     provenance_note = (meta.get("provenance_note") or "").strip()

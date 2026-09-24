@@ -302,3 +302,23 @@ def test_boilerplate_overrides_still_fail_loudly_when_the_shared_text_drifts() -
     meta = {**REPOS_FULL["forj"], "boilerplate_overrides": [{"find": "text that is not there", "replace": "x"}]}
     with pytest.raises(SystemExit, match="matched 0 times"):
         generator.render("forj", meta, PROJECTION)
+
+
+@pytest.mark.parametrize("repo", sorted(REPOS_FULL))
+def test_every_render_carries_a_repo_boundary_marker(repo: str) -> None:
+    """blueprint-harvester and tulana CI fail a changed ECOSYSTEM.md without one
+    (scripts/boundary-checkpoint-check.sh); the shared text supplies it."""
+    marker = re.compile(
+        r"boundary checkpoint|repository boundary|public repository boundary|"
+        r"repo-boundary contract|PUBLIC_REPO_BOUNDARY|repo-boundary-contract",
+        re.I,
+    )
+    assert marker.search(_render(repo)), repo
+
+
+def test_section_appendix_lands_after_key_env_and_before_the_map() -> None:
+    meta = {**REPOS_FULL["forj"], "section_appendix": "### Auth: current status\n\nAPPENDIX-LINE"}
+    rendered = generator.render("forj", meta, PROJECTION)
+    assert rendered.index("### Key environment variables") < rendered.index("APPENDIX-LINE")
+    assert rendered.index("APPENDIX-LINE") < rendered.index("## MADFAM Ecosystem Map")
+    assert "APPENDIX-LINE" not in generator.render("forj", REPOS_FULL["forj"], PROJECTION)

@@ -72,6 +72,7 @@ renders byte-for-byte as it did before the slots existed.
 | `sensitivity_banner` | a blockquote above the enclii-first banner, for repos whose data is sensitive |
 | `boundary_checkpoint` | a section between the banners and the tagline (some repos' CI requires this marker in `ECOSYSTEM.md`) |
 | `production_truth` | a block after the namespace/cluster lines, for a dated operator baseline |
+| `section_appendix` | repo-specific subsections appended to the end of section 1 (after *Key environment variables*) |
 | `provenance_note` | a paragraph appended to *Document provenance* |
 | `boilerplate_overrides` | exact-once substitutions applied to the shared ecosystem map + CLI reference |
 
