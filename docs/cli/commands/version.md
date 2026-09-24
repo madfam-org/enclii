@@ -1,99 +1,69 @@
 # enclii version
 
-Display CLI version and build information.
+Display the CLI version and build information.
 
 ## Synopsis
 
 ```bash
-enclii version [flags]
+enclii version [--json]
 ```
 
 ## Description
 
-The `version` command displays the CLI version, build information, and checks for available updates.
+The `version` command prints the release tag the binary was built from, the
+commit, and the build date. Release builds get these values at link time
+(see `.github/workflows/cli-release.yml`); a plain `go build` prints the
+defaults `1.0.0-alpha`, `development` and `unknown`.
+
+It does not check for updates. Compare the output with the
+[releases page](https://github.com/madfam-org/enclii/releases).
 
 ## Flags
 
 | Flag | Type | Default | Description |
 |------|------|---------|-------------|
-| `--short`, `-s` | bool | `false` | Print version number only |
-| `--check-update` | bool | `false` | Check for newer version |
-| `--output`, `-o` | string | `text` | Output format: `text`, `json` |
+| `--json` | bool | `false` | Emit machine-readable JSON |
 
 ## Examples
 
-### Basic Version
+### Text output
+
 ```bash
 enclii version
 ```
 
 **Output:**
-```
-Enclii CLI
 
-Version:    v0.5.2
-Commit:     a1b2c3d4
-Built:      2025-01-10T15:30:00Z
-Go:         go1.22.0
-OS/Arch:    darwin/arm64
+```text
+enclii version v1.0.0-alpha.10
+Commit:     0e248103e47f
+Build date: 2026-09-24T06:56:28Z
 ```
 
-### Short Version
+Like `login` and `whoami`, the text form is written to stderr, so capture it
+with `enclii version 2>&1`.
+
+### JSON output
+
 ```bash
-enclii version --short
+enclii version --json
 ```
 
-**Output:**
-```
-v0.5.2
-```
+**Output** (on stdout):
 
-### Check for Updates
-```bash
-enclii version --check-update
-```
-
-**Output:**
-```
-Enclii CLI v0.5.2
-
-Update available: v0.6.0
-
-What's new:
-  - Improved canary deployment monitoring
-  - WebSocket log streaming performance
-  - New `enclii local infra` commands
-
-Upgrade with:
-  brew upgrade enclii
-```
-
-### JSON Output
-```bash
-enclii version -o json
-```
-
-**Output:**
 ```json
-{
-  "version": "v0.5.2",
-  "commit": "a1b2c3d4e5f6",
-  "build_time": "2025-01-10T15:30:00Z",
-  "go_version": "go1.22.0",
-  "os": "darwin",
-  "arch": "arm64"
-}
+{"version":"v1.0.0-alpha.10","commit":"0e248103e47f","build_date":"2026-09-24T06:56:28Z"}
 ```
 
-## Version Scheme
+## Releases
 
-Enclii follows [Semantic Versioning](https://semver.org/):
-
-- **MAJOR** (v1.x.x): Breaking changes
-- **MINOR** (vX.1.x): New features, backwards compatible
-- **PATCH** (vX.X.1): Bug fixes, backwards compatible
+CLI releases are `v*` tags; pushing one runs `cli-release.yml`, which publishes
+archives for Linux, macOS and Windows (amd64 and arm64) with a `checksums.txt`.
+Tags containing `alpha`, `beta` or `rc` are marked as pre-releases. To upgrade,
+download the archive for your platform, verify it, and replace the binary; see
+[Installation](../README.md#installation).
 
 ## See Also
 
-- [Installation Guide](../../getting-started/QUICKSTART.md)
-- Changelog: `CHANGELOG.md` (repo root)
+- [CLI reference](../README.md)
+- [Releases](https://github.com/madfam-org/enclii/releases)

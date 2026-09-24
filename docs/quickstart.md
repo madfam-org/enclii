@@ -26,7 +26,7 @@ This is the fastest path from zero to a live URL. You will install the CLI, sign
 
 **Linux/macOS release archive:**
 ```bash
-VERSION=v1.0.0-alpha.1
+VERSION=v1.0.0-alpha.10
 OS=linux   # use darwin for macOS
 ARCH=amd64 # use arm64 on Apple Silicon or ARM Linux
 curl -LO "https://github.com/madfam-org/enclii/releases/download/${VERSION}/enclii_${VERSION}_${OS}_${ARCH}.tar.gz"
@@ -34,7 +34,7 @@ tar -xzf "enclii_${VERSION}_${OS}_${ARCH}.tar.gz"
 sudo install -m 0755 "enclii_${VERSION}_${OS}_${ARCH}/enclii" /usr/local/bin/enclii
 ```
 
-**Linux / from source (any OS with Go 1.25+):**
+**Linux / from source (any OS with Go 1.26+):**
 ```bash
 git clone https://github.com/madfam-org/enclii.git
 cd enclii
@@ -58,14 +58,14 @@ If `enclii: command not found`, restart your shell or add `$HOME/.local/bin` to 
 enclii login
 ```
 
-A browser opens to `auth.madfam.io` (Janua SSO). Sign in with GitHub. The CLI finishes the OAuth handshake and stores your token at `~/.enclii/config.yaml`.
+A browser opens to `auth.madfam.io` (Janua SSO). Sign in with GitHub. The CLI finishes the OAuth handshake and stores your token at `~/.enclii/credentials.json`.
 
 **Expected:**
 ```
-✓ Signed in as you@example.com
+✅ Successfully logged in!
 ```
 
-If the browser didn't open, copy the printed URL manually. If the callback times out, check your firewall or popup blocker — the CLI listens on a random localhost port during login.
+Run `enclii whoami 2>&1` to see which account you are signed in as. If the browser didn't open, copy the printed URL manually (or run `enclii login --no-browser`). If the callback times out, check your firewall or popup blocker — the CLI listens on `127.0.0.1:8080` (or `3000` if 8080 is busy) during login.
 
 ## 3. Scaffold a service (1 min)
 

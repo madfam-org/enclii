@@ -236,29 +236,35 @@ enclii providers porkbun domains creatumundo.mx --tenant crea
 
 ### CLI gotchas that cost time on the first run
 
-**The released CLI predates this feature.** `--tenant` and `providers porkbun
-ping` landed in [#527](https://github.com/madfam-org/enclii/pull/527), which is
-**not** in `v1.0.0-alpha.8` — that tag was cut from the commit immediately
-before it. On alpha.8 the flag is rejected as unknown and `ping` does not exist,
-which reads like a broken install. Build from `main`, or cut the release that
-carries these verbs (**`v1.0.0-alpha.9`**):
+**These verbs need CLI `v1.0.0-alpha.9` or later.** `--tenant` and `providers
+porkbun ping` landed in [#527](https://github.com/madfam-org/enclii/pull/527)
+and first shipped in **`v1.0.0-alpha.9`**. `v1.0.0-alpha.8` was cut from the
+commit immediately before #527, so on alpha.8 the flag is rejected as unknown
+and `ping` does not exist, which reads like a broken install. Check the binary
+and upgrade from the [releases page](https://github.com/madfam-org/enclii/releases)
+if it is older:
 
 ```bash
-go build -o ~/bin/enclii ./packages/cli/cmd/enclii
+enclii version 2>&1
 ```
 
 **`enclii whoami` prints on stderr.** `whoami`, `login`, and `logout` report
 through cobra's `cmd.Println`, which writes to `OutOrStderr()`; the CLI never
 calls `SetOut`. `enclii whoami > /tmp/who` therefore captures an empty file and
-reads as "not logged in". Use `enclii whoami 2>&1`, or `-o json`.
+reads as "not logged in". Use `enclii whoami 2>&1` (`whoami` has no JSON output).
 
-**`enclii login` follows whichever Janua identity the browser session holds.**
-The PKCE flow completes against the existing `auth.madfam.io` session, and
-estate cookie precedence (janua J9) means a browser logged into a *client*
-application resolves that identity — the CLI silently receives the wrong one and
+**A plain `enclii login` follows whichever Janua identity the browser session
+holds.** The PKCE flow completes against the existing `auth.madfam.io` session,
+and estate cookie precedence (janua J9) means a browser logged into a *client*
+application resolves that identity. The CLI then receives the wrong one, and
 every `--tenant` call afterwards fails on authorization rather than on anything
-to do with the tenant. **Log out of the client app in the browser first**, then
-`enclii login`, then confirm with `enclii whoami 2>&1`.
+to do with the tenant. Since `v1.0.0-alpha.10`, choose the identity instead:
+`enclii login --prompt select_account` shows Janua's account chooser, and
+`enclii --profile admin login --no-browser --prompt login` keeps the operator
+identity in its own profile (open the printed URL in a private window) without
+touching the browser's session. Confirm with `enclii whoami 2>&1` (or
+`enclii --profile admin whoami 2>&1`). See
+[`enclii login`](../cli/commands/login.md#several-identities-profiles-and-account-switching).
 
 ## What is deliberately not wired
 

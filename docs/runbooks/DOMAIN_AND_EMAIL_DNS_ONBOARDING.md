@@ -411,15 +411,16 @@ zone gets churned.
 `whoami`, `login`, and `logout` report through cobra's `cmd.Println`, which
 writes to `OutOrStderr()`. The CLI never calls `SetOut`, so **all of that output
 is on stderr**. `enclii whoami > /tmp/who` captures an empty file and reads as
-"not logged in". Redirect with `2>&1`, or use `-o json`.
+"not logged in". Redirect with `2>&1` (`whoami` has no JSON output).
 
-### The released CLI is older than this runbook — build from `main`
+### This runbook needs CLI `v1.0.0-alpha.9` or later
 
-**Every command in this runbook assumes a CLI built from `main`, or a release
-`>= v1.0.0-alpha.9`.** The newest tag today is **`v1.0.0-alpha.8`**, cut
-2026-09-06 from the commit *before* any of 2026-09-07's work. **No release
-carries #527 or #536.** Tracked in
-[#537](https://github.com/madfam-org/enclii/issues/537).
+**Every command in this runbook assumes a CLI release `>= v1.0.0-alpha.9`** (or
+one built from `main`). `v1.0.0-alpha.9` (2026-09-08) was the first release to
+carry #527 and #536; `v1.0.0-alpha.8` was cut 2026-09-06 from the commit
+*before* any of 2026-09-07's work. Check with `enclii version 2>&1` and upgrade
+from the [releases page](https://github.com/madfam-org/enclii/releases) if the
+binary is older.
 
 | Verb / flag | Landed in | In `v1.0.0-alpha.8`? |
 |---|---|---|

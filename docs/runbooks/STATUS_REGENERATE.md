@@ -57,7 +57,7 @@ operator action.
 | `EncliiRepoOwner` configured | required only in `gitops` mode; typically `madfam-org` |
 | `EncliiRepoName` configured | required only in `gitops` mode; typically `enclii` |
 | Runtime ConfigMap RBAC present | required only in `runtime` mode; see `switchyard-status-config-manager` |
-| Caller has `admin` JWT role | issued by Janua; verify with `enclii auth verify` |
+| Caller has `admin` JWT role | issued by Janua; check the identity with `enclii whoami 2>&1` (or `enclii --profile <name> whoami 2>&1` for a separate operator login) |
 | ArgoCD self-heal enabled for the `status-*` apps | required for `gitops`; `kubectl get application status-madfam -n argocd -o jsonpath='{.spec.syncPolicy.automated.selfHeal}'` |
 
 ## Run the regenerate
@@ -74,7 +74,7 @@ operator credentials and prints the API response as JSON.
 If the CLI is unavailable, use the API directly:
 
 ```bash
-JWT=$(enclii auth token)            # or pull from ~/.enclii/auth.json
+JWT=$(jq -r .access_token ~/.enclii/credentials.json)   # a named profile: ~/.enclii/profiles/<name>/credentials.json
 
 curl -sS -X POST \
   -H "Authorization: Bearer $JWT" \
