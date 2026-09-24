@@ -234,6 +234,77 @@ spec:
           volumeMounts:
             - name: data
               mountPath: /loki
+        # ONE-TIME INDEX-TABLE quarantine (2026-09-23).
+        #
+        # After the WAL quarantine above, loki-0 still crash-looped (11.5k
+        # restarts, down since 2026-08-13) on a different corruption:
+        #   index_set.go:308 table-name=index_20678 msg="sync failed" err=EOF
+        #   failed to initialize table, cleaning it up table=index_20678
+        #   error running loki err="EOF ... error initialising module: store"
+        # index_20678 is the 2026-08-13 daily table, the day the WAL broke, so
+        # it was most likely left truncated. It is 41 days old, past the 48h
+        # retention_period, so the compactor would delete it anyway. It never
+        # gets the chance, because Loki dies at startup before the compactor runs.
+        #
+        # Same safety properties as wal-quarantine: guarded by a token, moves
+        # and never deletes, and touches only the named tables. Each table is
+        # moved OUT of every directory Loki scans (object store, shipper cache,
+        # active index dir, compactor dir) into /loki/quarantine/<token>/, so
+        # Loki never lists it as a table again. If a later start fails on
+        # another table, add that table and bump the token in git.
+        - name: index-table-quarantine
+          image: docker.io/grafana/loki:3.4.2@sha256:58a6c186ce78ba04d58bfe2a927eff296ba733a430df09645d56cdc158f3ba08
+          imagePullPolicy: IfNotPresent
+          command:
+            - /bin/sh
+            - -eu
+            - -c
+            - |
+              QUARANTINE_TOKEN="2026-09-23-index_20678-eof"
+              TABLES="index_20678"
+              MARKER="/loki/.index-quarantine-${QUARANTINE_TOKEN}"
+
+              if [ -e "${MARKER}" ]; then
+                echo "quarantine ${QUARANTINE_TOKEN} already applied; leaving index untouched"
+                exit 0
+              fi
+
+              DEST_ROOT="/loki/quarantine/${QUARANTINE_TOKEN}"
+              mkdir -p "${DEST_ROOT}"
+              for TABLE in ${TABLES}; do
+                for SRC_DIR in /loki/chunks/index /loki/tsdb-cache /loki/tsdb-index /loki/compactor; do
+                  SRC="${SRC_DIR}/${TABLE}"
+                  if [ -e "${SRC}" ]; then
+                    DEST="${DEST_ROOT}/$(echo "${SRC_DIR}" | tr / _)-${TABLE}"
+                    echo "quarantining ${SRC} -> ${DEST}"
+                    du -sh "${SRC}" 2>/dev/null || true
+                    rm -rf "${DEST}"
+                    mv "${SRC}" "${DEST}"
+                  else
+                    echo "no ${SRC}; nothing to move"
+                  fi
+                done
+              done
+
+              touch "${MARKER}"
+              echo "marker written: ${MARKER}"
+          securityContext:
+            privileged: false
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop:
+                - ALL
+          resources:
+            requests:
+              cpu: 10m
+              memory: 32Mi
+            limits:
+              cpu: 100m
+              memory: 64Mi
+          volumeMounts:
+            - name: data
+              mountPath: /loki
       containers:
         - name: loki
           image: docker.io/grafana/loki:3.4.2@sha256:58a6c186ce78ba04d58bfe2a927eff296ba733a430df09645d56cdc158f3ba08
