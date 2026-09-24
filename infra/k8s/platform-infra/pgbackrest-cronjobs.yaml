@@ -92,7 +92,12 @@ data:
     METRICS_FILE="${METRICS_DIR}/pgbackrest_check.prom"
     TIMESTAMP=$(date +%s)
 
-    POD=$(kubectl -n data get pod -l app=postgres -o jsonpath='{.items[0].metadata.name}')
+    # Only a RUNNING pod. On 2026-09-18 the kubelet evicted the previous
+    # postgres pod; its Failed/Evicted object sorted first under the plain
+    # label selector, so check/diff/full exec'd into a dead pod and failed
+    # every run from 09-18 07:45Z until this selector (WAL archiving itself
+    # kept working the whole time).
+    POD=$(kubectl -n data get pod -l app=postgres --field-selector=status.phase=Running -o jsonpath='{.items[0].metadata.name}')
     if [ -z "$POD" ]; then
       echo "ERROR: no postgres pod found" >&2
       exit 1
@@ -131,7 +136,11 @@ data:
   backup-full.sh: |
     #!/bin/sh
     set -e
-    POD=$(kubectl -n data get pod -l app=postgres -o jsonpath='{.items[0].metadata.name}')
+    POD=$(kubectl -n data get pod -l app=postgres --field-selector=status.phase=Running -o jsonpath='{.items[0].metadata.name}')
+    if [ -z "$POD" ]; then
+      echo "ERROR: no Running postgres pod found" >&2
+      exit 1
+    fi
     echo "[$(date -Iseconds)] Running FULL backup in pod $POD"
     kubectl -n data exec -c pgbackrest "$POD" -- \
       pgbackrest --stanza=main --type=full --log-level-console=info backup
@@ -140,7 +149,11 @@ data:
   backup-diff.sh: |
     #!/bin/sh
     set -e
-    POD=$(kubectl -n data get pod -l app=postgres -o jsonpath='{.items[0].metadata.name}')
+    POD=$(kubectl -n data get pod -l app=postgres --field-selector=status.phase=Running -o jsonpath='{.items[0].metadata.name}')
+    if [ -z "$POD" ]; then
+      echo "ERROR: no Running postgres pod found" >&2
+      exit 1
+    fi
     echo "[$(date -Iseconds)] Running DIFFERENTIAL backup in pod $POD"
     kubectl -n data exec -c pgbackrest "$POD" -- \
       pgbackrest --stanza=main --type=diff --log-level-console=info backup
