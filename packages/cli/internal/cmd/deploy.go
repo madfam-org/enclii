@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"os"
 	"os/exec"
 	"strconv"
 	"strings"
@@ -107,7 +108,7 @@ func runDeployList(cfg *config.Config, serviceName string, limit int) error {
 		return err
 	}
 
-	deployments, err := apiClient.ListServiceDeployments(ctx, service.ID)
+	deployments, _, err := listServiceDeploymentsForDisplay(ctx, apiClient, service.ID, os.Stderr)
 	if err != nil {
 		return fmt.Errorf("list deployments: %w", err)
 	}

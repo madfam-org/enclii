@@ -24,6 +24,12 @@ export function parseVersionLabel(label: string): number | null {
   return n;
 }
 
+/** `deployments.list()` result: a `Page` plus the API's truncation signal. */
+export interface ServiceDeploymentsPage extends Page<Deployment> {
+  truncated: boolean;
+  skippedReleaseIds: string[];
+}
+
 export class DeploymentsResource {
   constructor(private readonly client: EncliiClient) {}
 
@@ -67,25 +73,49 @@ export class DeploymentsResource {
   /**
    * List every deployment of a service, newest release first. The endpoint
    * returns all rows in one response.
+   *
+   * `truncated` is true when the API could not read the deployments of some
+   * releases (named in `skippedReleaseIds`): `data` then holds only the rows
+   * it could read. Do not choose a rollback target from a truncated list.
+   * A server that predates the field never reports truncation.
    */
   async list(
     serviceId: string,
     _options: UnpagedListOptions = {},
-  ): Promise<Page<Deployment>> {
+  ): Promise<ServiceDeploymentsPage> {
     const resp = await this.client.get<{
       service_id: string;
       deployments: Deployment[] | null;
       count: number;
+      truncated?: boolean;
+      skipped_release_ids?: string[];
     }>(`/services/${encodeURIComponent(serviceId)}/deployments`);
-    return { data: resp.deployments ?? [], nextCursor: null };
+    return {
+      data: resp.deployments ?? [],
+      nextCursor: null,
+      truncated: resp.truncated ?? false,
+      skippedReleaseIds: resp.skipped_release_ids ?? [],
+    };
   }
 
-  /** Iterate every deployment of a service (one request; see `list()`). */
+  /**
+   * Iterate every deployment of a service (one request; see `list()`).
+   * Throws before yielding anything when the API reports the list truncated,
+   * so an iteration never silently misses deployments; use `list()` to read a
+   * partial list deliberately.
+   */
   async *iter(
     serviceId: string,
     _options: UnpagedIterOptions = {},
   ): AsyncIterable<Deployment> {
     const page = await this.list(serviceId);
+    if (page.truncated) {
+      throw new Error(
+        `deployments.iter: the API returned a partial deployment list for service ${serviceId} ` +
+          `(could not read releases: ${page.skippedReleaseIds.join(', ') || 'unknown'}); retry, ` +
+          'or use deployments.list() to read the partial list',
+      );
+    }
     yield* page.data;
   }
 

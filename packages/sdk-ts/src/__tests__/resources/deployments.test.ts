@@ -88,7 +88,36 @@ describe('DeploymentsResource', () => {
     const page = await client.deployments.list('svc-1', { limit: 1 });
     expect(page.data.map((d) => d.id)).toEqual(['d2', 'd1']);
     expect(page.nextCursor).toBeNull();
+    expect(page.truncated).toBe(false);
+    expect(page.skippedReleaseIds).toEqual([]);
     expect(calls[0]!.url).toBe('https://api.enclii.test/v1/services/svc-1/deployments');
+  });
+
+  // Contract: when reading some releases fails the API still answers 200
+  // with the rows it read, truncated=true and skipped_release_ids.
+  it('list() surfaces truncation and iter() refuses a truncated list', async () => {
+    const { fetch } = createStubFetch(() =>
+      jsonResponse({
+        service_id: 'svc-1',
+        deployments: [goDeployment('d2')],
+        count: 1,
+        truncated: true,
+        skipped_release_ids: ['rel-1'],
+      }),
+    );
+    const client = newClient({ fetch });
+    const page = await client.deployments.list('svc-1');
+    expect(page.truncated).toBe(true);
+    expect(page.skippedReleaseIds).toEqual(['rel-1']);
+    expect(page.data.map((d) => d.id)).toEqual(['d2']);
+
+    const seen: string[] = [];
+    await expect(
+      (async () => {
+        for await (const d of client.deployments.iter('svc-1')) seen.push(d.id);
+      })(),
+    ).rejects.toThrow(/partial deployment list.*rel-1/);
+    expect(seen).toEqual([]);
   });
 
   it('calls deploy with the correct body', async () => {

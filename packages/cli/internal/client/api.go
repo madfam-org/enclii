@@ -416,18 +416,6 @@ func (c *APIClient) GetDeploymentByVersion(ctx context.Context, serviceID string
 	return &deployment, nil
 }
 
-func (c *APIClient) ListServiceDeployments(ctx context.Context, serviceID string) ([]*types.Deployment, error) {
-	var response struct {
-		Deployments []*types.Deployment `json:"deployments"`
-	}
-
-	if err := c.get(ctx, fmt.Sprintf("/v1/services/%s/deployments", serviceID), &response); err != nil {
-		return nil, fmt.Errorf("failed to list deployments: %w", err)
-	}
-
-	return response.Deployments, nil
-}
-
 func (c *APIClient) GetServiceHealth(ctx context.Context, serviceID string) (*ServiceHealthResponse, error) {
 	var response ServiceHealthResponse
 	path := "/v1/observability/health"

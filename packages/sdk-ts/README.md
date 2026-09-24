@@ -154,11 +154,11 @@ for await (const frame of enclii.logs.tail('svc_123', { env: 'production' })) {
   if (frame.type === 'log') console.log(frame.timestamp, frame.pod, frame.message);
 }
 
-// Node: Authorization header, explicit Origin, reconnect with backoff
+// Node: Authorization header, reconnect with backoff. No Origin is needed;
+// set `origin` (an allowed one) only for a server that predates that.
 import { nodeLogsTail } from '@madfam/enclii-sdk/node';
 for await (const frame of nodeLogsTail(enclii, 'svc_123', {
   env: 'production',
-  origin: process.env.ENCLII_WS_ORIGIN, // must match an allowed origin
   maxReconnects: 10,
   onReconnect: (n, reason) => console.warn(`reconnect #${n}: ${reason}`),
 })) {
