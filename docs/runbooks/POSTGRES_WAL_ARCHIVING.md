@@ -43,15 +43,24 @@
     pgbackrest-backup-diff 0 2 * * 1-6   (Mon-Sat 02:00 UTC)
     pgbackrest-backup-full 0 2 * * 0     (Sunday 02:00 UTC)
 
-  Alerts (prometheus-rules ConfigMap, key postgres-wal-archive-rules.yml,
-  in infra/k8s/production/monitoring/prometheus.yaml; ported from the
-  retired PrometheusRule in #440):
-    PostgresWALArchiveBehind   (critical, paging)
-    PostgresWALLagHigh         (warning)
-    PostgresWALSpoolDiskHigh   (warning)
-    PostgresBackupJobsStale    (warning)
-    PgBackRestCheckUnhealthy   (critical; replaces PostgresBackupCheckFailed,
-                                pgbackrest-health-rules.yml)
+  Alerts (prometheus-rules ConfigMap in
+  infra/k8s/production/monitoring/prometheus.yaml; rewritten 2026-09-24
+  because the previous rules read metrics that were never exported):
+    postgres-wal-archive-rules.yml (postgres-exporter pg_stat_archiver_*):
+      PostgresWALArchiveFailing        (critical)
+      PostgresWALArchiveStale          (critical, > 1 h)
+      PostgresWALArchiveLag            (warning, > 15 min)
+      PostgresWALArchiveSignalMissing  (warning, exporter blind)
+      PostgresWALSpoolDiskHigh         (warning)
+    pgbackrest-health-rules.yml (kube-state-metrics CronJob last success):
+      PgBackRestCheckNotSucceeding     (critical, > 45 min)
+      PgBackRestBackupStale            (critical, newest full/diff > 36 h)
+      PgBackRestFullBackupStale        (critical, > 8 days or never)
+      RestoreDrillNeverSucceeded       (warning)
+      RestoreDrillOverdue              (warning, > 35 days)
+      TenantDBBackupStale              (warning, tezca-db-backup)
+      PostgresPodEvicted               (warning)
+      BackupFreshnessSignalMissing     (critical, kube-state-metrics blind)
 ```
 
 **RPO**: continuous WAL with `archive_timeout=60` → **≤ 1 minute** in the steady state.
@@ -231,7 +240,7 @@ kubectl delete namespace pitr-restore
 ### 4.1 R2 outage
 
 Symptom: `archive_command` starts failing, `pg_stat_archiver.failed_count`
-increments, `PostgresWALLagHigh` fires.
+increments, `PostgresWALArchiveLag` and then `PostgresWALArchiveFailing` fire.
 
 What Postgres does automatically:
 - `archive-async=y` means the archiver retries in the background.
@@ -260,7 +269,7 @@ What you do:
 
 ### 4.2 Archive lag (archiver slow, not failing)
 
-Symptom: `PostgresWALLagHigh` (warning) but `failed_count` flat.
+Symptom: `PostgresWALArchiveLag` (warning) but `failed_count` flat.
 
 Causes:
 - High write volume > single-process archive throughput.
@@ -423,12 +432,19 @@ Each fix landed as a separate enclii PR (193, 195, 196, 197, 198, 199,
 
 ### 9.3 What's protective going forward
 
-- **Monthly DR drill** (`postgres-pgbackrest-restore-drill` CronJob in
-  `infra/k8s/platform-infra/`) — runs a side-channel pgbackrest restore
-  to a 4 GiB Longhorn PVC, validates `pg_control`, emits
-  `pgbackrest_restore_drill_success` metric. Triggered by `kubectl
-  create job --from=cronjob/pgbackrest-restore-drill <suffix>`
-  on demand, otherwise 1st of each month at 06:00 UTC.
+- **Monthly DR drill** (`pgbackrest-restore-drill` CronJob in
+  `infra/k8s/platform-infra/postgres-pgbackrest-restore-drill.yaml`):
+  restores the latest backup plus all archived WAL to an 8 GiB Longhorn
+  PVC, starts the restored cluster with archiving off, and fails unless
+  it holds at least 5 databases and 500 user tables and its last replayed
+  transaction is at most 6 h older than the drill start. (Until
+  2026-09-24 it had never passed: it restored into the PVC root, and the
+  `pgbackrest_restore_drill_*` textfile metric it wrote was never
+  collected.) Its signal is the CronJob's last successful time from
+  kube-state-metrics, alerted by `RestoreDrillNeverSucceeded` /
+  `RestoreDrillOverdue`. Trigger on demand with `kubectl
+  create job --from=cronjob/pgbackrest-restore-drill <suffix>`,
+  otherwise it runs on the 1st of each month.
 - **Postgres init container** is now `postgres:15-bookworm` with apt-
   installed pgbackrest + bundled libs + CA — keeps the binary glibc-
   matched against the running postgres image even after upstream tag

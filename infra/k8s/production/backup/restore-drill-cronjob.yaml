@@ -1,11 +1,37 @@
 ---
-# Monthly Postgres Backup Restore Drill (CronJob)
+# Monthly logical restore drill for the daily pg_dumpall (CronJob).
 #
-# Non-destructive: downloads latest R2 pg_dumpall backup, restores to an ephemeral
-# local PostgreSQL instance, validates table counts, then exits (no production writes).
+# Non-destructive: downloads the newest pg_dumpall from R2, restores it into
+# an EPHEMERAL Postgres inside this pod and checks the result. It never
+# connects to the production server.
 #
-# Schedule: 1st of each month at 5 AM UTC
-# Results: `kubectl logs -n data job/<job-name> -c restore-drill`
+# The drill FAILS unless ALL of these hold:
+#   1. The newest dump is no older than MAX_DUMP_AGE_HOURS (a drill of a
+#      stale dump proves nothing about today's backups).
+#   2. The dump declares at least MIN_DATABASES databases.
+#   3. The restore raises no SQL error other than the allowlisted, expected
+#      ones (pg_dumpall always re-creates the bootstrap `postgres` role).
+#      Without ON_ERROR_STOP, `psql` exits 0 even when half the dump fails,
+#      so the old "psql exited 0" check could not fail.
+#   4. Every database the dump declares exists after the restore.
+#   5. The restored databases hold at least MIN_USER_TABLES user tables in
+#      any schema (the old check counted `public` only).
+#
+# Why it stopped passing after 2026-06-01: the shared instance outgrew the
+# pod. The 2026-09-13 pgBackRest full was 2.1GB of data files and the
+# 2026-09-24 dump is 419MB gzipped, but the restored cluster lived in a 2Gi
+# emptyDir with a 500m CPU limit and a 30-minute deadline. Any one of those
+# kills the pod before the checks run. Sizes below leave room to grow; the
+# drill prints what it used so the next resize is evidence-driven.
+#
+# PASS/FAIL SIGNAL: the Job's exit code. kube-state-metrics publishes
+# kube_cronjob_status_last_successful_time for this CronJob, and the
+# pgbackrest-health-rules in monitoring/prometheus.yaml alert when it is
+# missing (never succeeded) or older than 35 days.
+#
+# Schedule: 1st of each month at 05:00 (controller-local time).
+# Run now: kubectl -n data create job --from=cronjob/postgres-restore-drill postgres-restore-drill-manual-$(date -u +%m%d%H%M)
+# Results: kubectl -n data logs job/<job-name> -c restore-drill
 # Log drill results in: docs/runbooks/RESTORE_DRILL_LOG.md
 apiVersion: batch/v1
 kind: CronJob
@@ -25,8 +51,11 @@ spec:
   jobTemplate:
     spec:
       backoffLimit: 0
-      activeDeadlineSeconds: 1800
-      ttlSecondsAfterFinished: 86400
+      activeDeadlineSeconds: 5400
+      # Keep finished drill Jobs (and their logs) for 7 days, not 1: a
+      # monthly drill that fails overnight must still have logs when a human
+      # looks.
+      ttlSecondsAfterFinished: 604800
       template:
         metadata:
           labels:
@@ -44,6 +73,7 @@ spec:
             - name: download-backup
               image: docker.io/amazon/aws-cli:2.33.16@sha256:c0bf0abcdc0c330c605953dec26cd8b30243e9d22fce0da07867d454e40ddfcd
               securityContext:
+                privileged: false
                 allowPrivilegeEscalation: false
                 readOnlyRootFilesystem: false
                 capabilities:
@@ -69,6 +99,8 @@ spec:
                   value: "enclii-backups"
                 - name: AWS_DEFAULT_REGION
                   value: "auto"
+                - name: HOME
+                  value: /shared
               command:
                 - /bin/bash
                 - -euo
@@ -100,8 +132,13 @@ spec:
                   mountPath: /shared
           containers:
             - name: restore-drill
-              image: docker.io/library/postgres:16@sha256:4b7183ac05f8ef417db21fd72d71047a4238340c261d3cc3ddb6d579ab5071ae
+              # pgvector/pgvector:pg16 = postgres:16 (bookworm) + pgvector.
+              # The dump is taken with a v16 client, and tenant schemas use
+              # the `vector` type; plain postgres:16 cannot create them, so a
+              # strict drill needs the extension present.
+              image: docker.io/pgvector/pgvector:pg16@sha256:ccc6e83d6e35e931dc7c5def2022729d5a6c370318d099181995567ff1fb4d6b
               securityContext:
+                privileged: false
                 allowPrivilegeEscalation: false
                 readOnlyRootFilesystem: false
                 capabilities:
@@ -110,54 +147,97 @@ spec:
               env:
                 - name: PGDATA
                   value: /var/lib/postgresql/data/pgdata
+                - name: MAX_DUMP_AGE_HOURS
+                  value: "48"
+                - name: MIN_DATABASES
+                  value: "5"
+                - name: MIN_USER_TABLES
+                  value: "500"
+                # Extended regex of restore errors that are expected. Any
+                # other ERROR fails the drill; widen this only with evidence.
+                - name: RESTORE_ERROR_ALLOWLIST
+                  value: 'role "postgres" already exists'
               command:
                 - /bin/bash
                 - -euo
                 - pipefail
                 - -c
                 - |
+                  START_EPOCH=$(date +%s)
                   LATEST="$(cat /shared/backup-name.txt)"
-                  echo "=== Postgres Restore Drill — $(date -u '+%Y-%m-%dT%H:%M:%SZ') ==="
+                  fail() { echo "FAIL: $*" >&2; exit 1; }
+                  echo "=== Postgres Restore Drill: $(date -u '+%Y-%m-%dT%H:%M:%SZ') ==="
+
+                  # Backup keys are <YYYYMMDD_HHMMSS>.sql.gz (UTC).
+                  STAMP="${LATEST%%.*}"
+                  [[ "${STAMP}" =~ ^[0-9]{8}_[0-9]{6}$ ]] || fail "unexpected backup name '${LATEST}'"
+                  DUMP_EPOCH=$(date -u -d "${STAMP:0:4}-${STAMP:4:2}-${STAMP:6:2} ${STAMP:9:2}:${STAMP:11:2}:${STAMP:13:2}" +%s)
+                  DUMP_AGE_H=$(( (START_EPOCH - DUMP_EPOCH) / 3600 ))
+                  echo "  Backup: ${LATEST} (${DUMP_AGE_H}h old)"
+                  [ "${DUMP_AGE_H}" -le "${MAX_DUMP_AGE_HOURS}" ] || fail "newest dump is ${DUMP_AGE_H}h old (> ${MAX_DUMP_AGE_HOURS}h)"
+
+                  # Databases the dump declares (pg_dumpall emits CREATE
+                  # DATABASE for every non-template database except postgres).
+                  gunzip -c /shared/backup.sql.gz \
+                    | sed -n -E 's/^CREATE DATABASE "?([^" ]+)"? .*/\1/p' | sort -u > /tmp/expected-dbs.txt
+                  EXPECTED_DBS=$(wc -l < /tmp/expected-dbs.txt)
+                  echo "  Dump declares ${EXPECTED_DBS} databases"
+                  [ "${EXPECTED_DBS}" -ge "${MIN_DATABASES}" ] || fail "dump declares only ${EXPECTED_DBS} databases (< ${MIN_DATABASES})"
+
                   echo "[3/5] Starting ephemeral PostgreSQL and restoring backup..."
                   initdb -D "${PGDATA}" --auth=trust > /dev/null
-                  pg_ctl -D "${PGDATA}" -l /tmp/pg.log start
-                  for i in $(seq 1 30); do
-                    pg_isready -U postgres && break
-                    sleep 1
-                  done
+                  pg_ctl -D "${PGDATA}" -l /tmp/pg.log -w -t 120 \
+                    -o "-c listen_addresses='' -c unix_socket_directories=/tmp -c fsync=off -c full_page_writes=off -c max_wal_size=4GB" start
                   cleanup() {
                     pg_ctl -D "${PGDATA}" stop -m fast >/dev/null 2>&1 || true
                   }
                   trap cleanup EXIT
-                  if ! gunzip -c /shared/backup.sql.gz | psql -U postgres -d postgres -q 2>/tmp/restore.err; then
-                    echo "FAIL: Restore failed"
-                    sed -n '1,80p' /tmp/restore.err
-                    exit 1
+                  PSQL="psql -h /tmp -U postgres -X"
+                  # No ON_ERROR_STOP: pg_dumpall output is not transactional,
+                  # and the bootstrap role always "already exists". Errors are
+                  # collected and judged against the allowlist instead.
+                  gunzip -c /shared/backup.sql.gz | ${PSQL} -d postgres -q >/dev/null 2>/tmp/restore.err || true
+                  grep -E '^(psql:.*)?ERROR: ' /tmp/restore.err | grep -v -E "${RESTORE_ERROR_ALLOWLIST}" > /tmp/unexpected.err || true
+                  if [ -s /tmp/unexpected.err ]; then
+                    echo "  Unexpected restore errors: $(wc -l < /tmp/unexpected.err)"
+                    sed -n '1,40p' /tmp/unexpected.err
+                    fail "restore raised SQL errors outside the allowlist"
                   fi
+
                   echo "[4/5] Validating restore..."
+                  Q="${PSQL} -v ON_ERROR_STOP=1 -tA"
+                  MISSING=0
+                  while read -r DB; do
+                    if [ "$(${Q} -d postgres -c "SELECT count(*) FROM pg_database WHERE datname = '${DB}'")" != "1" ]; then
+                      echo "  MISSING database: ${DB}"; MISSING=$((MISSING + 1))
+                    fi
+                  done < /tmp/expected-dbs.txt
+                  [ "${MISSING}" -eq 0 ] || fail "${MISSING} declared databases are missing after restore"
                   TABLE_COUNT=0
-                  for DB_NAME in $(psql -U postgres -d postgres -tAc "SELECT datname FROM pg_database WHERE datistemplate = false AND datallowconn = true ORDER BY datname;"); do
-                    DB_TABLES=$(psql -U postgres -d "${DB_NAME}" -tAc "SELECT count(*) FROM information_schema.tables WHERE table_schema = 'public';" 2>/dev/null || echo 0)
+                  for DB_NAME in $(${Q} -d postgres -c "SELECT datname FROM pg_database WHERE NOT datistemplate AND datallowconn ORDER BY 1"); do
+                    DB_TABLES=$(${Q} -d "${DB_NAME}" -c "SELECT count(*) FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace WHERE c.relkind IN ('r','p') AND n.nspname NOT IN ('pg_catalog','information_schema') AND n.nspname NOT LIKE 'pg_toast%'") \
+                      || fail "cannot query restored database ${DB_NAME}"
+                    echo "  ${DB_NAME}: ${DB_TABLES} user tables"
                     TABLE_COUNT=$((TABLE_COUNT + DB_TABLES))
                   done
-                  echo "  Tables found: ${TABLE_COUNT}"
-                  if [ "${TABLE_COUNT}" -lt 1 ]; then
-                    echo "FAIL: No tables found after restore"
-                    exit 1
-                  fi
-                  echo "[5/5] Cleanup complete (ephemeral cluster stopped on exit)"
+                  echo "  User tables found: ${TABLE_COUNT}"
+                  [ "${TABLE_COUNT}" -ge "${MIN_USER_TABLES}" ] || fail "only ${TABLE_COUNT} user tables restored (< ${MIN_USER_TABLES})"
+                  echo "  Restored cluster size: $(du -sh "${PGDATA}" | cut -f1)"
+
+                  echo "[5/5] Cleanup (ephemeral cluster stopped on exit)"
                   echo ""
                   echo "=== RESTORE DRILL PASSED ==="
                   echo "  Backup: ${LATEST}"
+                  echo "  Databases: ${EXPECTED_DBS}"
                   echo "  Tables: ${TABLE_COUNT}"
-                  echo "  Time: $(date -u '+%Y-%m-%dT%H:%M:%SZ')"
+                  echo "  Duration: $(( $(date +%s) - START_EPOCH ))s"
               resources:
                 requests:
-                  memory: "256Mi"
-                  cpu: "100m"
-                limits:
                   memory: "512Mi"
-                  cpu: "500m"
+                  cpu: "250m"
+                limits:
+                  memory: "1Gi"
+                  cpu: "1000m"
               volumeMounts:
                 - name: temp-data
                   mountPath: /var/lib/postgresql/data
@@ -166,7 +246,7 @@ spec:
           volumes:
             - name: temp-data
               emptyDir:
-                sizeLimit: 2Gi
+                sizeLimit: 8Gi
             - name: shared
               emptyDir:
                 sizeLimit: 2Gi

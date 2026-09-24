@@ -42,7 +42,7 @@ infra/k8s/
 │   ├── redis.yaml             # copy of production/data/redis.yaml — keep in sync (ArgoCD won't follow an out-of-path symlink)
 │   ├── postgres-backup.yaml   # → symlink to production/backup/
 │   ├── backup-verify-cronjob.yaml
-│   ├── postgres-restore-drill.yaml
+│   ├── postgres-pgbackrest-restore-drill.yaml  # monthly pgBackRest PITR drill
 │   └── postgres-exporter.yaml
 ├── staging/            # Staging overlay
 │   ├── kustomization.yaml

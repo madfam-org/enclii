@@ -8,7 +8,7 @@
 #   setup     Create R2 bucket and configure backup credentials
 #   backup    Trigger immediate backup
 #   list      List available backups
-#   restore   Restore from a backup
+#   restore   Refuses: points at the PITR runbook and the restore drills
 #   status    Show backup CronJob status
 #   test      Test backup configuration without uploading
 
@@ -127,38 +127,19 @@ list_backups() {
 }
 
 restore_backup() {
-    BACKUP_KEY="${1:-postgres/latest.sql.gz}"
-
-    log_warn "This will REPLACE all data in the production database!"
-    log_warn "Backup to restore: ${BACKUP_KEY}"
-    read -p "Are you sure? Type 'yes' to confirm: " CONFIRM
-
-    if [[ "${CONFIRM}" != "yes" ]]; then
-        log_info "Cancelled"
-        exit 0
-    fi
-
-    log_info "Starting database restore..."
-
-    # Create restore job
-    JOB_NAME="postgres-restore-$(date +%Y%m%d%H%M%S)"
-
-    kubectl create job "${JOB_NAME}" \
-        --from=cronjob/postgres-backup \
-        -n enclii \
-        -- /bin/bash /scripts/restore.sh "${BACKUP_KEY}"
-
-    log_info "Restore job created: ${JOB_NAME}"
-    log_info "Watching job progress..."
-
-    kubectl wait --for=condition=complete --timeout=1800s "job/${JOB_NAME}" -n enclii || {
-        log_error "Restore failed! Check logs:"
-        echo "  kubectl logs -n enclii job/${JOB_NAME}"
-        exit 1
-    }
-
-    log_success "Restore completed!"
-    kubectl logs -n enclii "job/${JOB_NAME}"
+    # This used to `kubectl create job --from=cronjob/postgres-backup -n enclii
+    # -- /bin/bash /scripts/restore.sh`. No `restore.sh` exists in the
+    # postgres-backup-script ConfigMap (it holds dump.sh and upload.sh only),
+    # the CronJob lives in `data`, not `enclii`, and the command would have
+    # overwritten the shared production instance. It could never have worked,
+    # so it now refuses loudly instead of pretending.
+    log_error "In-place restore is not automated. Production restores are a"
+    log_error "break-glass operation: follow docs/runbooks/POSTGRES_WAL_ARCHIVING.md"
+    log_error "(pgBackRest PITR into a side-channel instance first; never in place)."
+    log_error "To PROVE a backup restores, run a drill instead:"
+    log_error "  ./scripts/backup-restore-drill.sh     (logical pg_dumpall drill)"
+    log_error "  kubectl -n data create job --from=cronjob/pgbackrest-restore-drill pgbackrest-restore-drill-manual-\$(date -u +%m%d%H%M)"
+    exit 1
 }
 
 show_status() {
@@ -256,7 +237,7 @@ case "${1:-status}" in
         echo "  setup           Configure backup CronJob and credentials"
         echo "  backup          Trigger immediate backup"
         echo "  list            List available backups in R2"
-        echo "  restore [key]   Restore from backup (default: latest)"
+        echo "  restore         Refuses; see the PITR runbook and restore drills"
         echo "  status          Show backup job status"
         echo "  test            Test backup configuration"
         exit 1

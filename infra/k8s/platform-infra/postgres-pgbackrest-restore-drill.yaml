@@ -1,17 +1,56 @@
 ---
-# pgBackRest restore drill — verifies our R2 backups can actually be
-# restored. Without this drill, we have backups but no proven RTO.
+# pgBackRest restore drill: proves that the R2 repository can actually be
+# restored and that the restored cluster STARTS and holds data. Without a
+# passing drill we have backups but no proven recovery.
 #
-# Runs monthly on the 1st at 06:00 UTC (1 hr after pgbackrest-backup-full).
-# Pulls the most recent base backup from R2, restores to a temp PVC,
-# verifies pg_control + a sample query against a recovered side-channel
-# postgres. Reports a Prometheus textfile metric the same way
-# pgbackrest-check does.
+# Runs monthly on the 1st (see `schedule`). Restores the latest backup plus
+# every archived WAL segment into a side-channel PVC, starts a throwaway
+# Postgres on it with archiving OFF, and then checks the result. The drill
+# FAILS unless ALL of these hold:
+#   1. `pgbackrest info` succeeds and the stanza lists at least one backup.
+#   2. `pgbackrest restore` succeeds.
+#   3. The restored cluster starts, finishes WAL replay and is promoted
+#      (`pg_is_in_recovery()` = false).
+#   4. It holds at least MIN_DATABASES non-template databases and at least
+#      MIN_USER_TABLES user tables across them.
+#   5. Replay reached a transaction no older than MAX_REPLAY_AGE_SECONDS
+#      before the drill started. That is the point-in-time chain
+#      (full + diff + WAL) proven end to end, not just a base backup.
+# A drill that restores nothing, or restores an old snapshot, exits non-zero.
+#
+# Why it never passed before 2026-09-24 (two defects, both in this file):
+#   - It restored into the PVC ROOT. A fresh ext4 volume holds `lost+found`
+#     (root, 0700), so `rm -rf <root>/*` as uid 999 failed under `set -e`
+#     before pgBackRest ran, and pgBackRest refuses a non-empty target anyway.
+#   - It passed `--no-archive-check`, which is not a `restore` option.
+#   A hand-fixed one-off Job (restore into a chowned `pgdata/` subdirectory,
+#   no `--no-archive-check`) completed in 25 minutes on 2026-05-06. That fix
+#   never reached this CronJob.
 #
 # Why a side-channel restore (not "restore in place"):
-#   - In-place would destroy the live DB
-#   - Side-channel exercises the full restore path including R2 round-trip
-#   - The temp PVC is deleted after the drill so disk usage is bounded
+#   - In-place would destroy the live DB.
+#   - Side-channel exercises the full restore path, including the R2 round trip.
+#   - The restored data is deleted on exit (trap), so no tenant data rests on
+#     the drill PVC between runs.
+#
+# SAFETY: the restored cluster must never write into the production repo. The
+# restore passes `--archive-mode=off` (pgBackRest writes archive_mode=off
+# into postgresql.auto.conf) and the server is also started with
+# `-c archive_mode=off`, so the new timeline it creates on promotion is never
+# pushed to R2.
+#
+# PASS/FAIL SIGNAL: the Job's exit code. kube-state-metrics publishes
+# kube_cronjob_status_last_successful_time for this CronJob, and the
+# pgbackrest-health-rules in monitoring/prometheus.yaml alert when it is
+# missing (never succeeded) or older than 35 days. The old textfile metric
+# (pgbackrest_restore_drill_*) was never emitted: this pod mounts no
+# node-exporter textfile directory.
+#
+# pgBackRest VERSION: pinned to PGBACKREST_DEB_VERSION below. It must equal
+# the version that writes the repository (the postgres pod's archive-push,
+# 2.59.1 since 2026-09-18). The binary is installed and bundled exactly as
+# the postgres pod does it (postgres.yaml initContainer), so a passing drill
+# also proves that bundling method.
 #
 # Owner: solarpunk@madfam (internal-devops)
 apiVersion: v1
@@ -28,8 +67,12 @@ spec:
     - ReadWriteOnce
   resources:
     requests:
-      # Sized at 2x current PGDATA (~1.6GB → 4GB). Increase if DB grows.
-      storage: 4Gi
+      # The 2026-09-13 full backup was 2.1GB of data files; the restored
+      # cluster also needs room for replayed WAL (pg_wal) and growth. 4Gi was
+      # sized in May for ~1.6GB and no longer fits. Longhorn allows online
+      # expansion (allowVolumeExpansion: true), and the PVC is detached
+      # between drills.
+      storage: 8Gi
   storageClassName: longhorn
 ---
 apiVersion: batch/v1
@@ -42,17 +85,18 @@ metadata:
     app.kubernetes.io/component: backup-verification
     app.kubernetes.io/part-of: enclii
 spec:
-  # 1st of each month at 06:00 UTC (1 hour after the weekly full backup
-  # at 02:00 UTC on Sunday gives the WAL chain time to settle).
+  # 1st of each month at 06:00 (controller-local time), after the weekly full.
   schedule: "0 6 1 * *"
   concurrencyPolicy: Forbid
   successfulJobsHistoryLimit: 3
   failedJobsHistoryLimit: 3
   jobTemplate:
     spec:
-      # Keep completed drill pods from retaining the restore PVC indefinitely.
-      ttlSecondsAfterFinished: 604800  # 7 days
-      activeDeadlineSeconds: 3600  # 1 hour for the whole drill
+      # Keep finished drill Jobs (and their logs) for 7 days.
+      ttlSecondsAfterFinished: 604800
+      # Restore + WAL replay + checks. Replay length depends on how much WAL
+      # has accumulated since the last full/diff.
+      activeDeadlineSeconds: 7200
       backoffLimit: 0
       template:
         metadata:
@@ -61,12 +105,22 @@ spec:
         spec:
           restartPolicy: Never
           serviceAccountName: pgbackrest-runner
-          # initContainer installs pgbackrest in the same way the
-          # postgres pod does — apt + bundled libs + CA cert.
+          # No fsGroup on purpose: a recursive group chown at mount time
+          # would give group write on any leftover data directory, which
+          # Postgres refuses to start on. The init container creates the
+          # uid-999 `pgdata/` subdirectory instead.
+          securityContext:
+            seccompProfile:
+              type: RuntimeDefault
           initContainers:
+            # Installs the PINNED pgBackRest version and bundles it the same
+            # way the postgres pod does (binary + ldd libs + CA bundle behind
+            # a wrapper). Runs as root only because apt needs it; it exits
+            # before the drill container starts.
             - name: install-pgbackrest
               image: docker.io/postgres:15-bookworm@sha256:3436058afb51dbc169c96cdf6c91d1d235eef176b427e6bded8b0c76dda0d1c3
               securityContext:
+                privileged: false
                 runAsUser: 0
                 runAsNonRoot: false
                 allowPrivilegeEscalation: false
@@ -76,13 +130,35 @@ spec:
                   add:
                     [SETUID, SETGID, CHOWN, FOWNER, FSETID, DAC_OVERRIDE,
                      DAC_READ_SEARCH, NET_BIND_SERVICE]
+              env:
+                - name: PGBACKREST_DEB_VERSION
+                  value: "2.59.1-1.pgdg12+1"
+                - name: PGBACKREST_EXPECTED_VERSION
+                  value: "pgBackRest 2.59.1"
               command:
                 - /bin/bash
                 - -c
                 - |
                   set -euo pipefail
-                  apt-get update >/dev/null
-                  apt-get install -y --no-install-recommends pgbackrest ca-certificates >/dev/null
+                  install_pinned() {
+                    apt-get update >/dev/null
+                    apt-get install -y --no-install-recommends \
+                      "pgbackrest=${PGBACKREST_DEB_VERSION}" ca-certificates >/dev/null
+                  }
+                  # The live PGDG suite keeps only recent versions. When the
+                  # pin has rotated out of it, fall back to the PGDG archive
+                  # suite (same signing key), which keeps every version.
+                  if ! install_pinned; then
+                    echo "pinned ${PGBACKREST_DEB_VERSION} not in the live PGDG suite; trying apt-archive"
+                    sed -E 's#https?://apt\.postgresql\.org/pub/repos/apt/? +([a-z]+)-pgdg .*$#http://apt-archive.postgresql.org/pub/repos/apt \1-pgdg-archive main#' \
+                      /etc/apt/sources.list.d/pgdg.list > /etc/apt/sources.list.d/pgdg-archive.list
+                    install_pinned
+                  fi
+                  GOT="$(pgbackrest version)"
+                  if [ "${GOT}" != "${PGBACKREST_EXPECTED_VERSION}" ]; then
+                    echo "FAIL: installed '${GOT}', expected '${PGBACKREST_EXPECTED_VERSION}'" >&2
+                    exit 1
+                  fi
                   mkdir -p /opt/pgbackrest/bin /opt/pgbackrest/lib
                   for lib in $(ldd /usr/bin/pgbackrest | awk '/=> \//{print $3}' | sort -u); do
                     cp -L "$lib" /opt/pgbackrest/lib/
@@ -96,9 +172,15 @@ spec:
                   exec /opt/pgbackrest/lib/pgbackrest.real "$@"
                   WRAPPER
                   chmod 755 /opt/pgbackrest/bin/pgbackrest /opt/pgbackrest/lib/pgbackrest.real
+                  # Restore into a SUBDIRECTORY owned by the postgres uid; the
+                  # volume root holds lost+found and must not be the target.
+                  install -d -o 999 -g 999 -m 0700 /var/lib/restore-drill/pgdata
+                  echo "installed: $(/opt/pgbackrest/bin/pgbackrest version)"
               volumeMounts:
                 - name: pgbackrest-binary
                   mountPath: /opt/pgbackrest
+                - name: restore-target
+                  mountPath: /var/lib/restore-drill
               resources:
                 requests:
                   memory: "64Mi"
@@ -108,8 +190,12 @@ spec:
                   cpu: "500m"
           containers:
             - name: drill
-              image: docker.io/postgres:15-bookworm@sha256:3436058afb51dbc169c96cdf6c91d1d235eef176b427e6bded8b0c76dda0d1c3
+              # Same image and digest as the production postgres container,
+              # so the restored cluster starts on the binaries (and pgvector)
+              # it would really be restored onto.
+              image: docker.io/pgvector/pgvector:pg15@sha256:bd12d6788a617f4147d5a2ae0b56d07921398adabfe5a033bd3f50c245df55a1
               securityContext:
+                privileged: false
                 runAsNonRoot: true
                 runAsUser: 999
                 runAsGroup: 999
@@ -120,8 +206,34 @@ spec:
               env:
                 - name: PGBACKREST_CONFIG
                   value: /etc/pgbackrest.conf
-                - name: METRICS_DIR
-                  value: /var/lib/node_exporter/textfile_collector
+                # Overrides of pgbackrest.conf for this pod: every path
+                # pgBackRest writes must be writable scratch, and archive-get
+                # runs synchronously. Environment options (unlike
+                # command-line ones) are ignored by commands they do not
+                # apply to, and they are inherited by the archive-get that
+                # the restored server runs as its restore_command.
+                - name: PGBACKREST_LOG_LEVEL_FILE
+                  value: "off"
+                - name: PGBACKREST_LOG_PATH
+                  value: /tmp/pgbackrest/log
+                - name: PGBACKREST_LOCK_PATH
+                  value: /tmp/pgbackrest/lock
+                - name: PGBACKREST_SPOOL_PATH
+                  value: /tmp/pgbackrest/spool
+                - name: PGBACKREST_ARCHIVE_ASYNC
+                  value: "n"
+                # Thresholds. Tuned for the shared data/postgres instance
+                # (9+ tenant databases). A restore below them is a failure.
+                - name: MIN_DATABASES
+                  value: "5"
+                - name: MIN_USER_TABLES
+                  value: "500"
+                # archive_timeout=60 plus a pgbackrest check every 15 min
+                # means the archive's newest transaction is minutes old;
+                # 6h leaves room for a long restore without accepting a
+                # stale base backup as "proof".
+                - name: MAX_REPLAY_AGE_SECONDS
+                  value: "21600"
               envFrom:
                 - secretRef:
                     name: pgbackrest-r2-credentials
@@ -131,71 +243,77 @@ spec:
                 - -c
                 - |
                   set -euo pipefail
-                  TIMESTAMP=$(date +%s)
-                  STATUS=0
-                  RESTORE_TARGET=/var/lib/restore-drill
+                  START_EPOCH=$(date +%s)
+                  PGDATA_DIR=/var/lib/restore-drill/pgdata
+                  PGLOG=/tmp/restore-drill-postgres.log
+                  PGBR=/opt/pgbackrest/bin/pgbackrest
+                  mkdir -p /tmp/pgbackrest/log /tmp/pgbackrest/lock /tmp/pgbackrest/spool
 
-                  echo "[$(date -Iseconds)] Restore drill starting"
+                  fail() { echo "[$(date -Iseconds)] RESTORE DRILL FAILED: $*" >&2; exit 1; }
+                  cleanup() {
+                    pg_ctl -D "${PGDATA_DIR}" stop -m immediate >/dev/null 2>&1 || true
+                    # Never leave restored tenant data at rest on the PVC.
+                    find "${PGDATA_DIR}" -mindepth 1 -delete 2>/dev/null || true
+                  }
+                  trap cleanup EXIT
 
-                  # Step 1: stanza state — verifies a recent backup exists
-                  echo "[1/4] Checking stanza info..."
-                  if ! /opt/pgbackrest/bin/pgbackrest --stanza=main info; then
-                    echo "FAIL: pgbackrest info failed"
-                    STATUS=1
-                  fi
+                  echo "[$(date -Iseconds)] Restore drill starting ($(${PGBR} version))"
 
-                  # Step 2: restore to side-channel PVC mountpoint
-                  if [ "$STATUS" -eq 0 ]; then
-                    echo "[2/4] Restoring to ${RESTORE_TARGET}..."
-                    rm -rf "${RESTORE_TARGET}"/*
-                    if ! /opt/pgbackrest/bin/pgbackrest --stanza=main \
-                          --pg1-path="${RESTORE_TARGET}" \
-                          --no-archive-check \
-                          --log-level-console=info \
-                          restore; then
-                      echo "FAIL: restore command failed"
-                      STATUS=1
-                    fi
-                  fi
+                  echo "[1/5] Stanza info"
+                  INFO=$(${PGBR} --stanza=main info) || fail "pgbackrest info failed"
+                  echo "${INFO}"
+                  grep -Eq '^ +(full|diff|incr) backup: ' <<<"${INFO}" || fail "stanza 'main' lists no backups"
 
-                  # Step 3: validate restored cluster integrity
-                  if [ "$STATUS" -eq 0 ]; then
-                    echo "[3/4] Validating restored data..."
-                    if [ ! -f "${RESTORE_TARGET}/global/pg_control" ]; then
-                      echo "FAIL: pg_control missing in restored data"
-                      STATUS=1
-                    fi
-                    SIZE=$(du -sh "${RESTORE_TARGET}" | cut -f1)
-                    echo "  Restored size: ${SIZE}"
-                  fi
+                  echo "[2/5] Restore latest backup + archived WAL into ${PGDATA_DIR}"
+                  find "${PGDATA_DIR}" -mindepth 1 -delete
+                  # --cmd makes the generated restore_command call the wrapper
+                  # (which sets LD_LIBRARY_PATH), not the bare binary.
+                  ${PGBR} --stanza=main \
+                    --pg1-path="${PGDATA_DIR}" \
+                    --cmd="${PGBR}" \
+                    --archive-mode=off \
+                    --log-level-console=info \
+                    restore || fail "pgbackrest restore failed"
+                  [ -f "${PGDATA_DIR}/global/pg_control" ] || fail "pg_control missing after restore"
+                  chmod 0700 "${PGDATA_DIR}"
+                  # Local-socket trust only, independent of the restored
+                  # pg_hba.conf; the server listens on no TCP address.
+                  echo "local all all trust" > /tmp/drill-pg_hba.conf
+                  echo "  restored size: $(du -sh "${PGDATA_DIR}" | cut -f1)"
 
-                  # Step 4: cleanup so next drill has a fresh slate
-                  echo "[4/4] Cleaning up restore target..."
-                  rm -rf "${RESTORE_TARGET}"/*
+                  echo "[3/5] Start the restored cluster (archive OFF, local socket only) and replay WAL"
+                  # hot_standby=off: no connections until replay ends and the
+                  # server promotes, so pg_ctl -w returns only then, and the
+                  # recovery-parameter checks against the primary do not apply.
+                  pg_ctl -D "${PGDATA_DIR}" -l "${PGLOG}" -w -t 5400 \
+                    -o "-c archive_mode=off -c hot_standby=off -c port=5433 -c listen_addresses='' -c unix_socket_directories=/tmp -c hba_file=/tmp/drill-pg_hba.conf -c shared_buffers=128MB -c shared_preload_libraries='' -c log_timezone=UTC" \
+                    start || { tail -n 60 "${PGLOG}" >&2 || true; fail "restored cluster did not start"; }
+                  PSQL="psql -h /tmp -p 5433 -U postgres -X -v ON_ERROR_STOP=1 -tA"
+                  [ "$(${PSQL} -d postgres -c 'SELECT pg_is_in_recovery()')" = "f" ] || fail "restored cluster is still in recovery"
 
-                  if [ "$STATUS" -eq 0 ]; then
-                    echo "[$(date -Iseconds)] Restore drill PASSED"
-                    METRIC=1
-                  else
-                    echo "[$(date -Iseconds)] Restore drill FAILED"
-                    METRIC=0
-                  fi
+                  echo "[4/5] Validate restored contents"
+                  DBS=$(${PSQL} -d postgres -c "SELECT datname FROM pg_database WHERE NOT datistemplate AND datallowconn ORDER BY 1")
+                  DB_COUNT=0; TABLES=0
+                  for DB in ${DBS}; do
+                    N=$(${PSQL} -d "${DB}" -c "SELECT count(*) FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace WHERE c.relkind IN ('r','p') AND n.nspname NOT IN ('pg_catalog','information_schema') AND n.nspname NOT LIKE 'pg_toast%'") \
+                      || fail "cannot query restored database ${DB}"
+                    echo "  ${DB}: ${N} user tables"
+                    DB_COUNT=$((DB_COUNT + 1)); TABLES=$((TABLES + N))
+                  done
+                  echo "  databases=${DB_COUNT} user_tables=${TABLES}"
+                  [ "${DB_COUNT}" -ge "${MIN_DATABASES}" ] || fail "only ${DB_COUNT} databases restored (< ${MIN_DATABASES})"
+                  [ "${TABLES}" -ge "${MIN_USER_TABLES}" ] || fail "only ${TABLES} user tables restored (< ${MIN_USER_TABLES})"
 
-                  # Emit Prometheus textfile metric for monitoring.
-                  if [ -d "${METRICS_DIR}" ]; then
-                    cat > "${METRICS_DIR}/pgbackrest_restore_drill.prom.tmp" <<EOF
-                  # HELP pgbackrest_restore_drill_success Last restore drill outcome (1=pass, 0=fail).
-                  # TYPE pgbackrest_restore_drill_success gauge
-                  pgbackrest_restore_drill_success{stanza="main"} ${METRIC}
-                  # HELP pgbackrest_restore_drill_last_run_timestamp_seconds Unix time of the last restore drill.
-                  # TYPE pgbackrest_restore_drill_last_run_timestamp_seconds gauge
-                  pgbackrest_restore_drill_last_run_timestamp_seconds{stanza="main"} ${TIMESTAMP}
-                  EOF
-                    mv "${METRICS_DIR}/pgbackrest_restore_drill.prom.tmp" \
-                       "${METRICS_DIR}/pgbackrest_restore_drill.prom"
-                  fi
+                  echo "[5/5] Prove the point-in-time chain reached recent WAL"
+                  LAST_TX=$(sed -n 's/.*last completed transaction was at log time \(.*\)$/\1/p' "${PGLOG}" | tail -n 1)
+                  [ -n "${LAST_TX}" ] || { tail -n 40 "${PGLOG}" >&2 || true; fail "no 'last completed transaction' line: WAL replay evidence missing"; }
+                  # log_timezone=UTC: strip the fraction and the +00 offset.
+                  LAST_TX_EPOCH=$(date -u -d "${LAST_TX%%[.+]*}" +%s) || fail "cannot parse replay time '${LAST_TX}'"
+                  REPLAY_AGE=$((START_EPOCH - LAST_TX_EPOCH))
+                  echo "  last replayed transaction: ${LAST_TX} (${REPLAY_AGE}s before drill start)"
+                  [ "${REPLAY_AGE}" -le "${MAX_REPLAY_AGE_SECONDS}" ] || fail "restored data is ${REPLAY_AGE}s old (> ${MAX_REPLAY_AGE_SECONDS}s): WAL chain incomplete"
 
-                  exit ${STATUS}
+                  echo "[$(date -Iseconds)] RESTORE DRILL PASSED in $(( $(date +%s) - START_EPOCH ))s: databases=${DB_COUNT} user_tables=${TABLES} replay_age=${REPLAY_AGE}s"
               volumeMounts:
                 - name: pgbackrest-binary
                   mountPath: /opt/pgbackrest
@@ -206,6 +324,10 @@ spec:
                   readOnly: true
                 - name: restore-target
                   mountPath: /var/lib/restore-drill
+                # In case the restored postgresql.conf includes a conf.d
+                # directory that exists only in the production pod.
+                - name: conf-d
+                  mountPath: /etc/postgresql/conf.d
               resources:
                 requests:
                   memory: "256Mi"
@@ -217,7 +339,8 @@ spec:
             - name: pgbackrest-binary
               emptyDir:
                 medium: Memory
-                sizeLimit: 64Mi
+                # The bundle (binary + libs + CA) is ~60MB; 64Mi left no room.
+                sizeLimit: 128Mi
             - name: pgbackrest-config
               configMap:
                 name: pgbackrest-config
@@ -225,3 +348,6 @@ spec:
             - name: restore-target
               persistentVolumeClaim:
                 claimName: pgbackrest-restore-drill-pvc
+            - name: conf-d
+              emptyDir:
+                sizeLimit: 1Mi

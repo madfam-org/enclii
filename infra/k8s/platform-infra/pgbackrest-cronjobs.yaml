@@ -4,8 +4,9 @@
 # Three CronJobs:
 #   1. pgbackrest-check     - every 15 min; `pgbackrest check` to verify
 #                             archive_command is working AND the repo is
-#                             reachable. Emits Prometheus textfile metrics
-#                             consumed by node-exporter's textfile collector.
+#                             reachable. Its signal is the CronJob's last
+#                             successful time (kube-state-metrics), alerted
+#                             by PgBackRestCheckNotSucceeding.
 #   2. pgbackrest-backup-full  - Sunday 02:00 UTC; full backup (keep 7).
 #   3. pgbackrest-backup-diff  - Mon-Sat 02:00 UTC; differential (keep 3).
 #
@@ -18,8 +19,11 @@
 #          config the sidecar uses
 #   - Service account `pgbackrest-runner` has minimal RBAC (exec into
 #     Postgres pod only, within the data namespace). See pgbackrest-rbac.yaml.
-#   - metrics.prom format is Prometheus textfile exporter:
-#       https://github.com/prometheus-community/node-exporter-textfile-collector-scripts
+#   - No textfile metrics. Until 2026-09-24 check.sh wrote
+#     pgbackrest_check_* into a node-exporter textfile directory that this
+#     pod never mounted, so nothing was ever collected and the alert on it
+#     fired permanently on absent(). Exit codes + kube-state-metrics
+#     (kube_cronjob_status_last_successful_time) are the signal now.
 #   - concurrencyPolicy: Forbid on all three — a full+diff running concurrently
 #     would corrupt manifests.
 ---
@@ -85,12 +89,9 @@ data:
   check.sh: |
     #!/bin/sh
     # pgbackrest-check: verify archive_command and repo connectivity.
-    # Exits 0 on healthy, 1 on any failure. Emits a Prometheus textfile
-    # metric that node-exporter picks up.
+    # Exits 0 on healthy, 1 on any failure. The exit code is the signal
+    # (kube-state-metrics: last successful time of this CronJob).
     set -e
-    METRICS_DIR="${METRICS_DIR:-/var/lib/node_exporter/textfile_collector}"
-    METRICS_FILE="${METRICS_DIR}/pgbackrest_check.prom"
-    TIMESTAMP=$(date +%s)
 
     # Only a RUNNING pod. On 2026-09-18 the kubelet evicted the previous
     # postgres pod; its Failed/Evicted object sorted first under the plain
@@ -105,31 +106,9 @@ data:
 
     echo "[$(date -Iseconds)] Running pgbackrest check in pod $POD"
     if kubectl -n data exec -c pgbackrest "$POD" -- pgbackrest --stanza=main check; then
-      STATUS=1
       echo "[$(date -Iseconds)] pgbackrest check OK"
     else
-      STATUS=0
       echo "[$(date -Iseconds)] pgbackrest check FAILED"
-    fi
-
-    # Textfile export: pg_backup_check_healthy{stanza="main"} = 0|1
-    # Node-exporter's textfile collector publishes this alongside host
-    # metrics. Label naming matches the platform alerting rules.
-    if [ -d "$METRICS_DIR" ]; then
-      cat > "${METRICS_FILE}.tmp" <<EOF
-    # HELP pgbackrest_check_healthy Whether pgbackrest --stanza=main check succeeded (1) or not (0).
-    # TYPE pgbackrest_check_healthy gauge
-    pgbackrest_check_healthy{stanza="main"} ${STATUS}
-    # HELP pgbackrest_check_last_run_timestamp_seconds Unix time of the last pgbackrest check run.
-    # TYPE pgbackrest_check_last_run_timestamp_seconds gauge
-    pgbackrest_check_last_run_timestamp_seconds{stanza="main"} ${TIMESTAMP}
-    EOF
-      mv "${METRICS_FILE}.tmp" "${METRICS_FILE}"
-    fi
-
-    # Fail the CronJob if the check failed so AlertManager picks it up via
-    # kube_job_status_failed.
-    if [ "$STATUS" -ne 1 ]; then
       exit 1
     fi
 
@@ -159,9 +138,9 @@ data:
       pgbackrest --stanza=main --type=diff --log-level-console=info backup
     echo "[$(date -Iseconds)] DIFFERENTIAL backup complete"
 ---
-# Every 15 minutes — this is the alerting heartbeat for WAL archive health.
-# If this CronJob fails 2+ runs in a row, AlertManager pages (see
-# prometheus-wal-archive-rules.yaml PostgresBackupCheckFailed).
+# Every 15 minutes: the heartbeat for archive_command + repo health. If it
+# has not succeeded for 45 min, PgBackRestCheckNotSucceeding pages
+# (monitoring/prometheus.yaml, pgbackrest-health-rules.yml).
 apiVersion: batch/v1
 kind: CronJob
 metadata:

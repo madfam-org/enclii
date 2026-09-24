@@ -10,7 +10,12 @@
 
 **Owner:** Platform Team
 **Cadence:** Monthly (1st of each month, 5 AM UTC)
-**Last Updated:** 2026-05-30
+**Last Updated:** 2026-09-24
+
+> **Boundary checkpoint (2026-09-24, platform on-call):** Public-safe runbook:
+> drill procedure and pass/fail semantics only, no node identity, secrets or
+> tenant data. Private operational detail stays in `internal-devops`; see
+> [`docs/PUBLIC_REPO_BOUNDARY.md`](../PUBLIC_REPO_BOUNDARY.md).
 
 ---
 
@@ -23,7 +28,7 @@ Track monthly backup restoration test results to ensure database backups are val
 3. All expected tables are present after restoration
 4. The cleanup step drops the temporary database without side effects
 
-Restore drills are **non-destructive** -- they never touch production databases. A temporary database (`enclii_restore_test`) is created, validated, and dropped within the same job run.
+Restore drills are **non-destructive**: they never connect to the production server. Each drill restores into an ephemeral cluster (a throwaway `initdb` for the logical drill, a side-channel PVC for the pgBackRest drill) that is discarded when the Job ends.
 
 ---
 
@@ -45,7 +50,8 @@ kubectl get cronjob postgres-restore-drill -n data
 
 ### Manual
 
-Use the wrapper script for ad-hoc drills outside the monthly cadence:
+Start a one-off Job from the CronJob (there is exactly one drill definition),
+wait for it and print its logs:
 
 ```bash
 ./scripts/backup-restore-drill.sh
@@ -53,27 +59,37 @@ Use the wrapper script for ad-hoc drills outside the monthly cadence:
 
 **Script:** [`scripts/backup-restore-drill.sh`](../../scripts/backup-restore-drill.sh)
 
-Or apply the one-shot Job directly:
-
-```bash
-kubectl apply -f infra/k8s/production/backup/postgres-restore-drill.yaml
-kubectl logs -n data job/postgres-restore-drill -f
-kubectl delete job postgres-restore-drill -n data
-```
-
-**Job Manifest:** [`infra/k8s/production/backup/postgres-restore-drill.yaml`](../../infra/k8s/production/backup/postgres-restore-drill.yaml)
+The one-shot Job manifests (`postgres-restore-drill.yaml`) were removed on
+2026-09-24: they had drifted from the CronJob and could not fail.
 
 ---
 
 ## Drill Steps (what the job does)
 
-| Step | Action | Validation |
-|------|--------|------------|
-| 1/5 | Find latest backup in R2 (`s3://enclii-backups/postgres/`) | Backup file exists |
-| 2/5 | Download backup to `/tmp/restore-drill.sql.gz` | Download completes, file size > 0 |
-| 3/5 | Create temp database `enclii_restore_test`, restore dump | `psql` restore exits 0 |
-| 4/5 | Validate: count public-schema tables | Table count >= 1 |
-| 5/5 | Drop temp database, delete downloaded file | Cleanup completes |
+The drill restores into an ephemeral Postgres inside its own pod and never
+connects to the production server. Every validation below is a hard
+failure: a drill that restores nothing, or restores a stale dump, exits
+non-zero.
+
+| Step | Action | Validation (fails the drill) |
+|------|--------|------------------------------|
+| 1/5 | Find the latest backup in R2 (`s3://enclii-backups/postgres/`) | A backup exists and is at most `MAX_DUMP_AGE_HOURS` (48) old |
+| 2/5 | Download it to the pod | Download completes |
+| 3/5 | `initdb` an ephemeral cluster and restore the pg_dumpall | The dump declares at least `MIN_DATABASES` (5) databases; no SQL `ERROR` outside `RESTORE_ERROR_ALLOWLIST` |
+| 4/5 | Validate | Every declared database exists; at least `MIN_USER_TABLES` (500) user tables in any schema |
+| 5/5 | Stop the ephemeral cluster | Always runs (trap) |
+
+Its signal is the CronJob's last successful run
+(`kube_cronjob_status_last_successful_time`), alerted by
+`RestoreDrillNeverSucceeded` and `RestoreDrillOverdue` in
+`infra/k8s/production/monitoring/prometheus.yaml`.
+
+The pgBackRest point-in-time drill
+([`postgres-pgbackrest-restore-drill.yaml`](../../infra/k8s/platform-infra/postgres-pgbackrest-restore-drill.yaml))
+is stricter still: it restores the latest backup plus all archived WAL,
+starts the restored cluster with archiving off, and fails unless it holds at
+least 5 databases and 500 user tables and its last replayed transaction is at
+most 6 hours older than the drill start.
 
 ---
 
@@ -97,8 +113,9 @@ The log ends with:
 ```
 === RESTORE DRILL PASSED ===
   Backup: YYYYMMDD_HHMMSS.sql.gz
+  Databases: N
   Tables: N
-  Time: YYYY-MM-DDTHH:MM:SSZ
+  Duration: Ns
 ```
 
 Record the backup filename, table count, and elapsed time in the results table.
@@ -111,8 +128,10 @@ Common failure modes:
 |---------|-------------|--------|
 | No backups in R2 | `FAIL: No backups found in s3://enclii-backups/postgres/` | Check daily backup CronJob (`postgres-backup`). Verify R2 credentials in `r2-backup-credentials` secret. |
 | Download error | AWS CLI errors | Verify `r2-backup-credentials` secret has valid keys. Check R2 bucket exists. |
-| Restore error | `psql` errors during restore | Inspect the specific SQL errors. May indicate a corrupt dump. Restore from an older backup. |
-| No tables found | `FAIL: No tables found after restore` | The dump may be empty. Check daily backup job logs for dump errors. |
+| Stale dump | `FAIL: newest dump is Nh old` | The daily `postgres-backup` CronJob has stopped producing dumps. Fix that first. |
+| Restore error | `FAIL: restore raised SQL errors outside the allowlist` | The log lists the first 40 errors. A corrupt or partial dump fails here. Widen `RESTORE_ERROR_ALLOWLIST` only with evidence that an error is benign. |
+| Missing databases or tables | `FAIL: N declared databases are missing` / `FAIL: only N user tables restored` | The dump is incomplete. Check the daily backup job logs for dump errors. |
+| Pod killed before a verdict | Job `DeadlineExceeded`, or pod evicted for ephemeral storage | The instance outgrew the drill. Raise `activeDeadlineSeconds` or the `temp-data` sizeLimit, using the sizes the last passing run printed. |
 
 ---
 
