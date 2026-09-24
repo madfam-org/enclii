@@ -3,13 +3,14 @@ package cmd
 import (
 	"context"
 	"fmt"
+	"io"
 	"strconv"
 	"text/tabwriter"
-	"time"
 
 	"github.com/spf13/cobra"
 
 	"github.com/madfam-org/enclii/packages/cli/internal/config"
+	"github.com/madfam-org/enclii/packages/sdk-go/pkg/types"
 )
 
 // NewActivityCommand creates the `enclii activity` subtree — lifecycle event
@@ -56,37 +57,14 @@ func newActivityListCommand(cfg *config.Config) *cobra.Command {
 				"resource_type": resourceType,
 				"limit":         strconv.Itoa(limit),
 			}
-			var resp struct {
-				Events []struct {
-					ID           string    `json:"id"`
-					Timestamp    time.Time `json:"timestamp"`
-					Action       string    `json:"action"`
-					ResourceType string    `json:"resource_type"`
-					Resource     string    `json:"resource"`
-					Actor        string    `json:"actor"`
-				} `json:"events"`
-			}
-			path := "/v1/activity" + queryString(params)
-			if err := apiRequest(context.Background(), cfg, "GET", path, nil, &resp); err != nil {
+			resp, err := fetchActivity(cmd.Context(), cfg, params)
+			if err != nil {
 				return err
 			}
-
 			if jsonOut {
 				return emitJSON(resp)
 			}
-
-			if len(resp.Events) == 0 {
-				fmt.Fprintln(cmd.OutOrStdout(), "No activity events match the given filters.")
-				return nil
-			}
-			tw := tabwriter.NewWriter(cmd.OutOrStdout(), 0, 0, 2, ' ', 0)
-			fmt.Fprintln(tw, "TIMESTAMP\tACTION\tRESOURCE_TYPE\tRESOURCE\tACTOR")
-			for _, e := range resp.Events {
-				fmt.Fprintf(tw, "%s\t%s\t%s\t%s\t%s\n",
-					e.Timestamp.Format("2006-01-02 15:04"),
-					e.Action, e.ResourceType, e.Resource, e.Actor)
-			}
-			return tw.Flush()
+			return renderActivity(cmd.OutOrStdout(), resp)
 		},
 	}
 	cmd.Flags().StringVar(&action, "action", "", "Filter by action name")
@@ -94,6 +72,51 @@ func newActivityListCommand(cfg *config.Config) *cobra.Command {
 	cmd.Flags().IntVar(&limit, "limit", 50, "Maximum number of events to return")
 	cmd.Flags().BoolVar(&jsonOut, "json", false, "Emit machine-readable JSON")
 	return cmd
+}
+
+// activityListResponse is the body of GET /v1/activity (ActivityListResponse
+// in apps/switchyard-api/internal/api/activity_handlers.go): the rows are
+// types.AuditLog under "activities", with the count and the limit/offset the
+// server applied. The CLI used to read an "events" array with "resource" and
+// "actor" fields that the API never sent, so the list always came back empty.
+type activityListResponse struct {
+	Activities []types.AuditLog `json:"activities"`
+	Count      int              `json:"count"`
+	Limit      int              `json:"limit"`
+	Offset     int              `json:"offset"`
+}
+
+func fetchActivity(ctx context.Context, cfg *config.Config, params map[string]string) (*activityListResponse, error) {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	var resp activityListResponse
+	if err := apiRequest(ctx, cfg, "GET", "/v1/activity"+queryString(params), nil, &resp); err != nil {
+		return nil, err
+	}
+	if resp.Activities == nil {
+		resp.Activities = []types.AuditLog{}
+	}
+	return &resp, nil
+}
+
+func renderActivity(w io.Writer, resp *activityListResponse) error {
+	if len(resp.Activities) == 0 {
+		fmt.Fprintln(w, "No activity events match the given filters.")
+		return nil
+	}
+	tw := tabwriter.NewWriter(w, 0, 0, 2, ' ', 0)
+	fmt.Fprintln(tw, "TIMESTAMP\tACTION\tRESOURCE_TYPE\tRESOURCE\tACTOR\tOUTCOME")
+	for _, e := range resp.Activities {
+		resource := e.ResourceName
+		if resource == "" {
+			resource = e.ResourceID
+		}
+		fmt.Fprintf(tw, "%s\t%s\t%s\t%s\t%s\t%s\n",
+			e.Timestamp.Format("2006-01-02 15:04"),
+			e.Action, e.ResourceType, dashIfEmpty(resource), dashIfEmpty(e.ActorEmail), dashIfEmpty(e.Outcome))
+	}
+	return tw.Flush()
 }
 
 // ----------------------------------------------------------------------------
