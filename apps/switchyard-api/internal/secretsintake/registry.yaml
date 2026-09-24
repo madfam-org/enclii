@@ -139,7 +139,7 @@ targets:
   # with no environment at all.
   nauta/oidc-janua:
     label: Nauta Janua OAuth client (cockpit)
-    description: Nauta fractional-CTO cockpit OIDC client (nauta.madfam.io / cto.madfam.io)
+    description: Nauta fractional-CTO cockpit OIDC client (app.nauta.quest)
     vault_path: secret/nauta
     namespace: nauta
     external_secret: nauta-web-secrets

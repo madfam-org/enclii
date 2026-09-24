@@ -157,13 +157,12 @@ platforms:
       # from nauta.madfam.io / cto.madfam.io; the nauta.quest apex serves the
       # public landing). The callback path is /api/auth/callback/janua (Auth.js
       # provider id 'janua') — the earlier entries here omitted the /janua suffix,
-      # which the live Janua registry never used. Old-host callbacks kept for the
-      # transition window; remove once DNS + config have fully moved. Mirrors
-      # nauta:infra/oauth-redirect-uris.json — keep in sync.
+      # which the live Janua registry never used. The retired-host callbacks were
+      # dropped on 2026-09-23: both hosts answer 404 since the cutover, so the
+      # transition window is over. Mirrors nauta:infra/oauth-redirect-uris.json —
+      # keep in sync.
       redirect_uris:
         - https://app.nauta.quest/api/auth/callback/janua
-        - https://nauta.madfam.io/api/auth/callback/janua
-        - https://cto.madfam.io/api/auth/callback/janua
         - http://localhost:3000/api/auth/callback/janua
       allowed_scopes:
         - openid

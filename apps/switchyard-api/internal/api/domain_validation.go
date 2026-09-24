@@ -49,7 +49,7 @@ var knownPublicSuffixes = newSuffixSet(
 	"town",    // selva.town
 	"lol",     // ceq.lol
 	"academy", // reserved for a future surface; registry allows 2LD only
-	"onl",     // penny.onl
+	"onl",     // a retired estate host stays registered for one renewal cycle
 	"design",  // forj.design
 	"one",     // nuit.one
 	// .pro allows direct second-level registration (primavera3d.pro) but also
