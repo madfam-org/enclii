@@ -138,6 +138,33 @@ describe('nodeLogsTail', () => {
     expect((await first).done).toBe(true);
   });
 
+  it('sends since on the upgrade and again on every reconnect', async () => {
+    const it = nodeLogsTail(client(), 'svc-1', {
+      since: '15m',
+      maxReconnects: 1,
+      initialReconnectMs: 1,
+    })[Symbol.asyncIterator]();
+    const first = it.next();
+    await tick();
+    expect(new URL(sockets[0]!.url).searchParams.get('since')).toBe('15m');
+    sockets[0]!.emit('error', new Error('socket hang up'));
+    sockets[0]!.close();
+    await new Promise((r) => setTimeout(r, 20));
+    expect(sockets).toHaveLength(2);
+    expect(new URL(sockets[1]!.url).searchParams.get('since')).toBe('15m');
+    sockets[1]!.close();
+    expect((await first).done).toBe(true);
+  });
+
+  it('throws on a malformed since without opening a socket', async () => {
+    await expect(
+      nodeLogsTail(client(), 'svc-1', { since: 'yesterday', maxReconnects: 0 })
+        [Symbol.asyncIterator]()
+        .next(),
+    ).rejects.toThrow(/since must be an RFC3339 timestamp .* or a positive duration/);
+    expect(sockets).toHaveLength(0);
+  });
+
   it('prefers options.token over the client token', async () => {
     const next = nodeLogsTail(client(), 'svc-1', { token: 'enclii_override', maxReconnects: 0 })
       [Symbol.asyncIterator]()

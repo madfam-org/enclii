@@ -366,18 +366,6 @@ func parseQueryInt(raw string) int {
 	return n
 }
 
-// parseListLimit parses and bounds a list "limit" query parameter.
-func parseListLimit(raw string) int32 {
-	n := parseQueryInt(raw)
-	if n <= 0 {
-		return defaultObjectListKeys
-	}
-	if n > maxObjectListKeys {
-		return maxObjectListKeys
-	}
-	return int32(n)
-}
-
 // loadProjectForStorage resolves a project by slug and enforces caller access,
 // writing the appropriate error response and returning false when it fails.
 func (h *Handler) loadProjectForStorage(c *gin.Context, slug string) bool {
@@ -415,6 +403,13 @@ func (h *Handler) ListObjects(c *gin.Context) {
 	slug := c.Param("slug")
 	bucket := strings.TrimSpace(c.Param("bucket"))
 
+	// limit 1..maxObjectListKeys (default defaultObjectListKeys); anything
+	// else is a 400, before any lookup.
+	limit, ok := queryLimitOr400(c, defaultObjectListKeys, maxObjectListKeys)
+	if !ok {
+		return
+	}
+
 	if !h.loadProjectForStorage(c, slug) {
 		return
 	}
@@ -431,8 +426,6 @@ func (h *Handler) ListObjects(c *gin.Context) {
 		return
 	}
 
-	limit := parseListLimit(c.Query("limit"))
-
 	store, err := h.objectStoreFor()(ctx, binding)
 	if err != nil {
 		h.logger.Error(ctx, "Failed to build object store",
@@ -441,7 +434,7 @@ func (h *Handler) ListObjects(c *gin.Context) {
 		return
 	}
 
-	objects, err := store.List(ctx, prefix, limit)
+	objects, err := store.List(ctx, prefix, int32(limit)) // limit is 1..maxObjectListKeys
 	if err != nil {
 		h.logger.Error(ctx, "Failed to list objects",
 			logging.String("project", slug),

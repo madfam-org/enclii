@@ -56,7 +56,7 @@ interface LogHistory {
 
 The endpoint returns one block of text; it does not page, and there is no `iter()`. `history()` throws a plain `Error` before sending when `lines` is outside 1 to 10000 (the API would silently use 100 instead).
 
-`since` is sent as the `since` query parameter. A switchyard-api that includes [#622](https://github.com/madfam-org/enclii/pull/622) returns only lines newer than it; an older one ignores it and returns the most recent `lines` regardless.
+`since` is sent as the `since` query parameter: an RFC3339 timestamp (`2026-09-24T10:00:00Z`) or a positive Go duration (`15m`, `24h`), the two forms `parseLogsSince` (`apps/switchyard-api/internal/api/logs_since.go`) accepts. `history()` throws a plain `Error` before sending when `since` is neither; the server also answers 400 for a timestamp in the future and caps the window at 30 days. A switchyard-api that includes [#622](https://github.com/madfam-org/enclii/pull/622) returns only lines newer than it; an older one ignores it and returns the most recent `lines` regardless.
 
 ## How the stream authenticates
 
@@ -126,7 +126,7 @@ for await (const frame of nodeLogsTail(enclii, serviceId, {
 | `onReconnect` | `(attempt: number, reason: string) => void` | none |
 | `onParseError` | `(raw: string) => void` | none; called for frames that are not stream messages |
 
-When the server rejects the upgrade with a 4xx status (for example 403 for a disallowed `origin`, 404 for an unknown `env`), `nodeLogsTail()` throws an `Error` naming the status and does not retry; a 403 without `origin` says that older servers need it. Other disconnects are retried up to `maxReconnects` times, after which the iterator completes. Each reconnect replays the server's `lines` backlog, so lines can repeat across a reconnect.
+When the server rejects the upgrade with a 4xx status (for example 403 for a disallowed `origin`, 404 for an unknown `env`), `nodeLogsTail()` throws an `Error` naming the status and does not retry; a 403 without `origin` says that older servers need it. Other disconnects are retried up to `maxReconnects` times, after which the iterator completes. Each reconnect replays the server's `lines` backlog (limited by `since` when set), so lines can repeat across a reconnect.
 
 `packages/sdk-ts/examples/tail-logs.ts` is a runnable version.
 
@@ -139,9 +139,16 @@ When the server rejects the upgrade with a 4xx status (for example 403 for a dis
 | `env` | `env` | `development`; an env the project does not have is a 404 before the upgrade |
 | `lines` | `lines` | `100` (backlog per pod before following) |
 | `timestamps` | `timestamps=true` | off |
+| `since` | `since` | none: the last `lines` lines per pod, however old |
 | `signal` | none | |
 
-The stream also reads a `since` query parameter (RFC3339 timestamp or Go duration; it limits the backlog to newer lines, as `enclii logs --follow --since` sends it), but `LogTailOptions` has no field for it, so neither helper sends it.
+`since` limits the backlog to lines newer than an RFC3339 timestamp (`2026-09-24T10:00:00Z`) or a positive Go duration (`15m`, `24h`), as `enclii logs --follow --since` sends it; `lines` still caps it per pod. Both helpers throw a plain `Error` before connecting when `since` is neither form, because a refused upgrade shows no 400 body in a browser. `nodeLogsTail()` sends the same `since` on every reconnect, so a duration is measured from the reconnect and a timestamp keeps its fixed start. A switchyard-api that predates [#625](https://github.com/madfam-org/enclii/pull/625) ignores `since` on the stream.
+
+```typescript
+for await (const frame of nodeLogsTail(enclii, serviceId, { env: 'production', since: '15m' })) {
+  if (frame.type === 'log') console.log(frame.timestamp, frame.message);
+}
+```
 
 Both helpers yield every frame the server sends, typed `LogStreamMessage`:
 
@@ -165,13 +172,14 @@ Only `log` frames carry log lines. The server sends `connected` first; `error` f
 interface LogHistoryOptions {
   env?: string;
   lines?: number;  // 1 to 10000
-  since?: string;  // sent; honored once the server change deploys
+  since?: string;  // RFC3339 timestamp or positive Go duration
 }
 
 interface LogTailOptions {
   env?: string;
   lines?: number;
   timestamps?: boolean;
+  since?: string;  // RFC3339 timestamp or positive Go duration
   signal?: AbortSignal;
 }
 ```

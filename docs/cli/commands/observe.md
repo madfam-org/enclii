@@ -69,7 +69,7 @@ enclii observe errors [--service <id>] [--limit <n>] [flags]
 | Flag | Type | Default | Description |
 |------|------|---------|-------------|
 | `--service` | string | | Service ID (optional) |
-| `--limit` | int | `50` | Maximum number of error events |
+| `--limit` | int | `50` | Maximum number of error events, 1 to 200. The API answers `400` outside that range (older servers clamped a larger value to 200 and replaced 0 or less with 50). |
 | `--json` | bool | `false` | Emit machine-readable JSON |
 
 ### `alerts`

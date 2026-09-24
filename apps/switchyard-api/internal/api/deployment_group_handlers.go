@@ -2,7 +2,6 @@ package api
 
 import (
 	"net/http"
-	"strconv"
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
@@ -103,9 +102,11 @@ func (h *Handler) ListDeploymentGroups(c *gin.Context) {
 	ctx := c.Request.Context()
 	projectSlug := c.Param("slug")
 
-	// Parse pagination
-	limit, _ := strconv.Atoi(c.DefaultQuery("limit", "50"))
-	offset, _ := strconv.Atoi(c.DefaultQuery("offset", "0"))
+	// limit 1..100 (default 50), offset >= 0; anything else is a 400.
+	limit, offset, ok := queryLimitOffsetOr400(c, 50, 100)
+	if !ok {
+		return
+	}
 
 	groups, err := h.deploymentGroupService.ListGroupDeployments(ctx, projectSlug, limit, offset)
 	if err != nil {

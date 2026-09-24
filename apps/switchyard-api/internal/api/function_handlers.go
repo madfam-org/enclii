@@ -2,7 +2,6 @@ package api
 
 import (
 	"database/sql"
-	"fmt"
 	"io"
 	"net/http"
 	"strings"
@@ -469,17 +468,11 @@ func (h *Handler) GetFunctionLogs(c *gin.Context) {
 		return
 	}
 
-	// Parse query parameters
-	limitStr := c.DefaultQuery("limit", "100")
-	var limit int
-	if _, err := c.GetQuery("limit"); err {
-		limit = 100
-	} else {
-		if n, err := parseInt(limitStr); err == nil {
-			limit = n
-		} else {
-			limit = 100
-		}
+	// limit 1..1000 (default 100); anything else is a 400. The old parser
+	// ignored a supplied limit altogether and always used 100.
+	limit, ok := queryLimitOr400(c, 100, 1000)
+	if !ok {
+		return
 	}
 
 	var since *time.Time
@@ -594,14 +587,4 @@ func convertFunctionPointers(fns []*types.Function) []types.Function {
 		result[i] = *fn
 	}
 	return result
-}
-
-// Helper function to parse int from string
-func parseInt(s string) (int, error) {
-	var n int
-	_, err := fmt.Sscanf(s, "%d", &n)
-	if err != nil {
-		return 0, err
-	}
-	return n, nil
 }

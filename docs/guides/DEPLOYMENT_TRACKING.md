@@ -161,7 +161,7 @@ Query parameters:
 - `env` — filter by target environment (e.g. `production`)
 - `event_type` — filter by event type (e.g. `deploy_healthy`)
 - `since` — ISO 8601 timestamp (e.g. `2026-02-01T00:00:00Z`)
-- `limit` — max results (default 50, max 200)
+- `limit` — max results, 1 to 200 (default 50); any other value is a `400` naming the range
 
 Example:
 ```bash
@@ -197,7 +197,7 @@ Returns all events for a specific commit across all repos and branches.
 GET /v1/lifecycle/events
 ```
 
-Query parameters: `env`, `event_type`, `since`, `limit`
+Query parameters: `env`, `event_type`, `since`, `limit` (1 to 200, default 50; any other value is a `400`)
 
 ## Database Schema
 

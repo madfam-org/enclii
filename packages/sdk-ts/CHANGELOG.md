@@ -13,12 +13,12 @@ disagreed. Not yet published; the package version is unchanged.
   environment, namespace, logs, lines }`, where `logs` is raw text) instead of
   `Page<LogEntry>`. `LogHistoryOptions` is now `{ env?, lines?, since? }`;
   `limit`, `level`, `until` and `cursor` are removed (the API never read them).
-  `since` is sent but only honored once the server-side change that adds it
-  deploys.
+  `since` (an RFC3339 timestamp or a positive Go duration) is honored by
+  servers that include enclii #622; a malformed `since` throws before sending.
 - `logs.iter()` is removed: the history endpoint does not page.
 - `logs.tail()` and `nodeLogsTail()` yield `LogStreamMessage` frames
   (`{ type, pod?, container?, timestamp, message }`, including the `connected`
-  status frame). `LogTailOptions` is now `{ env?, lines?, timestamps?, signal? }`;
+  status frame). `LogTailOptions` is now `{ env?, lines?, timestamps?, since?, signal? }`;
   `level`, `pod` and `container` are removed (the API never read them).
   `LogEntry` is a deprecated alias of `LogStreamMessage`.
 - `nodeLogsTail()` throws when the server rejects the upgrade with a 4xx status
@@ -64,6 +64,13 @@ disagreed. Not yet published; the package version is unchanged.
 - `services.restart()` option `reason`.
 - `OneOffJob.failure_reason`.
 - `EncliiClient.resolveToken()`.
+- `logs.tail()` and `nodeLogsTail()` option `since` (an RFC3339 timestamp or a
+  positive Go duration, as `parseLogsSince` in
+  `apps/switchyard-api/internal/api/logs_since.go` reads it): sent as the
+  stream's `since` query parameter to limit the backlog to newer lines, and
+  resent on every `nodeLogsTail()` reconnect. A malformed value throws before
+  connecting, since a browser cannot read the server's 400. Servers before
+  enclii #625 ignore it.
 - `audit.list()`, `webhooks.deliveries()` and `logs.history()` reject an
   out-of-range `limit`/`lines` or a malformed cursor before sending, where the
   API would silently substitute its default.

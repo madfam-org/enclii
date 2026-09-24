@@ -5,7 +5,7 @@ import type {
   LogStreamMessage,
   LogTailOptions,
 } from '../types-ops';
-import { buildLogStreamUrl, parseLogFrame } from './log-stream';
+import { assertLogsSince, buildLogStreamUrl, parseLogFrame } from './log-stream';
 
 /** Server-side bound on `lines` for the history endpoint (logs_handlers.go). */
 const MAX_HISTORY_LINES = 10_000;
@@ -40,6 +40,7 @@ export class LogsResource {
         `logs.history: lines must be an integer from 1 to ${MAX_HISTORY_LINES}`,
       );
     }
+    if (options.since !== undefined) assertLogsSince(options.since, 'logs.history');
     return this.client.get<LogHistory>(
       `/services/${encodeURIComponent(serviceId)}/logs/history`,
       { env: options.env, lines: options.lines, since: options.since },

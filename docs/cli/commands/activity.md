@@ -10,7 +10,7 @@ enclii activity <subcommand> [flags]
 
 ## Description
 
-The `activity` command streams and filters platform lifecycle events: deploy started/succeeded/failed, build failed, env-var changed, and similar curated events. It is distinct from [`enclii audit`](./audit.md) — activity is the human-friendly lifecycle stream you would wire up to a status board, while audit is the full forensic log used for compliance.
+The `activity` command lists and filters Switchyard's own activity rows: deploys, rollbacks, builds, env-var changes, team changes and similar actions recorded by the Switchyard API (`GET /v1/activity`). It is distinct from [`enclii audit`](./audit.md), which merges the audit logs of Janua (auth), Switchyard and Selva into one forensic view for compliance.
 
 This command mirrors the `/activity` page in the consumer web UI. All subcommands are read-only and accept `--json`.
 
@@ -30,6 +30,34 @@ enclii activity list [flags]
 | `--resource-type` | string | | Filter by resource type |
 | `--limit` | int | `50` | Maximum number of events to return, 1 to 100. The API answers `400` outside that range (servers before [#625](https://github.com/madfam-org/enclii/pull/625) silently used 50). |
 | `--json` | bool | `false` | Emit machine-readable JSON |
+
+The table shows each row's time, action, resource type, resource (its `resource_name`, or `resource_id` when the name is empty), actor (`actor_email`) and outcome (`success`, `failure` or `denied`); an empty field prints as `-`. `--json` prints the API's response unchanged in shape:
+
+```json
+{
+  "activities": [
+    {
+      "id": "0b9f6c1e-3c7a-4d57-9a53-2f1f6f3f0a01",
+      "timestamp": "2026-09-24T09:14:00Z",
+      "actor_email": "dev@example.com",
+      "actor_role": "developer",
+      "action": "deploy",
+      "resource_type": "service",
+      "resource_id": "5d0c2b7e-8e0a-4f7e-b1a4-0a4c1d3e9f10",
+      "resource_name": "storefront",
+      "ip_address": "203.0.113.7",
+      "user_agent": "enclii-cli/1.0.0",
+      "outcome": "success",
+      "context": {}
+    }
+  ],
+  "count": 1,
+  "limit": 50,
+  "offset": 0
+}
+```
+
+CLI releases before this fix read an `events` array, which the API has never sent, so `activity list` always printed "No activity events match the given filters." and `--json` printed `{"events": null}`.
 
 ### `actions`
 
@@ -65,16 +93,16 @@ enclii activity list
 
 **Output:**
 ```
-TIMESTAMP         ACTION              RESOURCE_TYPE  RESOURCE          ACTOR
-2026-05-02 09:14  deploy.succeeded    service        svc_storefront    usr_a3b4c5
-2026-05-02 09:12  deploy.start        service        svc_storefront    usr_a3b4c5
-2026-05-02 08:48  build.failed        release        rel_c4d5e6        usr_b2c3d4
+TIMESTAMP         ACTION    RESOURCE_TYPE  RESOURCE      ACTOR            OUTCOME
+2026-09-24 09:14  deploy    service        storefront    dev@example.com  success
+2026-09-24 09:12  update    env_var        DATABASE_URL  dev@example.com  success
+2026-09-24 08:48  rollback  service        storefront    ops@example.com  failure
 ```
 
 ### Filter by action
 
 ```bash
-enclii activity list --action deploy.succeeded --limit 20
+enclii activity list --action deploy --limit 20
 ```
 
 ### Filter by resource type
@@ -91,27 +119,30 @@ enclii activity actions
 
 **Output:**
 ```
-build.start
-build.succeeded
-build.failed
-deploy.start
-deploy.succeeded
-deploy.failed
-secret.set
-secret.delete
+create
+update
+delete
+deploy
+rollback
+build
+login
+logout
+invite
+join
+leave
 ```
 
 ### Pipe events to a watcher
 
 ```bash
-enclii activity list --action deploy.failed --json --limit 100 | \
-  jq -r '.events[] | "\(.timestamp) \(.resource)"'
+enclii activity list --action deploy --json --limit 100 | \
+  jq -r '.activities[] | select(.outcome != "success") | "\(.timestamp) \(.resource_name)"'
 ```
 
 ## Notes
 
-- `activity` is intentionally lossy — it surfaces only meaningful lifecycle transitions, not every API call. For full coverage use `audit`.
-- The `actions` and `resource-types` lists are authoritative; if the server adds new event categories they will appear there before being documented here.
+- `activity` covers Switchyard's rows only. For auth events and Selva RFC ledgers as well, use `audit`.
+- The `actions` and `resource-types` lists are the filter values the server suggests; if the server adds new ones they will appear there before being documented here.
 
 ## Exit Codes
 

@@ -5,7 +5,6 @@ import (
 	"net/http"
 	"regexp"
 	"sort"
-	"strconv"
 	"strings"
 	"time"
 
@@ -136,19 +135,10 @@ type DomainInventoryExclusionsResponse struct {
 func (h *Handler) GetAllDomains(c *gin.Context) {
 	ctx := c.Request.Context()
 
-	// Parse query parameters
-	limit := 50
-	if l := c.Query("limit"); l != "" {
-		if parsed, err := strconv.Atoi(l); err == nil && parsed > 0 && parsed <= 500 {
-			limit = parsed
-		}
-	}
-
-	offset := 0
-	if o := c.Query("offset"); o != "" {
-		if parsed, err := strconv.Atoi(o); err == nil && parsed >= 0 {
-			offset = parsed
-		}
+	// limit 1..500 (default 50), offset >= 0; anything else is a 400.
+	limit, offset, ok := queryLimitOffsetOr400(c, 50, 500)
+	if !ok {
+		return
 	}
 
 	// Build filters

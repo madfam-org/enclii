@@ -48,9 +48,10 @@ export interface LogHistoryOptions {
   /** Number of lines, 1 to 10000; the API defaults to 100. */
   lines?: number;
   /**
-   * Sent as the `since` query parameter. The current API ignores it; it is
-   * honored once the server-side change adding `since` to
-   * `GET /services/{id}/logs/history` is deployed.
+   * Only lines newer than this: an RFC3339 timestamp (`2026-09-24T10:00:00Z`)
+   * or a positive Go duration (`15m`, `24h`). Sent as the `since` query
+   * parameter; a malformed value throws before sending. Servers before
+   * enclii #622 ignore it.
    */
   since?: string;
 }
@@ -74,6 +75,15 @@ export interface LogTailOptions {
   lines?: number;
   /** Ask Kubernetes to prefix lines with timestamps. */
   timestamps?: boolean;
+  /**
+   * Limit the backlog to lines newer than this: an RFC3339 timestamp
+   * (`2026-09-24T10:00:00Z`) or a positive Go duration (`15m`, `24h`), as
+   * `enclii logs --follow --since` sends it. A malformed value throws before
+   * connecting. `nodeLogsTail` sends the same value on every reconnect, so a
+   * duration is measured from each reconnect. Servers before enclii #625
+   * ignore it.
+   */
+  since?: string;
   /** Abort signal for graceful shutdown. */
   signal?: AbortSignal;
 }

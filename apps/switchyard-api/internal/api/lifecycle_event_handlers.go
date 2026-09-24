@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"net/http"
-	"strconv"
 	"strings"
 	"time"
 
@@ -87,6 +86,13 @@ func (h *Handler) LifecycleEventCallback(c *gin.Context) {
 	})
 }
 
+// Lifecycle event lists take limit 1..200 (default 50), the bounds
+// LifecycleEventRepository applies.
+const (
+	lifecycleListDefaultLimit = 50
+	lifecycleListMaxLimit     = 200
+)
+
 // GetLifecycleTimeline returns the event timeline for a repo
 // GET /v1/lifecycle/timeline/:owner/:repo
 // Query params: ?branch=main&env=production&since=2026-02-01&event_type=deploy_healthy&limit=50
@@ -117,11 +123,12 @@ func (h *Handler) GetLifecycleTimeline(c *gin.Context) {
 			q.Since = &t
 		}
 	}
-	if limitStr := c.Query("limit"); limitStr != "" {
-		if l, err := strconv.Atoi(limitStr); err == nil {
-			q.Limit = l
-		}
+	// limit 1..200 (default 50); anything else is a 400.
+	limit, ok := queryLimitOr400(c, lifecycleListDefaultLimit, lifecycleListMaxLimit)
+	if !ok {
+		return
 	}
+	q.Limit = limit
 
 	events, err := h.repos.LifecycleEvents.GetTimeline(ctx, q)
 	if err != nil {
@@ -149,11 +156,10 @@ func (h *Handler) GetLifecycleBranch(c *gin.Context) {
 	branch := c.Param("branch")
 	repoFullName := owner + "/" + repo
 
-	limit := 50
-	if limitStr := c.Query("limit"); limitStr != "" {
-		if l, err := strconv.Atoi(limitStr); err == nil {
-			limit = l
-		}
+	// limit 1..200 (default 50); anything else is a 400.
+	limit, ok := queryLimitOr400(c, lifecycleListDefaultLimit, lifecycleListMaxLimit)
+	if !ok {
+		return
 	}
 
 	events, err := h.repos.LifecycleEvents.GetByBranch(ctx, repoFullName, branch, limit)
@@ -233,11 +239,12 @@ func (h *Handler) GetLifecycleEvents(c *gin.Context) {
 			q.Since = &t
 		}
 	}
-	if limitStr := c.Query("limit"); limitStr != "" {
-		if l, err := strconv.Atoi(limitStr); err == nil {
-			q.Limit = l
-		}
+	// limit 1..200 (default 50); anything else is a 400.
+	limit, ok := queryLimitOr400(c, lifecycleListDefaultLimit, lifecycleListMaxLimit)
+	if !ok {
+		return
 	}
+	q.Limit = limit
 
 	events, err := h.repos.LifecycleEvents.GetTimeline(ctx, q)
 	if err != nil {
