@@ -131,6 +131,17 @@ spec:
         - namespaceSelector:
             matchLabels:
               kubernetes.io/metadata.name: data
+    # avala-api /v1/metrics. rules-eval evaluates avala's PrometheusRule
+    # (AvalaApiDown and the SLO rules), so it must reach the API or the alert
+    # fires against a healthy service. An app namespace, so the port is
+    # pinned; avala admits monitoring on 4000.
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: avala
+      ports:
+        - protocol: TCP
+          port: 4000
     # Managed-database addon namespaces (`project-*`) — the per-addon CNPG
     # instance pods and their postgres-exporter, both on 9187.
     #

@@ -389,6 +389,15 @@ data:
           - source_labels: [__meta_kubernetes_service_label_app_kubernetes_io_component]
             action: keep
             regex: admission-controller|background-controller
+          # Only the metrics Services' port. kyverno-svc (the admission
+          # webhook, https -> 9443) carries the same component label, and
+          # endpoints discovery also adds every other container port of the
+          # backing pods, so without this Prometheus scraped the TLS webhook
+          # port over plain HTTP (400 / connection refused) and
+          # KyvernoControllerDown fired against a healthy Kyverno.
+          - source_labels: [__meta_kubernetes_endpoint_port_name]
+            action: keep
+            regex: metrics-port
         metrics_path: /metrics
 
       # External Secrets metrics
@@ -1770,16 +1779,39 @@ data:
       - name: cloudflared
         interval: 30s
         rules:
+          # cloudflared is scraped by the kubernetes-pods job (pod
+          # annotations), so its series carry job="kubernetes-pods" and there
+          # is no job="cloudflared" at all: the old selector made absent()
+          # fire permanently. Select the connectors by namespace and pod label
+          # instead (app="cloudflared" excludes cloudflared-probe). Pages only
+          # when the tunnel as a whole is gone: no connector scraped, every
+          # connector down, or no connector holding an edge connection.
           - alert: CloudflaredTunnelDown
             expr: |
-              absent(up{job="cloudflared"}) or up{job="cloudflared"} == 0
+              absent(up{namespace="cloudflare-tunnel", app="cloudflared"})
+              or max(up{namespace="cloudflare-tunnel", app="cloudflared"}) == 0
+              or sum(cloudflared_tunnel_ha_connections{namespace="cloudflare-tunnel", app="cloudflared"}) == 0
             for: 2m
             labels:
               severity: critical
               category: platform
             annotations:
               summary: "Cloudflare tunnel is down"
-              description: "All cloudflared instances are unreachable for more than 2 minutes. External traffic cannot reach the cluster."
+              description: "All cloudflared instances are unreachable or hold no edge connection for more than 2 minutes. External traffic cannot reach the cluster."
+
+          # One connector down while the others carry the traffic. The old
+          # rule paged critical for this case too; it is a warning now.
+          - alert: CloudflaredConnectorDown
+            expr: |
+              up{namespace="cloudflare-tunnel", app="cloudflared"} == 0
+              or cloudflared_tunnel_ha_connections{namespace="cloudflare-tunnel", app="cloudflared"} == 0
+            for: 5m
+            labels:
+              severity: warning
+              category: platform
+            annotations:
+              summary: "cloudflared connector {{ $labels.pod }} is down or has no edge connection"
+              description: "One cloudflared connector has not been serving for more than 5 minutes. The tunnel still runs on the others; check the pod's logs and restarts."
 
       - name: cloudflared-probe
         interval: 30s
