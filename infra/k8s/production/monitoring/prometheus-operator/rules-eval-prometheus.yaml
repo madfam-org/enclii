@@ -42,13 +42,17 @@ spec:
   # not silently accepted.
   retention: 24h
 
+  # 1Gi was not enough: at 973Mi steady state the container was killed
+  # (exit 137) at every 2-hourly head compaction, 17 times from 2026-09-24
+  # to 09-25, and each restart replays the WAL for minutes and resets every
+  # `for:` timer. The monitoring-quota has room for this (namespace.yaml).
   resources:
     requests:
-      memory: 256Mi
-      cpu: 100m
-    limits:
       memory: 1Gi
-      cpu: 500m
+      cpu: 200m
+    limits:
+      memory: 2Gi
+      cpu: "1"
 
   # STORAGE: the existing Prometheus (../prometheus.yaml) uses a 20Gi
   # longhorn PVC (`prometheus-data`), so this follows that precedent at a

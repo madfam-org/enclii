@@ -147,6 +147,12 @@ data:
             regex: default;kubernetes;https
 
       # Kubernetes nodes
+      # Kubelet and cadvisor go through the API server's node proxy. Direct
+      # scrapes of <node-ip>:10250 never worked here: the Prometheus egress
+      # policies have no rule for node IPs, so every kubelet target was refused.
+      # The proxy rides the 443/6443 egress both instances already have and the
+      # nodes/proxy permission both ClusterRoles already grant. `instance` is the
+      # node name, since every target now shares the API server address.
       - job_name: 'kubernetes-nodes'
         kubernetes_sd_configs:
           - role: node
@@ -157,6 +163,14 @@ data:
         relabel_configs:
           - action: labelmap
             regex: __meta_kubernetes_node_label_(.+)
+          - target_label: __address__
+            replacement: kubernetes.default.svc:443
+          - source_labels: [__meta_kubernetes_node_name]
+            regex: (.+)
+            target_label: __metrics_path__
+            replacement: /api/v1/nodes/$1/proxy/metrics
+          - source_labels: [__meta_kubernetes_node_name]
+            target_label: instance
 
       # Kubernetes node cadvisor metrics
       - job_name: 'kubernetes-cadvisor'
@@ -166,10 +180,17 @@ data:
         tls_config:
           ca_file: /var/run/secrets/kubernetes.io/serviceaccount/ca.crt
         bearer_token_file: /var/run/secrets/kubernetes.io/serviceaccount/token
-        metrics_path: /metrics/cadvisor
         relabel_configs:
           - action: labelmap
             regex: __meta_kubernetes_node_label_(.+)
+          - target_label: __address__
+            replacement: kubernetes.default.svc:443
+          - source_labels: [__meta_kubernetes_node_name]
+            regex: (.+)
+            target_label: __metrics_path__
+            replacement: /api/v1/nodes/$1/proxy/metrics/cadvisor
+          - source_labels: [__meta_kubernetes_node_name]
+            target_label: instance
 
       # Kubernetes pods with prometheus.io annotations
       - job_name: 'kubernetes-pods'
