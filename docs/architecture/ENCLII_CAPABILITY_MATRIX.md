@@ -667,7 +667,7 @@ GET    /deployments/{id}              ✅ Get deployment status
 GET    /logs?service=...&env=...      ✅ Stream logs (SSE)
 
 ## Metrics
-GET    /metrics                       ✅ Prometheus metrics
+GET    /metrics                       ✅ Prometheus metrics (internal-only; 404 via the public tunnel)
 GET    /metrics?service=...           ✅ Service metrics query
 
 ## Health
