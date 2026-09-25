@@ -172,6 +172,15 @@ spec:
     - namespaceSelector:
         matchLabels:
           kubernetes.io/metadata.name: longhorn-system
+  # avala-api /v1/metrics (AvalaApiDown and the avala SLO rules). An app
+  # namespace, so the port is pinned; avala admits monitoring on 4000.
+  - to:
+    - namespaceSelector:
+        matchLabels:
+          kubernetes.io/metadata.name: avala
+    ports:
+    - protocol: TCP
+      port: 4000
   # Kubernetes API server
   - to: []
     ports:
