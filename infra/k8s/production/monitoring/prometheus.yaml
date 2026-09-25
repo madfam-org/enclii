@@ -2383,6 +2383,43 @@ spec:
             periodSeconds: 15
             timeoutSeconds: 5
             failureThreshold: 3
+        # Applies merged config and rule changes. The kubelet refreshes both
+        # ConfigMap directory mounts on its own, but Prometheus reads them only
+        # at start or on POST /-/reload, and nothing called it: #626 (Watchdog,
+        # dead-email reporting) and #627 (backup freshness alerts) sat merged
+        # and synced for 23 hours on 2026-09-24/25 while the old rules kept
+        # paging on stale Job objects. This watches both directories and posts
+        # /-/reload when their contents change. The image is the one the
+        # prometheus-operator injects into rules-eval (operator.yaml), pinned
+        # by digest.
+        - name: config-reloader
+          image: quay.io/prometheus-operator/prometheus-config-reloader:v0.93.1@sha256:428f088fe6fe07ab138bda92113664b04848a1dc408e4d3680a60ecdb55d1a65
+          args:
+            - --listen-address=:8080
+            - --reload-url=http://127.0.0.1:9090/-/reload
+            - --watched-dir=/etc/prometheus
+            - --watched-dir=/etc/prometheus/rules
+          securityContext:
+            privileged: false
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop:
+                - ALL
+          resources:
+            requests:
+              memory: "32Mi"
+              cpu: "10m"
+            limits:
+              memory: "64Mi"
+              cpu: "50m"
+          volumeMounts:
+            - name: config
+              mountPath: /etc/prometheus
+              readOnly: true
+            - name: rules
+              mountPath: /etc/prometheus/rules
+              readOnly: true
       volumes:
         - name: config
           configMap:
