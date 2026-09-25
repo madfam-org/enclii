@@ -400,9 +400,10 @@ func SetupRoutes(router *gin.Engine, h *Handler) {
 		router.Use(h.metrics.HTTPMetricsMiddleware())
 	}
 
-	// Prometheus metrics endpoint (for scraping by Prometheus/Grafana)
+	// Prometheus metrics endpoint (for scraping by Prometheus/Grafana).
+	// Internal-only: see registerMetricsRoutes.
 	if h.metrics != nil {
-		router.GET("/metrics", gin.WrapH(h.metrics.Handler()))
+		registerMetricsRoutes(router, h.metrics.Handler())
 	}
 
 	// Health check endpoints (no auth required)
