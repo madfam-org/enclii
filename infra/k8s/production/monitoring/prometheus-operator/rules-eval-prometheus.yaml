@@ -83,15 +83,20 @@ spec:
   podMonitorSelector: {}
   podMonitorNamespaceSelector: {}
 
-  # ServiceMonitor/Probe/ScrapeConfig are left at nil (not `{}`) deliberately:
-  # nil means "operator does not manage this selector at all" for those CRD
-  # kinds on THIS Prometheus, vs. `{}` which means "manage it, matching
-  # everything". No ServiceMonitor/Probe/ScrapeConfig objects exist in this
-  # cluster yet (only PrometheusRule and PodMonitor, per the CRD inventory in
-  # ../prometheus-operator-crds/), so there is nothing to select today either
-  # way — nil is the more honest statement of current scope and avoids
-  # rules-eval silently starting to manage a CRD kind nobody has reviewed for
-  # it yet if one gets created later for an unrelated reason.
+  # ALL ServiceMonitors, ALL namespaces. This was nil on the premise that no
+  # ServiceMonitor existed; by 2026-09-25 there were 31 (dhanam, janua,
+  # routecraft, selva, creator-census, ceq, arc-system, ...), and apps' own
+  # PrometheusRules read the series they produce (ARCControllerDown,
+  # CensusApiDown, TlacuiloApiDown, ...), so those rules evaluated against
+  # nothing. App namespaces admit the monitoring namespace on their metrics
+  # port, and rules-eval-egress reaches every application namespace
+  # (rules-eval-network-policy.yaml). A monitor that resolves no endpoint
+  # produces no series, so a dead monitor is quiet rather than a page.
+  serviceMonitorSelector: {}
+  serviceMonitorNamespaceSelector: {}
+
+  # Probe/ScrapeConfig stay nil (not `{}`): none exist, and nil keeps
+  # rules-eval from silently managing a CRD kind nobody has reviewed for it.
 
   # Existing scrape targets, copied verbatim — see
   # rules-eval-scrape-configs.secret.yaml's header for the full duplication
