@@ -3,7 +3,9 @@
 # =============================================================================
 # Default-deny + explicit allow rules for namespace isolation.
 # Janua is the SSO/OIDC provider — network isolation is critical.
-# Managed by enclii repo, applied via kubectl (no ArgoCD app for policies dir).
+# Managed by enclii repo. ArgoCD app `network-policies` syncs this directory
+# (infra/k8s/policies) with automated prune and selfHeal, so edits here go
+# live on merge and hand-applied drift is reverted.
 # =============================================================================
 
 # Default deny all ingress to janua namespace
@@ -66,6 +68,38 @@ spec:
       ports:
         - protocol: TCP
           port: 8080
+
+# Allow monitoring namespace → janua-api metrics listener (port 9464)
+# janua-api serves Prometheus text on a dedicated listener (METRICS_PORT 9464,
+# GET /metrics only). The public app port 8080 serves no metrics. This is the
+# only rule that admits 9464, and it admits only the monitoring namespace
+# (main Prometheus and rules-eval), so the tunnel and other namespaces cannot
+# reach it.
+# Bare namespaceSelector: a from-entry combining namespaceSelector and
+# podSelector has rendered as deny-all on this k3s cluster.
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: janua-api-ingress-monitoring
+  namespace: janua
+  labels:
+    app.kubernetes.io/managed-by: enclii
+    app.kubernetes.io/component: network-policy
+spec:
+  podSelector:
+    matchLabels:
+      app: janua-api
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: monitoring
+      ports:
+        - protocol: TCP
+          port: 9464
 
 # Allow Cloudflare tunnel → janua-admin (port 4102)
 ---
