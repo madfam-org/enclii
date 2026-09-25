@@ -235,10 +235,16 @@ spec:
   policyTypes:
     - Ingress
   ingress:
+    # Both Prometheus instances. rules-eval evaluates every app PrometheusRule;
+    # without this, every rule on kube_* series (job failures, CronJob
+    # freshness, pod restarts) evaluated against nothing.
     - from:
         - podSelector:
             matchLabels:
               app: prometheus
+        - podSelector:
+            matchLabels:
+              app: rules-eval
       ports:
         - protocol: TCP
           port: 8080

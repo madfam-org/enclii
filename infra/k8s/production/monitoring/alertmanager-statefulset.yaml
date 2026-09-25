@@ -115,7 +115,7 @@ spec:
               drop:
                 - ALL
           args:
-            - "--config.file=/etc/alertmanager/alertmanager.yml"
+            - "--config.file=/etc/alertmanager/config/alertmanager.yml"
             - "--storage.path=/alertmanager"
             - "--cluster.listen-address=0.0.0.0:9094"
             # Each peer's own DNS name + the explicit list of all 3 peers
@@ -143,9 +143,15 @@ spec:
               memory: "128Mi"
               cpu: "100m"
           volumeMounts:
+            # A DIRECTORY mount, like courier-secret below. The subPath mount
+            # this replaces never received ConfigMap updates: #626's routes
+            # (watchdog-sink, informational-sink, courier-only-receiver) sat
+            # in the synced ConfigMap for 23 hours on 2026-09-24/25 while every
+            # peer kept its start-up file, until a manual rollout restart. The
+            # config-reloader sidecar posts /-/reload when the file changes.
             - name: config
-              mountPath: /etc/alertmanager/alertmanager.yml
-              subPath: alertmanager.yml
+              mountPath: /etc/alertmanager/config
+              readOnly: true
             - name: smtp-secret
               mountPath: /etc/alertmanager/smtp-password
               subPath: smtp-password
@@ -201,6 +207,33 @@ spec:
             periodSeconds: 10
             successThreshold: 1
             timeoutSeconds: 3
+        # Reloads Alertmanager when the config ConfigMap changes (see the
+        # config mount above). Same digest-pinned image the prometheus-operator
+        # injects into rules-eval.
+        - name: config-reloader
+          image: quay.io/prometheus-operator/prometheus-config-reloader:v0.93.1@sha256:428f088fe6fe07ab138bda92113664b04848a1dc408e4d3680a60ecdb55d1a65
+          args:
+            - --listen-address=:8080
+            - --reload-url=http://127.0.0.1:9093/-/reload
+            - --watched-dir=/etc/alertmanager/config
+          securityContext:
+            privileged: false
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop:
+                - ALL
+          resources:
+            requests:
+              memory: "32Mi"
+              cpu: "10m"
+            limits:
+              memory: "64Mi"
+              cpu: "50m"
+          volumeMounts:
+            - name: config
+              mountPath: /etc/alertmanager/config
+              readOnly: true
       volumes:
         - name: config
           configMap:

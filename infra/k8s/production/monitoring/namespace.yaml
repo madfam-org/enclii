@@ -18,7 +18,13 @@ spec:
   hard:
     requests.cpu: "2"
     requests.memory: 4Gi
-    limits.cpu: "4"
+    # 4 -> 6 (2026-09-25): steady-state limits were 3300m, and the three
+    # */5 CronJobs (arc-pool-health, argo-main-parity-monitor,
+    # deploy-pipeline-monitor) add 500m at the same minute. Raising rules-eval
+    # to 1 CPU (it was OOM-killed at every head compaction) would take each
+    # cycle to 4300m, over the old quota, and the quota would reject the
+    # monitors' pods. Count the CronJobs' peak before spending headroom here.
+    limits.cpu: "6"
     # 8Gi -> 10Gi (2026-09-23): the prometheus limit went 2Gi -> 4Gi (OOM in
     # WAL replay) and the rules-eval Prometheus (1Gi) has never started. At 8Gi
     # the two together would leave under 400Mi of headroom.
