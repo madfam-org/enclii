@@ -45,13 +45,18 @@ spec:
   # 1Gi was not enough: at 973Mi steady state the container was killed
   # (exit 137) at every 2-hourly head compaction, 17 times from 2026-09-24
   # to 09-25, and each restart replays the WAL for minutes and resets every
-  # `for:` timer. The monitoring-quota has room for this (namespace.yaml).
+  # `for:` timer. 2Gi -> 4Gi (2026-09-26): once it also selected every
+  # ServiceMonitor, its working set sat at 1.7-2.0Gi against the 2Gi limit.
+  # It was OOM-killed 20 times in 19h, and from 16:30 UTC it died in WAL
+  # replay on every start, so no PrometheusRule in the cluster was evaluated.
+  # The main Prometheus scrapes about the same targets at 3.5Gi. The
+  # monitoring-quota has room for this (namespace.yaml).
   resources:
     requests:
-      memory: 1Gi
+      memory: 2Gi
       cpu: 200m
     limits:
-      memory: 2Gi
+      memory: 4Gi
       cpu: "1"
 
   # STORAGE: the existing Prometheus (../prometheus.yaml) uses a 20Gi
