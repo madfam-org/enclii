@@ -164,6 +164,14 @@ spec:
       ports:
         - protocol: TCP
           port: 8080
+    # yantra4d, same reasoning as `prometheus-egress`.
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: yantra4d
+      ports:
+        - protocol: TCP
+          port: 5000
     # Managed-database addon namespaces (`project-*`) — the per-addon CNPG
     # instance pods and their postgres-exporter, both on 9187.
     #

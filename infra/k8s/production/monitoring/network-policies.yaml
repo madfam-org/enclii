@@ -215,6 +215,16 @@ spec:
     ports:
     - protocol: TCP
       port: 8080
+  # yantra4d (the backend's /metrics on its pod port). Not labelled
+  # data-access, and it shouldn't be just for this: that label also admits
+  # the namespace to the shared data services, which yantra4d doesn't use.
+  - to:
+    - namespaceSelector:
+        matchLabels:
+          kubernetes.io/metadata.name: yantra4d
+    ports:
+    - protocol: TCP
+      port: 5000
   # Kubernetes API server
   - to: []
     ports:
