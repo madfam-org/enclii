@@ -17,7 +17,10 @@ metadata:
 spec:
   hard:
     requests.cpu: "2"
-    requests.memory: 4Gi
+    # 4Gi -> 6Gi (2026-09-26): the rules-eval request going 1Gi -> 2Gi takes
+    # steady-state requests to about 4084Mi, 12Mi under the old quota, and the
+    # */5 CronJobs' pods would be rejected at every cycle.
+    requests.memory: 6Gi
     # 4 -> 6 (2026-09-25): steady-state limits were 3300m, and the three
     # */5 CronJobs (arc-pool-health, argo-main-parity-monitor,
     # deploy-pipeline-monitor) add 500m at the same minute. Raising rules-eval
@@ -28,7 +31,10 @@ spec:
     # 8Gi -> 10Gi (2026-09-23): the prometheus limit went 2Gi -> 4Gi (OOM in
     # WAL replay) and the rules-eval Prometheus (1Gi) has never started. At 8Gi
     # the two together would leave under 400Mi of headroom.
-    limits.memory: 10Gi
+    # 10Gi -> 14Gi (2026-09-26): rules-eval 2Gi -> 4Gi takes limits to about
+    # 11.1Gi. The main prometheus runs at 3.5Gi of its 4Gi, so leave room for
+    # it to grow without another quota change.
+    limits.memory: 14Gi
     # 6 -> 8 (2026-09-23): the rules-eval Prometheus (prometheus-operator/)
     # needs a 7th PVC for its volumeClaimTemplate. At "6" the StatefulSet
     # failed every create for 28 days ("exceeded quota: monitoring-quota"),
