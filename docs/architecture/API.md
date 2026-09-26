@@ -510,7 +510,13 @@ Retrieve service logs.
 
 #### GET /metrics
 
-Prometheus metrics endpoint.
+Prometheus metrics endpoint. **Internal-only**: it serves the in-cluster
+Prometheus scrapers, which dial the pod directly (Host `<podIP>:4200`), and
+needs no authentication. Requests that arrive through the Cloudflare tunnel
+(a public Host such as `api.enclii.dev`, or any `cf-connecting-ip`, `cf-ray`
+or `cdn-loop` header) get `404`. A Host is accepted only when, port stripped,
+it is an IP literal, `localhost`, a `*.svc` / `*.svc.cluster.local` name, or a
+bare name with no dots. `/metrics/` behaves the same way.
 
 **Response:** Prometheus text format
 ```

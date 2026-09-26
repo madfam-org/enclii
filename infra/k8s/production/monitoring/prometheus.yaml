@@ -147,6 +147,12 @@ data:
             regex: default;kubernetes;https
 
       # Kubernetes nodes
+      # Kubelet and cadvisor go through the API server's node proxy. Direct
+      # scrapes of <node-ip>:10250 never worked here: the Prometheus egress
+      # policies have no rule for node IPs, so every kubelet target was refused.
+      # The proxy rides the 443/6443 egress both instances already have and the
+      # nodes/proxy permission both ClusterRoles already grant. `instance` is the
+      # node name, since every target now shares the API server address.
       - job_name: 'kubernetes-nodes'
         kubernetes_sd_configs:
           - role: node
@@ -157,6 +163,14 @@ data:
         relabel_configs:
           - action: labelmap
             regex: __meta_kubernetes_node_label_(.+)
+          - target_label: __address__
+            replacement: kubernetes.default.svc:443
+          - source_labels: [__meta_kubernetes_node_name]
+            regex: (.+)
+            target_label: __metrics_path__
+            replacement: /api/v1/nodes/$1/proxy/metrics
+          - source_labels: [__meta_kubernetes_node_name]
+            target_label: instance
 
       # Kubernetes node cadvisor metrics
       - job_name: 'kubernetes-cadvisor'
@@ -166,10 +180,17 @@ data:
         tls_config:
           ca_file: /var/run/secrets/kubernetes.io/serviceaccount/ca.crt
         bearer_token_file: /var/run/secrets/kubernetes.io/serviceaccount/token
-        metrics_path: /metrics/cadvisor
         relabel_configs:
           - action: labelmap
             regex: __meta_kubernetes_node_label_(.+)
+          - target_label: __address__
+            replacement: kubernetes.default.svc:443
+          - source_labels: [__meta_kubernetes_node_name]
+            regex: (.+)
+            target_label: __metrics_path__
+            replacement: /api/v1/nodes/$1/proxy/metrics/cadvisor
+          - source_labels: [__meta_kubernetes_node_name]
+            target_label: instance
 
       # Kubernetes pods with prometheus.io annotations
       - job_name: 'kubernetes-pods'
@@ -389,6 +410,15 @@ data:
           - source_labels: [__meta_kubernetes_service_label_app_kubernetes_io_component]
             action: keep
             regex: admission-controller|background-controller
+          # Only the metrics Services' port. kyverno-svc (the admission
+          # webhook, https -> 9443) carries the same component label, and
+          # endpoints discovery also adds every other container port of the
+          # backing pods, so without this Prometheus scraped the TLS webhook
+          # port over plain HTTP (400 / connection refused) and
+          # KyvernoControllerDown fired against a healthy Kyverno.
+          - source_labels: [__meta_kubernetes_endpoint_port_name]
+            action: keep
+            regex: metrics-port
         metrics_path: /metrics
 
       # External Secrets metrics
@@ -869,15 +899,28 @@ data:
               summary: "CronJob failed"
               description: "Job {{ $labels.namespace }}/{{ $labels.job_name }} has failed."
 
+          # The LATEST scheduled run has not succeeded: scheduled more than 2h
+          # ago (the Job's own deadline is 30m) with no success since. This
+          # used to be `kube_job_status_failed > 0`, which matched every failed
+          # Job object still in the cluster and never resolved: after Courier
+          # was armed on 2026-09-25 it paged for runs from 2026-08-02 and
+          # 08-09 although every weekly run since had passed.
           - alert: BackupVerifyFailed
-            expr: kube_job_status_failed{job_name=~"backup-verify.*"} > 0
-            for: 1m
+            expr: |
+              (
+                kube_cronjob_status_last_schedule_time{namespace="data",cronjob="backup-verify"}
+                > on (namespace, cronjob)
+                kube_cronjob_status_last_successful_time{namespace="data",cronjob="backup-verify"}
+              )
+              and on (namespace, cronjob)
+              (time() - kube_cronjob_status_last_schedule_time{namespace="data",cronjob="backup-verify"}) > 7200
+            for: 5m
             labels:
               severity: critical
               service: backup
             annotations:
-              summary: "Backup verification failed"
-              description: "Backup verification job {{ $labels.job_name }} has failed. DR readiness at risk."
+              summary: "Backup verification's latest run did not succeed"
+              description: "The latest scheduled run of {{ $labels.namespace }}/{{ $labels.cronjob }} has not succeeded (failed, or still running past its deadline). DR readiness at risk. Find it with: kubectl -n data get jobs --sort-by=.metadata.creationTimestamp | grep backup-verify"
 
           - alert: PostgresBackupMissing
             expr: time() - max(kube_job_status_completion_time{job_name=~"postgres-backup.*"}) > 90000
@@ -919,15 +962,29 @@ data:
               summary: "Cloudflare config backup missing"
               description: "No successful Cloudflare config backup in 25 hours."
 
+          # The LATEST scheduled run has not succeeded: scheduled more than 2h
+          # ago (the longest Job deadline here is 1h) with no success since.
+          # Resolves on the next good run. This used to be
+          # `kube_job_status_failed > 0`, which matched every failed Job object
+          # still in the cluster and never resolved: after Courier was armed on
+          # 2026-09-25 it paged nine times for runs from June to August,
+          # although every run of all four CronJobs since had succeeded.
           - alert: BackupJobFailed
-            expr: kube_job_status_failed{namespace="data", job_name=~"(k3s-datastore|github-repos|cloudflare-config|argocd-secrets)-backup.*"} > 0
-            for: 0m
+            expr: |
+              (
+                kube_cronjob_status_last_schedule_time{namespace="data",cronjob=~"(k3s-datastore|github-repos|cloudflare-config|argocd-secrets)-backup"}
+                > on (namespace, cronjob)
+                kube_cronjob_status_last_successful_time{namespace="data",cronjob=~"(k3s-datastore|github-repos|cloudflare-config|argocd-secrets)-backup"}
+              )
+              and on (namespace, cronjob)
+              (time() - kube_cronjob_status_last_schedule_time{namespace="data",cronjob=~"(k3s-datastore|github-repos|cloudflare-config|argocd-secrets)-backup"}) > 7200
+            for: 5m
             labels:
               severity: critical
               service: backup
             annotations:
-              summary: "Backup job {{ $labels.job_name }} failed"
-              description: "Check logs: kubectl logs -n data job/{{ $labels.job_name }}"
+              summary: "Backup {{ $labels.cronjob }}: latest run did not succeed"
+              description: "The latest scheduled run of {{ $labels.namespace }}/{{ $labels.cronjob }} has not succeeded (failed, or still running past its deadline). Find it with: kubectl -n data get jobs --sort-by=.metadata.creationTimestamp | grep {{ $labels.cronjob }}"
 
           # HPA Scaling
           - alert: HPAMaxedOut
@@ -1770,16 +1827,39 @@ data:
       - name: cloudflared
         interval: 30s
         rules:
+          # cloudflared is scraped by the kubernetes-pods job (pod
+          # annotations), so its series carry job="kubernetes-pods" and there
+          # is no job="cloudflared" at all: the old selector made absent()
+          # fire permanently. Select the connectors by namespace and pod label
+          # instead (app="cloudflared" excludes cloudflared-probe). Pages only
+          # when the tunnel as a whole is gone: no connector scraped, every
+          # connector down, or no connector holding an edge connection.
           - alert: CloudflaredTunnelDown
             expr: |
-              absent(up{job="cloudflared"}) or up{job="cloudflared"} == 0
+              absent(up{namespace="cloudflare-tunnel", app="cloudflared"})
+              or max(up{namespace="cloudflare-tunnel", app="cloudflared"}) == 0
+              or sum(cloudflared_tunnel_ha_connections{namespace="cloudflare-tunnel", app="cloudflared"}) == 0
             for: 2m
             labels:
               severity: critical
               category: platform
             annotations:
               summary: "Cloudflare tunnel is down"
-              description: "All cloudflared instances are unreachable for more than 2 minutes. External traffic cannot reach the cluster."
+              description: "All cloudflared instances are unreachable or hold no edge connection for more than 2 minutes. External traffic cannot reach the cluster."
+
+          # One connector down while the others carry the traffic. The old
+          # rule paged critical for this case too; it is a warning now.
+          - alert: CloudflaredConnectorDown
+            expr: |
+              up{namespace="cloudflare-tunnel", app="cloudflared"} == 0
+              or cloudflared_tunnel_ha_connections{namespace="cloudflare-tunnel", app="cloudflared"} == 0
+            for: 5m
+            labels:
+              severity: warning
+              category: platform
+            annotations:
+              summary: "cloudflared connector {{ $labels.pod }} is down or has no edge connection"
+              description: "One cloudflared connector has not been serving for more than 5 minutes. The tunnel still runs on the others; check the pod's logs and restarts."
 
       - name: cloudflared-probe
         interval: 30s
@@ -2330,6 +2410,43 @@ spec:
             periodSeconds: 15
             timeoutSeconds: 5
             failureThreshold: 3
+        # Applies merged config and rule changes. The kubelet refreshes both
+        # ConfigMap directory mounts on its own, but Prometheus reads them only
+        # at start or on POST /-/reload, and nothing called it: #626 (Watchdog,
+        # dead-email reporting) and #627 (backup freshness alerts) sat merged
+        # and synced for 23 hours on 2026-09-24/25 while the old rules kept
+        # paging on stale Job objects. This watches both directories and posts
+        # /-/reload when their contents change. The image is the one the
+        # prometheus-operator injects into rules-eval (operator.yaml), pinned
+        # by digest.
+        - name: config-reloader
+          image: quay.io/prometheus-operator/prometheus-config-reloader:v0.93.1@sha256:428f088fe6fe07ab138bda92113664b04848a1dc408e4d3680a60ecdb55d1a65
+          args:
+            - --listen-address=:8080
+            - --reload-url=http://127.0.0.1:9090/-/reload
+            - --watched-dir=/etc/prometheus
+            - --watched-dir=/etc/prometheus/rules
+          securityContext:
+            privileged: false
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop:
+                - ALL
+          resources:
+            requests:
+              memory: "32Mi"
+              cpu: "10m"
+            limits:
+              memory: "64Mi"
+              cpu: "50m"
+          volumeMounts:
+            - name: config
+              mountPath: /etc/prometheus
+              readOnly: true
+            - name: rules
+              mountPath: /etc/prometheus/rules
+              readOnly: true
       volumes:
         - name: config
           configMap:

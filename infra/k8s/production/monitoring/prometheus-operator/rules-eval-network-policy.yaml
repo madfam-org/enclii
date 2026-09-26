@@ -131,6 +131,47 @@ spec:
         - namespaceSelector:
             matchLabels:
               kubernetes.io/metadata.name: data
+    # Parity with the main list: these two were missing here although this
+    # policy promises the same namespace list.
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: cloudflare-tunnel
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: longhorn-system
+    # Application namespaces, same rule and reasoning as `prometheus-egress`:
+    # rules-eval evaluates every app's PrometheusRule, so it must reach the
+    # apps' metrics or their rules evaluate against nothing (or, for `up`
+    # rules, page against healthy services, as AvalaApiDown did). Destination
+    # namespaces pin the port on their ingress side.
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              enclii.dev/data-access: "true"
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: npm-registry
+      ports:
+        - protocol: TCP
+          port: 4873
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: arc-system
+      ports:
+        - protocol: TCP
+          port: 8080
+    # yantra4d, same reasoning as `prometheus-egress`.
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: yantra4d
+      ports:
+        - protocol: TCP
+          port: 5000
     # Managed-database addon namespaces (`project-*`) — the per-addon CNPG
     # instance pods and their postgres-exporter, both on 9187.
     #
@@ -144,15 +185,15 @@ spec:
     #
     # SELECTED BY A DEDICATED LABEL, not by name and not by
     # `enclii.dev/data-access`. Addon namespaces are named `project-<uuid8>`,
-    # which no namespaceSelector can match (label selectors have no regex), and
-    # `enclii.dev/data-access: true` is worn by every application namespace in
-    # the estate — using it would open monitoring's egress to far more than the
-    # databases. `enclii.dev/addon-metrics` is stamped by the addon provisioner
-    # itself (LabelAddonMetricsNamespace,
+    # which no namespaceSelector can match (label selectors have no regex).
+    # `enclii.dev/addon-metrics` is stamped by the addon provisioner itself
+    # (LabelAddonMetricsNamespace,
     # apps/switchyard-api/internal/addons/observability.go), so this reaches
-    # exactly the namespaces a provisioner has marked and nothing else. A
-    # namespace that never gets stamped is unreachable and its
-    # AddonMetricsScrapeDown alert says so.
+    # exactly the namespaces a provisioner has marked. A namespace that never
+    # gets stamped is unreachable and its AddonMetricsScrapeDown alert says so.
+    # The application-namespace rule above uses data-access for app scraping
+    # and so also reaches addon namespaces that wear it; this rule keeps the
+    # addon contract independent of that label.
     #
     # The port is pinned here even though the other scrape rules in this policy
     # are namespace-wide: these are TENANT namespaces, and a monitoring

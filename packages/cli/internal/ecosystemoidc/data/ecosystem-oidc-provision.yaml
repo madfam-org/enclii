@@ -421,9 +421,10 @@ platforms:
   # would re-mint the session secret on every provision re-run and sign every
   # user out.
   #
-  # NOT pinned with a client_id: the client does not exist yet, so the first
-  # run CREATES it. Pin the jnc_… id here after that run so later runs
-  # reconcile instead of risking a duplicate.
+  # PINNED: the first run CREATED the client on 2026-09-25, as a Janua admin
+  # (`--profile admin`; a non-admin login fails with "Admin privileges
+  # required"). Its jnc_… id is pinned below, so later runs reconcile it
+  # instead of creating a duplicate.
   # ---------------------------------------------------------------------------
   creator-census-web:
     intake_target: creator-census/web-oidc
@@ -433,6 +434,7 @@ platforms:
       name: MADFAM Creator Census
       client_key: creator-census-web  # pragma: allowlist secret
       audience: creator-census-api
+      client_id: jnc_BvM29PUgEasrdGKA2mOjU14d-7utPZxc
       description: Creator Census web (cc-app.madfam.io) — confidential OIDC authorization-code + PKCE client for the Next.js BFF
       is_confidential: true
       website_url: https://cc.madfam.io

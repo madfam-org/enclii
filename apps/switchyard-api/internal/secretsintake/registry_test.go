@@ -11,7 +11,7 @@ import (
 func TestLoadRegistry(t *testing.T) {
 	reg, err := LoadRegistry()
 	require.NoError(t, err)
-	assert.Len(t, reg, 37)
+	assert.Len(t, reg, 38)
 	assert.Contains(t, reg, "ceq/vast-api-key")
 	assert.Contains(t, reg, "karafiel/web-oidc-janua")
 	tgt := reg["ceq/vast-api-key"]
@@ -32,7 +32,7 @@ func TestGetTarget(t *testing.T) {
 func TestListTargetsSorted(t *testing.T) {
 	list, err := ListTargets()
 	require.NoError(t, err)
-	require.Len(t, list, 37)
+	require.Len(t, list, 38)
 	for i := 1; i < len(list); i++ {
 		assert.Less(t, list[i-1].ID, list[i].ID, "targets should be sorted by id")
 	}
@@ -57,6 +57,7 @@ func TestListTargetsSorted(t *testing.T) {
 		"crea/porkbun-registrar",
 		"creator-census/web-oidc",
 		"creator-census/web-session",
+		"creator-census/youtube-key",
 		"dhanam/app-infra",
 		"dhanam/oidc-janua",
 		"dhanam/session-auth",
@@ -329,4 +330,17 @@ func TestCreatorCensusWebTargets(t *testing.T) {
 			assert.Equal(t, DefaultGenerateBytes, tgt.GenerateBytes())
 		})
 	}
+}
+
+// creator-census YouTube key: its own target (typed, never generated) on the census path,
+// projected by the ExternalSecret the collection CronJobs mount. The key is lowercase because
+// Vault stores lowercase and the census ExternalSecret maps `property: youtube_api_key`.
+func TestCreatorCensusYouTubeKeyTarget(t *testing.T) {
+	tgt, err := GetTarget("creator-census/youtube-key")
+	require.NoError(t, err)
+	assert.Equal(t, "secret/creator-census", tgt.VaultPath)
+	assert.Equal(t, "creator-census", tgt.Namespace)
+	assert.Equal(t, "creator-census-config", tgt.ExternalSecret)
+	assert.Equal(t, []string{"youtube_api_key"}, tgt.Keys)
+	assert.NotEmpty(t, tgt.Label)
 }

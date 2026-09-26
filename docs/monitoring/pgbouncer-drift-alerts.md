@@ -97,7 +97,9 @@ the loop being alive, just not successfully completing).
 
 ## Verifying the wiring before relying on it
 
-1. `curl <switchyard-api>/metrics | grep enclii_pgbouncer_userlist_` — all
+1. `curl <switchyard-api>/metrics | grep enclii_pgbouncer_userlist_` (from
+   inside the cluster, against the pod IP or `*.svc` name: `/metrics` is
+   internal-only and the public `api.enclii.dev/metrics` returns 404) — all
    three series should be present once the service has been up for one
    check interval (5 min; the checker also runs an immediate pass on
    startup, so this should appear within seconds of boot).

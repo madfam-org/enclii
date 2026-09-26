@@ -205,6 +205,38 @@ spec:
           port: 6443
 
 ---
+# Ingress: the metrics port, for both Prometheus instances. rules-eval scrapes
+# weighbridge through its PodMonitor and evaluates weighbridge-rules; with only
+# the egress policy above, default-deny-all refused that scrape.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: weighbridge-ingress
+  namespace: monitoring
+  labels:
+    app: weighbridge
+    app.kubernetes.io/name: weighbridge
+    app.kubernetes.io/component: metering
+    app.kubernetes.io/part-of: enclii
+spec:
+  podSelector:
+    matchLabels:
+      app: weighbridge
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              app: prometheus
+        - podSelector:
+            matchLabels:
+              app: rules-eval
+      ports:
+        - protocol: TCP
+          port: 9102
+
+---
 apiVersion: apps/v1
 kind: Deployment
 metadata:

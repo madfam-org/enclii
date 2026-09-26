@@ -56,8 +56,21 @@ spec:
     ports:
     - protocol: TCP
       port: 9090
+  # From rules-eval, which scrapes this Prometheus through its Service's
+  # scrape annotations; without it the main instance is unmonitored.
+  - from:
+    - podSelector:
+        matchLabels:
+          app: rules-eval
+    ports:
+    - protocol: TCP
+      port: 9090
 ---
-# Node-exporter ingress — from Prometheus only
+# Node-exporter ingress — from both Prometheus instances only.
+# The DaemonSet's pods carry app.kubernetes.io/name (node-exporter.yaml), not
+# `app`. This policy used to select `app: node-exporter`, matched no pod, and
+# left default-deny-all refusing every scrape: node metrics were blank on all
+# four nodes until 2026-09-25.
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
@@ -70,7 +83,7 @@ metadata:
 spec:
   podSelector:
     matchLabels:
-      app: node-exporter
+      app.kubernetes.io/name: node-exporter
   policyTypes:
   - Ingress
   ingress:
@@ -78,6 +91,9 @@ spec:
     - podSelector:
         matchLabels:
           app: prometheus
+    - podSelector:
+        matchLabels:
+          app: rules-eval
     ports:
     - protocol: TCP
       port: 9100
@@ -95,7 +111,7 @@ metadata:
 spec:
   podSelector:
     matchLabels:
-      app: node-exporter
+      app.kubernetes.io/name: node-exporter
   policyTypes:
   - Egress
   egress:
@@ -172,6 +188,43 @@ spec:
     - namespaceSelector:
         matchLabels:
           kubernetes.io/metadata.name: longhorn-system
+  # Application namespaces: the apps' own ServiceMonitor and annotation
+  # targets. Every application namespace wears enclii.dev/data-access=true.
+  # No port pin, because metrics ports differ per app and move; each app
+  # namespace runs default-deny ingress and admits the monitoring namespace
+  # only on its metrics port, so the destination still decides what is
+  # reachable. Until 2026-09-25 this list named only platform namespaces and
+  # every app scrape (routecraft, dhanam, janua, ceq, avala, ...) was refused
+  # here at the source.
+  - to:
+    - namespaceSelector:
+        matchLabels:
+          enclii.dev/data-access: "true"
+  # Platform namespaces with scrape targets that lack that label.
+  - to:
+    - namespaceSelector:
+        matchLabels:
+          kubernetes.io/metadata.name: npm-registry
+    ports:
+    - protocol: TCP
+      port: 4873
+  - to:
+    - namespaceSelector:
+        matchLabels:
+          kubernetes.io/metadata.name: arc-system
+    ports:
+    - protocol: TCP
+      port: 8080
+  # yantra4d (the backend's /metrics on its pod port). Not labelled
+  # data-access, and it shouldn't be just for this: that label also admits
+  # the namespace to the shared data services, which yantra4d doesn't use.
+  - to:
+    - namespaceSelector:
+        matchLabels:
+          kubernetes.io/metadata.name: yantra4d
+    ports:
+    - protocol: TCP
+      port: 5000
   # Kubernetes API server
   - to: []
     ports:

@@ -42,13 +42,17 @@ spec:
   # not silently accepted.
   retention: 24h
 
+  # 1Gi was not enough: at 973Mi steady state the container was killed
+  # (exit 137) at every 2-hourly head compaction, 17 times from 2026-09-24
+  # to 09-25, and each restart replays the WAL for minutes and resets every
+  # `for:` timer. The monitoring-quota has room for this (namespace.yaml).
   resources:
     requests:
-      memory: 256Mi
-      cpu: 100m
-    limits:
       memory: 1Gi
-      cpu: 500m
+      cpu: 200m
+    limits:
+      memory: 2Gi
+      cpu: "1"
 
   # STORAGE: the existing Prometheus (../prometheus.yaml) uses a 20Gi
   # longhorn PVC (`prometheus-data`), so this follows that precedent at a
@@ -79,15 +83,20 @@ spec:
   podMonitorSelector: {}
   podMonitorNamespaceSelector: {}
 
-  # ServiceMonitor/Probe/ScrapeConfig are left at nil (not `{}`) deliberately:
-  # nil means "operator does not manage this selector at all" for those CRD
-  # kinds on THIS Prometheus, vs. `{}` which means "manage it, matching
-  # everything". No ServiceMonitor/Probe/ScrapeConfig objects exist in this
-  # cluster yet (only PrometheusRule and PodMonitor, per the CRD inventory in
-  # ../prometheus-operator-crds/), so there is nothing to select today either
-  # way — nil is the more honest statement of current scope and avoids
-  # rules-eval silently starting to manage a CRD kind nobody has reviewed for
-  # it yet if one gets created later for an unrelated reason.
+  # ALL ServiceMonitors, ALL namespaces. This was nil on the premise that no
+  # ServiceMonitor existed; by 2026-09-25 there were 31 (dhanam, janua,
+  # routecraft, selva, creator-census, ceq, arc-system, ...), and apps' own
+  # PrometheusRules read the series they produce (ARCControllerDown,
+  # CensusApiDown, TlacuiloApiDown, ...), so those rules evaluated against
+  # nothing. App namespaces admit the monitoring namespace on their metrics
+  # port, and rules-eval-egress reaches every application namespace
+  # (rules-eval-network-policy.yaml). A monitor that resolves no endpoint
+  # produces no series, so a dead monitor is quiet rather than a page.
+  serviceMonitorSelector: {}
+  serviceMonitorNamespaceSelector: {}
+
+  # Probe/ScrapeConfig stay nil (not `{}`): none exist, and nil keeps
+  # rules-eval from silently managing a CRD kind nobody has reviewed for it.
 
   # Existing scrape targets, copied verbatim — see
   # rules-eval-scrape-configs.secret.yaml's header for the full duplication

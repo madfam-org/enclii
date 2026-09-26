@@ -30,6 +30,15 @@ spec:
       ports:
         - protocol: TCP
           port: 4873
+    # Allow Prometheus (monitoring namespace) to scrape /-/metrics; the pod's
+    # prometheus.io annotations name this port.
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: monitoring
+      ports:
+        - protocol: TCP
+          port: 4873
   egress:
     # Allow DNS resolution
     - to:

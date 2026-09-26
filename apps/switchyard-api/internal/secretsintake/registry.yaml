@@ -552,3 +552,20 @@ targets:
     external_secret: creator-census-web  # pragma: allowlist secret
     keys:
       - session_secret
+
+  # creator-census (2026-09-25): the house-mode YouTube Data API key. It comes from the
+  # ONE Google Cloud project MADFAM audits for the census (YouTube API Services policy: one
+  # project per API client, never a second project to multiply quota), restricted to the
+  # YouTube Data API v3. The operator types it at the masked prompt; it is never pasted
+  # anywhere else. Same Vault path as the web targets (intake writes merge). The census
+  # ExternalSecret creator-census-config maps `property: youtube_api_key` (lowercase, as
+  # Vault stores it) and ships only AFTER this intake is ready: an ExternalSecret mapping a
+  # key that does not exist yet blocks the whole app's first sync (creator-census #23).
+  creator-census/youtube-key:
+    label: Creator Census YouTube Data API key
+    description: The API key of MADFAM's one audited YouTube project for the census (house mode), restricted to the YouTube Data API v3. Typed at the masked prompt; never a second key from another project.
+    vault_path: secret/creator-census
+    namespace: creator-census
+    external_secret: creator-census-config  # pragma: allowlist secret
+    keys:
+      - youtube_api_key
