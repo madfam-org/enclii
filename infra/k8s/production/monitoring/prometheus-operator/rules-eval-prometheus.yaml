@@ -41,6 +41,14 @@ spec:
   # window until Phase B — flagged in the README's "does NOT do yet" section,
   # not silently accepted.
   retention: 24h
+  # Cap on-disk size, as the main Prometheus does (retention.size=8GB on a
+  # 20Gi volume). Without it, a crash loop that never reaches head
+  # compaction grows the WAL until the volume fills. On 2026-09-26 the 10Gi
+  # volume hit 9.73Gi, and every start then died in about a second with
+  # SIGBUS (the active-query log is mmapped on a full disk). The cap counts
+  # WAL and head chunks but deletes only blocks, so keep it well under the
+  # volume size.
+  retentionSize: 6GB
 
   # 1Gi was not enough: at 973Mi steady state the container was killed
   # (exit 137) at every 2-hourly head compaction, 17 times from 2026-09-24
