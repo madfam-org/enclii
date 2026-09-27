@@ -1,0 +1,84 @@
+---
+# Cross-watch between the two Prometheus instances, half 2 of 2.
+#
+# A Prometheus that is down evaluates nothing, including an alert about
+# itself, so each instance watches the other:
+#
+#   main Prometheus (prometheus.yaml, group alert-delivery)
+#     pages RulesEvalPrometheusDown
+#   rules-eval (this file; its ruleSelector {} matches every PrometheusRule)
+#     pages MainPrometheusDown
+#
+# Both read kube-state-metrics readiness, which both instances scrape, and
+# `severity: critical` routes to `critical-receiver` (Courier + email) in
+# alertmanager.yaml. Both instances send to the same Alertmanager peers.
+#
+# WHY THIS EXISTS
+# ===============
+# From 2026-09-25 rules-eval was OOM-killed about hourly. From 16:30 UTC on
+# 09-26 it did not come back for about 18 hours: first it was OOM-killed in
+# WAL replay, then its volume filled and every start died with SIGBUS. Only
+# warnings fired (PodCrashLooping, StatefulSetReplicasMismatch), so nothing
+# paged while no PrometheusRule in the cluster was evaluated.
+#
+# WHAT THIS DOES NOT COVER
+# ========================
+# Both instances down at once, or every Alertmanager peer down. Nothing inside
+# the cluster can page for those; only a heartbeat checked from outside it can.
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: enclii-prometheus-watchdog
+  namespace: monitoring
+  labels:
+    app.kubernetes.io/name: enclii-prometheus-watchdog
+    app.kubernetes.io/component: monitoring
+    app.kubernetes.io/part-of: enclii
+    # Matches the discovery label the other rule sets in this estate carry.
+    enclii.dev/prometheus-rules: "true"
+spec:
+  groups:
+    - name: enclii-prometheus-watchdog
+      interval: 60s
+      rules:
+        # The main Prometheus is a Recreate Deployment: a rollout takes it to
+        # 0 available for its WAL replay (about 1-2 minutes), which `for: 10m`
+        # rides out. The absent() branch catches a deleted Deployment, and
+        # only while kube-state-metrics is up, so a KSM outage does not page
+        # as this.
+        - alert: MainPrometheusDown
+          expr: |
+            (kube_deployment_status_replicas_available{namespace="monitoring", deployment="prometheus"} < 1)
+            or on ()
+            (
+              absent(kube_deployment_status_replicas_available{namespace="monitoring", deployment="prometheus"})
+              and on () (count(up{job="kube-state-metrics"} == 1) > 0)
+            )
+          for: 10m
+          labels:
+            severity: critical
+            service: prometheus
+            category: alerting-pipeline
+          annotations:
+            summary: "Main Prometheus is down: most paging rules are not being evaluated"
+            description: |
+              The main Prometheus (Deployment monitoring/prometheus) has had
+              no available replica for 10 minutes. It evaluates the rules in
+              prometheus.yaml, which include most of the alerts that page
+              (backups, cloudflared, Argo, Kyverno, alert delivery). None of
+              those can fire while this one does. rules-eval, which sent this,
+              still evaluates the PrometheusRule alerts.
+
+              Read the last termination first:
+                kubectl -n monitoring get pods -l app=prometheus -o wide
+                kubectl -n monitoring logs deploy/prometheus -c prometheus --previous --tail=30
+                OOMKilled              raise resources in prometheus.yaml (and
+                                       monitoring-quota in namespace.yaml)
+                SIGBUS / unexpected    the prometheus-data volume is full:
+                fault address          expand the PVC (Longhorn resizes online)
+                Pending                quota, or the Longhorn volume cannot attach
+                CrashLoop after a      a rule or config error: check the log
+                config change          for "error loading config"
+
+              If the series is absent while kube-state-metrics is up, the
+              Deployment itself is gone: check the monitoring app in ArgoCD.
