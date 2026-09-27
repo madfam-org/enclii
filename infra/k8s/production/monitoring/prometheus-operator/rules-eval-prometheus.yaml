@@ -77,6 +77,12 @@ spec:
   # `for:`-duration timer on every rule back to zero, which would
   # (temporarily, but repeatedly) make alerts look dead again — the exact
   # failure class this whole program exists to eliminate.
+  #
+  # 10Gi -> 20Gi (2026-09-27): the OOM loop of 09-25/26 grew the WAL until the
+  # 10Gi volume was full. The live PVC was expanded online (Longhorn, owner
+  # step) because a StatefulSet can't resize an existing claim. This keeps
+  # the template in step, so a re-created claim also gets 20Gi. retentionSize
+  # (above) caps usage well under it.
   storage:
     volumeClaimTemplate:
       spec:
@@ -85,7 +91,7 @@ spec:
           - ReadWriteOnce
         resources:
           requests:
-            storage: 10Gi
+            storage: 20Gi
 
   # ALL PrometheusRules, ALL namespaces. This is the entire point.
   ruleSelector: {}
