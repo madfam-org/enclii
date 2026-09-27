@@ -57,15 +57,19 @@ spec:
   # ServiceMonitor, its working set sat at 1.7-2.0Gi against the 2Gi limit.
   # It was OOM-killed 20 times in 19h, and from 16:30 UTC it died in WAL
   # replay on every start, so no PrometheusRule in the cluster was evaluated.
-  # The main Prometheus scrapes about the same targets at 3.5Gi. The
-  # monitoring-quota has room for this (namespace.yaml).
+  # The main Prometheus scrapes about the same targets at 3.5Gi. 4Gi -> 6Gi
+  # and 1 -> 2 CPU (2026-09-27): after the recovery it held 1.04M head
+  # series (the main instance holds 677k; this one scrapes those targets
+  # plus every ServiceMonitor, 122 targets to 82) at 3.9GB RSS, 91% of 4Gi.
+  # It was also CPU-throttled in 9% of periods with GOMAXPROCS=1 while
+  # compacting. The monitoring-quota has room for this (namespace.yaml).
   resources:
     requests:
-      memory: 2Gi
+      memory: 3Gi
       cpu: 200m
     limits:
-      memory: 4Gi
-      cpu: "1"
+      memory: 6Gi
+      cpu: "2"
 
   # STORAGE: the existing Prometheus (../prometheus.yaml) uses a 20Gi
   # longhorn PVC (`prometheus-data`), so this follows that precedent at a
@@ -77,6 +81,12 @@ spec:
   # `for:`-duration timer on every rule back to zero, which would
   # (temporarily, but repeatedly) make alerts look dead again — the exact
   # failure class this whole program exists to eliminate.
+  #
+  # 10Gi -> 20Gi (2026-09-27): the OOM loop of 09-25/26 grew the WAL until the
+  # 10Gi volume was full. The live PVC was expanded online (Longhorn, owner
+  # step) because a StatefulSet can't resize an existing claim. This keeps
+  # the template in step, so a re-created claim also gets 20Gi. retentionSize
+  # (above) caps usage well under it.
   storage:
     volumeClaimTemplate:
       spec:
@@ -85,7 +95,7 @@ spec:
           - ReadWriteOnce
         resources:
           requests:
-            storage: 10Gi
+            storage: 20Gi
 
   # ALL PrometheusRules, ALL namespaces. This is the entire point.
   ruleSelector: {}
