@@ -83,16 +83,22 @@ data:
         # Watchdog always fires (alert-delivery-rules.yml in prometheus.yaml).
         # It is proof of the pipeline, not a page: without this route it has
         # no severity route to match and would reach default-receiver, one
-        # email every 4h forever. watchdog-sink has no integrations. When an
-        # outside-the-cluster heartbeat is sanctioned, its webhook goes on
-        # watchdog-sink with a short repeat_interval here, and the heartbeat
-        # going quiet becomes the page for "both last miles are dead".
+        # email every 4h forever. watchdog-sink sends it OUT of the cluster to
+        # the alerting heartbeat Worker (internal-devops
+        # ops/cloudflare/alerting-heartbeat, owner-approved 2026-09-27) about
+        # every 2 minutes. group_interval 1m sets the flush tick (the root's
+        # 15m would space the beats 15m apart) and repeat_interval 2m the
+        # re-send. When the beats stop, because both Prometheus instances are
+        # down, every Alertmanager peer is down, or the cluster is unreachable,
+        # the Worker pages the pager group directly after 10 minutes. That is
+        # the page for "both last miles are dead".
         - matchers:
             - alertname="Watchdog"
           receiver: 'watchdog-sink'
           continue: false
           group_wait: 30s
-          repeat_interval: 5m
+          group_interval: 1m
+          repeat_interval: 2m
 
         # Informational alerts page nobody. `severity: info` is used by
         # ARCScaleSetAtMaxCapacity and CNPGFailoverInProgress, notices whose
@@ -212,8 +218,21 @@ data:
                 type: Bearer
                 credentials_file: /etc/alertmanager/courier/courier-alertmanager-secret
 
-      # Carries Watchdog only. No integrations on purpose, see its route.
+      # Carries Watchdog only, to the outside-the-cluster heartbeat (see its
+      # route). The bearer token is mounted optional, exactly like Courier's,
+      # so a missing credential never keeps a peer from starting. Failed beats
+      # count in alertmanager_notifications_failed_total{integration="webhook"},
+      # the metric CourierReceiverDown reads: v0.26 has no receiver label to
+      # tell the two webhooks apart (its description says how).
       - name: 'watchdog-sink'
+        webhook_configs:
+          - url: 'https://heartbeat.madfam.io/v1/alertmanager'
+            send_resolved: false
+            max_alerts: 1
+            http_config:
+              authorization:
+                type: Bearer
+                credentials_file: /etc/alertmanager/heartbeat/alertmanager-heartbeat-token
 
       # Carries severity info/none only. No integrations on purpose.
       - name: 'informational-sink'
