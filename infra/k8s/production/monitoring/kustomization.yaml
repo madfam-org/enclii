@@ -38,6 +38,7 @@ resources:
   # the same Alertmanager. See the file header for what these alerts do and do
   # not claim.
   - addon-db-rules.yaml
+  - prometheus-watchdog-rules.yaml
   - monitoring-policy-exception.yaml
   - dashboards/
   # prometheus-platform-rules.yaml, pgbackrest-health-rules.yaml, and

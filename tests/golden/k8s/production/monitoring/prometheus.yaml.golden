@@ -2294,6 +2294,52 @@ data:
                 This alert is deliberately routed to the Courier webhook and
                 never to email. If you are reading it in an email, the routing
                 is wrong.
+
+          # Cross-watch, half 1 of 2. A Prometheus that is down evaluates
+          # nothing, including an alert about itself, so each instance watches
+          # the other: this one pages when rules-eval is down, and rules-eval
+          # pages MainPrometheusDown (prometheus-watchdog-rules.yaml). The
+          # absent() branch catches a deleted StatefulSet, and only while
+          # kube-state-metrics is up, so a KSM outage does not page as this.
+          - alert: RulesEvalPrometheusDown
+            expr: |
+              (kube_statefulset_status_replicas_ready{namespace="monitoring", statefulset="prometheus-rules-eval"} < 1)
+              or on ()
+              (
+                absent(kube_statefulset_status_replicas_ready{namespace="monitoring", statefulset="prometheus-rules-eval"})
+                and on () (count(up{job="kube-state-metrics"} == 1) > 0)
+              )
+            for: 10m
+            labels:
+              severity: critical
+              service: prometheus
+              category: alerting-pipeline
+            annotations:
+              summary: "rules-eval Prometheus is down: no PrometheusRule alert is being evaluated"
+              description: |
+                The operator-managed rules-eval Prometheus has had no Ready
+                replica for 10 minutes. It evaluates every PrometheusRule in
+                the cluster (the alerts each app ships, addon database
+                backups, weighbridge), so none of those can fire while this
+                one does. This Prometheus and its own rules are unaffected.
+
+                On 2026-09-26 it stayed down for about 18 hours with only
+                warnings: first OOM-killed in WAL replay, then its volume
+                filled and every start died within a second.
+
+                Read the last termination first:
+                  kubectl -n monitoring get pod prometheus-rules-eval-0 -o wide
+                  kubectl -n monitoring logs prometheus-rules-eval-0 -c prometheus --previous --tail=30
+                  OOMKilled              raise resources in
+                                         prometheus-operator/rules-eval-prometheus.yaml
+                  SIGBUS / unexpected    the volume is full: check
+                  fault address          kubelet_volume_stats_used_bytes, then
+                                         expand the PVC (Longhorn resizes online)
+                  Pending, quota         monitoring-quota in namespace.yaml
+
+                If the series is absent while kube-state-metrics is up, the
+                StatefulSet itself is gone: check the Prometheus CR
+                `rules-eval` and the prometheus-operator log.
 ---
 # Prometheus PVC
 apiVersion: v1
