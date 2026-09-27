@@ -2372,12 +2372,17 @@ spec:
           # The WAL has grown through 4 weeks of crash-looping. The request stays
           # at 768Mi, so scheduling is unchanged; monitoring-quota limits.memory
           # is raised in namespace.yaml to fit.
+          # 2026-09-27: 4Gi -> 6Gi. The working set reached 3.79Gi of the 4Gi
+          # limit (95%) over 24h at about 677k head series. The request goes
+          # 768Mi -> 3Gi: a pod using 3.6Gi against a 768Mi request is the
+          # first one evicted under node memory pressure, and this one carries
+          # the paging rules. monitoring-quota is raised to fit.
           resources:
             requests:
-              memory: "768Mi"
+              memory: "3Gi"
               cpu: "200m"
             limits:
-              memory: "4Gi"
+              memory: "6Gi"
               cpu: "500m"
           volumeMounts:
             - name: config
