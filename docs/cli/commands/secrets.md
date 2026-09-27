@@ -229,6 +229,18 @@ enclii secrets sync forgesight-secrets --namespace forgesight --apply --reason "
 
 Without `--apply`, the command requests a dry-run plan. With `--apply`, `--reason` is required.
 
+`secrets sync` is the same operation as `enclii ops secrets sync` (and
+`ops secrets refresh`). It merge-patches only the ExternalSecret's annotations
+(`force-sync` and `enclii.dev/*` audit keys); it never reads or writes a secret
+value and never changes the ExternalSecret `spec`. So it re-reads Vault for the
+keys the **live** object already maps, but it does not deploy a merged manifest
+change under `infra/k8s/base/external-secrets/vault-secrets/` — those files are
+not synced by ArgoCD. Adding a key there needs a live patch first; see
+[Procedure: changing a git-only ExternalSecret](../../infrastructure/EXTERNAL_SECRETS.md#procedure-changing-a-git-only-externalsecret-until-539).
+Pods that take the Secret as env vars pick up new values only after they
+restart; `enclii ops pods restart` is not implemented yet
+([ops.md](./ops.md#remaining-adapter-work)).
+
 `sync`, `rotate`, and `vault-backfill` share the operation-contract flags: `--apply`, `--reason`, `--idempotency-key` (retry key for safe repeats), `--json`, `--namespace`/`-n`, `--project`, and `--service`. `rotate` adds `--provider-version`; `vault-backfill` adds `--vault-path` and `--external-secret`.
 
 ## `enclii secrets rotate`

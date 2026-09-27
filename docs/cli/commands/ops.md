@@ -26,7 +26,7 @@ encouraging direct `kubectl`.
 |---------|---------|
 | `enclii ops capabilities` | List server-supported operator capabilities |
 | `enclii ops apps status|sync|sync-sweep|diff|retire|rollback` | Argo app inspection and remediation |
-| `enclii ops pods diagnose|logs|restart` | Pod diagnosis, logs, and safe restarts |
+| `enclii ops pods diagnose|logs|restart` | Pod diagnosis and logs. `restart` is **not implemented yet** — see [Remaining Adapter Work](#remaining-adapter-work) |
 | `enclii ops jobs list|trigger` | CronJob inspection and audited one-off execution from an existing template |
 | `enclii ops storage volumes|pvc|longhorn|repair-plan|settings-apply|prune-detached|storageclass-apply|r2-audit` | PVC/PV/Longhorn inspection, repair planning, CPU settings (O-5), orphan prune (O-4), StorageClass reconcile, R2 credential audit (incomplete, shared, or mismatched buckets) |
 | `enclii ops secrets external|vault|refresh|sync|sync-sweep|rotate|vault-backfill` | ExternalSecrets and Vault readiness workflows |
@@ -60,6 +60,8 @@ enclii ops pods logs forgesight-pipeline-manual-abc123 -n forgesight --tail 500 
 enclii ops apps sync monitoring --apply --reason "clear Argo drift after reviewed manifest patch"
 enclii ops apps sync-sweep -n argocd
 enclii ops apps sync-sweep -n argocd --apply --reason "GA O-8 Argo sweep"
+enclii ops secrets sync janua-secrets -n janua
+enclii ops secrets sync janua-secrets -n janua --apply --reason "re-read Vault after a live ExternalSecret patch"
 enclii ops secrets sync-sweep
 enclii ops secrets sync-sweep --apply --reason "GA O-10 ESO reconcile"
 enclii secrets vault-backfill enclii-secrets --namespace enclii --vault-path secret/enclii --external-secret enclii-internal-api-key --apply --reason "GA O-10 Vault backfill"
@@ -159,11 +161,44 @@ It also takes the shared contract flags listed under [Required Mutation Flags](#
 
 `enclii secrets provision kalya-feed` is an alias for the same operation.
 
+## `ops secrets sync` and `refresh`
+
+`enclii ops secrets sync <externalsecret> -n <namespace>` (also `enclii secrets
+sync`) and `enclii ops secrets refresh` run the same Switchyard adapter. With
+`--apply --reason "..."` it merge-patches the ExternalSecret's annotations —
+`force-sync=<unix time>` plus the `enclii.dev/last-ops-*` and
+`enclii.dev/refresh-requested-at` audit keys — so External Secrets re-reads
+Vault on its next reconcile.
+
+It never reads, prints or writes a secret value, and it does not change the
+ExternalSecret `spec`. In particular it does **not** apply a merged change to a
+manifest under `infra/k8s/base/external-secrets/vault-secrets/`: those files
+are not synced by ArgoCD, so a new key needs a live patch first. See
+[Procedure: changing a git-only ExternalSecret](../../infrastructure/EXTERNAL_SECRETS.md#procedure-changing-a-git-only-externalsecret-until-539).
+Pods that read the Secret through env vars keep their old values until they
+restart.
+
 ## Remaining Adapter Work
 
-- `apps rollback`, `pods restart`, `storage repair-plan`, `secrets refresh`,
+- `apps rollback`, `pods restart`, `storage repair-plan`,
   `policy waiver-plan`, and `runners drain` are contract-only until guarded
-  apply adapters are wired.
+  apply adapters are wired. (`secrets refresh` and its alias `secrets sync`
+  are wired — see [below](#ops-secrets-sync-and-refresh).)
+- **`pods restart` is not implemented.** The capability is advertised and the
+  CLI accepts it, but Switchyard has no apply adapter for it: the dry-run
+  returns a generic `planned` response carrying the warning
+  `adapter execution is not wired in this build; dry-run is safe, apply is blocked`,
+  and `--apply` returns **HTTP 501** with status `adapter_required`
+  (confirmed 2026-09-27). A successful dry-run is not evidence the apply works.
+  Until the adapter lands, restart a workload by rolling its Deployment:
+  - for a registered Enclii service, use the service restart API
+    (`POST /v1/services/{id}/restart`, admin role; TypeScript SDK
+    `services.restart()`). It rolls the Deployment named after the service in
+    the project's namespace by setting `kubectl.kubernetes.io/restartedAt`,
+    which the project ApplicationSet ignores, so self-heal does not revert it;
+  - for any other workload, a rollout restart of the Deployment
+    (`kubectl rollout restart deployment/<name> -n <namespace>`) is the
+    recorded break-glass step.
 - `apps retire` deletes only the Argo Application by default and uses orphan
   propagation so live resources are not pruned during routine legacy-app
   retirement. Destructive cascade retirement must be explicitly requested by
