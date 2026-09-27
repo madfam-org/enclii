@@ -44,6 +44,10 @@ never fired.
    `podMonitorSelector: {}` + `podMonitorNamespaceSelector: {}` (same, for
    `PodMonitor`), its own ServiceAccount/RBAC, and `alerting.alertmanagers`
    pointed at the **existing** Alertmanager Service. `rules-eval-*.yaml`.
+   Since 2026-09-25 it also selects every `ServiceMonitor`
+   (`serviceMonitorSelector: {}` + `serviceMonitorNamespaceSelector: {}`).
+   That makes it scrape more than the primary Prometheus, so read
+   [Sizing](#sizing) before touching its resources or storage.
 
 ## What this deliberately does NOT do yet
 
@@ -76,6 +80,65 @@ never fired.
   primary one.** See `rules-eval-network-policy.yaml`'s header for why a
   second, additive `NetworkPolicy` object was used instead of editing
   `../network-policies.yaml` (owned by #440 in this rollout sequence).
+
+## Sizing
+
+`rules-eval` scrapes everything the primary Prometheus scrapes (the verbatim
+`additionalScrapeConfigs` copy) **plus** every `ServiceMonitor`. On
+2026-09-27 that was 122 active targets against the primary's 82, and about
+1.04M head series against 677k. Size it at or above the primary, never below.
+
+| Setting | Value | Where |
+| --- | --- | --- |
+| memory | 3Gi request / 6Gi limit | `rules-eval-prometheus.yaml` |
+| cpu | 200m request / 2 limit | `rules-eval-prometheus.yaml` |
+| volume | 20Gi longhorn | `rules-eval-prometheus.yaml` (`storage`) |
+| retention | 24h **or** 6GB, whichever first | `retention` + `retentionSize` |
+| namespace quota | `requests.memory` 8Gi, `limits.memory` 16Gi | `../namespace.yaml` |
+
+How it failed at smaller sizes (2026-09-25 to 09-27):
+
+1. At 2Gi, once it selected every ServiceMonitor, it was OOM-killed about
+   hourly. From 16:30 UTC on 09-26 it was OOM-killed in WAL replay on every
+   start, so for about 18 hours **no `PrometheusRule` in the cluster was
+   evaluated**, and only warning-severity alerts fired.
+2. Raising memory to 4Gi fixed the OOM but exposed the next wall. The crash
+   loop never reached head compaction, so the WAL filled the 10Gi volume.
+   Every start then died within a second with
+   `SIGBUS: bus error` / `unexpected fault address`, because Prometheus mmaps
+   its active-query log before it opens the TSDB. **A SIGBUS at startup
+   usually means a full volume**, not corruption: check
+   `kubelet_volume_stats_used_bytes` first.
+3. A StatefulSet can't resize an existing claim, so the live PVC was expanded
+   by hand. The longhorn StorageClass has `allowVolumeExpansion: true` and
+   resizes attached volumes online. After that, the template was changed to
+   match. `retentionSize` now keeps a crash loop from filling the disk again.
+
+The StatefulSet uses `podManagementPolicy: Parallel` (the operator default),
+so a template fix replaces even a crash-looping pod without a manual delete.
+
+## Cross-watch: who pages when a Prometheus is down
+
+A Prometheus that is down evaluates nothing, including an alert about
+itself. Each instance therefore watches the other through kube-state-metrics
+readiness, which both scrape:
+
+| Alert | Evaluated by | Fires when (for 10m) | Defined in |
+| --- | --- | --- | --- |
+| `RulesEvalPrometheusDown` | primary Prometheus | StatefulSet `prometheus-rules-eval` has no Ready replica | `../prometheus.yaml`, group `alert-delivery` |
+| `MainPrometheusDown` | `rules-eval` | Deployment `monitoring/prometheus` has no available replica | `../prometheus-watchdog-rules.yaml` |
+
+Both alerts:
+
+- are `severity: critical`, so they page through `critical-receiver`;
+- also fire when their target object is gone (`absent()`), but only while
+  kube-state-metrics is up;
+- ride out a normal rollout with `for: 10m`. On 2026-09-27 the primary's
+  Recreate rollout took `MainPrometheusDown` to pending for about 2 minutes,
+  and it went back to inactive without paging.
+
+Not covered: both instances down at once, or every Alertmanager peer down.
+Only a heartbeat checked from outside the cluster can catch those.
 
 ## Phase B sketch (not built, not scheduled — write down before it's needed)
 
@@ -143,6 +206,15 @@ curl -s http://localhost:9090/api/v1/alertmanagers | jq
 # to scale back up), then confirm it appears in:
 kubectl -n monitoring port-forward svc/alertmanager 9093:9093 &
 curl -s http://localhost:9093/api/v2/alerts | jq -r '.[].labels.alertname'
+
+# 6. The cross-watch is loaded on both sides (see "Cross-watch" above).
+kubectl -n monitoring exec prometheus-rules-eval-0 -c prometheus -- \
+  wget -qO- 'http://127.0.0.1:9090/api/v1/rules?type=alert' \
+  | jq -r '.data.groups[].rules[] | select(.name=="MainPrometheusDown") | .state'
+kubectl -n monitoring exec deploy/prometheus -c prometheus -- \
+  wget -qO- 'http://127.0.0.1:9090/api/v1/rules?type=alert' \
+  | jq -r '.data.groups[].rules[] | select(.name=="RulesEvalPrometheusDown") | .state'
+# expect: inactive (and inactive) while both instances are healthy
 ```
 
 ## Dedup audit
