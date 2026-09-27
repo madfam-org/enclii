@@ -27,6 +27,8 @@ spec:
     # to 1 CPU (it was OOM-killed at every head compaction) would take each
     # cycle to 4300m, over the old quota, and the quota would reject the
     # monitors' pods. Count the CronJobs' peak before spending headroom here.
+    # 2026-09-27: rules-eval 1 -> 2 CPU takes steady state to 5 and the
+    # CronJob peak to 5.5.
     limits.cpu: "6"
     # 8Gi -> 10Gi (2026-09-23): the prometheus limit went 2Gi -> 4Gi (OOM in
     # WAL replay) and the rules-eval Prometheus (1Gi) has never started. At 8Gi
