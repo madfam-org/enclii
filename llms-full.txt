@@ -141,9 +141,19 @@ wrong about all of it.
   per-app manifests is a **silent no-op** — no OutOfSync, no drift alert, no CI
   failure. #535 (a `CTM_RESEND_API_KEY` key on `janua-secrets.yaml`) merged
   green and never reached the cluster; it was applied by a raw JSON patch on the
-  live object. Issue #539 tracks the sanctioned path (`enclii secrets es-apply`,
-  or reconcile-then-include). Do NOT assume merging a `vault-secrets/*.yaml`
-  change deploys it. Doc: `docs/infrastructure/EXTERNAL_SECRETS.md`.
+  live object. #634 (`resend-webhook-secret-ctm`, 2026-09-26) repeated it. The
+  directory is also non-recursive, and the live objects were bootstrapped by
+  `scripts/cluster-ops-deploy.sh` (client-side `kubectl apply`). Issue #539
+  tracks the sanctioned path (`enclii secrets es-apply`, or
+  reconcile-then-include). Do NOT assume merging a `vault-secrets/*.yaml`
+  change deploys it: patch the live object additively AND keep git in step
+  (procedure in `docs/infrastructure/EXTERNAL_SECRETS.md`).
+- `enclii ops secrets sync|refresh` only patches ExternalSecret annotations
+  (`force-sync` + `enclii.dev/*`); it never touches values or `spec`.
+  `enclii ops pods restart` is NOT implemented: apply returns HTTP 501
+  `adapter_required` (dry-run looks fine). Roll the Deployment via
+  `POST /v1/services/{id}/restart` (registered services) or break-glass
+  rollout restart. Doc: `docs/cli/commands/ops.md`.
 - ExternalSecret ordering: **Vault property first, manifest second.** An
   ExternalSecret is all-or-nothing — one missing property fails the whole sync
   and the target Secret keeps its old data, or on a first sync is never created.

@@ -1,5 +1,10 @@
 # Enclii ExternalSecret refresh adapter - 2026-05-14
 
+> **Boundary checkpoint (2026-09-27, platform on-call):** Public-safe runbook — no
+> secret values, private hostnames or production topology beyond this repo's own
+> IaC. Private operational detail (who patched what, live object dumps) lives in
+> `internal-devops`. Policy: `docs/PUBLIC_REPO_BOUNDARY.md` (repo-boundary contract).
+
 ## Status
 
 Implemented in Switchyard API code; production availability depends on the Switchyard API rollout reaching the running service.
@@ -96,3 +101,27 @@ Remediation path:
 3. Confirm dry-run output changes from `planned`/`adapter execution is not wired` to `ready_to_apply` for `ops.secrets.refresh` and `ops.apps.retire`.
 4. Apply `ops.secrets.refresh` for `forgesight-secrets` and `phynd-crm-secrets` through Enclii.
 5. Apply `ops.apps.retire` for `phynd-crm-production` through Enclii to remove shared-resource ownership conflicts with `phynd-crm-services`.
+
+## 2026-09-27 update: `sync` alias, and what a refresh cannot do
+
+`enclii ops secrets sync <externalsecret> -n <namespace> --apply --reason "..."`
+(also `enclii secrets sync`) routes to this same adapter and was used
+successfully in production on 2026-09-26/27 while wiring the Crea Tu Mundo
+Resend webhook secret into `janua/janua-secrets`. It still only patches the
+annotations listed above.
+
+What the refresh does **not** do:
+
+- **It does not deploy manifest changes.** The per-app ExternalSecrets under
+  `infra/k8s/base/external-secrets/vault-secrets/` are not synced by ArgoCD, so
+  a merged new key (for example
+  [#634](https://github.com/madfam-org/enclii/pull/634)) never reaches the live
+  object, and refreshing the live object re-reads only the keys it already
+  maps. The live object must be patched first, and git kept in step. Procedure:
+  [EXTERNAL_SECRETS.md — changing a git-only ExternalSecret](../infrastructure/EXTERNAL_SECRETS.md#procedure-changing-a-git-only-externalsecret-until-539).
+- **It does not restart consumers.** Pods that read the Secret as env vars keep
+  the old environment until they restart. `enclii ops pods restart` is not
+  implemented yet: its apply returns HTTP 501 (`adapter_required`). Roll the
+  Deployment instead — through the Enclii service restart API for a registered
+  service, otherwise as a recorded break-glass rollout restart. See
+  [ops.md — Remaining Adapter Work](../cli/commands/ops.md#remaining-adapter-work).

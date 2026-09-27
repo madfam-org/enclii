@@ -8,7 +8,7 @@
 > missing Enclii adapter gap.
 
 
-**Last Updated:** 2026-09-07
+**Last Updated:** 2026-09-27
 **Status:** Operational (Vault-backed)
 **Active Providers:** `vault-store` (HashiCorp Vault KV v2) + `kubernetes-store` (legacy, cross-namespace)
 
@@ -215,7 +215,7 @@ kubectl get externalsecret -n <namespace> \
 | Resource | Namespace | Vault Path | Key Count |
 |----------|-----------|------------|-----------|
 | `enclii-secrets` | enclii | `secret/enclii` + **`secret/comms`** (Resend fan-out) | 23 |
-| `janua-secrets` | janua | `secret/janua` + **`secret/comms`** (Resend fan-out) | 10 |
+| `janua-secrets` | janua | `secret/janua` + **`secret/comms`** (Resend fan-out) + `secret/dhanam` + `secret/coupler` | 16 (git-only — see [below](#janua-secrets-key-map)) |
 | `data-secrets` | data | `secret/data` | 8 |
 | `pgbackrest-r2-credentials` | data | `secret/pgbackrest-r2` | 4 |
 | `cloudflare-secrets` | cloudflare-tunnel | `secret/cloudflare` | 1 |
@@ -259,6 +259,40 @@ Merged total: 23 keys. Optional keys (R2, Cloudflare, Sentry, SendGrid) are
 intentionally omitted until intake — see
 [recovery session](https://github.com/madfam-org/internal-devops/blob/main/runbooks/2026-06-16-dhanam-secrets-recovery-session.md).
 
+### `janua-secrets` key map
+
+`vault-secrets/janua-secrets.yaml` (target `janua/janua-secrets`,
+`creationPolicy: Merge`, `deletionPolicy: Retain`) maps 16 keys from four Vault
+paths. `Merge` means the Secret can also carry operator break-glass keys that
+this map does not list; ESO manages only the keys below.
+
+| Target key | Vault path | Vault property |
+|------------|------------|----------------|
+| `database-url` | `secret/janua` | `database_url` |
+| `redis-url` | `secret/janua` | `redis_url` |
+| `secret-key` | `secret/janua` | `secret_key` |
+| `field-encryption-key` | `secret/janua` | `field_encryption_key` |
+| `jwt-secret` | `secret/janua` | `jwt_secret` |
+| `jwt-private-key` | `secret/janua` | `jwt_private_key` |
+| `jwt-public-key` | `secret/janua` | `jwt_public_key` |
+| `dhanam-webhook-secret` | `secret/janua` | `dhanam_webhook_secret` |
+| `oauth-github-client-id` | `secret/janua` | `oauth_github_client_id` |
+| `oauth-github-client-secret` | `secret/janua` | `oauth_github_client_secret` |
+| `internal-api-key` | `secret/janua` | `internal_api_key` |
+| `resend-api-key` | `secret/comms` | `resend_api_key` |
+| `ctm-resend-api-key` | `secret/janua` | `ctm_resend_api_key` ([#535](https://github.com/madfam-org/enclii/pull/535), 2026-09-07) |
+| `resend-webhook-secret-ctm` | `secret/janua` | `resend_webhook_secret_ctm` ([#634](https://github.com/madfam-org/enclii/pull/634), 2026-09-26) |
+| `federation-api-token` | `secret/dhanam` | `federation_api_token` |
+| `janua-service-token` | `secret/coupler` | `janua_service_token` |
+
+`resend-webhook-secret-ctm` is the signing secret for Crea Tu Mundo's Resend
+webhook. janua-api reads it as the optional env `RESEND_WEBHOOK_SECRET_CTM`;
+without it the CTM webhook receiver answers 404 and CTM mail records no
+delivery, bounce or open events.
+
+Both CTM rows were merged to git and then made live **by hand**, because this
+file is not synced by ArgoCD — see the next section.
+
 ## What ArgoCD actually syncs — and what it does not
 
 **A merged change to a file under `vault-secrets/` does not reach the cluster.**
@@ -288,6 +322,54 @@ shapes, and syncing a stale mirror over a working Secret is worse than not
 syncing it. But the consequence is a silent no-op on merge, and that has to be
 stated rather than rediscovered.
 
+### Why no Application picks these files up
+
+Two independent mechanisms keep `vault-secrets/` out of ArgoCD, so fixing only
+one of them would not bring the files under sync:
+
+1. **The allowlist.** `directory.include` above names five files at the root of
+   `infra/k8s/base/external-secrets/`. No `vault-secrets/*.yaml` file is on it.
+2. **No recursion.** The Application's `directory` source does not set
+   `recurse: true`, and ArgoCD directory sources are non-recursive by default,
+   so the `vault-secrets/` subdirectory is skipped even before the allowlist
+   applies.
+
+No other Application references these files either. None of the
+`project-applications` ApplicationSet sources (`infra/argocd/projects/*/config.json`)
+points at `infra/k8s/base/external-secrets/`; `infra/k8s/production/kustomization.yaml`
+mentions a `cloudflare-secrets.yaml` only in a comment; and product
+repositories synced by their `<project>-services` Application (the janua
+repository's `k8s/overlays/production`, for example) declare no ExternalSecret
+of their own for these targets.
+
+**How the live objects got there.** The only in-repo writer is the bootstrap
+script `scripts/cluster-ops-deploy.sh` (phase 6, "Applying ExternalSecrets"),
+which runs a client-side `kubectl apply -f` on every file in `vault-secrets/`,
+one namespace at a time. After bootstrap, nothing in this repository writes
+these objects again.
+
+That is what the live object's field managers show. On 2026-09-26 the owner
+found `janua/janua-secrets` managed by exactly three writers, and not by the
+ArgoCD controller:
+
+| Field manager | Where it comes from |
+|---------------|---------------------|
+| `kubectl-client-side-apply` | the bootstrap `kubectl apply` above |
+| `kubectl-patch` | hand break-glass patches, such as the ones that made #535 (2026-09-07) and #634 (2026-09-26) live |
+| `switchyard-api` | Enclii secret operations (`secrets sync`/`refresh`, `sync-sweep`, `rotate`, `vault-backfill`), which merge-patch **annotations only** (`force-sync` and the `enclii.dev/*` audit keys), never `spec` |
+
+### Which ExternalSecrets are git-only and which are synced
+
+| ExternalSecret manifest | Changes reach the cluster by |
+|-------------------------|------------------------------|
+| All 19 files in `external-secrets/vault-secrets/` (`.yaml`): `arc-runners-secrets`, `cloudflare-secrets`, `data-secrets`, `dhanam-secrets`, `dhanam-secrets-extended`, `enclii-builds-secrets`, `enclii-secrets`, `forgesight-secrets`, `janua-secrets`, `karafiel-secrets`, `kyverno-secrets`, `longhorn-secrets`, `madfam-site-secrets`, `monitoring-secrets`, `npm-registry-secrets`, `pravara-mes-secrets`, `selva-secrets`, `tezca-secrets`, `yantra4d-secrets` | **hand patch of the live object only** (git-only) |
+| `external-secrets/ecosystem-service-auth-external-secrets.yaml` | ArgoCD, `external-secrets-config` (automated, self-heal) |
+| `verdaccio/auth-externalsecret.yaml` | ArgoCD, `npm-registry-services` |
+| ExternalSecrets declared in a product repository's synced manifest path | ArgoCD, that project's `<project>-services` Application |
+
+Before you change an ExternalSecret, find its row here. If it is git-only,
+follow the procedure below; a merge alone does nothing.
+
 ### Current break-glass, and how it bit (2026-09-07)
 
 [#535](https://github.com/madfam-org/enclii/pull/535) added a
@@ -302,6 +384,66 @@ any break-glass it must record actor, reason, target, commands and result. Note
 what it costs: the cluster and the repo now agree only by coincidence. Nothing
 reconciles them, and the next hand-edit of that object drops the key with no
 signal.
+
+### It happened again (2026-09-26, #634)
+
+[#634](https://github.com/madfam-org/enclii/pull/634) added
+`resend-webhook-secret-ctm` (from `secret/janua#resend_webhook_secret_ctm`) to
+`vault-secrets/janua-secrets.yaml` and merged green on 2026-09-26. The live
+ExternalSecret did not change. The owner patched the live object by hand the
+same day, and the key then synced. Same cause as #535, same fix — which is why
+the procedure below is written down rather than rediscovered a third time.
+
+### Procedure: changing a git-only ExternalSecret (until #539)
+
+Do **both** halves — patch the live object **and** keep git in sync. A live-only
+patch is invisible to the next reader of the repo; a git-only change is a no-op.
+
+1. **Vault first.** Write the Vault property before anything references it
+   (see the [ordering rule](#ordering-rule-vault-first-manifest-second)). The
+   map is all-or-nothing: a missing property fails the whole ExternalSecret.
+2. **Open the PR** against `vault-secrets/<app>-secrets.yaml`. Merging keeps
+   git truthful; it does not deploy.
+3. **Read the live object before patching it** (break-glass read of the
+   ExternalSecret spec; it holds Vault references, not values). Legacy files in
+   this directory can differ from live, so compare the live `spec.data` with
+   the file.
+4. **Patch additively; do not re-apply the file.** For a custom resource,
+   `kubectl apply -f` replaces the whole `spec.data` list, so applying a stale
+   file silently drops any live-only entry. Append exactly the entry the PR
+   adds:
+
+   ```bash
+   kubectl patch externalsecret <name> -n <namespace> --type=json -p \
+     '[{"op":"add","path":"/spec/data/-","value":{"secretKey":"<target-key>","remoteRef":{"key":"secret/<path>","property":"<property>"}}}]'
+   ```
+
+   This is break-glass: record actor, reason, target, command and result.
+   To remove or rename an entry, read the live list first and `remove` it by
+   index.
+5. **Force a reconcile through Enclii**, not a raw annotation:
+
+   ```bash
+   enclii secrets sync <name> --namespace <namespace> --apply --reason "<why>"
+   # same operation: enclii ops secrets sync <name> -n <namespace> --apply --reason "<why>"
+   ```
+
+   It merge-patches the `force-sync` annotation plus `enclii.dev/last-ops-*`
+   audit annotations. It never reads, prints or writes a secret value, and it
+   does **not** apply manifest changes — step 4 is still required.
+6. **Verify** the ExternalSecret reports `SecretSynced` and the target Secret
+   has the new key (compare key names or count, never values).
+7. **Roll the consumer.** Env vars sourced from the Secret are read at pod
+   start, so the running pods keep the old environment until they restart.
+   `enclii ops pods restart` is **not implemented yet** (the apply returns
+   HTTP 501, see [ops.md](../cli/commands/ops.md#remaining-adapter-work)).
+   Use the Enclii service restart API (`POST /v1/services/{id}/restart`,
+   admin role; SDK `services.restart()`) when the workload is a registered
+   Enclii service whose Deployment carries the service name in the project
+   namespace; otherwise do a rollout restart of the consuming Deployment as a
+   recorded break-glass step.
+8. **Confirm git and live agree** on the entry you added before you close the
+   change.
 
 ### Ordering rule: Vault first, manifest second
 
@@ -343,10 +485,21 @@ kubectl get secret <name> -n <namespace> -o jsonpath='{.data}' | jq 'keys'
 
 ### Force Refresh
 
+Enclii-first (audited; annotations only, no secret values):
+
+```bash
+enclii secrets sync <name> --namespace <namespace> --apply --reason "<why>"
+```
+
+Break-glass equivalent:
+
 ```bash
 kubectl annotate externalsecret <name> -n <namespace> \
   force-sync=$(date +%s) --overwrite
 ```
+
+A refresh re-reads Vault for the entries the **live** object already maps. It
+does not pick up a merged change to a git-only manifest.
 
 ### Add a New Secret
 
@@ -358,10 +511,9 @@ kubectl annotate externalsecret <name> -n <namespace> \
    `infra/k8s/base/external-secrets/vault-secrets/`.
 3. Get the change onto the cluster. **Merging is not enough** —
    `vault-secrets/` is excluded from the `external-secrets-config` Application,
-   so a merged manifest change is a silent no-op. See
-   [What ArgoCD actually syncs](#what-argocd-actually-syncs--and-what-it-does-not)
-   for the current break-glass and
-   [#539](https://github.com/madfam-org/enclii/issues/539) for the sanctioned
+   so a merged manifest change is a silent no-op. Follow
+   [Procedure: changing a git-only ExternalSecret](#procedure-changing-a-git-only-externalsecret-until-539);
+   [#539](https://github.com/madfam-org/enclii/issues/539) tracks the sanctioned
    path being built.
 4. Confirm it landed: the ExternalSecret reports `SecretSynced`, and the target
    Secret's key count went up by what you added —
