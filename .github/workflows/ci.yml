@@ -28,6 +28,18 @@ env:
   NODE_VERSION: '22'
 
 jobs:
+  blueprint-publisher-contract:
+    name: Blueprint publisher gates
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: '3.11'
+      - run: pip install --quiet pyyaml pytest
+      - run: pytest tests/scripts/test_blueprint_ml_publish.py -q
+
   lint:
     name: Lint & Format
     runs-on: ubuntu-latest
@@ -2076,12 +2088,16 @@ jobs:
   test-summary:
     name: Test Summary
     runs-on: ubuntu-latest
-    needs: [lint, unit-tests, ui-tests, security-scan, manifest-audit, golden-config, status-configmap-drift, zero-touch-boundary, networkpolicy-port-lint, image-age-ratchet, ecosystem-e2e, dependabot-secret-trap-lint, argocd-ignore-differences-lint]
+    needs: [blueprint-publisher-contract, lint, unit-tests, ui-tests, security-scan, manifest-audit, golden-config, status-configmap-drift, zero-touch-boundary, networkpolicy-port-lint, image-age-ratchet, ecosystem-e2e, dependabot-secret-trap-lint, argocd-ignore-differences-lint]
     if: always()
 
     steps:
       - name: Check all jobs
         run: |
+          if [ "${{ needs.blueprint-publisher-contract.result }}" != "success" ]; then
+            echo "Blueprint publisher gates failed"
+            exit 1
+          fi
           if [ "${{ needs.security-scan.result }}" != "success" ]; then
             echo "❌ Security scan failed"
             exit 1
