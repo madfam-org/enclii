@@ -102,6 +102,14 @@ type EncliiYAMLDomain struct {
 	//                      otherwise (and zone+CNAME as before when the
 	//                      fallback origin is not configured)
 	External *ExternalFlag `yaml:"external,omitempty"`
+
+	// Service is the service a `kind: Project` manifest declared this hostname
+	// under (spec.services[].domains[]). It is set by the parser, never read
+	// from a `kind: Service` document, and empty when the manifest carries no
+	// per-hostname attribution. Flattening a Project's per-service domains
+	// into one list used to throw this away, which left the push reconcile
+	// guessing an owner for hostnames the manifest had already attributed.
+	Service string `yaml:"-" json:"-"`
 }
 
 // ExternalFlag is the parsed `external:` field of a domain.
@@ -299,6 +307,7 @@ func normalizeProjectSpec(config *EncliiYAML, projectSpec encliiYAMLProjectSpec)
 				Name:        d.Host,
 				Environment: "production",
 				Port:        svc.Port,
+				Service:     strings.TrimSpace(svc.Name),
 			}
 			tls := true
 			domain.TLSEnabled = &tls
