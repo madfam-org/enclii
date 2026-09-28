@@ -29,35 +29,38 @@ def executable(tmp_path, name, body):
     p.chmod(0o755)
 
 
+@pytest.mark.parametrize('service', ['ml', 'compliance'])
 @pytest.mark.parametrize('sha,ack,reason,valid', [
     (SHA, 'production-kustomization', 'Synthetic release validation', True),
     ('main', 'production-kustomization', 'Synthetic release validation', False),
     (SHA, 'no', 'Synthetic release validation', False),
     (SHA, 'production-kustomization', 'short', False),
 ])
-def test_explicit_inputs(sha, ack, reason, valid, tmp_path):
-    result = execute(script('Validate inputs'), tmp_path, SOURCE_SHA=sha, DEPLOY_ACK=ack, REASON=reason)
+def test_explicit_inputs(service, sha, ack, reason, valid, tmp_path):
+    result = execute(script('Validate inputs'), tmp_path, SERVICE=service, SOURCE_SHA=sha, DEPLOY_ACK=ack, REASON=reason)
     assert (result.returncode == 0) is valid
 
 
+@pytest.mark.parametrize('service', ['ml', 'compliance'])
 @pytest.mark.parametrize('status,conclusion,actual,valid', [
     ('completed', 'success', SHA, True),
     ('in_progress', '', SHA, False),
     ('completed', 'failure', SHA, False),
     ('completed', 'success', 'b' * 40, False),
 ])
-def test_source_ci_gate(status, conclusion, actual, valid, tmp_path):
+def test_source_ci_gate(service, status, conclusion, actual, valid, tmp_path):
     executable(tmp_path, 'git', 'echo "$ACTUAL_SHA"\n')
     executable(tmp_path, 'gh', 'echo "$RUN_RESPONSE"\n')
     # Keep the gate's output inside the test directory.
     body = script('Require current main and successful exact-source CI').replace('/tmp/source-ci.json', './source-ci.json')
-    result = execute(body, tmp_path, SOURCE_SHA=SHA, ACTUAL_SHA=actual,
+    result = execute(body, tmp_path, SERVICE=service, SOURCE_SHA=SHA, ACTUAL_SHA=actual,
                      HARVESTER_REPO='fixture/product',
                      RUN_RESPONSE=json.dumps([{'status': status, 'conclusion': conclusion}]))
     assert (result.returncode == 0) is valid
 
 
-def test_main_advance_stops_before_mutating_gitops(tmp_path):
+@pytest.mark.parametrize('service', ['ml', 'compliance'])
+def test_main_advance_stops_before_mutating_gitops(service, tmp_path):
     executable(tmp_path, 'git', '''case "$*" in
       'fetch origin main') exit 0;;
       'rev-parse HEAD') echo a;;
@@ -65,7 +68,7 @@ def test_main_advance_stops_before_mutating_gitops(tmp_path):
       *) touch unexpected-mutation; exit 99;;
     esac
     ''')
-    result = execute(script('Commit & push digest pin'), tmp_path, REASON='Synthetic release validation')
+    result = execute(script('Commit & push digest pin'), tmp_path, SERVICE=service, REASON='Synthetic release validation')
     assert result.returncode != 0
     assert not (tmp_path / 'unexpected-mutation').exists()
 
