@@ -224,6 +224,20 @@ func (h *Handler) canaryTunnelRoute(
 		return
 	}
 
+	// A probe from switchyard's namespace that NetworkPolicy refuses says
+	// nothing about the backend: cloudflared dials from its own namespace.
+	// Reverting on it undid correct writes into every protected namespace, and
+	// turned each into a flip-and-revert pair of whole-config writes. See
+	// domain_tunnel_canary_vantage.go for what has to be established first.
+	if blocked, why := h.canaryVantageBlocked(ctx, spec); blocked {
+		h.logger.Warn(ctx, "Tunnel route canary INCONCLUSIVE: NetworkPolicy refuses the probe's vantage and the backend has Ready pods; the rule is KEPT",
+			logging.String("domain", spec.Hostname),
+			logging.String("backend", tunnelRouteServiceURL(spec)),
+			logging.String("detail", why),
+			logging.Error("probe_error", err))
+		return
+	}
+
 	if replaced && previous != nil {
 		h.revertTunnelRoute(ctx, spec, previous, err, owner)
 		return
@@ -256,14 +270,26 @@ func (h *Handler) revertTunnelRoute(
 		return
 	}
 
-	if err := h.tunnelRoutesService.AddRoute(ctx, restore); err != nil {
-		h.logger.Error(ctx, "Tunnel route canary FAILED and the revert to the previous rule also failed",
+	// The first attempt's error is not final: a revert that did not land is
+	// re-applied with backoff by confirmTunnelRouteState below, which is what
+	// decides whether the revert failed.
+	applyErr := h.tunnelRoutesService.AddRoute(ctx, restore)
+	if applyErr != nil {
+		h.logger.Warn(ctx, "Tunnel route revert write failed; confirming and retrying",
+			logging.String("domain", spec.Hostname),
+			logging.String("previous_backend", previous.Service),
+			logging.Error("error", applyErr))
+	}
+	if err := h.confirmTunnelRouteState(ctx, spec.Hostname, tunnelRouteServiceURL(restore),
+		func(ctx context.Context) error { return h.tunnelRoutesService.AddRoute(ctx, restore) },
+	); err != nil {
+		h.logger.Error(ctx, "Tunnel route canary FAILED and the revert to the previous rule did NOT land",
 			logging.String("domain", spec.Hostname),
 			logging.String("backend", tunnelRouteServiceURL(spec)),
 			logging.String("previous_backend", previous.Service),
 			logging.Error("error", err))
 		h.recordTunnelRouteFailure(ctx, spec.Hostname, fmt.Sprintf(
-			"canary failed for %s and the revert to %s failed: %v",
+			"canary failed for %s and the revert to %s did not land: %v",
 			tunnelRouteServiceURL(spec), previous.Service, err), owner)
 		return
 	}
@@ -282,7 +308,15 @@ func (h *Handler) revertTunnelRoute(
 func (h *Handler) removeFailedTunnelRoute(
 	ctx context.Context, spec *services.RouteSpec, probeErr error, owner *domainOwner,
 ) {
-	if err := h.tunnelRoutesService.RemoveRoute(ctx, spec.Hostname); err != nil {
+	applyErr := h.tunnelRoutesService.RemoveRoute(ctx, spec.Hostname)
+	if applyErr != nil {
+		h.logger.Warn(ctx, "Tunnel route withdrawal write failed; confirming and retrying",
+			logging.String("domain", spec.Hostname),
+			logging.Error("error", applyErr))
+	}
+	if err := h.confirmTunnelRouteState(ctx, spec.Hostname, "",
+		func(ctx context.Context) error { return h.tunnelRoutesService.RemoveRoute(ctx, spec.Hostname) },
+	); err != nil {
 		h.logger.Error(ctx, "Tunnel route canary FAILED and the new rule could not be withdrawn",
 			logging.String("domain", spec.Hostname),
 			logging.String("backend", tunnelRouteServiceURL(spec)),

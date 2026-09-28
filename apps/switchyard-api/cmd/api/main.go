@@ -488,7 +488,7 @@ func main() {
 	// Initialize tunnel routes service (Cloudflare API-based for remotely-managed tunnels)
 	var tunnelRoutesService services.TunnelRoutesManager
 	if cfClient != nil && cfg.CloudflareTunnelID != "" {
-		tunnelRoutesService = services.NewTunnelRoutesServiceCloudflare(cfClient, logrus.StandardLogger())
+		tunnelRoutesService = services.NewTunnelRoutesServiceCloudflare(cfClient, logrus.StandardLogger()).WithConfigLock(repos)
 		logrus.WithField("tunnel_id", cfg.CloudflareTunnelID).Info("✓ Tunnel routes service initialized (Cloudflare API)")
 	} else if cfClient == nil {
 		logrus.Info("ℹ Tunnel routes service not configured (Cloudflare client required)")
