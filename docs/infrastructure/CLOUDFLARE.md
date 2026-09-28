@@ -410,7 +410,12 @@ Domains declared in `enclii.yaml` are automatically provisioned on each push to 
 **Flow:**
 1. GitHub push webhook received by Switchyard API
 2. `enclii.yaml` fetched and parsed from the repo (`enclii_yaml.go`)
-3. For each declared domain (`domain_provisioner.go`):
+3. Each declared hostname is attributed to the ONE service it routes to
+   (`pushDomainBindings()`, see [Which service a declared hostname routes to](#which-service-a-declared-hostname-routes-to)).
+   A hostname that cannot be attributed unambiguously is skipped and logged
+   (`Declared hostnames left unprovisioned by this push`); its existing route is
+   left untouched.
+4. For each attributed domain (`domain_provisioner.go`):
    - Create `CustomDomain` record in database (if not exists)
    - `provisionDomainEdge()` picks the mechanism (`planDomainRouting()`) and
      runs the two steps in the order it demands:
@@ -421,7 +426,34 @@ Domains declared in `enclii.yaml` are automatically provisioned on each push to 
        the tunnel route, then store the records the client must add
      - undetermined → tunnel route as before; the edge step is aborted and
        the reason recorded on the domain
-4. DNS records point to `tunnel.enclii.dev` (the tunnel endpoint)
+5. DNS records point to `tunnel.enclii.dev` (the tunnel endpoint)
+
+#### Which service a declared hostname routes to
+
+The push reconcile re-asserts every declared hostname's tunnel ingress rule on
+every push, so the choice of service is applied to live traffic each time.
+
+| Manifest shape | Hostname is routed to |
+|---|---|
+| More than one `kind: Service` document | the service the declaring document's `metadata.name` names |
+| `kind: Project` with `spec.services[].domains[]` | the service the hostname is declared under |
+| One `kind: Service` document, and exactly one service could serve HTTP | that service |
+| One `kind: Service` document, and several services could serve HTTP | **nothing** — skipped with a warning |
+
+"Could serve HTTP" means: every `network.services` entry with a non-zero
+`port`, plus every registered service the network block does not mention. A
+service declared with `port: 0` is headless and never a candidate, so a web
+service plus a headless worker still reconciles to the web service.
+`metadata.name` of a single document is not used: legacy single-document
+manifests name the project while listing hostnames for several services.
+
+Before this rule, a single document listing hostnames for a web app, an API
+and an admin console sent all of them to the first `network.services` entry
+with a port, rewriting the API and admin routes onto the web app on every push.
+
+To make an ambiguous manifest reconcile on push, split it into one
+`kind: Service` document per service. To provision one hostname explicitly,
+use `enclii ops domains reconcile <service> --domain <host>`.
 
 **Multi-Zone Support:** `FindZoneForDomain()` uses longest-suffix matching — `api.qubic.quest` matches zone `qubic.quest` rather than `quest`.
 
@@ -430,7 +462,8 @@ Domains declared in `enclii.yaml` are automatically provisioned on each push to 
 **Cleanup:** When a service is deleted, `cleanupDomainsForService()` removes tunnel routes, any Cloudflare for SaaS custom hostname, **and** the zone DNS record. All three run: a domain that was ever on the zone path can hold both a custom hostname id and a proxied CNAME, and skipping the zone step on the strength of a stored hostname id left a dangling CNAME to the tunnel for whoever claimed the hostname next.
 
 **Source Code:**
-- Parser: `apps/switchyard-api/internal/api/enclii_yaml.go`
+- Parser: `apps/switchyard-api/internal/manifest/enclii_yaml.go`
+- Hostname attribution: `apps/switchyard-api/internal/api/domain_push_attribution.go`
 - Provisioner: `apps/switchyard-api/internal/api/domain_provisioner.go`
 - DNS operations: `apps/switchyard-api/internal/cloudflare/dns.go`
 

@@ -18,7 +18,10 @@ package api
 //  2. Domains were sent to `services[0]` of an unordered SQL result. For a
 //     monorepo with a web service and a worker, which row came back first was
 //     whatever Postgres felt like, so a hostname could be routed at a headless
-//     worker. selectDomainHostService picks deterministically instead.
+//     worker. selectDomainHostService picked deterministically instead; the
+//     push path has since stopped picking at all when a single-document
+//     manifest could belong to more than one service (see
+//     domain_push_attribution.go).
 //
 // The plan type exists so the same diff can be shown to an operator (dry run)
 // and executed (apply) without two implementations disagreeing about what
@@ -208,6 +211,11 @@ func planDeclaredDomains(
 //
 // Sorting by name is what makes 2 and 3 deterministic; the previous code
 // depended on SQL row order, which is not a guarantee Postgres makes.
+//
+// This is a tie-break, not an ownership rule, and the push reconcile no longer
+// uses it: "first service with a port" sent every hostname of a multi-service
+// single-document manifest to one service. Its remaining callers (the operator
+// reconcile) pass exactly the one service an operator named.
 func selectDomainHostService(services []*types.Service, envConfig *manifest.EncliiYAML) *types.Service {
 	if len(services) == 0 {
 		return nil
@@ -253,12 +261,9 @@ func selectDomainHostService(services []*types.Service, envConfig *manifest.Encl
 // Non-blocking and best-effort, matching the call it replaces: a Cloudflare
 // hiccup must not fail a webhook GitHub will retry anyway.
 //
-// A manifest declaring MORE THAN ONE Service document reconciles each
-// document's hostnames against the service that document names — the third
-// defect on enclii#546: telesia's web hostnames were bound to telesia-api
-// because one document was all any caller could see. A manifest with one
-// surface keeps selectDomainHostService, which is what makes a headless worker
-// lose to a web service in an unordered SQL result.
+// Which service each hostname is routed to is decided by pushDomainBindings;
+// a hostname it cannot attribute unambiguously is logged and left alone, never
+// routed to a fallback. See domain_push_attribution.go.
 //
 // The webhook never REGISTERS a service. A push is not an onboarding, and a
 // hostname whose service has no record is left for `enclii onboard ensure`
@@ -272,51 +277,7 @@ func (h *Handler) reconcileDeclaredDomainsFromPush(
 		return
 	}
 
-	if len(manifest.ServiceDocuments(documents)) > 1 {
-		h.reconcileDeclaredDomainsPerDocument(ctx, services, documents)
-		return
-	}
-
-	envConfig := manifest.FirstServiceDocument(documents)
-	if envConfig == nil || len(envConfig.Spec.Domains) == 0 {
-		return
-	}
-
-	host := selectDomainHostService(services, envConfig)
-	if host == nil {
-		return
-	}
-
-	h.logger.Info(ctx, "Reconciling domains declared in enclii.yaml",
-		logging.String("service", host.Name),
-		logging.Int("declared_domains", len(envConfig.Spec.Domains)))
-
-	go h.provisionDomainsFromYAML(context.Background(), host, envConfig)
-}
-
-// reconcileDeclaredDomainsPerDocument reconciles a multi-surface manifest, one
-// Service document at a time, against the registered service each document
-// names.
-func (h *Handler) reconcileDeclaredDomainsPerDocument(
-	ctx context.Context,
-	services []*types.Service,
-	documents []*manifest.EncliiYAML,
-) {
-	registered := make(map[string]*types.Service, len(services))
-	for _, service := range services {
-		if service != nil {
-			registered[strings.ToLower(strings.TrimSpace(service.Name))] = service
-		}
-	}
-
-	lookup := func(_ context.Context, name string) (*types.Service, error) {
-		if service, ok := registered[strings.ToLower(strings.TrimSpace(name))]; ok {
-			return service, nil
-		}
-		return nil, fmt.Errorf("no service named %q is registered for this repository, so a push cannot provision its hostnames (run `enclii onboard ensure` to register it)", name)
-	}
-
-	bindings, skipped := bindManifestDomainDocuments(ctx, documents, nil, lookup)
+	bindings, skipped := pushDomainBindings(ctx, services, documents)
 
 	for _, binding := range bindings {
 		h.logger.Info(ctx, "Reconciling domains declared in enclii.yaml",
@@ -329,4 +290,40 @@ func (h *Handler) reconcileDeclaredDomainsPerDocument(
 		h.logger.Warn(ctx, "Declared hostnames left unprovisioned by this push",
 			logging.String("detail", message))
 	}
+}
+
+// pushDomainBindings decides, without side effects, which registered service
+// each hostname a pushed manifest declares is routed to.
+//
+// A manifest declaring MORE THAN ONE Service document binds each document's
+// hostnames to the service that document names — the third defect on
+// enclii#546: web hostnames were bound to an API service because one document
+// was all any caller could see. A manifest with ONE document binds a hostname
+// only to the service it is unambiguously tied to (attributeSingleDocumentDomains);
+// it used to send every hostname to the first `network.services` entry with a
+// port, which rewrote API and admin hostnames onto a web app on every push.
+func pushDomainBindings(
+	ctx context.Context,
+	services []*types.Service,
+	documents []*manifest.EncliiYAML,
+) (bindings []manifestDomainBinding, skipped []string) {
+	if len(manifest.ServiceDocuments(documents)) > 1 {
+		registered := make(map[string]*types.Service, len(services))
+		for _, service := range services {
+			if service != nil {
+				registered[normalizeServiceKey(service.Name)] = service
+			}
+		}
+
+		lookup := func(_ context.Context, name string) (*types.Service, error) {
+			if service, ok := registered[normalizeServiceKey(name)]; ok {
+				return service, nil
+			}
+			return nil, fmt.Errorf("no service named %q is registered for this repository, so a push cannot provision its hostnames (run `enclii onboard ensure` to register it)", name)
+		}
+
+		return bindManifestDomainDocuments(ctx, documents, nil, lookup)
+	}
+
+	return attributeSingleDocumentDomains(services, manifest.FirstServiceDocument(documents))
 }

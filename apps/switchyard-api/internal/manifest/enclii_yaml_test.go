@@ -171,6 +171,14 @@ spec:
 				if cfg.Spec.Domains[0].Port != 8080 {
 					t.Errorf("Domains[0].Port = %d, want 8080", cfg.Spec.Domains[0].Port)
 				}
+				// The per-service attribution a Project declares survives
+				// flattening, so the push reconcile never has to guess it.
+				if cfg.Spec.Domains[0].Service != "coupler-landing" {
+					t.Errorf("Domains[0].Service = %q, want coupler-landing", cfg.Spec.Domains[0].Service)
+				}
+				if cfg.Spec.Domains[1].Service != "coupler-gateway" {
+					t.Errorf("Domains[1].Service = %q, want coupler-gateway", cfg.Spec.Domains[1].Service)
+				}
 			},
 		},
 		{
@@ -821,3 +829,27 @@ func testFetchGitHubRawFileHTTP(ctx context.Context, token, apiURL string) ([]by
 // helpers
 
 func boolPtr(v bool) *bool { return &v }
+
+// Domain.Service is parser-owned: it is set only from a Project manifest's
+// spec.services[].domains[]. The Service-document schema defines no
+// per-domain `service:` key, and an undefined key must not quietly become an
+// ownership claim that routes production traffic before anyone has designed
+// it as one.
+func TestServiceDocumentCannotSetDomainServiceAttribution(t *testing.T) {
+	cfg, err := ParseEncliiYAML([]byte(`
+apiVersion: enclii.dev/v1
+kind: Service
+metadata:
+  name: example-web
+spec:
+  domains:
+    - name: api.example.com
+      service: example-api
+`))
+	if err != nil {
+		t.Fatalf("parse: %v", err)
+	}
+	if got := cfg.Spec.Domains[0].Service; got != "" {
+		t.Fatalf("a Service document must not set Domain.Service, got %q", got)
+	}
+}
