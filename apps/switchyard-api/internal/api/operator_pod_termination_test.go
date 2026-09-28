@@ -19,6 +19,7 @@ func TestReadPodsRetainsPreviousTerminationForReadyContainer(t *testing.T) {
 		ObjectMeta: metav1.ObjectMeta{Name: "app-test", Namespace: "fixture"},
 		Status: corev1.PodStatus{ContainerStatuses: []corev1.ContainerStatus{
 			{Name: "recovered", Ready: true, RestartCount: 1,
+				Image: "example.invalid/app:stable", ImageID: "example.invalid/app@sha256:fixture",
 				State: corev1.ContainerState{Running: &corev1.ContainerStateRunning{StartedAt: finished}},
 				LastTerminationState: corev1.ContainerState{Terminated: &corev1.ContainerStateTerminated{
 					Reason: "OOMKilled", ExitCode: 137, FinishedAt: finished,
@@ -35,6 +36,8 @@ func TestReadPodsRetainsPreviousTerminationForReadyContainer(t *testing.T) {
 	containers := pods[0]["containers"].([]gin.H)
 	require.Len(t, containers, 2)
 	require.Equal(t, true, containers[0]["ready"])
+	require.Equal(t, "example.invalid/app:stable", containers[0]["image"])
+	require.Equal(t, "example.invalid/app@sha256:fixture", containers[0]["imageID"])
 	require.Equal(t, "running", containers[0]["state"].(gin.H)["state"])
 	previous := containers[0]["lastTerminationState"].(gin.H)
 	require.Equal(t, "terminated", previous["state"])
@@ -42,4 +45,5 @@ func TestReadPodsRetainsPreviousTerminationForReadyContainer(t *testing.T) {
 	require.Equal(t, int32(137), previous["exitCode"])
 	require.Equal(t, finished, previous["finishedAt"])
 	require.NotContains(t, containers[1], "lastTerminationState")
+	require.NotContains(t, containers[1], "imageID")
 }

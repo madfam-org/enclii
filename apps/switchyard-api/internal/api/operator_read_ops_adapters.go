@@ -299,6 +299,9 @@ func (h *Handler) readPodsInNamespace(ctx context.Context, namespace string, req
 				"restartCount": status.RestartCount,
 				"image":        status.Image,
 			}
+			if status.ImageID != "" {
+				container["imageID"] = status.ImageID
+			}
 			if state := containerStatusState(status); len(state) > 0 {
 				container["state"] = state
 			}
