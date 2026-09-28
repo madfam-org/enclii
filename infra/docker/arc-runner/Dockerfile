@@ -70,6 +70,7 @@ USER root
 #   libxkbcommon0     - Playwright Chromium keyboard input
 #   libgbm1           - Playwright Chromium GPU buffer manager (headless)
 #   jq                - ubiquitous in our CI scripts (status checks, JSON munging)
+#   gh                - GitHub issue/PR watchers and organization audit gates
 #   python3-pip       - some workflows use python tooling (uv, pre-commit hooks)
 #   python3-venv      - `python3 -m venv` (ensurepip) fails without it on the
 #                       Ubuntu base; present in github-hosted ubuntu-latest.
@@ -94,6 +95,7 @@ RUN apt-get update \
       libxkbcommon0 \
       libgbm1 \
       jq \
+      gh \
       python3-pip \
       python3-venv \
       xz-utils \
@@ -267,6 +269,10 @@ RUN ldconfig -p | grep -q libGL.so.1 \
 
 # Drop back to the runner user the upstream image expects.
 USER runner
+
+# Exercise the CLI as the same unprivileged user that executes workflow steps.
+# No authentication or network access is required for this installation check.
+RUN gh --version
 
 # Image metadata (consumed by GHCR + provenance tooling).
 LABEL org.opencontainers.image.source="https://github.com/madfam-org/enclii"

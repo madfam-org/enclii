@@ -29,6 +29,15 @@ protection becomes meaningless because every PR has red CI.
 This image fixes that with the smallest possible diff against the
 upstream base.
 
+The overlay also installs Ubuntu's `gh` package and checks `gh --version`
+as the unprivileged runner user during image construction. On 2026-09-28,
+Fashion Cabinet's snapshot watcher completed its comparison but failed its
+issue lookup with `gh: command not found`; the organization visibility audit
+stopped at the same missing-tool preflight. Baking the CLI into the runner
+fixes that prerequisite without granting tokens or changing workflow permissions.
+It reaches active jobs only after the built image is verified and its digest
+is promoted through the normal runner-pool rollout.
+
 ## The render environment (G16)
 
 Since 2026-09-05 the image also carries everything a commons **render**
