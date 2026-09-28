@@ -1,13 +1,20 @@
-name: Blueprint API Publish
+name: Blueprint Service Publish
 
-# Build blueprint-harvester API from madfam-org/blueprint-harvester and pin GitOps digest.
-# Uses Enclii repo GHCR_PAT (blueprint-harvester org secret is often stale for large API pushes).
+# Publish the ML and compliance overlays through the existing Enclii release credential.
+# Keep the currently configured enclii service image namespaces; never copy a digest
+# between registries. A successful pin still needs Enclii runtime acceptance.
 
 on:
   workflow_dispatch:
     inputs:
+      service:
+        description: Service to publish (ML/compliance require the exact current main SHA)
+        required: true
+        type: choice
+        default: api
+        options: [api, ml, compliance]
       git_ref:
-        description: blueprint-harvester git ref (branch, tag, or SHA)
+        description: Source ref; ML/compliance require an exact current main SHA with successful CI
         required: false
         default: main
       deploy_ack:
@@ -25,20 +32,31 @@ permissions:
   packages: write
 
 env:
-  IMAGE_PREFIX: ghcr.io/madfam-org/blueprint-harvester
+  SERVICE: ${{ inputs.service }}
+  IMAGE_PREFIX: ${{ inputs.service != 'api' && 'ghcr.io/madfam-org/enclii' || 'ghcr.io/madfam-org/blueprint-harvester' }}
   HARVESTER_REPO: madfam-org/blueprint-harvester
+
+concurrency:
+  group: blueprint-service-publish-production
+  cancel-in-progress: false
 
 jobs:
   preflight:
     name: Acknowledgement
+    timeout-minutes: 3
     runs-on: ubuntu-latest
     steps:
       - name: Validate inputs
         env:
+          SOURCE_SHA: ${{ inputs.git_ref }}
           DEPLOY_ACK: ${{ inputs.deploy_ack }}
           REASON: ${{ inputs.reason }}
         run: |
           set -euo pipefail
+          [[ "$SERVICE" == "api" || "$SERVICE" == "ml" || "$SERVICE" == "compliance" ]] || { echo "Unsupported service"; exit 1; }
+          if [ "$SERVICE" != "api" ]; then
+            [[ "$SOURCE_SHA" =~ ^[0-9a-f]{40}$ ]] || { echo "ML/compliance git_ref must be an exact commit SHA"; exit 1; }
+          fi
           if [ "$DEPLOY_ACK" != "production-kustomization" ]; then
             echo "deploy_ack must be production-kustomization"
             exit 1
@@ -48,8 +66,9 @@ jobs:
             exit 1
           fi
 
-  build-api:
-    name: Build & pin API digest
+  build-service:
+    name: Build & pin service digest
+    timeout-minutes: 45
     needs: preflight
     runs-on: ubuntu-latest
     environment: production
@@ -57,9 +76,27 @@ jobs:
       - uses: actions/checkout@v7
         with:
           repository: ${{ env.HARVESTER_REPO }}
-          ref: ${{ inputs.git_ref }}
+          ref: ${{ inputs.service != 'api' && 'main' || inputs.git_ref }}
           path: blueprint-harvester
           token: ${{ secrets.GHCR_PAT }}
+
+      - name: Require current main and successful exact-source CI
+        if: inputs.service != 'api'
+        working-directory: blueprint-harvester
+        env:
+          GH_TOKEN: ${{ secrets.GHCR_PAT }}
+          SOURCE_SHA: ${{ inputs.git_ref }}
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$SOURCE_SHA"
+          gh run list -R "$HARVESTER_REPO" --workflow ci.yml --branch main \
+            --event push --commit "$SOURCE_SHA" --limit 1 --json status,conclusion > /tmp/source-ci.json
+          jq -e 'length == 1 and .[0].status == "completed" and .[0].conclusion == "success"' /tmp/source-ci.json
+
+      - name: Resolve product source revision
+        id: source
+        working-directory: blueprint-harvester
+        run: echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
 
       - uses: docker/setup-buildx-action@v4
 
@@ -70,31 +107,28 @@ jobs:
           set -euo pipefail
           echo "${GHCR_PAT}" | docker login ghcr.io -u madfam-bot --password-stdin
 
-      - name: Build & push API
+      - name: Build & push service
         id: build
         uses: docker/build-push-action@v6
         with:
           context: blueprint-harvester
-          file: blueprint-harvester/services/api/Dockerfile
+          file: blueprint-harvester/services/${{ inputs.service }}/Dockerfile
           push: true
+          labels: |
+            org.opencontainers.image.source=https://github.com/madfam-org/blueprint-harvester
+            org.opencontainers.image.revision=${{ steps.source.outputs.sha }}
           tags: |
-            ${{ env.IMAGE_PREFIX }}/api:${{ github.sha }}
-            ${{ env.IMAGE_PREFIX }}/api:main
+            ${{ env.IMAGE_PREFIX }}/${{ inputs.service }}:${{ steps.source.outputs.sha }}
+            ${{ env.IMAGE_PREFIX }}/${{ inputs.service }}:main
 
       - name: Install cosign
         uses: sigstore/cosign-installer@v3.7.0
 
-      # Keyless signing needs GitHub's ambient OIDC endpoint, Fulcio and Rekor all
-      # at once. A transient hiccup here fails AFTER the image is pushed but
-      # BEFORE the digest pin, so ArgoCD never rolls and the live host keeps
-      # serving the previous build while main looks green — the crea-frontend
-      # 2026-08-26 failure (run 33010085743, non-JSON from the OIDC endpoint;
-      # a plain rerun fixed it). Retry the sign call only; the push above is
-      # already done and never repeats.
-      - name: Sign API image
+      # Retry signing only; never pin an unsigned image.
+      - name: Sign service image
         env:
           COSIGN_EXPERIMENTAL: "true"
-          IMAGE_REF: ${{ env.IMAGE_PREFIX }}/api@${{ steps.build.outputs.digest }}
+          IMAGE_REF: ${{ env.IMAGE_PREFIX }}/${{ inputs.service }}@${{ steps.build.outputs.digest }}
         run: |
           set -euo pipefail
           signed=0
@@ -118,17 +152,20 @@ jobs:
 
       - name: Install kustomize
         run: |
-          curl -sSL "https://github.com/kubernetes-sigs/kustomize/releases/download/kustomize%2Fv5.5.0/kustomize_v5.5.0_linux_amd64.tar.gz" | tar xz
-          sudo mv kustomize /usr/local/bin/kustomize
+          set -euo pipefail
+          curl -fsSL -o /tmp/kustomize.tar.gz "https://github.com/kubernetes-sigs/kustomize/releases/download/kustomize%2Fv5.5.0/kustomize_v5.5.0_linux_amd64.tar.gz"
+          echo "6703a3a70a0c47cf0b37694030b54f1175a9dfeb17b3818b623ed58b9dbc2a77  /tmp/kustomize.tar.gz" | sha256sum -c -
+          tar -xzf /tmp/kustomize.tar.gz -C /tmp kustomize
+          sudo install /tmp/kustomize /usr/local/bin/kustomize
 
-      - name: Pin API digest in GitOps
+      - name: Pin service digest in GitOps
         working-directory: blueprint-harvester/infra/k8s/production
         env:
-          API_DIGEST: ${{ steps.build.outputs.digest }}
+          SERVICE_DIGEST: ${{ steps.build.outputs.digest }}
         run: |
           set -euo pipefail
-          kustomize edit set image "${IMAGE_PREFIX}/api=${IMAGE_PREFIX}/api@${API_DIGEST}"
-          echo "Pinned API @${API_DIGEST}"
+          kustomize edit set image "ghcr.io/madfam-org/blueprint-harvester/${SERVICE}=${IMAGE_PREFIX}/${SERVICE}@${SERVICE_DIGEST}"
+          echo "Pinned ${SERVICE} @${SERVICE_DIGEST}"
 
       - name: Commit & push digest pin
         id: pin_commit
@@ -137,6 +174,10 @@ jobs:
           REASON: ${{ inputs.reason }}
         run: |
           set -euo pipefail
+          if [ "$SERVICE" != "api" ]; then
+            git fetch origin main
+            test "$(git rev-parse HEAD)" = "$(git rev-parse origin/main)" || { echo "Source main advanced; rebuild the new reviewed head"; exit 1; }
+          fi
           git config user.name "madfam-ci[bot]"
           git config user.email "ci@madfam.io"
           if git diff --quiet infra/k8s/production/kustomization.yaml; then
@@ -144,16 +185,11 @@ jobs:
             exit 0
           fi
           git add infra/k8s/production/kustomization.yaml
-          git commit -m "chore(gitops): pin API digest from Enclii blueprint-api-publish" \
+          git commit -m "chore(gitops): pin ${SERVICE} digest from Enclii blueprint-api-publish" \
             -m "Reason: ${REASON}"
           git push
 
-      # The silent-stale-deploy guard. The dangerous state is not "a step failed"
-      # but "the image was pushed and the digest pin never landed": GHCR has the
-      # image, the run looks like an ordinary failure, ArgoCD was never handed a
-      # new digest, and the live host quietly keeps serving the previous build.
-      # crea-frontend hit exactly this on 2026-08-26 (run 33010085743) and it was
-      # caught only by an external census deploy-gate. Make the state name itself.
+      # A pushed image is not a deployed release; fail if its pin never lands.
       - name: Guard against silent stale deploy
         if: always()
         env:
@@ -167,7 +203,7 @@ jobs:
             exit 0
           fi
           if [ "${PIN_OUTCOME}" = "success" ]; then
-            echo "Digest pin completed; the deployed digest matches this run."
+            echo "Digest pin completed; verify rollout through Enclii before accepting production."
             exit 0
           fi
           echo "::error title=Image pushed but NOT pinned/deployed::The image for this commit was"
