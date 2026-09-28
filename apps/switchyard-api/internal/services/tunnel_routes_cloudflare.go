@@ -17,7 +17,65 @@ type TunnelRoutesServiceCloudflare struct {
 	cfClient *cloudflare.Client
 	logger   *logrus.Logger
 	tunnelID string
-	mu       sync.Mutex
+	// mu serialises this replica's writers. It cannot see another replica's;
+	// configLock does.
+	mu         sync.Mutex
+	configLock TunnelConfigLock
+}
+
+// TunnelConfigLock serialises tunnel-configuration read-modify-writes across
+// every process that writes the same tunnel. The Cloudflare configurations
+// endpoint replaces the whole ingress document and takes no precondition, so
+// two writers that both read before either writes lose one write. With more
+// than one switchyard-api replica, an in-process mutex does not prevent that.
+//
+// fn must run the WHOLE read-modify-write. The production implementation is
+// db.Repositories.WithTunnelConfigLock (a Postgres advisory lock).
+type TunnelConfigLock interface {
+	WithTunnelConfigLock(ctx context.Context, tunnelID string, fn func(ctx context.Context) error) error
+}
+
+// WithConfigLock makes every write through this service hold lock for the
+// duration of its read-modify-write. Returns the receiver so construction can
+// stay one expression.
+func (s *TunnelRoutesServiceCloudflare) WithConfigLock(lock TunnelConfigLock) *TunnelRoutesServiceCloudflare {
+	s.configLock = lock
+	return s
+}
+
+// withConfigWrite runs one read-modify-write of the tunnel configuration under
+// this replica's mutex and, when configured, the cross-replica lock.
+func (s *TunnelRoutesServiceCloudflare) withConfigWrite(ctx context.Context, fn func(ctx context.Context) error) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	if s.configLock == nil {
+		return fn(ctx)
+	}
+
+	// An empty tunnel id reads and writes the client's default tunnel, so it
+	// locks under one fixed key rather than failing the write.
+	lockKey := s.tunnelID
+	if lockKey == "" {
+		lockKey = "default-tunnel"
+	}
+
+	ran := false
+	var fnErr error
+	err := s.configLock.WithTunnelConfigLock(ctx, lockKey, func(ctx context.Context) error {
+		ran = true
+		fnErr = fn(ctx)
+		return fnErr
+	})
+	if err != nil && ran && fnErr == nil {
+		// The write completed; only releasing the lock failed, and Postgres
+		// releases a transaction-scoped lock with its connection regardless.
+		// Reporting this as a failed write would skip the post-write canary
+		// for a rule that IS live.
+		s.logger.WithError(err).Warn("Tunnel configuration written, but releasing the cross-replica lock reported an error")
+		return nil
+	}
+	return err
 }
 
 // NewTunnelRoutesServiceCloudflare creates a new Cloudflare API-based tunnel routes service
@@ -39,9 +97,11 @@ func (s *TunnelRoutesServiceCloudflare) SetTunnelID(tunnelID string) {
 
 // AddRoute adds a new route to the tunnel configuration via Cloudflare API
 func (s *TunnelRoutesServiceCloudflare) AddRoute(ctx context.Context, spec *RouteSpec) error {
-	s.mu.Lock()
-	defer s.mu.Unlock()
+	return s.withConfigWrite(ctx, func(ctx context.Context) error { return s.addRouteLocked(ctx, spec) })
+}
 
+// addRouteLocked is AddRoute's read-modify-write; the caller holds the locks.
+func (s *TunnelRoutesServiceCloudflare) addRouteLocked(ctx context.Context, spec *RouteSpec) error {
 	s.logger.WithFields(logrus.Fields{
 		"hostname": spec.Hostname,
 		"service":  fmt.Sprintf("%s.%s.svc.cluster.local:%d", spec.ServiceName, spec.ServiceNamespace, spec.ServicePort),
@@ -91,9 +151,12 @@ func (s *TunnelRoutesServiceCloudflare) AddRoute(ctx context.Context, spec *Rout
 
 // RemoveRoute removes a route from the tunnel configuration via Cloudflare API
 func (s *TunnelRoutesServiceCloudflare) RemoveRoute(ctx context.Context, hostname string) error {
-	s.mu.Lock()
-	defer s.mu.Unlock()
+	return s.withConfigWrite(ctx, func(ctx context.Context) error { return s.removeRouteLocked(ctx, hostname) })
+}
 
+// removeRouteLocked is RemoveRoute's read-modify-write; the caller holds the
+// locks.
+func (s *TunnelRoutesServiceCloudflare) removeRouteLocked(ctx context.Context, hostname string) error {
 	s.logger.WithField("hostname", hostname).Info("Removing tunnel route via Cloudflare API")
 
 	// Get current configuration
