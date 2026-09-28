@@ -302,6 +302,9 @@ func (h *Handler) readPodsInNamespace(ctx context.Context, namespace string, req
 			if state := containerStatusState(status); len(state) > 0 {
 				container["state"] = state
 			}
+			if previous := containerStatusState(corev1.ContainerStatus{State: status.LastTerminationState}); len(previous) > 0 {
+				container["lastTerminationState"] = previous
+			}
 			containers = append(containers, container)
 		}
 		out = append(out, gin.H{
