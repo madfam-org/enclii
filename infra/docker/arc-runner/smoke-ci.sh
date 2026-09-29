@@ -2,10 +2,15 @@
 # Run in the final image as its normal runner user, with a read-only Node mount.
 set -euo pipefail
 export PATH="/opt/smoke-node/bin:${PATH}"
-test "$(id -u)" -ne 0
+test "$(id -u)" -ne 0 || { echo "ERROR: candidate runs as root"; exit 1; }
 test -n "${EXPECTED_AGENT:?expected runner version required}"
-agent_version="$(/home/runner/bin/Runner.Listener --version)"
-test "${agent_version}" = "${EXPECTED_AGENT}"
+if agent_version="$(/home/runner/bin/Runner.Listener --version 2>&1)"; then
+  printf 'Runner agent: %s (expected %s)\n' "${agent_version}" "${EXPECTED_AGENT}"
+else
+  printf 'ERROR: runner version probe failed: %s\n' "${agent_version}"
+  exit 1
+fi
+test "${agent_version}" = "${EXPECTED_AGENT}" || { echo "ERROR: runner agent version mismatch"; exit 1; }
 gh --version
 
 smoke_dir="$(mktemp -d)"
