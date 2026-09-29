@@ -341,3 +341,9 @@ wc -c /tmp/oscad-smoke/smoke.stl
   [`infra/argocd/apps/arc-runners.yaml`](../../argocd/apps/arc-runners.yaml)
 - Rebuild + rollback runbook:
   `internal-devops/runbooks/arc-runner-image-rebuild.md`
+
+The candidate Chromium gate also caught a missing `libatk-1.0.so.0` in the old
+library subset. The image now declares the complete Chromium library set from
+[Playwright 1.58.2's Ubuntu 24.04 contract](https://github.com/microsoft/playwright/blob/v1.58.2/packages/playwright-core/src/server/registry/nativeDeps.ts).
+Browser binaries remain installed per workflow. The smoke does not apt-install
+libraries, so it verifies the image the pool will actually receive.
