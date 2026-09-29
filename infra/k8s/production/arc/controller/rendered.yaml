@@ -310,6 +310,7 @@ spec:
         - "--listener-metrics-addr="
         - "--listener-metrics-endpoint="
         - "--metrics-addr=:8080"
+        - "--exclude-label-propagation-prefix=app.kubernetes.io/instance"
         command:
         - "/manager"
         ports:

@@ -57,6 +57,10 @@ serviceAccount:
 
 # Controller-specific settings
 flags:
+  # Argo owns the declared resources; ARC owns their dynamic children. Do not
+  # copy Argo's tracking label onto listener RBAC, runner sets, or runner pods.
+  excludeLabelPropagationPrefixes:
+    - app.kubernetes.io/instance
   # Log level: debug, info, warn, error
   logLevel: info
   # Log format: text, json
