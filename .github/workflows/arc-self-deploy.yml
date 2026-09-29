@@ -1,21 +1,12 @@
-# Recursive Auto-Deployment Workflow for ARC Runners
-
+# ARC configuration validation and explicit bootstrap recovery.
+#
 # MADFAM-ENCLII-FIRST-WORKFLOW-EXCEPTION v1: platform bootstrap/self-repair path.
-# Routine ARC operations must go through Enclii ops runners once adapters cover the action.
-# This workflow enables the CI/CD pipeline to update its own runner infrastructure.
-#
-# When changes are pushed to ARC configuration files, this workflow:
-# 1. Validates the configuration
-# 2. Deploys updates to ARC controller and runner scale sets
-# 3. Performs a blue-green switch to activate new runners
-# 4. Verifies the deployment
-# 5. Automatically rolls back on failure
-#
-# IMPORTANT: This workflow runs on self-hosted runners, meaning it can update
-# the very infrastructure it's running on. The blue-green switch ensures
-# continuous availability during updates.
+# Routine rendered-manifest promotions reconcile through Argo via Enclii ops
+# apps. Never run the legacy Helm writer after a push: it competes with Argo's
+# digest pins and can overwrite scale-set capacity. The legacy mutation jobs
+# are reserved for an explicitly dispatched, non-dry-run recovery operation.
 
-name: ARC Self-Deploy
+name: ARC Configuration and Bootstrap
 
 on:
   push:
@@ -141,8 +132,8 @@ jobs:
     name: Deploy ARC Updates
     needs: validate
     if: |
-      github.event_name != 'pull_request' &&
-      (needs.validate.outputs.changes_detected == 'true' || github.event_name == 'workflow_dispatch')
+      github.event_name == 'workflow_dispatch' &&
+      inputs.dry_run == false
     runs-on: madfam-runners-blue
     environment: production
     outputs:
