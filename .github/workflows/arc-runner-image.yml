@@ -295,6 +295,25 @@ jobs:
 
           echo "Render environment smoke check passed."
 
+      - name: Set up Node for candidate browser smoke
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Verify runner agent, GitHub CLI and Chromium
+        timeout-minutes: 8
+        env:
+          SMOKE_IMAGE: ${{ env.IMAGE_NAME }}:${{ steps.meta.outputs.tag_sha }}
+        run: |
+          set -euo pipefail
+          NODE_ROOT="$(dirname "$(dirname "$(command -v node)")")"
+          EXPECTED_AGENT="$(awk -F= '/^ARG BASE_TAG=/{print $2}' infra/docker/arc-runner/Dockerfile)"
+          docker run --rm --platform linux/amd64 \
+            -v "${NODE_ROOT}:/opt/smoke-node:ro" \
+            -v "${PWD}/infra/docker/arc-runner/smoke-ci.sh:/opt/smoke-ci.sh:ro" \
+            -e EXPECTED_AGENT="${EXPECTED_AGENT}" \
+            --entrypoint bash "${SMOKE_IMAGE}" /opt/smoke-ci.sh
+
       - name: Report image size
         env:
           SMOKE_IMAGE: ${{ env.IMAGE_NAME }}:${{ steps.meta.outputs.tag_sha }}

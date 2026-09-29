@@ -62,7 +62,10 @@ ARG BASE_TAG_DATE
 # the unprivileged `runner` user via its ENTRYPOINT.
 USER root
 
-# Minimum package set, justified per package:
+# Chromium libraries match Playwright 1.58.2's Ubuntu 24.04 dependency contract:
+# https://github.com/microsoft/playwright/blob/v1.58.2/packages/playwright-core/src/server/registry/nativeDeps.ts
+# The candidate-image browser smoke found the old subset missing libatk-1.0.so.0.
+# Package set, justified per package:
 #   libatomic1        - pnpm + Node native addons crash on missing __atomic_*
 #   libasound2t64     - Playwright Chromium audio (Ubuntu 24.04 t64 transition)
 #   libasound2-data   - companion data package for libasound2t64
@@ -70,6 +73,7 @@ USER root
 #   libxkbcommon0     - Playwright Chromium keyboard input
 #   libgbm1           - Playwright Chromium GPU buffer manager (headless)
 #   jq                - ubiquitous in our CI scripts (status checks, JSON munging)
+#   gh                - GitHub issue/PR watchers and organization audit gates
 #   python3-pip       - some workflows use python tooling (uv, pre-commit hooks)
 #   python3-venv      - `python3 -m venv` (ensurepip) fails without it on the
 #                       Ubuntu base; present in github-hosted ubuntu-latest.
@@ -93,7 +97,25 @@ RUN apt-get update \
       libnss3 \
       libxkbcommon0 \
       libgbm1 \
+      libatk-bridge2.0-0t64 \
+      libatk1.0-0t64 \
+      libatspi2.0-0t64 \
+      libcairo2 \
+      libcups2t64 \
+      libdbus-1-3 \
+      libdrm2 \
+      libglib2.0-0t64 \
+      libnspr4 \
+      libpango-1.0-0 \
+      libx11-6 \
+      libxcb1 \
+      libxcomposite1 \
+      libxdamage1 \
+      libxext6 \
+      libxfixes3 \
+      libxrandr2 \
       jq \
+      gh \
       python3-pip \
       python3-venv \
       xz-utils \
@@ -107,6 +129,7 @@ RUN ldconfig -p | grep -q libatomic.so.1 \
  && ldconfig -p | grep -q libnss3.so \
  && ldconfig -p | grep -q libxkbcommon.so.0 \
  && ldconfig -p | grep -q libgbm.so.1 \
+ && ldconfig -p | grep -q libatk-1.0.so.0 \
  && command -v jq >/dev/null \
  && command -v pip3 >/dev/null \
  && command -v xz >/dev/null \
@@ -267,6 +290,10 @@ RUN ldconfig -p | grep -q libGL.so.1 \
 
 # Drop back to the runner user the upstream image expects.
 USER runner
+
+# Exercise the CLI as the same unprivileged user that executes workflow steps.
+# No authentication or network access is required for this installation check.
+RUN gh --version
 
 # Image metadata (consumed by GHCR + provenance tooling).
 LABEL org.opencontainers.image.source="https://github.com/madfam-org/enclii"

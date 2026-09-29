@@ -29,6 +29,22 @@ protection becomes meaningless because every PR has red CI.
 This image fixes that with the smallest possible diff against the
 upstream base.
 
+The overlay also installs Ubuntu's `gh` package and checks `gh --version`
+as the unprivileged runner user during image construction. On 2026-09-28,
+Fashion Cabinet's snapshot watcher completed its comparison but failed its
+issue lookup with `gh: command not found`; the organization visibility audit
+stopped at the same missing-tool preflight. Baking the CLI into the runner
+fixes that prerequisite without granting tokens or changing workflow permissions.
+It reaches active jobs only after the built image is verified and its digest
+is promoted through the normal runner-pool rollout.
+
+The image workflow also runs `smoke-ci.sh` as the final image's unprivileged
+user before signing: it verifies the pinned runner agent, executes `gh`, and
+launches Chromium for a real click and screenshot. Node is mounted read-only
+from the workflow's setup step; it is not added to the image. Playwright 1.58.2
+matches this repository's lockfile. This complements the existing OpenSCAD
+render check and makes browser compatibility a release gate.
+
 ## The render environment (G16)
 
 Since 2026-09-05 the image also carries everything a commons **render**
@@ -325,3 +341,9 @@ wc -c /tmp/oscad-smoke/smoke.stl
   [`infra/argocd/apps/arc-runners.yaml`](../../argocd/apps/arc-runners.yaml)
 - Rebuild + rollback runbook:
   `internal-devops/runbooks/arc-runner-image-rebuild.md`
+
+The candidate Chromium gate also caught a missing `libatk-1.0.so.0` in the old
+library subset. The image now declares the complete Chromium library set from
+[Playwright 1.58.2's Ubuntu 24.04 contract](https://github.com/microsoft/playwright/blob/v1.58.2/packages/playwright-core/src/server/registry/nativeDeps.ts).
+Browser binaries remain installed per workflow. The smoke does not apt-install
+libraries, so it verifies the image the pool will actually receive.
