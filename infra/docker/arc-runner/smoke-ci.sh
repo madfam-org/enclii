@@ -4,10 +4,13 @@ set -euo pipefail
 export PATH="/opt/smoke-node/bin:${PATH}"
 test "$(id -u)" -ne 0 || { echo "ERROR: candidate runs as root"; exit 1; }
 test -n "${EXPECTED_AGENT:?expected runner version required}"
-if agent_version="$(/home/runner/bin/Runner.Listener --version 2>&1)"; then
+if agent_output="$(/home/runner/bin/Runner.Listener --version 2>&1)"; then
+  # The upstream image enables console tracing, so --version includes log
+  # lines. Require one unambiguous standalone version, not an arbitrary suffix.
+  agent_version="$(printf '%s\n' "${agent_output}" | sed -nE '/^[0-9]+\.[0-9]+\.[0-9]+$/p')"
   printf 'Runner agent: %s (expected %s)\n' "${agent_version}" "${EXPECTED_AGENT}"
 else
-  printf 'ERROR: runner version probe failed: %s\n' "${agent_version}"
+  printf 'ERROR: runner version probe failed: %s\n' "${agent_output}"
   exit 1
 fi
 test "${agent_version}" = "${EXPECTED_AGENT}" || { echo "ERROR: runner agent version mismatch"; exit 1; }
