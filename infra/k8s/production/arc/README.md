@@ -27,6 +27,26 @@ allowlist. **A new file in this directory is not deployed until it is named
 there.** That is why `monitoring.yaml` sat looking healthy for 82 days
 without ever being applied.
 
+## Controller ownership
+
+The controller excludes `app.kubernetes.io/instance` when copying labels to
+dynamic children. Without this ARC-supported filter, listener Roles and
+RoleBindings inherit Argo's tracking label and Argo repeatedly prunes them as
+resources absent from Git. Keep `flags.excludeLabelPropagationPrefixes` in the
+controller values and its rendered command argument in agreement. Other labels,
+RBAC rules, and Argo pruning remain unchanged.
+
+Verify the controller rollout through Enclii:
+
+```bash
+enclii ops apps status arc-runners -n argocd --json
+enclii ops pods diagnose -n arc-system --json
+```
+
+Then check both runner Applications for recurring prune operations. Existing dynamic
+resources acquire filtered labels when ARC recreates them; controller readiness
+alone is not evidence that the reconciliation loop has stopped.
+
 ## The digest pin lives in two places now
 
 Both `runner-blue/rendered.yaml` and `runner-deploy/rendered.yaml` pin the
