@@ -29,7 +29,7 @@ def executable(tmp_path, name, body):
     p.chmod(0o755)
 
 
-@pytest.mark.parametrize('service', ['ml', 'compliance'])
+@pytest.mark.parametrize('service', ['api', 'ml', 'compliance'])
 @pytest.mark.parametrize('sha,ack,reason,valid', [
     (SHA, 'production-kustomization', 'Synthetic release validation', True),
     ('main', 'production-kustomization', 'Synthetic release validation', False),
@@ -41,7 +41,7 @@ def test_explicit_inputs(service, sha, ack, reason, valid, tmp_path):
     assert (result.returncode == 0) is valid
 
 
-@pytest.mark.parametrize('service', ['ml', 'compliance'])
+@pytest.mark.parametrize('service', ['api', 'ml', 'compliance'])
 @pytest.mark.parametrize('status,conclusion,actual,valid', [
     ('completed', 'success', SHA, True),
     ('in_progress', '', SHA, False),
@@ -59,7 +59,7 @@ def test_source_ci_gate(service, status, conclusion, actual, valid, tmp_path):
     assert (result.returncode == 0) is valid
 
 
-@pytest.mark.parametrize('service', ['ml', 'compliance'])
+@pytest.mark.parametrize('service', ['api', 'ml', 'compliance'])
 def test_main_advance_stops_before_mutating_gitops(service, tmp_path):
     executable(tmp_path, 'git', '''case "$*" in
       'fetch origin main') exit 0;;
@@ -73,13 +73,21 @@ def test_main_advance_stops_before_mutating_gitops(service, tmp_path):
     assert not (tmp_path / 'unexpected-mutation').exists()
 
 
-def test_existing_api_default_accepts_main(tmp_path):
+def test_api_rejects_mutable_main(tmp_path):
     result = execute(script('Validate inputs'), tmp_path, SERVICE='api', SOURCE_SHA='main',
                      DEPLOY_ACK='production-kustomization', REASON='Synthetic release validation')
-    assert result.returncode == 0
+    assert result.returncode != 0
 
 
 def test_unknown_service_is_rejected(tmp_path):
     result = execute(script('Validate inputs'), tmp_path, SERVICE='arbitrary', SOURCE_SHA=SHA,
                      DEPLOY_ACK='production-kustomization', REASON='Synthetic release validation')
     assert result.returncode != 0
+
+
+def test_all_services_checkout_main_and_run_source_gate():
+    steps = WORKFLOW['jobs']['build-service']['steps']
+    checkout = next(step for step in steps if step.get('uses', '').startswith('actions/checkout@'))
+    assert checkout['with']['ref'] == 'main'
+    gate = next(step for step in steps if step.get('name') == 'Require current main and successful exact-source CI')
+    assert 'if' not in gate
