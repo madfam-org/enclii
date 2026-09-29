@@ -38,6 +38,13 @@ fixes that prerequisite without granting tokens or changing workflow permissions
 It reaches active jobs only after the built image is verified and its digest
 is promoted through the normal runner-pool rollout.
 
+The image workflow also runs `smoke-ci.sh` as the final image's unprivileged
+user before signing: it verifies the pinned runner agent, executes `gh`, and
+launches Chromium for a real click and screenshot. Node is mounted read-only
+from the workflow's setup step; it is not added to the image. Playwright 1.58.2
+matches this repository's lockfile. This complements the existing OpenSCAD
+render check and makes browser compatibility a release gate.
+
 ## The render environment (G16)
 
 Since 2026-09-05 the image also carries everything a commons **render**
