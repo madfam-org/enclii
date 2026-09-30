@@ -29,7 +29,7 @@ def executable(tmp_path, name, body):
     p.chmod(0o755)
 
 
-@pytest.mark.parametrize('service', ['api', 'ml', 'compliance'])
+@pytest.mark.parametrize('service', ['api', 'ml', 'compliance', 'ingestion'])
 @pytest.mark.parametrize('sha,ack,reason,valid', [
     (SHA, 'production-kustomization', 'Synthetic release validation', True),
     ('main', 'production-kustomization', 'Synthetic release validation', False),
@@ -41,7 +41,7 @@ def test_explicit_inputs(service, sha, ack, reason, valid, tmp_path):
     assert (result.returncode == 0) is valid
 
 
-@pytest.mark.parametrize('service', ['api', 'ml', 'compliance'])
+@pytest.mark.parametrize('service', ['api', 'ml', 'compliance', 'ingestion'])
 @pytest.mark.parametrize('status,conclusion,actual,valid', [
     ('completed', 'success', SHA, True),
     ('in_progress', '', SHA, False),
@@ -59,7 +59,7 @@ def test_source_ci_gate(service, status, conclusion, actual, valid, tmp_path):
     assert (result.returncode == 0) is valid
 
 
-@pytest.mark.parametrize('service', ['api', 'ml', 'compliance'])
+@pytest.mark.parametrize('service', ['api', 'ml', 'compliance', 'ingestion'])
 def test_main_advance_stops_before_mutating_gitops(service, tmp_path):
     executable(tmp_path, 'git', '''case "$*" in
       'fetch origin main') exit 0;;
@@ -91,3 +91,25 @@ def test_all_services_checkout_main_and_run_source_gate():
     assert checkout['with']['ref'] == 'main'
     gate = next(step for step in steps if step.get('name') == 'Require current main and successful exact-source CI')
     assert 'if' not in gate
+
+
+@pytest.mark.parametrize('service,dockerfile', [
+    ('api', 'services/api/Dockerfile'),
+    ('ml', 'services/ml/Dockerfile'),
+    ('compliance', 'services/compliance/Dockerfile'),
+    ('ingestion', 'services/Dockerfile.ingestion'),
+])
+def test_service_dockerfile_resolution(service, dockerfile, tmp_path):
+    executable(tmp_path, 'git', 'echo "$SOURCE_SHA"\n')
+    output = tmp_path / 'outputs'
+    result = execute(script('Resolve product source revision'), tmp_path,
+                     SERVICE=service, SOURCE_SHA=SHA, GITHUB_OUTPUT=str(output))
+    assert result.returncode == 0, result.stderr
+    assert f'sha={SHA}' in output.read_text().splitlines()
+    assert f'dockerfile={dockerfile}' in output.read_text().splitlines()
+
+
+def test_build_uses_resolved_dockerfile():
+    build = next(step for step in WORKFLOW['jobs']['build-service']['steps']
+                 if step.get('name') == 'Build & push service')
+    assert build['with']['file'] == 'blueprint-harvester/${{ steps.source.outputs.dockerfile }}'

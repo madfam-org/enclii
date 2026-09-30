@@ -224,3 +224,18 @@ For each repo:
 - `NOT reachable from madfam-org/enclii main`: the SHA is not on `main`
   and is not a release tag's commit. Re-derive it with `git ls-remote`
   (above).
+
+## Blueprint service publisher
+
+The separate `.github/workflows/blueprint-api-publish.yml` entrypoint publishes
+reviewed Blueprint API, ML, compliance and ingestion images. Supply the exact
+current Blueprint main SHA after its CI succeeds; moving branches and a changed
+main during publication are rejected. The ingestion service uses
+`services/Dockerfile.ingestion`; other selected services use their own Dockerfile
+directories. Signing must succeed before a digest is committed.
+
+This publisher preserves the configured service image namespaces. Runtime
+acceptance still requires Enclii to report the expected serving image and the
+service's affected behavior. Deployment does not approve new source harvesting,
+rewrite catalog provenance or grant registry access. Private production evidence
+belongs in Internal DevOps under the [repository boundary](../PUBLIC_REPO_BOUNDARY.md).
