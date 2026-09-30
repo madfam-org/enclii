@@ -13,7 +13,7 @@
 
 [![Production Readiness](https://img.shields.io/badge/status-production--running%20beta-yellowgreen)](./docs/production/PRODUCTION_CHECKLIST.md)
 [![Infrastructure](https://img.shields.io/badge/infrastructure-Hetzner%20%2B%20Cloudflare-blue)](./docs/production/PRODUCTION_DEPLOYMENT_ROADMAP.md)
-[![Auth](https://img.shields.io/badge/auth-OIDC%20%2F%20Janua%20SSO-success)](./docs/production/PRODUCTION_READINESS_AUDIT.md)
+[![Auth](https://img.shields.io/badge/auth-OIDC%20%2F%20Janua%20SSO-success)](./docs/guides/cli-auth-setup.md)
 [![Cost](https://img.shields.io/badge/monthly%20cost-%2455-success)](./docs/production/PRODUCTION_DEPLOYMENT_ROADMAP.md)
 
 **Status:** Production-running beta | [Production Checklist →](./docs/production/PRODUCTION_CHECKLIST.md)
