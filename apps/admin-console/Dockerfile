@@ -113,8 +113,20 @@ WORKDIR /app/apps/admin-console
 # The `rm -rf` is a backstop, not a duplicate: it is the last layer that touches
 # these paths in the published stage, so the image Trivy scans can never carry a
 # package-manager cache even if `base` or a future COPY reintroduces one.
+#
+# The npm CLI is deleted from the published image outright. The runner only
+# executes `node server.js`; nothing in it (CMD, HEALTHCHECK via wget, the k8s
+# manifests) calls npm or npx. But npm vendors its own dependency tree under
+# /usr/local/lib/node_modules/npm/node_modules, and Trivy scans every copy.
+# Pinning a "clean" npm has failed this gate repeatedly; on 2026-09-30 it was
+# npm 11.19.1's bundled brace-expansion 5.0.9 (CVE-2026-102276,
+# CVE-2026-102278) and undici 6.28.0 (CVE-2026-19534). Fixed releases of both
+# exist upstream, but no npm release bundles them yet (11.21.0 and 12.2.0 still
+# ship 5.0.9 / 6.28.0), so no npm pin could clear it. The `base` npm pin above
+# still applies to the build stages.
 RUN apk upgrade --no-cache && apk add --no-cache wget \
-  && rm -rf /root/.npm /root/.cache /root/.local/share/pnpm
+  && rm -rf /root/.npm /root/.cache /root/.local/share/pnpm \
+  && rm -rf /usr/local/lib/node_modules/npm /usr/local/bin/npm /usr/local/bin/npx
 
 USER nextjs
 
