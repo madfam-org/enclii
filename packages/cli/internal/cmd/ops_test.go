@@ -65,7 +65,7 @@ func TestOpsPodsLogsFlags(t *testing.T) {
 	logs := findSubcommand(findSubcommand(NewOpsCommand(cfg), "pods"), "logs")
 	require.NotNil(t, logs)
 
-	for _, want := range []string{"container", "tail", "limit-bytes", "namespace", "project", "service", "json"} {
+	for _, want := range []string{"container", "previous", "tail", "limit-bytes", "namespace", "project", "service", "json"} {
 		assert.NotNil(t, logs.Flags().Lookup(want), "expected --%s", want)
 	}
 }

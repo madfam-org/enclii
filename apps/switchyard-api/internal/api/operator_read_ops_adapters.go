@@ -366,12 +366,19 @@ func (h *Handler) readPodLogs(ctx context.Context, req operatorOperationRequest)
 	if err != nil {
 		return nil, err
 	}
+	previous := false
+	if raw := strings.TrimSpace(req.Args["previous"]); raw != "" {
+		previous, err = strconv.ParseBool(raw)
+		if err != nil {
+			return nil, fmt.Errorf("previous must be a boolean")
+		}
+	}
 	container := strings.TrimSpace(req.Args["container"])
-	logs, err := h.k8sClient.GetPodLogsWithOptions(ctx, target, namespace, container, tailLines, limitBytes)
+	logs, err := h.k8sClient.GetPodLogsWithOptions(ctx, target, namespace, container, tailLines, limitBytes, previous)
 	if err != nil {
 		return nil, err
 	}
-	return gin.H{"namespace": namespace, "pod": target, "container": container, "tailLines": tailLines, "limitBytes": limitBytes, "logs": logs}, nil
+	return gin.H{"namespace": namespace, "pod": target, "container": container, "tailLines": tailLines, "limitBytes": limitBytes, "previous": previous, "logs": logs}, nil
 }
 
 func operatorLogInt64Arg(args map[string]string, key string, defaultValue, maxValue int64) (int64, error) {

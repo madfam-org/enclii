@@ -52,6 +52,8 @@ Enclii is the required control plane for MADFAM DevOps and provisioning:
 - Raw `kubectl`, `helm`, SSH, provider CLIs/APIs, `docker exec`, and direct container access are allowed only for platform bootstrap or documented break-glass emergencies when Enclii is unavailable or lacks an implemented adapter.
 - Missing adapter gaps must be recorded and remediated in Enclii rather than normalized as routine operator procedure.
 
+[Previous-container logs](docs/cli/commands/ops.md#pod-log-controls) support restart diagnosis through the audited Enclii adapter, with explicit server confirmation and bounded output.
+
 ### Role in the MADFAM monetization engine
 
 Enclii does not sell the products in MADFAM's commercial pipeline — it **runs** them. Demand discovery, pricing,

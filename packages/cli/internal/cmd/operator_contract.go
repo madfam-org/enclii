@@ -138,6 +138,18 @@ func runOperation(cmd *cobra.Command, cfg *config.Config, path, operation string
 	if err := apiRequest(context.Background(), cfg, "POST", path, req, &resp); err != nil {
 		return err
 	}
+	// Older adapters ignore unknown arguments. Never present current logs as
+	// evidence from the terminated container when the server lacks this option.
+	if operation == "ops.pods.logs" && args["previous"] == "true" {
+		if resp.Status != "succeeded" {
+			return fmt.Errorf("previous-container log request failed (%s): %s", resp.Status, resp.Summary)
+		}
+		data, _ := resp.Data.(map[string]any)
+		confirmed, _ := data["previous"].(bool)
+		if !confirmed {
+			return fmt.Errorf("server did not confirm previous-container logs; update the log adapter before retrying")
+		}
+	}
 	if flags.jsonOut {
 		return emitJSON(resp)
 	}

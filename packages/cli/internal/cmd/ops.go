@@ -126,6 +126,7 @@ func newOpsPodsCommand(cfg *config.Config) *cobra.Command {
 
 func newOpsPodsLogsCommand(cfg *config.Config) *cobra.Command {
 	var flags operationFlags
+	var previous bool
 	var container string
 	var tailLines int64 = 400
 	var limitBytes int64 = 262144
@@ -137,6 +138,7 @@ func newOpsPodsLogsCommand(cfg *config.Config) *cobra.Command {
 			extra := map[string]string{
 				"tailLines":  fmt.Sprint(tailLines),
 				"limitBytes": fmt.Sprint(limitBytes),
+				"previous":   fmt.Sprint(previous),
 			}
 			if len(args) == 1 {
 				extra["target"] = args[0]
@@ -153,6 +155,7 @@ func newOpsPodsLogsCommand(cfg *config.Config) *cobra.Command {
 	cmd.Flags().StringVar(&flags.project, "project", "", "Enclii project slug scope")
 	cmd.Flags().StringVar(&flags.service, "service", "", "Enclii service name/id scope")
 	cmd.Flags().StringVar(&container, "container", "", "Container name when a pod has multiple containers")
+	cmd.Flags().BoolVar(&previous, "previous", false, "Read the previous terminated container instance; requires server confirmation")
 	cmd.Flags().Int64Var(&tailLines, "tail", tailLines, "Recent log lines to request; use 0 for all lines within --limit-bytes")
 	cmd.Flags().Int64Var(&limitBytes, "limit-bytes", limitBytes, "Maximum log bytes to return")
 	return cmd

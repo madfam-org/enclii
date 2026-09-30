@@ -80,6 +80,20 @@ without direct `kubectl` access:
 | `--tail` | Recent lines to request; default `400`; use `0` for all lines within `--limit-bytes` |
 | `--limit-bytes` | Maximum bytes to return; default `262144`; server-capped at 2 MiB |
 | `--container` | Optional container name for multi-container pods |
+| `--previous` | Read the previous terminated instance of the selected container; default `false` |
+
+
+After a restart, use `enclii ops pods logs <POD> -n <NAMESPACE> --container <CONTAINER> --previous --json`
+to retrieve the failed instance's startup output. The response includes
+`previous: true`; the CLI refuses results from an older server that ignores this
+option. Missing previous logs remain an error from the Kubernetes adapter.
+Current-container logs remain the default. The existing namespace, container,
+line/byte bounds and operator authorization apply to either instance.
+
+See [the CLI tests](../../../packages/cli/internal/cmd/ops_previous_logs_test.go)
+and [adapter tests](../../../apps/switchyard-api/internal/api/operator_previous_logs_test.go)
+for request forwarding and old-server rejection. Private incident evidence stays
+in Internal DevOps under the [repository boundary](../../PUBLIC_REPO_BOUNDARY.md).
 
 ## Required Mutation Flags
 

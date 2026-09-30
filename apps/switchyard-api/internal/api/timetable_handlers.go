@@ -653,7 +653,7 @@ func (h *Handler) GetOneOffJobLogs(c *gin.Context) {
 		}
 	}
 
-	logs, err := h.k8sClient.GetPodLogsWithOptions(ctx, pod.Name, namespace, "", oneOffJobLogTailLines, oneOffJobLogLimitBytes)
+	logs, err := h.k8sClient.GetPodLogsWithOptions(ctx, pod.Name, namespace, "", oneOffJobLogTailLines, oneOffJobLogLimitBytes, false)
 	if err != nil {
 		// The pod exists but its logs cannot be streamed yet (container still
 		// creating/pending). The job status is the durable record; report the

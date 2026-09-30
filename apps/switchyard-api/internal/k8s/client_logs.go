@@ -14,15 +14,15 @@ import (
 )
 
 func (c *Client) GetPodLogs(ctx context.Context, podName, namespace string) (string, error) {
-	return c.GetPodLogsWithOptions(ctx, podName, namespace, "", 100, 1024)
+	return c.GetPodLogsWithOptions(ctx, podName, namespace, "", 100, 1024, false)
 }
 
-func (c *Client) GetPodLogsWithOptions(ctx context.Context, podName, namespace, container string, tailLines, limitBytes int64) (string, error) {
+func (c *Client) GetPodLogsWithOptions(ctx context.Context, podName, namespace, container string, tailLines, limitBytes int64, previous bool) (string, error) {
 	kubeClient := c.kubeClient()
 	if kubeClient == nil {
 		return "", fmt.Errorf("kubernetes client not initialized")
 	}
-	opts := &corev1.PodLogOptions{Follow: false}
+	opts := &corev1.PodLogOptions{Follow: false, Previous: previous}
 	if tailLines > 0 {
 		opts.TailLines = &tailLines
 	}
