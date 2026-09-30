@@ -1,6 +1,6 @@
 name: Blueprint Service Publish
 
-# Publish reviewed API, ML and compliance sources through the existing Enclii release credential.
+# Publish reviewed API, ML, compliance and ingestion sources through the existing Enclii release credential.
 # Keep the currently configured enclii service image namespaces; never copy a digest
 # between registries. A successful pin still needs Enclii runtime acceptance.
 
@@ -12,7 +12,7 @@ on:
         required: true
         type: choice
         default: api
-        options: [api, ml, compliance]
+        options: [api, ml, compliance, ingestion]
       git_ref:
         description: Exact current main SHA with successful CI
         required: true
@@ -53,7 +53,7 @@ jobs:
           REASON: ${{ inputs.reason }}
         run: |
           set -euo pipefail
-          [[ "$SERVICE" == "api" || "$SERVICE" == "ml" || "$SERVICE" == "compliance" ]] || { echo "Unsupported service"; exit 1; }
+          [[ "$SERVICE" == "api" || "$SERVICE" == "ml" || "$SERVICE" == "compliance" || "$SERVICE" == "ingestion" ]] || { echo "Unsupported service"; exit 1; }
           [[ "$SOURCE_SHA" =~ ^[0-9a-f]{40}$ ]] || { echo "git_ref must be an exact commit SHA"; exit 1; }
           if [ "$DEPLOY_ACK" != "production-kustomization" ]; then
             echo "deploy_ack must be production-kustomization"
@@ -93,7 +93,15 @@ jobs:
       - name: Resolve product source revision
         id: source
         working-directory: blueprint-harvester
-        run: echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+        run: |
+          set -euo pipefail
+          echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+          case "$SERVICE" in
+            ingestion) dockerfile="services/Dockerfile.ingestion" ;;
+            api|ml|compliance) dockerfile="services/${SERVICE}/Dockerfile" ;;
+            *) echo "Unsupported service"; exit 1 ;;
+          esac
+          echo "dockerfile=$dockerfile" >> "$GITHUB_OUTPUT"
 
       - uses: docker/setup-buildx-action@v4
 
@@ -109,7 +117,7 @@ jobs:
         uses: docker/build-push-action@v6
         with:
           context: blueprint-harvester
-          file: blueprint-harvester/services/${{ inputs.service }}/Dockerfile
+          file: blueprint-harvester/${{ steps.source.outputs.dockerfile }}
           push: true
           labels: |
             org.opencontainers.image.source=https://github.com/madfam-org/blueprint-harvester
