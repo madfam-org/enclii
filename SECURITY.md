@@ -51,7 +51,8 @@ We are working on establishing a bug bounty program. In the meantime, we offer:
 - **Capability Dropping**: Enforced via Kyverno `restrict-capabilities` policy (Enforce mode) — all containers must drop `ALL` capabilities
 - **Read-only Filesystems**: Containers use read-only root filesystem with explicit `emptyDir` mounts for writable paths
 - **Resource Limits**: CPU/memory limits prevent resource exhaustion
-- **Security Scanning**: Images scanned for vulnerabilities
+- **Security Scanning**: Images scanned for vulnerabilities (Trivy, HIGH/CRITICAL blocks that service's deploy)
+- **No npm in Node runtimes**: the runner stage of the Next.js images (`status`, `dispatch`, `switchyard-ui`) deletes `npm`/`npx`, so npm's vendored dependency tree is never shipped or scanned. Guarded by CI job `runner-npm-lint` (`scripts/check-runner-no-npm.py`, which also explains how to add npm back if a runtime ever needs it). Dependency baseline: `README.md` → "Security".
 
 ### Access Control
 - **RBAC**: Role-based access control for all resources

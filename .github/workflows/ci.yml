@@ -509,6 +509,33 @@ jobs:
       - name: Check platform-infra copies are in sync with canonical
         run: ./scripts/check-platform-infra-copies.sh
 
+  runner-npm-lint:
+    name: Node runner images ship without npm
+    runs-on: ubuntu-latest
+    # Cheap (<1s). On 2026-09-30 Trivy blocked the next 16.3.8 rollout of
+    # dispatch and switchyard-ui on HIGH CVEs that lived only inside npm's own
+    # vendored tree (brace-expansion 5.0.9, undici 6.28.0), with no npm
+    # release bundling the fixes. The runners never call npm, so #660 deletes
+    # npm/npx in their runner stage. This keeps that deletion in place and
+    # refuses a runner CMD/HEALTHCHECK that calls npm/npx afterwards. How to
+    # add npm back if a runtime needs it: scripts/check-runner-no-npm.py.
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Set up Python
+        uses: actions/setup-python@v7
+        with:
+          python-version: '3.11'
+
+      - name: Install Python test deps
+        run: pip install --quiet pytest
+
+      - name: Run runner-npm check self-tests
+        run: pytest tests/scripts/test_check_runner_no_npm.py -v
+
+      - name: Check Node runner images delete npm/npx
+        run: python3 scripts/check-runner-no-npm.py
+
   zero-touch-boundary:
     name: Zero-Touch Boundary Check
     runs-on: ubuntu-latest
@@ -2088,7 +2115,7 @@ jobs:
   test-summary:
     name: Test Summary
     runs-on: ubuntu-latest
-    needs: [blueprint-publisher-contract, lint, unit-tests, ui-tests, security-scan, manifest-audit, golden-config, status-configmap-drift, zero-touch-boundary, networkpolicy-port-lint, image-age-ratchet, ecosystem-e2e, dependabot-secret-trap-lint, argocd-ignore-differences-lint]
+    needs: [blueprint-publisher-contract, lint, unit-tests, ui-tests, security-scan, manifest-audit, golden-config, status-configmap-drift, zero-touch-boundary, networkpolicy-port-lint, image-age-ratchet, ecosystem-e2e, dependabot-secret-trap-lint, argocd-ignore-differences-lint, runner-npm-lint]
     if: always()
 
     steps:
@@ -2140,6 +2167,10 @@ jobs:
           fi
           if [ "${{ needs.argocd-ignore-differences-lint.result }}" != "success" ]; then
             echo "❌ ArgoCD ignoreDifferences safety check failed (a CRD list rule would silently drop writes)"
+            exit 1
+          fi
+          if [ "${{ needs.runner-npm-lint.result }}" != "success" ]; then
+            echo "❌ Node runner npm check failed (a runner image keeps npm/npx or calls it — see scripts/check-runner-no-npm.py)"
             exit 1
           fi
           if [ "${{ needs.image-age-ratchet.result }}" != "success" ]; then

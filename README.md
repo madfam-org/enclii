@@ -584,6 +584,11 @@ Keep implementation guidance public-safe. If a detail is private/sensitive, plac
 - Dropped Linux capabilities
 - Seccomp profiles enabled
 
+**Security baseline (2026-09-30):**
+- **Next.js 16.3.8** in every Next app: `apps/switchyard-ui`, `apps/admin-console` (the `dispatch` image), `apps/status` and `apps/landing`. GHSA-vcvr-r3jv-pc5j is a critical RCE in `next/og` `ImageResponse` (`>=16.2.0 <16.3.6`); `apps/admin-console/app/icon.tsx` uses `ImageResponse`. Bumped in #659 (`eslint-config-next` to ^16.3.8 as well).
+- **`apps/status` has its own lockfile.** `apps/status/Dockerfile` installs from `apps/status/pnpm-lock.yaml` with `--frozen-lockfile`, so a Next bump must regenerate it as well as the root `pnpm-lock.yaml` (pnpm 9.15.9, the Dockerfile's pin). #659 missed it and the status image failed to build until #660.
+- **The Node runner images carry no npm.** The runner stage of `status`, `dispatch` and `switchyard-ui` deletes `npm` and `npx` (#660). Trivy failed those images on HIGH CVEs that lived only in npm's own vendored tree (brace-expansion 5.0.9, undici 6.28.0), no npm release bundled the fixes, and the runtimes only execute `node server.js` (healthchecks use `wget`). CI job `runner-npm-lint` (`scripts/check-runner-no-npm.py`) keeps the deletion in place and rejects a runner `CMD`/`HEALTHCHECK` that calls npm. To add npm back to a runtime, follow the steps in that script's header: allowlist the service with a reason, and pin an npm whose bundled dependencies pass Trivy.
+
 **Responsible Disclosure:**
 Email: [security@enclii.dev](mailto:security@enclii.dev)
 
@@ -654,6 +659,15 @@ This repository includes machine-readable context files following the [llmstxt.o
 - **Janua (Auth):** [janua.dev](https://janua.dev) | [GitHub](https://github.com/madfam-org/janua)
 - **Production Roadmap:** [PRODUCTION_DEPLOYMENT_ROADMAP.md](./docs/production/PRODUCTION_DEPLOYMENT_ROADMAP.md)
 - **Onboarding Guide:** [ONBOARDING_GUIDE.md](./docs/guides/ONBOARDING_GUIDE.md)
+
+## Related repositories / contracts
+
+| Repository | Contract | Defined in |
+|---|---|---|
+| [janua](https://github.com/madfam-org/janua) | Identity provider for the control plane, the dashboard and the CLI (OIDC, RS256 JWKS). `enclii provision oidc` registers ecosystem OAuth clients against it. | [`docs/guides/ECOSYSTEM_INTEGRATION.md`](https://github.com/madfam-org/janua/blob/main/docs/guides/ECOSYSTEM_INTEGRATION.md) |
+| [janua](https://github.com/madfam-org/janua) | Machine-to-machine tokens between services that Enclii deploys: one confidential client per edge, scoped, with the client secret delivered through Enclii secrets. | [`docs/service-tokens.md`](https://github.com/madfam-org/janua/blob/main/docs/service-tokens.md) |
+| [tezca](https://github.com/madfam-org/tezca) (consumer) | Deploys on Enclii with its own build workflows: digest pins in `k8s/production/`, lifecycle events reported here, ArgoCD sync. Its root-lockfile deploy gap is documented on its side. | [`enclii.yaml`](https://github.com/madfam-org/tezca/blob/main/enclii.yaml), [`docs/deployment/PRODUCTION_DEPLOYMENT.md`](https://github.com/madfam-org/tezca/blob/main/docs/deployment/PRODUCTION_DEPLOYMENT.md) |
+| Other ecosystem services (consumers) | Every product repo declares an `enclii.yaml` and deploys through Enclii, either with the reusable `build-publish.yml` or with its own workflows that pin digests. | This repo: [`docs/reference/service-spec.md`](docs/reference/service-spec.md), [`docs/guides/ZERO_TOUCH_CONTRACT.md`](docs/guides/ZERO_TOUCH_CONTRACT.md), [`docs/guides/reusable-workflows.md`](docs/guides/reusable-workflows.md), [`docs/guides/EXTERNAL_REPO_DEPLOY.md`](docs/guides/EXTERNAL_REPO_DEPLOY.md) |
 
 ---
 
