@@ -2,6 +2,12 @@ name: SDK Python
 
 # Lint, typecheck, test, and verify model drift for the Python SDK.
 # Gated on changes to the SDK source or the OpenAPI spec it tracks.
+#
+# docs/api/openapi.yaml is a symlink to docs/api-reference/openapi.yaml, and
+# GitHub path filters match the path a commit touched, not a symlink's target.
+# Edits land on the target, so it must be listed explicitly; the symlink path
+# stays listed so retargeting or replacing the link still triggers this.
+# workflow_dispatch lets main be re-verified without a synthetic SDK change.
 
 on:
   push:
@@ -9,12 +15,15 @@ on:
     paths:
       - "packages/sdk-py/**"
       - "docs/api/openapi.yaml"
+      - "docs/api-reference/openapi.yaml"
       - ".github/workflows/sdk-py.yml"
   pull_request:
     paths:
       - "packages/sdk-py/**"
       - "docs/api/openapi.yaml"
+      - "docs/api-reference/openapi.yaml"
       - ".github/workflows/sdk-py.yml"
+  workflow_dispatch:
 
 concurrency:
   group: sdk-py-${{ github.ref }}
