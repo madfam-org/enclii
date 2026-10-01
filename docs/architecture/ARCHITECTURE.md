@@ -139,7 +139,7 @@ Kubernetes operators managing service deployments:
 Modern React-based dashboard for platform management:
 
 **Technology:**
-- Framework: Next.js 14 with App Router
+- Framework: Next.js 16 (16.3.8) with App Router
 - Styling: Tailwind CSS
 - State Management: React hooks
 - API Client: Fetch with authentication
@@ -512,7 +512,7 @@ sequenceDiagram
 
 ### Languages & Frameworks
 - **Backend**: Go 1.26+, Gin, GORM
-- **Frontend**: TypeScript, React 18, Next.js 14
+- **Frontend**: TypeScript, React 18 (landing: React 19), Next.js 16
 - **Infrastructure**: Kubernetes 1.29+, Helm 3.14+
 
 ### Data Storage

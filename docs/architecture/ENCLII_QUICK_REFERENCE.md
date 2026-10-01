@@ -166,7 +166,7 @@ Tests: 11 security tests (100% middleware)
 ### Switchyard UI (Dashboard)
 ```
 Language: TypeScript/React
-Framework: Next.js 14
+Framework: Next.js 16 (16.3.8)
 Styling: Tailwind CSS
 API Client: Fetch + auth
 

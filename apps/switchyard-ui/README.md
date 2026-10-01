@@ -13,7 +13,7 @@ Switchyard UI provides a modern web interface for:
 
 ## Tech Stack
 
-- **Framework**: Next.js 14 (App Router)
+- **Framework**: Next.js 16 (App Router, `next` pinned to 16.3.8 — see the security baseline in the root `README.md`)
 - **UI**: React 18 + Tailwind CSS + shadcn/ui
 - **State**: TanStack Query (React Query)
 - **Auth**: Janua SSO (OIDC)

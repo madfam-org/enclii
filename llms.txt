@@ -9,7 +9,7 @@ Compact LLM context index for this repository.
 - `ECOSYSTEM.md` — MADFAM ecosystem and Enclii deployment context when present.
 - `llms-full.txt` — full context map and durable operating contract.
 
-## Platform behaviors agents most often get wrong (updated 2026-09-07)
+## Platform behaviors agents most often get wrong (updated 2026-09-30)
 
 - One-off jobs (`enclii jobs run-once`): the dispatcher resolves the service's
   Deployment as `<name>`, `<name>-web`, then `<namespace>-web`; deterministic
@@ -137,6 +137,17 @@ Compact LLM context index for this repository.
   `crea-erp` -> `erp`) were created in the dashboard as documented break-glass.
   The source host must keep a **proxied** DNS record or the rule never fires.
   Break-glass procedure: `docs/runbooks/DOMAIN_AND_EMAIL_DNS_ONBOARDING.md`.
+- Next.js images (2026-09-30): every Next app is on **16.3.8**
+  (GHSA-vcvr-r3jv-pc5j, `next/og` RCE; `apps/admin-console/app/icon.tsx` uses
+  `ImageResponse`). `apps/status` installs from its OWN
+  `apps/status/pnpm-lock.yaml` with `--frozen-lockfile`: a Next bump that
+  regenerates only the root lockfile breaks the status image build (#659 ->
+  #660). The runner stage of `status`, `dispatch` and `switchyard-ui` deletes
+  `npm`/`npx` (Trivy HIGHs lived only in npm's vendored tree, and the runtimes
+  only run `node server.js`); do not "fix" a runner by calling npm, and do not
+  drop the deletion. CI job `runner-npm-lint` (`scripts/check-runner-no-npm.py`)
+  enforces it and documents how to add npm back. Baseline: `README.md` ->
+  "Security".
 
 ## Production operations
 

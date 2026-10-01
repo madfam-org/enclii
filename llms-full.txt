@@ -186,6 +186,20 @@ wrong about all of it.
   Break-glass procedure: `docs/runbooks/DOMAIN_AND_EMAIL_DNS_ONBOARDING.md`.
 
 
+## Next.js images and the runner npm removal (2026-09-30)
+
+Every Next app is on **16.3.8**
+(GHSA-vcvr-r3jv-pc5j, `next/og` RCE; `apps/admin-console/app/icon.tsx` uses
+`ImageResponse`). `apps/status` installs from its OWN
+`apps/status/pnpm-lock.yaml` with `--frozen-lockfile`: a Next bump that
+regenerates only the root lockfile breaks the status image build (#659 ->
+#660). The runner stage of `status`, `dispatch` and `switchyard-ui` deletes
+`npm`/`npx` (Trivy HIGHs lived only in npm's vendored tree, and the runtimes
+only run `node server.js`); do not "fix" a runner by calling npm, and do not
+drop the deletion. CI job `runner-npm-lint` (`scripts/check-runner-no-npm.py`)
+enforces it and documents how to add npm back. Baseline: `README.md` ->
+"Security".
+
 ## Boundary
 
 This is not a full repository ingest. It is a compact context pointer; task-specific work must still read the relevant source documents listed below.
