@@ -59,7 +59,7 @@ env:
 jobs:
   build:
     name: Build + push arc-runner image
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-latest
     # Raised from 20 with G16: the OpenSCAD AppImage is ~84 MB to download and
     # extracts to a few hundred MB, and the smoke check runs the image after.
     # Cached layers make the steady state fast; this covers a cold cache.
