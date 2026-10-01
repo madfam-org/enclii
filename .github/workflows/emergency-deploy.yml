@@ -27,7 +27,7 @@ env:
 jobs:
   resolve-matrix:
     name: Resolve Services
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     outputs:
       matrix: ${{ steps.resolve.outputs.matrix }}
     steps:
@@ -58,7 +58,7 @@ jobs:
 
   emergency-build:
     name: 'Emergency: ${{ matrix.name }}'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     needs: resolve-matrix
     permissions:
       contents: read
@@ -160,7 +160,7 @@ jobs:
 
   deploy:
     name: Deploy via GitOps
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     needs: [emergency-build, resolve-matrix]
     if: always() && needs.emergency-build.result == 'success'
     permissions:

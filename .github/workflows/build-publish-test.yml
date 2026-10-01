@@ -24,7 +24,7 @@ on:
 jobs:
   selfref-tests:
     name: Signer-identity (SHA pin) + declared-secrets contract tests
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v7
       # Extracts the `selfref-lib` block from build-publish.yml verbatim (no
@@ -34,7 +34,7 @@ jobs:
 
   run-tests:
     name: Detect-changes contract tests
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v7
 

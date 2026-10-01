@@ -29,7 +29,7 @@ env:
 jobs:
   preflight:
     name: Acknowledgement
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - name: Validate inputs
         env:
@@ -49,7 +49,7 @@ jobs:
   sign:
     name: Cosign sign API digest
     needs: preflight
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     environment: production
     steps:
       - name: Install cosign

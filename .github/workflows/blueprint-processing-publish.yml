@@ -35,7 +35,7 @@ env:
 jobs:
   preflight:
     name: Acknowledgement
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - name: Validate inputs
         env:
@@ -55,7 +55,7 @@ jobs:
   build-processing:
     name: Build & pin processing digest
     needs: preflight
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     environment: production
     steps:
       - uses: actions/checkout@v7

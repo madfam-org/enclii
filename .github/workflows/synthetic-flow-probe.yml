@@ -29,7 +29,7 @@ permissions:
 jobs:
   test:
     name: Unit tests
-    runs-on: ${{ vars.ARC_BOOTSTRAP_COMPLETE == 'true' && 'madfam-runners-blue' || 'ubuntu-latest' }}
+    runs-on: ${{ vars.ARC_BOOTSTRAP_COMPLETE == 'true' && 'madfam-runners-blue' || 'ubuntu-24.04' }}
     steps:
       - uses: actions/checkout@v7
 
@@ -51,7 +51,7 @@ jobs:
   build:
     name: Build & publish image
     needs: test
-    runs-on: ${{ vars.ARC_BOOTSTRAP_COMPLETE == 'true' && 'madfam-runners-blue' || 'ubuntu-latest' }}
+    runs-on: ${{ vars.ARC_BOOTSTRAP_COMPLETE == 'true' && 'madfam-runners-blue' || 'ubuntu-24.04' }}
     if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
     steps:
       - uses: actions/checkout@v7
@@ -138,7 +138,7 @@ jobs:
     # PR-only build — verifies the image builds cleanly without publishing.
     name: Build (PR verify)
     needs: test
-    runs-on: ${{ vars.ARC_BOOTSTRAP_COMPLETE == 'true' && 'madfam-runners-blue' || 'ubuntu-latest' }}
+    runs-on: ${{ vars.ARC_BOOTSTRAP_COMPLETE == 'true' && 'madfam-runners-blue' || 'ubuntu-24.04' }}
     if: github.event_name == 'pull_request'
     steps:
       - uses: actions/checkout@v7

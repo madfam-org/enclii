@@ -240,7 +240,7 @@ jobs:
     name: Detect changed services
     # Keep lightweight orchestration off scarce ARC builders. Only Docker
     # builds need the self-hosted runner pool.
-    runs-on: ${{ inputs.build_runner != '' && inputs.build_runner || (vars.ARC_BOOTSTRAP_COMPLETE == 'true' && 'madfam-runners-blue' || 'ubuntu-latest') }}
+    runs-on: ${{ inputs.build_runner != '' && inputs.build_runner || (vars.ARC_BOOTSTRAP_COMPLETE == 'true' && 'madfam-runners-blue' || 'ubuntu-24.04') }}
     outputs:
       matrix: ${{ steps.filter.outputs.matrix }}
       any: ${{ steps.filter.outputs.any }}
@@ -373,7 +373,7 @@ jobs:
     name: Build ${{ matrix.service.name }}
     needs: detect-changes
     if: needs.detect-changes.outputs.any == 'true'
-    runs-on: ${{ inputs.build_runner != '' && inputs.build_runner || (vars.ARC_BOOTSTRAP_COMPLETE == 'true' && 'madfam-runners-blue' || 'ubuntu-latest') }}
+    runs-on: ${{ inputs.build_runner != '' && inputs.build_runner || (vars.ARC_BOOTSTRAP_COMPLETE == 'true' && 'madfam-runners-blue' || 'ubuntu-24.04') }}
     strategy:
       fail-fast: false
       matrix:
@@ -547,7 +547,7 @@ jobs:
       needs.build.result != 'cancelled' &&
       needs.build.result != 'skipped'
     # Digest pinning is git/kustomize/curl work; do not burn an ARC build slot.
-    runs-on: ${{ inputs.build_runner != '' && inputs.build_runner || (vars.ARC_BOOTSTRAP_COMPLETE == 'true' && 'madfam-runners-blue' || 'ubuntu-latest') }}
+    runs-on: ${{ inputs.build_runner != '' && inputs.build_runner || (vars.ARC_BOOTSTRAP_COMPLETE == 'true' && 'madfam-runners-blue' || 'ubuntu-24.04') }}
     permissions:
       contents: write
       packages: read
@@ -1241,7 +1241,7 @@ jobs:
     # checkout. It only compares `needs.*.result` values, so it needs no
     # outside vantage point and no tooling the ARC image lacks. (The two `gh`
     # mentions below are inside echoed operator instructions, not commands.)
-    runs-on: ${{ vars.ARC_BOOTSTRAP_COMPLETE == 'true' && 'madfam-runners-blue' || 'ubuntu-latest' }}
+    runs-on: ${{ vars.ARC_BOOTSTRAP_COMPLETE == 'true' && 'madfam-runners-blue' || 'ubuntu-24.04' }}
     steps:
       - name: Fail loudly when images were pushed but not pinned
         env:

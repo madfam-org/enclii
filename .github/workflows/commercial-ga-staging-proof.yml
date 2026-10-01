@@ -24,7 +24,7 @@ on:
 jobs:
   staging-proof:
     name: Staging proof (${{ inputs.bets }})
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 45
     environment:
       name: commercial-ga-staging

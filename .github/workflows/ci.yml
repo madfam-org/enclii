@@ -30,7 +30,7 @@ env:
 jobs:
   blueprint-publisher-contract:
     name: Blueprint publisher gates
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 5
     steps:
       - uses: actions/checkout@v7
@@ -42,7 +42,7 @@ jobs:
 
   lint:
     name: Lint & Format
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v7
 
@@ -104,7 +104,7 @@ jobs:
 
   manifest-audit:
     name: Manifest Audit (Ratchet)
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     # Run in parallel with lint for speed
     steps:
       - uses: actions/checkout@v7
@@ -198,7 +198,7 @@ jobs:
 
   verdaccio-janua-plugin:
     name: Verdaccio Janua auth plugin
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     # The plugin exists twice: a reviewable source tree under
     # infra/k8s/base/verdaccio/plugins/, and plugin-configmap.yaml, which is
     # what actually reaches the Verdaccio pod. This job is the only thing
@@ -232,7 +232,7 @@ jobs:
 
   networkpolicy-port-lint:
     name: NetworkPolicy port consistency
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     # Cheap (~1.5s on the ~100-NP, ~70-workload infra/k8s tree). Runs in
     # parallel with lint. Prevents the 2026-05-04 status.enclii.dev outage
     # class: NetworkPolicy `ports:` clauses that don't intersect the
@@ -254,7 +254,7 @@ jobs:
 
   dependabot-secret-trap-lint:
     name: Dependabot secret-trap lint
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     # Cheap (~0.2s over ~36 workflows). Prevents the 2026-08-07 class: a
     # `credentials:` block fed by a `secrets.` expression makes the WHOLE
     # workflow template invalid on Dependabot runs, which get an empty secret
@@ -279,7 +279,7 @@ jobs:
 
   externalsecret-writer-lint:
     name: ExternalSecret multi-writer policy
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     # Prevents the 2026-06-13 / 2026-08-06 dhanam-secrets class: two or more
     # ExternalSecrets writing one Secret where a non-Merge writer does not
     # produce every key its co-writers do. Owner and Orphan both reconcile the
@@ -310,7 +310,7 @@ jobs:
 
   argocd-ignore-differences-lint:
     name: ArgoCD ignoreDifferences safety
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     # Cheap (<1s over infra/argocd). Prevents the 2026-09-07 / 2026-09-23
     # ExternalSecret class: RespectIgnoreDifferences=true plus an ignore rule
     # selecting INSIDE a list on a CRD makes ArgoCD copy the whole live list
@@ -338,7 +338,7 @@ jobs:
 
   probe-target-lint:
     name: Probe target consistency
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     # Enforces that each synthetic-probe target's url port, `port` field and
     # `<service>.<namespace>` host all agree. This does NOT prove the Service
     # publishes the port — those manifests live in the product repos — that
@@ -381,7 +381,7 @@ jobs:
 
   alertmanager-config-lint:
     name: Alertmanager config loadability
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     # Cheap (sub-second). Prevents the 2026-08-26 class: an Alertmanager
     # config that is valid YAML, renders under kustomize and syncs Healthy in
     # Argo, but is REJECTED AT LOAD so the process exits 1 and the pod
@@ -426,7 +426,7 @@ jobs:
 
   courier-envelope-lint:
     name: Courier envelope shape (ops scripts)
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     # Cheap (sub-second), no network. The ops health-check scripts reach people
     # only through Angelia Courier (internal-devops
     # decisions/2026-09-05-third-party-messaging-via-angelia-courier.md M3), and
@@ -442,7 +442,7 @@ jobs:
 
   restore-drill-lint:
     name: Addon restore drill (safety + drill row)
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     # Cheap (sub-second), no cluster. scripts/restore-addon.sh is the only
     # thing that turns "every addon has a backup" from a statement about a
     # CronJob into evidence about recoverable data, and it is a script that
@@ -458,7 +458,7 @@ jobs:
 
   intake-policy-parity:
     name: Intake/Vault-policy parity
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     # Cheap (sub-second). Every secrets-intake vault_path — and every Vault
     # path a switchyard-api provisioner holds as a Go literal — must be covered
     # by the switchyard-secret-writer policy. They drifted once (nauta,
@@ -472,7 +472,7 @@ jobs:
 
   status-configmap-drift:
     name: Status Configmap Drift (ST-3)
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     # Cheap (sub-second) — runs in parallel with lint.
     # Enforces: enclii configmap ⊆ madfam configmap (by url), no in-file
     # duplicates, well-formed JSON. See scripts/check-status-configmaps.sh
@@ -485,7 +485,7 @@ jobs:
 
   platform-infra-copy-drift:
     name: Platform-infra copy drift
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     # Cheap (<1s). The `platform-infra-services` ArgoCD app applies
     # infra/k8s/platform-infra/*, some of which are maintained COPIES of a
     # canonical source (redis.yaml ← production/data/redis.yaml). ArgoCD cannot
@@ -511,7 +511,7 @@ jobs:
 
   runner-npm-lint:
     name: Node runner images ship without npm
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     # Cheap (<1s). On 2026-09-30 Trivy blocked the next 16.3.8 rollout of
     # dispatch and switchyard-ui on HIGH CVEs that lived only inside npm's own
     # vendored tree (brace-expansion 5.0.9, undici 6.28.0), with no npm
@@ -538,7 +538,7 @@ jobs:
 
   zero-touch-boundary:
     name: Zero-Touch Boundary Check
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     # Phase 0 guardrail: legacy app-specific state is allowlisted, but new
     # app-specific Argo/status/tunnel/auth/secret/monitor/UI catalog entries in
     # Enclii fail CI. Client repos must own client desired state.
@@ -561,7 +561,7 @@ jobs:
 
   golden-config:
     name: Golden Config Check (Ratchet)
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     # Run in parallel with lint for speed
     steps:
       - uses: actions/checkout@v7
@@ -580,7 +580,7 @@ jobs:
 
   image-age-ratchet:
     name: Image Age Ratchet
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     # Cheap (<5s on a typical PR). Runs after manifest-audit + golden-config
     # in parallel — fails the build when a kustomization-pinned digest is
     # older than 30 days. Catches the 2026-05-04 selva-office class of
@@ -666,7 +666,7 @@ jobs:
     name: Unit Tests
     # Always use GitHub-hosted runners for unit tests because service containers
     # (postgres, redis) require Docker, which isn't available on ARC self-hosted runners
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     needs: lint
 
     services:
@@ -869,7 +869,7 @@ jobs:
 
   build:
     name: Build
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     needs: unit-tests
 
     steps:
@@ -923,7 +923,7 @@ jobs:
   # check that touched this module.
   smoke:
     name: API Smoke (boots + serves)
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     needs: build
 
     services:
@@ -994,7 +994,7 @@ jobs:
 
   ui-tests:
     name: UI Tests
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     # Keep UI tests off ARC; the self-hosted pool is reserved for Docker builds.
     needs: lint
     env:
@@ -1076,7 +1076,7 @@ jobs:
   # =============================================================================
   ecosystem-e2e:
     name: Ecosystem E2E (Blocking)
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     needs: [build, ui-tests]
     # Only run on main branch pushes (production validation)
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
@@ -1118,7 +1118,7 @@ jobs:
 
   security-scan:
     name: Security Scan
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     needs: ui-tests
 
     steps:
@@ -1261,7 +1261,7 @@ jobs:
   # =============================================================================
   detect-changes:
     name: Detect Changes (Conservation Law)
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     if: (github.event_name == 'push' && github.ref == 'refs/heads/main') || github.event_name == 'workflow_dispatch'
     outputs:
       matrix: ${{ steps.build-matrix.outputs.matrix }}
@@ -1392,7 +1392,7 @@ jobs:
   # =============================================================================
   docker-build:
     name: 'Build: ${{ matrix.name }}'
-    runs-on: ${{ github.event_name == 'workflow_dispatch' && inputs.docker_runner != '' && inputs.docker_runner || (vars.ARC_BOOTSTRAP_COMPLETE == 'true' && 'madfam-runners-blue' || 'ubuntu-latest') }}
+    runs-on: ${{ github.event_name == 'workflow_dispatch' && inputs.docker_runner != '' && inputs.docker_runner || (vars.ARC_BOOTSTRAP_COMPLETE == 'true' && 'madfam-runners-blue' || 'ubuntu-24.04') }}
     needs: [build, ui-tests, detect-changes, ecosystem-e2e]
     if: |
       always() &&
@@ -1545,7 +1545,7 @@ jobs:
   # =============================================================================
   image-scan:
     name: 'Scan: ${{ matrix.name }}'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     needs: [docker-build, detect-changes]
     # RFC 0017 Tier B (see build-publish.yml header): sibling build failures
     # must not block scanning (and later pinning) of services that DID build.
@@ -1686,7 +1686,7 @@ jobs:
   # =============================================================================
   commit-digests:
     name: Commit Image Digests
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     needs: [docker-build, image-scan, detect-changes]
     # RFC 0017 Tier B (see build-publish.yml header): sibling failures must
     # NOT block deploy of successful builds. docker-build and image-scan are
@@ -1897,7 +1897,7 @@ jobs:
   # =============================================================================
   verify-deployment:
     name: Verify Deployment Trigger
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     needs: [docker-build, detect-changes]
     if: |
       always() &&
@@ -2011,7 +2011,7 @@ jobs:
   # =============================================================================
   report-lifecycle:
     name: Report Lifecycle Events
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     needs: [docker-build, detect-changes, commit-digests]
     if: |
       always() &&
@@ -2074,7 +2074,7 @@ jobs:
   # =============================================================================
   report-build-failure:
     name: Report Build Failures
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     needs: [docker-build, detect-changes]
     if: |
       always() &&
@@ -2114,7 +2114,7 @@ jobs:
 
   test-summary:
     name: Test Summary
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     needs: [blueprint-publisher-contract, lint, unit-tests, ui-tests, security-scan, manifest-audit, golden-config, status-configmap-drift, zero-touch-boundary, networkpolicy-port-lint, image-age-ratchet, ecosystem-e2e, dependabot-secret-trap-lint, argocd-ignore-differences-lint, runner-npm-lint]
     if: always()
 

@@ -20,7 +20,7 @@ on:
 jobs:
   e2e-tests:
     name: Playwright E2E Tests
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 30
 
     defaults:
@@ -96,7 +96,7 @@ jobs:
 
   e2e-summary:
     name: E2E Test Summary
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     needs: e2e-tests
     if: always()
 
