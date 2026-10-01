@@ -200,23 +200,88 @@ the only place a root-only squashfs tree would be caught.
 ## Image coordinates
 
 - Registry: `ghcr.io/madfam-org/enclii/arc-runner`
-- Tags published per build:
-  - `:<git-sha>` — immutable, used for provenance and pre-merge testing
-  - `:stable` — moved to point at the latest `main` build
+- Tags:
+  - `:<sha12>` (first 12 characters of the commit sha) — the only tag the
+    build pushes. One per build, so every older digest stays reachable by
+    tag; that is what makes the `:stable` rollback below possible.
+  - `:stable` — moved only **after** the build's checks pass (next section).
+    Main pushes, and `workflow_dispatch` on `main` with `tag_stable=true`.
+    Pull requests build and smoke-test but never push and never move it.
 - Base image (pinned in [`Dockerfile`](./Dockerfile)):
   `ghcr.io/actions/actions-runner:2.337.0` (upstream release published
   2026-08-27). The `Dockerfile` is the source of truth for this value; this
   line and the comment in `infra/helm/arc/values-runner-set.yaml` track it.
+- Build host: GitHub-hosted `ubuntu-24.04`, pinned rather than
+  `ubuntu-latest` so a GitHub label move cannot change the build host
+  unannounced.
+
+### `:stable` is promoted after verification
+
+[`.github/workflows/arc-runner-image.yml`](../../../.github/workflows/arc-runner-image.yml)
+runs, in order:
+
+1. **Build and push** — pushes `:<sha12>` only, and loads the same build into
+   the job's local Docker daemon.
+2. **Render-environment smoke** — OpenSCAD version, fonts, libGL, and a real
+   BOSL2 render, all through `docker run` on the local copy.
+3. **Agent / `gh` / Chromium smoke** — `smoke-ci.sh` in the local copy.
+4. **Cosign keyless signature** — on `<image>@<digest>`, where `<digest>` is
+   the build step's `digest` output.
+5. **Promote `:stable`** — only if every step above passed. It first checks
+   that the local image the smoke steps ran *is* the pushed digest, then runs
+   `docker buildx imagetools create --prefer-index=false -t <image>:stable
+   <image>@<digest>` (the same `digest` output again), then checks that
+   `:stable` resolves to exactly that digest.
+
+So a failed smoke or signature leaves `:stable` where it was. Before this,
+the build step pushed `:stable` together with `:<sha12>`, and a failure in any
+later step left `:stable` on an unverified, unsigned image.
+
+`<digest>` is the **single-platform image manifest** (`linux/amd64`), not the
+manifest list that the build pushes as `:<sha12>` (which also carries the
+provenance attestation). That manifest is what cosign signs, so `:stable` now
+resolves to a signed digest. `--prefer-index=false` is what keeps it a carbon
+copy: by default `imagetools create` wraps a single manifest in a new index,
+whose digest would be neither the tested nor the signed one.
+
+**Who reads `:stable`.** Not the running pools: they pin a digest (below). The
+bare `:stable` consumer is
+[`infra/helm/arc/values-runner-set.yaml`](../../helm/arc/values-runner-set.yaml)
+(`imagePullPolicy: Always`), used only by an explicit non-dry-run dispatch of
+`arc-self-deploy.yml`, i.e. bootstrap or recovery. That is exactly when a bad
+`:stable` would hurt, and why it is gated.
+
+### Rolling `:stable` back
+
+No workflow moves `:stable` backwards. To point it at an earlier build, run
+this from a shell logged in to `ghcr.io` with a token that has
+`packages: write` on this package:
+
+```bash
+IMAGE=ghcr.io/madfam-org/enclii/arc-runner
+PREVIOUS=sha256:<digest>   # e.g. the "Before" line of the promoting run's summary
+docker buildx imagetools create --prefer-index=false -t "${IMAGE}:stable" "${IMAGE}@${PREVIOUS}"
+docker buildx imagetools inspect "${IMAGE}:stable"   # confirm the digest
+```
+
+The previous digest is still in the registry because every build's
+`:<sha12>` tag keeps it reachable. The promoting run's job summary records
+the digest `:stable` pointed at before it moved. Rolling `:stable` back does
+not touch the pools; to roll **them** back, repin the rendered manifests
+(next paragraph).
 
 **What the pools run today.** Both `madfam-runners-blue` and
 `madfam-runners-deploy` are pinned to
-`…/arc-runner:stable@sha256:c35966ed277acedf16953c1e8075a2c9d92509be488b4de48b9487605da5a162`
-(#521 — the image built from #520). The pin is the **manifest list** digest from
-the build log's `pushing manifest for …` line, never the single-manifest digest
-the run summary prints; the two differ and only the list digest is what a node
-resolves. See
-[`infra/k8s/production/arc/README.md`](../../k8s/production/arc/README.md) for
-the four references that must move together.
+`…/arc-runner:stable@sha256:2f5876c2b29d4fb42640fae93579f488b11aa7ee17935ddd2dc1091c89784230`
+(#656 — the image built on `main` on 2026-09-29). That is the build step's
+`digest` output, i.e. the signed single-platform manifest, and it is what a
+promoted `:stable` resolves to from now on. Pins before #656 (for example
+`c35966ed…`, from #521) used the **manifest list** digest from the build log's
+`pushing manifest for …` line instead. Both are valid digest pins for the
+pools' `linux/amd64` nodes; only the single-manifest digest is the one cosign
+signs.
+See [`infra/k8s/production/arc/README.md`](../../k8s/production/arc/README.md)
+for the four references that must move together and the rollback pin.
 
 ## Rebuild cadence
 
