@@ -44,7 +44,7 @@ jobs:
   preflight:
     name: Acknowledgement
     timeout-minutes: 3
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - name: Validate inputs
         env:
@@ -68,7 +68,7 @@ jobs:
     name: Build & pin service digest
     timeout-minutes: 45
     needs: preflight
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     environment: production
     steps:
       - uses: actions/checkout@v7

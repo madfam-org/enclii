@@ -81,6 +81,7 @@ jobs:
 2. **ARC runner routing**: set repo variable
    `ARC_BOOTSTRAP_COMPLETE=true` if you want self-hosted runners
    (recommended once the `madfam-runners-blue` pool is healthy).
+   Pinned to ubuntu-24.04 ahead of the 2026-10-19 ubuntu-latest → 26 move; migrate deliberately.
 3. **Kustomization**: `infra/k8s/production/kustomization.yaml`
    must have an `images:` section listing each service's image name;
    the workflow edits these entries with the pushed digest.

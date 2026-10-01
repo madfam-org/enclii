@@ -18,7 +18,7 @@ permissions:
 jobs:
   rotate:
     name: Rotate ghcr-credentials in ${{ inputs.namespace }}
-    runs-on: ${{ vars.ARC_BOOTSTRAP_COMPLETE == 'true' && 'madfam-runners-blue' || 'ubuntu-latest' }}
+    runs-on: ${{ vars.ARC_BOOTSTRAP_COMPLETE == 'true' && 'madfam-runners-blue' || 'ubuntu-24.04' }}
     environment: production
     steps:
       - uses: actions/checkout@v7

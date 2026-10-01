@@ -41,7 +41,7 @@ permissions:
 jobs:
   test:
     name: Unit tests
-    runs-on: ${{ vars.ARC_BOOTSTRAP_COMPLETE == 'true' && 'madfam-runners-blue' || 'ubuntu-latest' }}
+    runs-on: ${{ vars.ARC_BOOTSTRAP_COMPLETE == 'true' && 'madfam-runners-blue' || 'ubuntu-24.04' }}
     steps:
       - uses: actions/checkout@v7
 
@@ -63,7 +63,7 @@ jobs:
   build:
     name: Build & publish image
     needs: test
-    runs-on: ${{ vars.ARC_BOOTSTRAP_COMPLETE == 'true' && 'madfam-runners-blue' || 'ubuntu-latest' }}
+    runs-on: ${{ vars.ARC_BOOTSTRAP_COMPLETE == 'true' && 'madfam-runners-blue' || 'ubuntu-24.04' }}
     # Only push on main / manual dispatch. PR builds run for verification but
     # don't publish.
     if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
@@ -154,7 +154,7 @@ jobs:
     # Avoids leaving orphaned :SHA tags in GHCR for every PR commit.
     name: Build (PR verify)
     needs: test
-    runs-on: ${{ vars.ARC_BOOTSTRAP_COMPLETE == 'true' && 'madfam-runners-blue' || 'ubuntu-latest' }}
+    runs-on: ${{ vars.ARC_BOOTSTRAP_COMPLETE == 'true' && 'madfam-runners-blue' || 'ubuntu-24.04' }}
     if: github.event_name == 'pull_request'
     steps:
       - uses: actions/checkout@v7

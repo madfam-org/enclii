@@ -51,7 +51,7 @@ permissions:
 jobs:
   health-regression:
     name: Status page health regression
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     # Cap at 10 min — checks should complete in <2 min; cap protects against
     # hung SSH/curl in degraded-network scenarios.
     timeout-minutes: 10

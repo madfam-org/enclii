@@ -22,7 +22,7 @@ env:
 jobs:
   smoke-test:
     name: Smoke Test (Health Endpoint)
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v7
 
@@ -55,7 +55,7 @@ jobs:
     name: Load Test (Authenticated API)
     needs: smoke-test
     if: github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && inputs.test_level != 'smoke')
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v7
 
@@ -89,7 +89,7 @@ jobs:
     name: Stress Test (1000 RPS)
     needs: load-test
     if: github.event_name == 'workflow_dispatch' && inputs.test_level == 'stress'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v7
 
