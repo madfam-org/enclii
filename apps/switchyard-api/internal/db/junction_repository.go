@@ -64,13 +64,13 @@ func (r *JunctionRepository) Create(ctx context.Context, j *types.Junction) erro
 		INSERT INTO junctions (
 			id, project_id, service_id, domain, path, protocol,
 			tls_enabled, tls_issuer, tls_cert_secret, tls_min_version, tls_force_redirect,
-			created_at, updated_at
-		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
+			created_at, updated_at, environment_id
+		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
 	`
 	_, err := r.db.ExecContext(ctx, query,
 		j.ID, j.ProjectID, j.ServiceID, j.Domain, j.Path, j.Protocol,
 		tlsEnabled, tlsIssuer, tlsCertSecret, tlsMinVersion, tlsForceRedirect,
-		j.CreatedAt, j.UpdatedAt,
+		j.CreatedAt, j.UpdatedAt, nullableUUID(j.EnvironmentID),
 	)
 	return err
 }
@@ -83,21 +83,23 @@ func (r *JunctionRepository) GetByID(ctx context.Context, id uuid.UUID) (*types.
 	var tlsCertSecret sql.NullString
 	var tlsMinVersion sql.NullString
 	var tlsForceRedirect bool
+	var environmentID uuid.NullUUID
 
 	query := `
 		SELECT id, project_id, service_id, domain, path, protocol,
 		       tls_enabled, tls_issuer, tls_cert_secret, tls_min_version, tls_force_redirect,
-		       created_at, updated_at
+		       created_at, updated_at, environment_id
 		FROM junctions WHERE id = $1
 	`
 	err := r.db.QueryRowContext(ctx, query, id).Scan(
 		&j.ID, &j.ProjectID, &j.ServiceID, &j.Domain, &j.Path, &j.Protocol,
 		&tlsEnabled, &tlsIssuer, &tlsCertSecret, &tlsMinVersion, &tlsForceRedirect,
-		&j.CreatedAt, &j.UpdatedAt,
+		&j.CreatedAt, &j.UpdatedAt, &environmentID,
 	)
 	if err != nil {
 		return nil, err
 	}
+	j.EnvironmentID = uuidPtr(environmentID)
 
 	j.TLS = &types.TLSConfig{
 		Enabled:       tlsEnabled,
@@ -119,7 +121,7 @@ func (r *JunctionRepository) ListByProject(ctx context.Context, projectID uuid.U
 	query := `
 		SELECT id, project_id, service_id, domain, path, protocol,
 		       tls_enabled, tls_issuer, tls_cert_secret, tls_min_version, tls_force_redirect,
-		       created_at, updated_at
+		       created_at, updated_at, environment_id
 		FROM junctions
 		WHERE project_id = $1
 		ORDER BY created_at DESC
@@ -139,7 +141,7 @@ func (r *JunctionRepository) ListByService(ctx context.Context, serviceID uuid.U
 	query := `
 		SELECT id, project_id, service_id, domain, path, protocol,
 		       tls_enabled, tls_issuer, tls_cert_secret, tls_min_version, tls_force_redirect,
-		       created_at, updated_at
+		       created_at, updated_at, environment_id
 		FROM junctions
 		WHERE service_id = $1
 		ORDER BY created_at DESC
@@ -237,6 +239,52 @@ func (r *JunctionRepository) ProjectIDsByDomain(ctx context.Context, domain stri
 	return projectIDs, nil
 }
 
+// Rebind points an existing junction at a different service and environment.
+//
+// It is the only write that changes what a hostname is bound to; nothing else
+// in this repository updates service_id after creation. Idempotent: rebinding
+// to the binding a junction already has rewrites the same values. projectID
+// scopes the update so a junction id from another project matches nothing
+// (sql.ErrNoRows) rather than being rebound across tenants.
+func (r *JunctionRepository) Rebind(
+	ctx context.Context, id, projectID, serviceID uuid.UUID, environmentID *uuid.UUID,
+) error {
+	query := `
+		UPDATE junctions
+		SET service_id = $1, environment_id = $2, updated_at = $3
+		WHERE id = $4 AND project_id = $5
+	`
+	result, err := r.db.ExecContext(ctx, query, serviceID, nullableUUID(environmentID), time.Now(), id, projectID)
+	if err != nil {
+		return fmt.Errorf("failed to rebind junction: %w", err)
+	}
+	rows, err := result.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("failed to read rebind result: %w", err)
+	}
+	if rows == 0 {
+		return sql.ErrNoRows
+	}
+	return nil
+}
+
+// nullableUUID maps an optional id onto the NULL-able column form.
+func nullableUUID(id *uuid.UUID) uuid.NullUUID {
+	if id == nil || *id == uuid.Nil {
+		return uuid.NullUUID{}
+	}
+	return uuid.NullUUID{UUID: *id, Valid: true}
+}
+
+// uuidPtr maps a NULL-able column back onto the optional field.
+func uuidPtr(id uuid.NullUUID) *uuid.UUID {
+	if !id.Valid {
+		return nil
+	}
+	value := id.UUID
+	return &value
+}
+
 // Delete permanently removes a junction
 func (r *JunctionRepository) Delete(ctx context.Context, id uuid.UUID) error {
 	query := `DELETE FROM junctions WHERE id = $1`
@@ -264,15 +312,17 @@ func (r *JunctionRepository) scanJunctions(rows *sql.Rows) ([]*types.Junction, e
 		var tlsCertSecret sql.NullString
 		var tlsMinVersion sql.NullString
 		var tlsForceRedirect bool
+		var environmentID uuid.NullUUID
 
 		err := rows.Scan(
 			&j.ID, &j.ProjectID, &j.ServiceID, &j.Domain, &j.Path, &j.Protocol,
 			&tlsEnabled, &tlsIssuer, &tlsCertSecret, &tlsMinVersion, &tlsForceRedirect,
-			&j.CreatedAt, &j.UpdatedAt,
+			&j.CreatedAt, &j.UpdatedAt, &environmentID,
 		)
 		if err != nil {
 			return nil, fmt.Errorf("failed to scan junction: %w", err)
 		}
+		j.EnvironmentID = uuidPtr(environmentID)
 
 		j.TLS = &types.TLSConfig{
 			Enabled:       tlsEnabled,

@@ -27,6 +27,8 @@ import (
 	"context"
 	"strings"
 
+	"github.com/google/uuid"
+
 	"github.com/madfam-org/enclii/apps/switchyard-api/internal/logging"
 	"github.com/madfam-org/enclii/packages/sdk-go/pkg/types"
 )
@@ -43,7 +45,14 @@ const defaultJunctionPath = "/"
 // and swallowed: this runs inside best-effort provisioning paths, and failing a
 // domain that is otherwise routable because its bookkeeping row could not be
 // written would be a worse outcome than the missing row.
-func (h *Handler) ensureJunctionForDomain(ctx context.Context, domain string, service *types.Service) bool {
+//
+// envName is the environment the hostname is being provisioned for. A
+// non-production environment is recorded on the new junction, so the
+// reconcilers route it to that environment's namespace rather than to
+// production. Production is left unrecorded (NULL), which already means
+// production. An existing junction is never rebound here: changing what a
+// hostname is bound to is `enclii ops junctions rebind`, an audited operation.
+func (h *Handler) ensureJunctionForDomain(ctx context.Context, domain string, service *types.Service, envName string) bool {
 	if h == nil || h.repos == nil || h.repos.Junctions == nil || service == nil {
 		return false
 	}
@@ -81,11 +90,12 @@ func (h *Handler) ensureJunctionForDomain(ctx context.Context, domain string, se
 	}
 
 	junction := &types.Junction{
-		ProjectID: service.ProjectID,
-		ServiceID: service.ID,
-		Domain:    domain,
-		Path:      defaultJunctionPath,
-		Protocol:  "https",
+		ProjectID:     service.ProjectID,
+		ServiceID:     service.ID,
+		EnvironmentID: h.nonProductionEnvironmentID(service, envName),
+		Domain:        domain,
+		Path:          defaultJunctionPath,
+		Protocol:      "https",
 		TLS: &types.TLSConfig{
 			Enabled:       true,
 			Issuer:        "letsencrypt-prod",
@@ -112,4 +122,21 @@ func (h *Handler) ensureJunctionForDomain(ctx context.Context, domain string, se
 		logging.String("service", service.Name),
 		logging.String("project_id", service.ProjectID.String()))
 	return true
+}
+
+// nonProductionEnvironmentID returns the id of a non-production environment of
+// the service's project, or nil (production, unknown, or not found). nil is
+// always safe here: it leaves the junction on the default derivation, and the
+// repoint guard keeps that default from moving a live route.
+func (h *Handler) nonProductionEnvironmentID(service *types.Service, envName string) *uuid.UUID {
+	if isProductionEnvironmentName(envName) || service == nil ||
+		h == nil || h.repos == nil || h.repos.Environments == nil {
+		return nil
+	}
+	env, err := h.repos.Environments.GetByProjectAndName(service.ProjectID, strings.TrimSpace(envName))
+	if err != nil || env == nil {
+		return nil
+	}
+	id := env.ID
+	return &id
 }

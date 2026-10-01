@@ -116,7 +116,8 @@ server-side adapter is wired. Wired surfaces include `secrets sync`,
 `providers cloudflare zone-settings-apply` (Enclii HTTPS posture),
 `providers cloudflare dns-apply` (zone-owned DNS create/update/no-op),
 `providers cloudflare tunnels-apply --project <slug>` (junction tunnel route
-reconcile), `ops storage storageclass-apply`, and `ops policy cosign-enable`. DNS apply
+reconcile, with a repoint guard), `ops junctions rebind` (correct a junction's
+service and environment), `ops storage storageclass-apply`, and `ops policy cosign-enable`. DNS apply
 blocks when the apex zone is not visible to Enclii; registrar nameserver changes
 still require the Porkbun provider adapter or another approved Enclii-controlled
 domain authority path.

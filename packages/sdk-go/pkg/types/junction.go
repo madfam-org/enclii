@@ -10,15 +10,19 @@ import (
 
 // Junction represents a routing/ingress configuration for a service.
 type Junction struct {
-	ID        uuid.UUID  `json:"id" db:"id"`
-	ProjectID uuid.UUID  `json:"project_id" db:"project_id"`
-	ServiceID uuid.UUID  `json:"service_id" db:"service_id"`
-	Domain    string     `json:"domain" db:"domain"`     // e.g., "api.example.com"
-	Path      string     `json:"path" db:"path"`         // e.g., "/api/v1"
-	Protocol  string     `json:"protocol" db:"protocol"` // "http", "https", "grpc"
-	TLS       *TLSConfig `json:"tls,omitempty" db:"-"`
-	CreatedAt time.Time  `json:"created_at" db:"created_at"`
-	UpdatedAt time.Time  `json:"updated_at" db:"updated_at"`
+	ID        uuid.UUID `json:"id" db:"id"`
+	ProjectID uuid.UUID `json:"project_id" db:"project_id"`
+	ServiceID uuid.UUID `json:"service_id" db:"service_id"`
+	// EnvironmentID names the environment whose workload serves this
+	// hostname. nil means "not recorded": routing falls back to the
+	// hostname's domain-record environment, then to production.
+	EnvironmentID *uuid.UUID `json:"environment_id,omitempty" db:"environment_id"`
+	Domain        string     `json:"domain" db:"domain"`     // e.g., "api.example.com"
+	Path          string     `json:"path" db:"path"`         // e.g., "/api/v1"
+	Protocol      string     `json:"protocol" db:"protocol"` // "http", "https", "grpc"
+	TLS           *TLSConfig `json:"tls,omitempty" db:"-"`
+	CreatedAt     time.Time  `json:"created_at" db:"created_at"`
+	UpdatedAt     time.Time  `json:"updated_at" db:"updated_at"`
 }
 
 // TLSConfig represents TLS/certificate settings for a junction.

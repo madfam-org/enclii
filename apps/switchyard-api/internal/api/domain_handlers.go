@@ -94,7 +94,7 @@ func (h *Handler) AddCustomDomain(c *gin.Context) {
 				return
 			}
 
-			h.ensureJunctionForDomain(ctx, req.Domain, service)
+			h.ensureJunctionForDomain(ctx, req.Domain, service, req.Environment)
 			// Port 0 = "ask the live Service". Hardcoding 80 here is what made
 			// `domains add` write a route at a port nothing listens on, which
 			// resolveTunnelBackend then correctly refused — DNS created, no
@@ -164,14 +164,19 @@ func (h *Handler) AddCustomDomain(c *gin.Context) {
 
 	// Add tunnel route if tunnel routes service is configured
 	tunnelRouteAdded := false
-	if h.tunnelRoutesService != nil {
+	namespace := h.resolveServiceNamespace(ctx, service, req.Environment)
+	if h.tunnelRoutesService != nil && namespace == "" {
+		h.logger.Warn(ctx, "Not adding a tunnel route: the environment's namespace could not be resolved",
+			logging.String("domain", req.Domain),
+			logging.String("environment", req.Environment))
+	} else if h.tunnelRoutesService != nil {
 		// Connect/keepAlive timeouts intentionally omitted — see
 		// domain_provisioner.go for the Cloudflare API quoted-string
 		// rejection that motivated dropping these fields.
 		routeSpec := &services.RouteSpec{
 			Hostname:         req.Domain,
 			ServiceName:      service.Name,
-			ServiceNamespace: h.resolveServiceNamespace(ctx, service, req.Environment),
+			ServiceNamespace: namespace,
 			ServicePort:      80, // K8s Service port (not container port)
 		}
 

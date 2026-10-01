@@ -176,6 +176,7 @@ func printOperationResponse(cmd *cobra.Command, resp operationResponse) {
 	if resp.Summary != "" {
 		fmt.Fprintf(out, "Summary:      %s\n", resp.Summary)
 	}
+	printRoutePlan(out, resp.Data)
 	if resp.Data != nil {
 		data, err := json.MarshalIndent(resp.Data, "", "  ")
 		if err == nil {

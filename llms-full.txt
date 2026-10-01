@@ -102,13 +102,25 @@ wrong about all of it.
 - Brand-host onboarding order (verified 2026-09-07): `domains add` **from the
   repo root** (the `-f` parser validates `spec.build.dockerfile` against
   `os.Getwd()`, not the manifest's directory) -> `dns-apply` proxied CNAME ->
-  `tunnels-apply` (plan must show only a create for the new host) -> `dns-apply`
+  `tunnels-apply` dry run (plan must show only a create for the new host) -> `dns-apply`
   the verification TXT -> `domains verify`. Then `zone-settings-apply` once the
   zone is active (`always_use_https`, `automatic_https_rewrites`,
   `min_tls_version=1.2`; verify `curl -sSI http://<host>/` -> 301). A
   manifest-only merge builds nothing, so no capture runs and a newly declared
   host does not become live. Full runbook:
   `docs/runbooks/DOMAIN_AND_EMAIL_DNS_ONBOARDING.md`.
+- `tunnels-apply` derives each backend from the junction's service AND
+  environment (`junctions.environment_id`, else the domain record's
+  environment, else production; non-production never falls back to the
+  production namespace). An UPDATE that changes the service or namespace of a
+  hostname whose live backend is serving, or moves a route between production
+  and another environment, is `REPOINT (blocked)`; the summary leads with
+  `REFUSED` and the apply writes nothing while any row is blocked.
+  `--allow-repoint <host>` is per hostname; `--expect-plan <fp>` pins the
+  reviewed plan. Wrong bindings are fixed with `enclii ops junctions rebind`
+  (dry run by default, data only). The automated reconcile paths refuse the
+  same repoints. Runbook:
+  `docs/runbooks/ENCLII_JUNCTION_ROUTE_RECONCILIATION_2026-05-16.md`.
 - After a nameserver switch, clients on a stale resolver see NXDOMAIN for hosts
   that exist only in the new zone (and Cloudflare 1034 for a DNS-only host the
   old zone pointed at a CDN) for up to the old NS TTL. Do not cut over

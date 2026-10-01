@@ -185,8 +185,8 @@ func (h *Handler) handleApplyOperatorDryRun(ctx context.Context, prefix, domain,
 	if prefix == "ops" && domain == "secrets" && action == "provision-kalya-feed" {
 		return h.handleOpsSecretsProvisionKalyaFeedDryRun(ctx, operation, req), true
 	}
-	if prefix == "ops" && domain == "domains" && action == "reconcile" {
-		return h.handleOpsDomainsReconcileDryRun(ctx, operation, req), true
+	if resp, ok := h.opsRoutingDryRunDispatch(ctx, prefix, domain, action, operation, req); ok {
+		return resp, true
 	}
 	if prefix == "ops" && domain == "storage" && action == "storageclass-apply" {
 		return h.handleOpsStorageStorageClassApplyDryRun(ctx, operation, req), true
@@ -336,8 +336,7 @@ func (h *Handler) handleApplyOperatorOperation(ctx context.Context, prefix, doma
 		resp, statusCode := h.handleOpsSecretsProvisionKalyaFeedApply(ctx, operation, req)
 		return resp, statusCode, true
 	}
-	if prefix == "ops" && domain == "domains" && action == "reconcile" {
-		resp, statusCode := h.handleOpsDomainsReconcileApply(ctx, operation, req)
+	if resp, statusCode, ok := h.opsRoutingApplyDispatch(ctx, prefix, domain, action, operation, req); ok {
 		return resp, statusCode, true
 	}
 	if prefix == "ops" && domain == "apps" && action == "sync" && h.k8sClient != nil && h.k8sClient.DynamicClient != nil {

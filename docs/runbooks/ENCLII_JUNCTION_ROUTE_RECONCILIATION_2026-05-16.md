@@ -35,18 +35,19 @@ curl -fsS https://status.madfam.io/api/status
 
 If a junction exists but the tunnel route is missing or points at the wrong backend:
 
-1. **Preferred:** reconcile tunnel ingress through Enclii without deleting the junction row:
+1. **Preferred:** reconcile tunnel ingress through Enclii without deleting the junction row. Run the dry run, read the plan, and stop there unless every row is what you expect:
 
 ```bash
 enclii providers cloudflare tunnels-apply --project tulana
-enclii providers cloudflare tunnels-apply --project tulana --apply --reason "reconcile junction tunnel routes"
 ```
 
-Optional single-host reconcile:
+Single-host form (dry run):
 
 ```bash
-enclii providers cloudflare tunnels-apply tulana-app.madfam.io --project tulana --apply --reason "fix app hostname backend"
+enclii providers cloudflare tunnels-apply tulana-app.madfam.io --project tulana
 ```
+
+When the plan is clean, its `Next` line is the apply command for exactly that plan, carrying `--expect-plan <fingerprint>`. The apply re-plans server-side and refuses, writing nothing, if the plan changed since the dry run. Never paste a dry run and its apply as one block: the apply is a separate decision taken after reading the plan.
 
 2. Re-run `enclii junctions add` only if the junction row is absent.
 3. If the row exists and reconciliation still fails, cycle the junction with `enclii junctions delete <id> --force` followed by `enclii junctions add <domain> --service-id <service-id> --project <project>`.
@@ -54,3 +55,61 @@ enclii providers cloudflare tunnels-apply tulana-app.madfam.io --project tulana 
 5. Confirm the status monitor no longer lists the domain.
 
 Direct Cloudflare tunnel mutation remains break-glass only when `tunnels-apply` is unavailable or unconfigured.
+
+## Repoint guard and environment-aware backends (2026-10-01)
+
+A `tunnels-apply --project <p> --apply` once executed five UPDATEs it had
+labelled drift: a project's production API and admin hostnames were moved onto
+its web service, and its staging hostnames onto the production web service.
+Every live route was correct; every junction was wrong (all bound to the web
+service, none to an environment), and the planner derived every backend in the
+production namespace.
+
+What the planner does now:
+
+- **Environment-aware backend.** Each junction's backend is
+  `<service>.<namespace of the junction's environment>`. The environment comes
+  from the junction itself (migration 041, `junctions.environment_id`), else
+  from the hostname's domain record, else production. A non-production
+  environment uses its own namespace (`enclii-<project>-<env>` by convention),
+  never the service's production namespace. Every plan row reports
+  `environment` and `environment_source` (`junction`, `domain-record`,
+  `default`).
+- **Repoint guard.** An UPDATE that changes the target service or namespace of
+  a hostname whose live backend is serving (the Service exists, exposes the
+  port, and selects a Ready pod; "could not tell" counts as serving) is a
+  repoint, labelled `REPOINT (blocked)`. A route is also never moved between
+  production and another environment's namespace by inference, even when its
+  backend is down (`guard: cross-environment`). The summary leads with
+  `REFUSED: ...`.
+- **All-or-nothing apply.** While any row in scope is blocked, the apply writes
+  nothing and answers HTTP 409.
+- **Explicit override, per hostname.** `--allow-repoint <hostname>`
+  (repeatable) permits one intended move. A desired namespace that belongs to a
+  different environment than the junction's is a data error and is never
+  overridable.
+- **Unresolvable backends.** A row whose desired Service does not resolve is
+  `BLOCKED`, for creates and updates alike.
+- **Automated paths.** The push reconcile, the junction reconcile that runs on
+  every junction create, `ops domains reconcile` and `domains add` refuse the
+  same repoints (no override); the refusal is recorded on the domain record.
+
+### Correcting a junction's binding
+
+Fix the data, not the route. `enclii ops junctions rebind` rewrites a
+junction's service and environment and nothing else; it is a dry run unless
+`--apply --reason` is given, idempotent, and refuses unknown hostnames,
+services and environments.
+
+```bash
+# 1. Preview the binding change (dry run). The row reports backend_after and
+#    live_matches: true means the live route already serves that binding.
+enclii ops junctions rebind api.example.com --project example \
+  --to-service example-api --environment production
+
+# 2. After applying the rebind, confirm the route plan for that host is SKIP.
+enclii providers cloudflare tunnels-apply api.example.com --project example
+```
+
+A blocked `tunnels-apply` dry run lists, under `Next`, the rebind dry run that
+would bind each blocked hostname to the backend serving it now.

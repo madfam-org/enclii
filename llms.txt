@@ -55,7 +55,7 @@ Compact LLM context index for this repository.
 - Brand-host onboarding order (verified 2026-09-07): `domains add` **from the
   repo root** (the `-f` parser validates `spec.build.dockerfile` against
   `os.Getwd()`, not the manifest's directory) -> `dns-apply` proxied CNAME ->
-  `tunnels-apply` (plan must show only a create for the new host) -> `dns-apply`
+  `tunnels-apply` dry run (plan must show only a create for the new host) -> `dns-apply`
   the verification TXT -> `domains verify`. Then `zone-settings-apply` once the
   zone is active (`always_use_https`, `automatic_https_rewrites`,
   `min_tls_version=1.2`; verify `curl -sSI http://<host>/` -> 301). A
@@ -166,7 +166,8 @@ before raw infrastructure tools. Direct `kubectl`, `helm`, SSH, provider CLIs,
 - `scripts/wave0-ga-ops.sh` — Enclii-first Wave 0 cluster ops orchestration
 - `scripts/wave1-ga-ops.sh` — Enclii-first Wave 1 stability ops orchestration
 - `enclii ops storage storageclass-apply` / `enclii ops policy cosign-enable` — Wave 1.5 Longhorn + cosign adapters
-- `enclii providers cloudflare tunnels-apply --project <slug>` — junction tunnel route reconcile
+- `enclii providers cloudflare tunnels-apply --project <slug>` — junction tunnel route reconcile; backends derive from each junction's service AND environment; repoints of serving routes and cross-environment moves are `REPOINT (blocked)` and the apply is all-or-nothing (`--allow-repoint <host>`, `--expect-plan <fp>`)
+- `enclii ops junctions rebind <host> --project <slug> --to-service <svc> --environment <env>` — correct a junction's binding (dry run by default; data only, never touches the route)
 - `enclii ops secrets sync-sweep` + `scripts/post-deploy-ga-adapters.sh` — ESO batch reconcile (O-10) + deploy smoke
 - `scripts/setup-commercial-ga-staging-env.sh` + `scripts/ga-ops-runbook.sh` — GH staging env + ROI ops orchestration
 - `scripts/security-release-smoke.sh` — automatable O-3 auth checks (Gate 1)

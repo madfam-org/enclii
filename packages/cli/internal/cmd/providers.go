@@ -149,6 +149,8 @@ func newProviderActionCommand(cfg *config.Config, provider, action, short string
 	var priority string
 	var replace bool
 	var recipient string
+	var allowRepoint []string
+	var expectPlan string
 	cmd := &cobra.Command{
 		Use:   action + " [target]",
 		Short: short,
@@ -188,6 +190,12 @@ func newProviderActionCommand(cfg *config.Config, provider, action, short string
 			if replace {
 				extra["replace"] = "true"
 			}
+			if len(allowRepoint) > 0 {
+				extra["allow_repoint"] = strings.Join(allowRepoint, ",")
+			}
+			if strings.TrimSpace(expectPlan) != "" {
+				extra["expect_plan"] = strings.TrimSpace(expectPlan)
+			}
 			if provider == "resend" && action == "send-test-apply" {
 				to, err := validateSendTestRecipient(recipient)
 				if err != nil {
@@ -213,6 +221,15 @@ func newProviderActionCommand(cfg *config.Config, provider, action, short string
 		// that would collide ADDS a record by default. --replace is the
 		// explicit, auditable way to overwrite one instead.
 		cmd.Flags().BoolVar(&replace, "replace", false, "Overwrite an existing record of this type at this name instead of adding another (TXT/MX/NS/SRV)")
+	}
+	if provider == "cloudflare" && action == "tunnels-apply" {
+		cmd.Long = tunnelsApplyLong
+		// Repeatable and per hostname on purpose: there is no project-wide
+		// override for the repoint guard.
+		cmd.Flags().StringArrayVar(&allowRepoint, "allow-repoint", nil,
+			"Permit repointing this hostname away from the backend serving it now (repeat per hostname)")
+		cmd.Flags().StringVar(&expectPlan, "expect-plan", "",
+			"Refuse the apply unless the current plan's fingerprint matches this one (from the dry run)")
 	}
 	if provider == "porkbun" && action == "dns-apply" {
 		cmd.Flags().StringVar(&recordType, "type", "", "DNS record type (default: CNAME)")
@@ -253,6 +270,31 @@ func validateSendTestRecipient(raw string) (string, error) {
 	}
 	return to, nil
 }
+
+const tunnelsApplyLong = `Reconcile a project's junction tunnel routes against the live tunnel ingress.
+
+Each junction's backend is derived from its service AND environment: a staging
+junction targets the staging environment's namespace, never the production one.
+
+The dry run (the default) prints the plan. Rows the repoint guard refuses are
+labelled "REPOINT (blocked)" and the summary says so first:
+
+  - an UPDATE that changes the target service or namespace of a hostname whose
+    live backend is serving is a repoint, not a drift fix;
+  - a route is never moved between production and another environment's
+    namespace by inference.
+
+An apply is all-or-nothing: while any row is blocked, nothing is written. Fix
+the junction with "enclii ops junctions rebind" (dry run first), or permit one
+intended move with --allow-repoint <hostname>. --expect-plan makes the apply
+refuse unless the plan is still the one the dry run showed.
+
+Examples:
+  # Plan for a whole project (dry run)
+  enclii providers cloudflare tunnels-apply --project my-project
+
+  # Plan for one hostname (dry run)
+  enclii providers cloudflare tunnels-apply app.example.com --project my-project`
 
 func providerPath(provider, action string) string {
 	return fmt.Sprintf("/v1/providers/%s/%s", provider, strings.ReplaceAll(action, "_", "-"))

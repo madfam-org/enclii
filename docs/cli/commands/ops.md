@@ -126,6 +126,33 @@ plans nothing rather than falling back to all of them.
 
 `enclii domains reconcile` is an alias for the same operation.
 
+## `ops junctions rebind`
+
+Binds a hostname's junction to the service **and environment** that serve it.
+The junction is what `providers cloudflare tunnels-apply` plans from, so a
+junction bound to the wrong service or environment makes every later
+`tunnels-apply` propose a repoint (which its guard refuses).
+
+Data only: the binding is rewritten and the tunnel route is not touched. Dry
+run by default, idempotent (a junction already bound as asked is reported and
+left alone), and it refuses unknown hostnames, services and environments,
+listing the ones that exist.
+
+```bash
+# Preview (dry run): the row shows the backend tunnels-apply will want after
+# the rebind, and whether the live route already serves it (live_matches)
+enclii ops junctions rebind api.example.com --project example \
+  --to-service example-api --environment production
+
+# Afterwards, the route plan for that hostname (dry run) should be SKIP
+enclii providers cloudflare tunnels-apply api.example.com --project example
+```
+
+Flags: `--to-service` and `--environment` (required), `--path` (only the
+junction on that path; default every junction for the hostname), plus the
+shared contract flags. API: `POST /v1/ops/junctions/rebind` with
+`scope.project`, `args.target`, `args.to_service`, `args.environment`.
+
 ## `ops secrets provision-kalya-feed`
 
 Mints a kalya standing-feed token and files it into its consumers' Vault paths,
