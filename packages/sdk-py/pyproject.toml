@@ -42,7 +42,11 @@ dev = [
     "respx>=0.21.0",
     "ruff>=0.6.0",
     "mypy>=1.10.0",
-    "datamodel-code-generator[http]>=0.26.0",
+    # Exact pin: models/generated.py is checked in and drift-checked in CI, and
+    # uv.lock is not committed for this library, so a floating generator would
+    # turn a generator release into a spurious drift failure. Bump deliberately
+    # and regenerate in the same PR (scripts/generate_models.sh).
+    "datamodel-code-generator[http]==0.83.0",
 ]
 
 [project.urls]
