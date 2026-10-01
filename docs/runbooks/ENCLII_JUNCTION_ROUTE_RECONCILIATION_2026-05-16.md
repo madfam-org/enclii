@@ -1,5 +1,11 @@
 # Enclii junction route reconciliation
 
+> **Boundary checkpoint (2026-10-01, platform on-call):** Public-safe runbook:
+> reconcile semantics, guard behaviour and generic example commands only, with
+> no tunnel ids, node identity or production output. Incident timelines and
+> per-project repair records stay in `internal-devops`; see
+> [`docs/PUBLIC_REPO_BOUNDARY.md`](../PUBLIC_REPO_BOUNDARY.md).
+
 Date: 2026-05-16
 
 ## Context
