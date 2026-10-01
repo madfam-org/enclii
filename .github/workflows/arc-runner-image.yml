@@ -3,18 +3,39 @@ name: Build ARC Runner Image
 # Builds and publishes the MADFAM hardened ARC runner image
 # (infra/docker/arc-runner) to GHCR.
 #
-# Why this runs on github-hosted ubuntu-latest, not on our self-hosted
+# Why this runs on GitHub-hosted ubuntu-24.04, not on our self-hosted
 # ARC pool: chicken-and-egg. The whole point of this workflow is to
 # produce the runner image our ARC pool will consume. If we tried to
 # build it on the broken pool, the build would fail for the very
 # reasons we're fixing.
 #
-# Tag scheme:
-#   :<git-sha>  immutable, used for provenance + pre-merge testing
-#   :stable     moved to point at the latest main build
+# The label is pinned to ubuntu-24.04 rather than ubuntu-latest so that
+# GitHub moving ubuntu-latest to a new Ubuntu release does not silently change
+# the build host (and the host uid the BOSL2 smoke relies on below).
 #
-# See infra/docker/arc-runner/README.md for image rationale and the
-# rebuild cadence policy.
+# Tag scheme:
+#   :<sha12>  first 12 characters of the commit sha. The ONLY tag the build
+#             step pushes. Per-build, so every older digest stays reachable
+#             by tag (which is what makes a manual :stable rollback possible).
+#   :stable   promote-after-verify. Moved by the final "Promote :stable" step,
+#             and only after BOTH smoke steps and the cosign signature have
+#             passed for this build. It is a carbon copy of the exact digest
+#             the build step reported, smoke-tested and signed, so
+#             `cosign verify <image>:stable` resolves to a signed digest.
+#             Main pushes and workflow_dispatch on main with tag_stable=true
+#             only; pull requests never push and never move :stable. No
+#             workflow moves :stable backwards: rollback is manual, see the
+#             READMEs below.
+#
+# The pools do not follow :stable. They pin a digest in
+# infra/k8s/production/arc/{runner-blue,runner-deploy}/rendered.yaml, so a
+# build of this workflow changes no running runner. The bare :stable
+# consumer is infra/helm/arc/values-runner-set.yaml, used only by an explicit
+# non-dry-run dispatch of arc-self-deploy.yml (bootstrap / recovery).
+#
+# See infra/docker/arc-runner/README.md for image rationale, the rebuild
+# cadence policy and the :stable rollback command, and
+# infra/k8s/production/arc/README.md for the digest pins the pools run.
 #
 # Since G16 the image also carries the commons render environment
 # (libGL/X, Liberation fonts, OpenSCAD 2026.02.13). The "Smoke-check the
@@ -59,7 +80,7 @@ env:
 jobs:
   build:
     name: Build + push arc-runner image
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     # Raised from 20 with G16: the OpenSCAD AppImage is ~84 MB to download and
     # extracts to a few hundred MB, and the smoke check runs the image after.
     # Cached layers make the steady state fast; this covers a cold cache.
@@ -79,7 +100,8 @@ jobs:
           TAG_SHA="${GITHUB_SHA::12}"
           echo "tag_sha=${TAG_SHA}" >> "$GITHUB_OUTPUT"
           # On main pushes (or workflow_dispatch with tag_stable=true on main),
-          # also publish :stable. Never on PRs.
+          # promote :stable in the final step, after the smoke checks and the
+          # signature. Never on PRs.
           if [ "${GITHUB_EVENT_NAME}" = "push" ] && [ "${GITHUB_REF}" = "refs/heads/main" ]; then
             echo "publish_stable=true" >> "$GITHUB_OUTPUT"
           elif [ "${GITHUB_EVENT_NAME}" = "workflow_dispatch" ] && \
@@ -107,20 +129,6 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Assemble image tag list
-        id: tags
-        run: |
-          TAGS="${IMAGE_NAME}:${{ steps.meta.outputs.tag_sha }}"
-          if [ "${{ steps.meta.outputs.publish_stable }}" = "true" ]; then
-            TAGS="${TAGS}
-          ${IMAGE_NAME}:stable"
-          fi
-          {
-            echo "tags<<EOF"
-            echo "${TAGS}"
-            echo "EOF"
-          } >> "$GITHUB_OUTPUT"
-
       - name: Build and push
         id: build
         uses: docker/build-push-action@v6
@@ -131,9 +139,14 @@ jobs:
           # Also load into the local daemon so the smoke check below can run
           # the image we just built. On PRs (push=false) this is the ONLY copy
           # that exists; on main it costs one extra local export and means the
-          # smoke check gates the same bits that were pushed.
+          # smoke check gates the same bits that were pushed (the "Promote
+          # :stable" step re-asserts that before it moves the tag).
           load: true
-          tags: ${{ steps.tags.outputs.tags }}
+          # ONLY the immutable per-build tag. :stable is deliberately NOT here:
+          # pushing it with the build would move it before the smoke checks and
+          # the signature had run, leaving it on an unverified, unsigned image
+          # whenever one of them failed. It is promoted by the last step.
+          tags: ${{ env.IMAGE_NAME }}:${{ steps.meta.outputs.tag_sha }}
           # Buildx cache via GHA cache backend — keeps rebuilds fast
           # when only the Dockerfile changes but the base image is hot.
           cache-from: type=gha,scope=arc-runner
@@ -243,7 +256,7 @@ jobs:
           SMOKE_DIR="${RUNNER_TEMP}/oscad-smoke"
           mkdir -p "${SMOKE_DIR}"
           # The image runs as `runner` (uid 1001), which happens to match the
-          # host runner uid on ubuntu-latest — but do not rely on that: a uid
+          # host runner uid on ubuntu-24.04 — but do not rely on that: a uid
           # mismatch would fail the write and read as "OpenSCAD cannot render
           # BOSL2", which is exactly the wrong conclusion.
           chmod 777 "${SMOKE_DIR}"
@@ -387,26 +400,124 @@ jobs:
           done
           if [ "$signed" -ne 1 ]; then
             echo "::error::cosign sign failed 3 times for ${IMAGE_REF}."
-            echo "::error::The image was BUILT AND PUSHED but is NOT signed, so it will not be"
-            echo "::error::pinned and ArgoCD will not roll it: the live host is still serving the"
-            echo "::error::PREVIOUS build even though this commit is on main. Rerun the failed jobs."
+            echo "::error::The image was BUILT AND PUSHED (as :${{ steps.meta.outputs.tag_sha }} only) but is NOT"
+            echo "::error::signed, so :stable was NOT moved and it will not be pinned: the pools still"
+            echo "::error::run the PREVIOUS build even though this commit is on main. Rerun the failed jobs."
             exit 1
           fi
 
+      # Promote-after-verify. Every step above runs under the default success()
+      # gate, so reaching this step means the BOSL2 render smoke, the
+      # agent/gh/Chromium smoke and the keyless signature all passed for THIS
+      # build. Before this step existed, :stable was pushed together with
+      # :<sha12> by the build step and a failed smoke or signature left it on an
+      # unverified, unsigned image that nothing rolled back.
+      #
+      # Why DIGEST is the right thing to promote, from the wiring alone:
+      #   - steps.build.outputs.digest is the digest the build step pushed; the
+      #     same build invocation loaded :<sha12> into the local daemon, and both
+      #     smoke steps ran `docker run` against that local :<sha12>;
+      #   - "Sign image (keyless)" signs ${IMAGE_NAME}@${DIGEST} — the same output;
+      #   - this step promotes ${IMAGE_NAME}@${DIGEST} — the same output again.
+      # It still re-asserts the first link at run time (local image == pushed
+      # digest) and the last one after the move (:stable resolves to DIGEST),
+      # because both are cheap and either drifting would be silent otherwise.
+      #
+      # `--prefer-index=false` matters: buildx reports the single-platform
+      # manifest digest here, and with the default --prefer-index=true
+      # `imagetools create` would wrap it in a NEW index whose digest is neither
+      # the tested nor the signed one. false makes it a carbon copy.
+      - name: Promote :stable
+        id: promote
+        if: steps.meta.outputs.publish_stable == 'true' && steps.meta.outputs.push_image == 'true'
+        env:
+          DIGEST: ${{ steps.build.outputs.digest }}
+          SMOKE_IMAGE: ${{ env.IMAGE_NAME }}:${{ steps.meta.outputs.tag_sha }}
+        run: |
+          set -euo pipefail
+          if [[ ! "${DIGEST}" =~ ^sha256:[0-9a-f]{64}$ ]]; then
+            echo "::error::build step reported no usable digest ('${DIGEST}'); refusing to move :stable."
+            exit 1
+          fi
+          SRC="${IMAGE_NAME}@${DIGEST}"
+
+          # 1. The pushed digest is the image the smoke steps ran.
+          pushed_manifest="$(docker buildx imagetools inspect --raw "${SRC}")"
+          media_type="$(jq -r '.mediaType // ""' <<<"${pushed_manifest}")"
+          case "${media_type}" in
+            application/vnd.oci.image.manifest.v1+json|application/vnd.docker.distribution.manifest.v2+json) ;;
+            *)
+              echo "::error::${SRC} is '${media_type}', not a single image manifest; refusing to move :stable."
+              echo "::error::The build step's digest output changed shape. Re-check which digest is smoke-tested and signed."
+              exit 1
+              ;;
+          esac
+          pushed_config="$(jq -r '.config.digest' <<<"${pushed_manifest}")"
+          # Classic image store: the local image ID is the config digest.
+          # containerd image store: it is the manifest digest. Accept either.
+          local_id="$(docker image inspect --format '{{.Id}}' "${SMOKE_IMAGE}")"
+          if [ "${local_id}" != "${pushed_config}" ] && [ "${local_id}" != "${DIGEST}" ]; then
+            echo "::error::the smoke-tested local image (${local_id}) is not the pushed ${DIGEST}"
+            echo "::error::(config ${pushed_config}); refusing to move :stable."
+            exit 1
+          fi
+          echo "smoke-tested local image ${local_id} == pushed ${DIGEST} (config ${pushed_config})"
+
+          # `--raw` prints the manifest bytes unmodified (no trailing newline is
+          # added), so the sha256 of the FILE is the digest the registry serves.
+          # A file, not $(...): command substitution strips trailing newlines.
+          resolve_stable() {
+            docker buildx imagetools inspect --raw "${IMAGE_NAME}:stable" > "${RUNNER_TEMP}/stable.json" \
+              && echo "sha256:$(sha256sum "${RUNNER_TEMP}/stable.json" | cut -d' ' -f1)"
+          }
+
+          # 2. Move :stable to exactly that digest. Record where it was first, for
+          #    the rollback line in the summary.
+          previous="$(resolve_stable || echo "unresolved")"
+          docker buildx imagetools create --prefer-index=false -t "${IMAGE_NAME}:stable" "${SRC}"
+
+          # 3. :stable now resolves to DIGEST.
+          stable="$(resolve_stable)"
+          if [ "${stable}" != "${DIGEST}" ]; then
+            echo "::error:::stable resolves to ${stable}, not the verified ${DIGEST}."
+            echo "::error::Roll it back by hand (infra/docker/arc-runner/README.md, 'Rolling :stable back')."
+            exit 1
+          fi
+          echo ":stable promoted: ${previous} -> ${stable}"
+          {
+            echo "## :stable promoted"
+            echo ""
+            echo "- Now: \`${stable}\` (smoke-tested and signed in this run)"
+            echo "- Before: \`${previous}\` (roll back to it with the command in infra/docker/arc-runner/README.md)"
+          } >> "$GITHUB_STEP_SUMMARY"
+
       - name: Summary
+        env:
+          DIGEST: ${{ steps.build.outputs.digest }}
+          PUSHED: ${{ steps.meta.outputs.push_image }}
+          PROMOTED: ${{ steps.promote.outcome == 'success' }}
+          TAG_SHA: ${{ steps.meta.outputs.tag_sha }}
         run: |
           {
             echo "## ARC runner image build"
             echo ""
-            echo "- Pushed: \`${{ steps.meta.outputs.push_image }}\`"
-            echo "- Digest: \`${{ steps.build.outputs.digest }}\`"
-            echo "- Tags:"
-            echo '```'
-            echo "${{ steps.tags.outputs.tags }}"
-            echo '```'
-            echo ""
-            echo "Consume from Helm values:"
-            echo '```yaml'
-            echo "image: ${IMAGE_NAME}:stable"
-            echo '```'
+            if [ "${PUSHED}" = "true" ]; then
+              echo "- Pushed: \`${IMAGE_NAME}:${TAG_SHA}\` only"
+              echo "- Digest (smoke-tested, signed): \`${DIGEST}\`"
+            else
+              echo "- Pushed: nothing (pull request: built and smoke-tested locally only)"
+              echo "- Local digest (smoke-tested, not pushed, not signed): \`${DIGEST}\`"
+            fi
+            if [ "${PROMOTED}" = "true" ]; then
+              echo "- \`:stable\`: promoted to this digest"
+              echo ""
+              echo "The pools do not follow \`:stable\`: they pin a digest in"
+              echo "infra/k8s/production/arc/{runner-blue,runner-deploy}/rendered.yaml."
+              echo "To roll them onto this build, repin all four references to:"
+              echo '```yaml'
+              echo "image: ${IMAGE_NAME}:stable@${DIGEST}"
+              echo '```'
+            else
+              echo "- \`:stable\`: not moved (pull request, non-main ref or tag_stable=false)"
+            fi
           } >> "$GITHUB_STEP_SUMMARY"

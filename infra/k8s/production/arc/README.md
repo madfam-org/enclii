@@ -59,16 +59,32 @@ So a base-image bump is **three** steps, not two:
 
 1. bump `BASE_TAG` + `BASE_TAG_DATE` in
    [`../../../docker/arc-runner/Dockerfile`](../../../docker/arc-runner/Dockerfile);
-2. merge, and take the **manifest list digest** from the `arc-runner-image.yml`
-   build log — the `pushing manifest for …@sha256:…` line, **not** the
-   single-manifest digest the run summary prints. The two differ, and only the
-   list digest is what a node resolves when it pulls;
+2. merge, and take the digest from the `arc-runner-image.yml` run on `main`:
+   the job summary's "Digest (smoke-tested, signed)" line, which is the build
+   step's `digest` output. That is the signed single-platform manifest, and
+   the digest `:stable` is promoted to once the run's smoke checks and
+   signature pass (see
+   [`../../../docker/arc-runner/README.md`](../../../docker/arc-runner/README.md#stable-is-promoted-after-verification)
+   and the header of
+   [`../../../../.github/workflows/arc-runner-image.yml`](../../../../.github/workflows/arc-runner-image.yml)).
+   A run that did not promote `:stable` is not a candidate for a pin;
 3. repin **all four** image references — both files, two each.
 
 Both pools currently run
-`ghcr.io/madfam-org/enclii/arc-runner:stable@sha256:c35966ed277acedf16953c1e8075a2c9d92509be488b4de48b9487605da5a162`
-(#521, from the image built by #520 — the render-library parity fix that added
-`libcomerr2` and `libgpg-error0`). Rollback digest: `sha256:ac3d33fd…`.
+`ghcr.io/madfam-org/enclii/arc-runner:stable@sha256:2f5876c2b29d4fb42640fae93579f488b11aa7ee17935ddd2dc1091c89784230`
+(#656, the image built on `main` on 2026-09-29; it is the single-platform
+manifest digest). Rollback digest:
+`sha256:c35966ed277acedf16953c1e8075a2c9d92509be488b4de48b9487605da5a162`,
+the pin #656 replaced (#521, the image built from #520 — the render-library
+parity fix that added `libcomerr2` and `libgpg-error0`). That one is a
+**manifest list** digest: pins before #656 took the list digest from the build
+log's `pushing manifest for …` line. Both are valid digest pins for the
+pools' `linux/amd64` nodes. Read both from `git log -p` on the two
+`rendered.yaml` files rather than from this paragraph if they ever disagree.
+
+The pools never follow the `:stable` tag; moving or rolling back `:stable`
+changes no running runner. The `:stable` rollback command lives in
+[`../../../docker/arc-runner/README.md`](../../../docker/arc-runner/README.md#rolling-stable-back).
 
 Verify what the pools actually run, read-only:
 
