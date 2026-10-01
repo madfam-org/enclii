@@ -140,11 +140,37 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           # Matches both the all-zero sentinel and any previously pinned digest.
-          sed -E -i "s#${IMAGE}(@sha256:[a-f0-9]{64}|:[A-Za-z0-9._-]+)#${IMAGE}@${DIGEST}#g" "${MANIFEST}"
+          apply_our_digest() {
+            sed -E -i "s#${IMAGE}(@sha256:[a-f0-9]{64}|:[A-Za-z0-9._-]+)#${IMAGE}@${DIGEST}#g" "${MANIFEST}"
+          }
+          apply_our_digest
           git add "${MANIFEST}"
           git diff --cached --quiet && echo "Digest already pinned" && exit 0
           git commit -m "build: pin weighbridge image"
-          git push origin HEAD:main
+          # The push races other pins landing on main: several self-pinning
+          # workflows fire on the same push (2026-10-01, run 36815916309 lost
+          # this race and left a built image unpinned). Same recovery as the
+          # commit-digests job in build-publish.yml: on rejection, reset onto
+          # the fresh tip and re-apply our digest (idempotent) rather than
+          # rebasing, then retry.
+          for attempt in 1 2 3 4 5; do
+            if git push origin HEAD:main; then
+              exit 0
+            fi
+            echo "push attempt ${attempt} rejected (non-fast-forward); reset onto fresh main and re-apply the digest"
+            sleep $((attempt * 2))
+            git fetch origin main
+            git reset --hard origin/main
+            apply_our_digest
+            if git diff --quiet -- "${MANIFEST}"; then
+              echo "Fresh main already pins this digest; nothing to push."
+              exit 0
+            fi
+            git add "${MANIFEST}"
+            git commit -m "build: pin weighbridge image"
+          done
+          echo "::error::Could not push the weighbridge digest pin after 5 attempts; investigate push contention on main."
+          exit 1
 
       - name: Surface digest in run summary
         run: |
