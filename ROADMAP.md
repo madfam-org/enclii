@@ -84,7 +84,6 @@ pick it up) or *owner decision* (needs the maintainer before work starts).
 | Remove `npm`/`npx` from Node runtime images | Same shape as pip: the runner executes `node server.js`; npm's vendored tree is scanned and can block the image gate | P1 | engineering | [#660](https://github.com/madfam-org/enclii/pull/660); `scripts/check-runner-no-npm.py` guards it here |
 | Make startup database connects retry-safe | A service that exits on the first failed connect restarts 1–2 times per rollout while the database or its pooler is still settling; the restarts hide real crash loops | P2 | engineering | [voxa#12](https://github.com/madfam-org/voxa/pull/12) (bounded retry with backoff before the first query) |
 | Align every repo that ships `sharp` on 0.35.5 or newer | One override per lockfile keeps image pipelines on the same patched libvips line; a standalone app lockfile can drift from the workspace root (see the note in `apps/status/package.json`) | P2 | engineering | — |
-| Finish the Next.js 14 → 15 migrations | Keeps every app on a supported Next.js major. Done: eido, atelier-noir. In flight: ceq, rondelio | P2 | engineering | — |
 
 ### This repository
 
@@ -98,6 +97,7 @@ pick it up) or *owner decision* (needs the maintainer before work starts).
 | Public-repo sanitization pass | Decide whether and how far to sanitize history and docs; keep the public boundary generic until then | P2 | owner decision | [owner decision record](docs/PUBLIC_REPO_SANITIZATION_OWNER_DECISION_2026-06-01.md) |
 | Replace the two unconditional Playwright skips | `sso-login` "Protected Routes" and the first `dashboard` block always skip; the unauthenticated redirect has unit tests but no E2E proof | P3 | engineering | [SKIPPED_TESTS.md](docs/testing/SKIPPED_TESTS.md) |
 | Delete the unrouted `AddCustomDomain` handler | `internal/api/domain_handlers.go` keeps a handler that no route serves; only its tests call it | P3 | engineering | [#668](https://github.com/madfam-org/enclii/pull/668) |
+| Refresh the Cotiza ↔ PravaraMES line in `docs/templates/ecosystem/metadata_fabrication.py`, then regenerate the ecosystem docs | The PravaraMES entry still says «no accepted-quote call exists yet». Cotiza does dispatch accepted quotes, but the two sides disagree on route, signature header and payload shape, so the jobs don't arrive (tracked in the PravaraMES and Cotiza roadmaps) | P3 | engineering | — |
 | Cache-bust the landing-page `apk upgrade` layer | The build cache can reuse an old `apk upgrade` layer, so the runtime image misses newer Alpine packages until the cache is cold | P3 | engineering | `apps/landing/Dockerfile` |
 | Resume the root `CHANGELOG.md` | Its last entry is from March 2026; releases since then (CLI `v1.0.0-alpha.14` and later) are only in PR history | P3 | engineering | — |
 | Replace `ubuntu-latest` in the `docs/production/ANTI_FRAGILITY_SYSTEM.md` examples with `ubuntu-24.04` | The rest of the repo pins runners; the doc is boundary-gated, so editing it needs the maintainer's boundary attestation | P3 | owner decision | — |
