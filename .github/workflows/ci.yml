@@ -1623,8 +1623,8 @@ jobs:
           # documented HIGH,CRITICAL policy.
           limit-severities-for-sarif: true
           # Root .trivyignore: justified, rotation-noted exceptions only
-          # (currently the pack CLI's embedded docker/docker in the
-          # switchyard-api image — see the file for the rotation condition).
+          # (currently none — the file's header says which entries are live
+          # and each entry carries its own rotation condition).
           trivyignores: .trivyignore
         env:
           # Trivy authenticates to the registry ITSELF; it does not reliably

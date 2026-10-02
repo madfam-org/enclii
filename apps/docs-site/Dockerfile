@@ -42,14 +42,17 @@ FROM docker.io/library/nginx:alpine AS runner
 # APK_SECURITY_REFRESH is echoed into the command so bumping it busts the
 # BuildKit layer cache: a cached `apk upgrade` layer keeps shipping the old
 # package set after Alpine publishes a fix (see apps/switchyard-api/Dockerfile).
-# The `libexpat>=…` floor fails the build loudly if the mirror serves an older
+# The `pkg>=…` floors fail the build loudly if the mirror serves an older
 # package than the fix the scan gate expects.
 # 2026-09-24: CVE-2026-93990 (libexpat 2.8.4-r0, fixed 2.8.5-r0) failed
 # `Scan: docs-site` on #625's push run 36056625981.
-ARG APK_SECURITY_REFRESH=2026-09-24
+# 2026-10-02: CVE-2026-103111 (pcre2 10.48-r0, fixed 10.49-r0) failed
+# `Scan: docs-site` on main run 36947907115. The libuuid floor (util-linux
+# 2.42.3) retires the seven util-linux entries from .trivyignore.
+ARG APK_SECURITY_REFRESH=2026-10-02
 RUN echo "apk security refresh: ${APK_SECURITY_REFRESH}" && \
     apk upgrade --no-cache && \
-    apk add --no-cache 'libexpat>=2.8.5-r0'
+    apk add --no-cache 'libexpat>=2.8.5-r0' 'pcre2>=10.49-r0' 'libuuid>=2.42.3-r0'
 
 # Copy custom nginx config (standard port 80)
 # Security headers applied at origin (defense-in-depth; Cloudflare may also set some).

@@ -1,10 +1,9 @@
 # Trivy ignore list — every entry needs a justification and a rotation
 # condition. Remove entries as soon as the upstream fix ships.
 #
-# Nine entries are live, all of them docs-site findings: see the two blocks
-# below. (This header read "Currently empty" until 2026-09-12, four weeks
-# after the docs-site entries were added — it was stale, and it reads as a
-# claim that the whole file is inert, which it is not.)
+# Currently empty: no entry is live. Keep this line accurate — when you add
+# an entry, say here how many are live and where (until 2026-09-12 this
+# header read "Currently empty" while nine docs-site entries were live).
 #
 # Rotated out on 2026-07-11: CVE-2026-41567, CVE-2026-42306, CVE-2026-34040
 # (docker/docker v28.5.2 embedded in pack 0.40.7). pack and the docker CLI are
@@ -12,36 +11,13 @@
 # unpublished dev-only stages (apps/switchyard-api/Dockerfile `dev`,
 # apps/roundhouse/Dockerfile `worker-dev`), which CI does not scan.
 
-# CVE-2025-71329, CVE-2025-71330 — image-size 2.0.2, transitive via
-# Docusaurus 3.10.2 (docs-site ONLY; no published service image carries it).
-# NO upstream fix exists as of 2026-08-27: image-size has no patched release
-# and Docusaurus pins the range. Justification: docs-site is an internal
-# documentation surface, not a production service path; the findings are
-# parser-DoS class reachable only by building the site from hostile images,
-# which our build does not do. Rotation condition: remove the moment
-# image-size ships a fix or Docusaurus bumps past it — re-check on every
-# Docusaurus upgrade, and no later than 2026-10-01.
-CVE-2025-71329
-CVE-2025-71330
-
-# CVE-2026-53612, CVE-2026-53613, CVE-2026-53614, CVE-2026-76642,
-# CVE-2026-78408, CVE-2026-78409, CVE-2026-78410 — util-linux 2.42.1-r0,
-# reported against `libuuid` in the docs-site image (runner stage is
-# nginx:alpine on Alpine 3.24.1). Every one of the seven is a defect in
-# mount(8)/nsenter(1) — TOCTOU in the mount program, LIBMOUNT_FORCE_MOUNT2,
-# X-mount post-hooks, --join-cgroup, X-mount.subdir, restricted bind mounts.
-# The docs-site image carries NEITHER binary: only libuuid.so (UUID
-# generation for nginx) is installed from the util-linux source package, and
-# the image runs a static nginx behind the tunnel with no mount namespace to
-# escape. Trivy names the fix as 2.42.3-r0, but as of 2026-09-05 the Alpine
-# v3.24 main index still publishes 2.42.1-r0, so `apk upgrade --no-cache`
-# (already in the Dockerfile) cannot pull it. Rotation condition: remove the
-# moment Alpine 3.24 ships util-linux >= 2.42.3-r0 — check on every docs-site
-# rebuild, and no later than 2026-10-01.
-CVE-2026-53612
-CVE-2026-53613
-CVE-2026-53614
-CVE-2026-76642
-CVE-2026-78408
-CVE-2026-78409
-CVE-2026-78410
+# Rotated out on 2026-10-02 (both rotation conditions met):
+# - CVE-2025-71329, CVE-2025-71330 (image-size 2.0.2, transitive via
+#   Docusaurus 3.10.2 in apps/docs-site). image-size 2.0.3 fixes both and
+#   Docusaurus asks for ^2.0.2, so the docs-site lockfile now resolves 2.0.4
+#   in range; no override needed.
+# - CVE-2026-53612, CVE-2026-53613, CVE-2026-53614, CVE-2026-76642,
+#   CVE-2026-78408, CVE-2026-78409, CVE-2026-78410 (util-linux mount/nsenter
+#   defects reported against libuuid in the docs-site runner stage). Alpine
+#   v3.24 main now publishes util-linux/libuuid 2.42.3-r1, and
+#   apps/docs-site/Dockerfile floors 'libuuid>=2.42.3-r0'.
