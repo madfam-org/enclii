@@ -1,6 +1,6 @@
 # MADFAM ecosystem OIDC auto-provision registry
 # Consumed by: enclii secrets provision oidc
-# Last Updated: 2026-09-24
+# Last Updated: 2026-10-01
 #
 # TWO COPIES, ONE CONTENT. The CLI embeds
 # packages/cli/internal/ecosystemoidc/data/ecosystem-oidc-provision.yaml (go:embed
@@ -441,6 +441,66 @@ platforms:
       redirect_uris:
         - https://cc-app.madfam.io/auth/callback
         - http://localhost:3000/auth/callback
+      allowed_scopes:
+        - openid
+        - email
+        - profile
+        - offline_access
+      grant_types:
+        - authorization_code
+        - refresh_token
+
+  # ---------------------------------------------------------------------------
+  # family-history-web — the Family History web at fh-app.madfam.io (landing
+  # fh.madfam.io, API fh-api.madfam.io). A CONFIDENTIAL login client: the
+  # Next.js BFF runs authorization_code + PKCE (S256) server-side and holds the
+  # secret, so browsers never see it. PKCE is a per-request property of the
+  # flow, not a client field, so nothing here declares it.
+  #
+  # ONE redirect URI, exact byte for byte (Janua compares scheme, host, PORT and
+  # path). Deliberately NO localhost callback, unlike creator-census-web: this is
+  # the production client and local development registers its own client, so
+  # Janua refuses any authorize request that would send a production code to a
+  # local listener (least privilege).
+  #
+  # Post-logout https://fh-app.madfam.io/ needs no field: the schema has none and
+  # Janua has no separate list. Its RP-Initiated Logout
+  # (validate_post_logout_redirect_uri) accepts an exact registered redirect URI
+  # OR the origin root of one, so the callback below already admits
+  # https://fh-app.madfam.io/ and nothing else.
+  #
+  # audience `family-history-api` is what the API validates bearers against, so
+  # the session the web holds is directly usable at the API.
+  #
+  # BOTH the id and the secret go to Vault (target family-history/web-oidc,
+  # lowercase to match what Vault stores), nauta-style: the family-history
+  # ExternalSecret family-history-web maps `property: auth_janua_client_id` ->
+  # AUTH_JANUA_CLIENT_ID and `property: auth_janua_client_secret` ->
+  # AUTH_JANUA_CLIENT_SECRET, so the id stays out of the public repo.
+  # FH_SESSION_SECRET is NOT minted here: it has its own target,
+  # family-history/web-session, filled with `--generate fh_session_secret`.
+  # session_intake_target is deliberately unset — it would re-mint the session
+  # secret on every provision re-run and sign every user out.
+  #
+  # NOT pinned with a client_id: the client does not exist yet, so the first
+  # run CREATES it, as a Janua admin (`--profile admin`). Pin the jnc_… id here
+  # (both copies) after that run so later runs reconcile instead of risking a
+  # duplicate.
+  # ---------------------------------------------------------------------------
+  family-history-web:
+    intake_target: family-history/web-oidc
+    intake_key_map:
+      auth_janua_client_id: client_id
+      auth_janua_client_secret: client_secret  # pragma: allowlist secret
+    janua_client:
+      name: MADFAM Family History
+      client_key: family-history-web  # pragma: allowlist secret
+      audience: family-history-api
+      description: Family History web (fh-app.madfam.io) — confidential OIDC authorization-code + PKCE client for the Next.js BFF
+      is_confidential: true
+      website_url: https://fh.madfam.io
+      redirect_uris:
+        - https://fh-app.madfam.io/auth/callback
       allowed_scopes:
         - openid
         - email

@@ -569,3 +569,55 @@ targets:
     external_secret: creator-census-config  # pragma: allowlist secret
     keys:
       - youtube_api_key
+
+  # family-history (2026-10-01) — the public family-history product: the web
+  # (fh-app.madfam.io), a Next.js BFF that signs in through Janua, and the API
+  # (audience family-history-api). Everything lands in ONE Vault path,
+  # secret/family-history, delivered by two ExternalSecrets in the
+  # family-history namespace: family-history-api and family-history-web
+  # (family-history repo, infra/k8s/production/externalsecret-{api,web}.yaml).
+  # DATABASE_URL / DIRECT_DATABASE_URL are NOT here: like creator-census, they
+  # come from the onboarding project Secret family-history-secrets.
+  #
+  # THREE targets, one path — one write route per property, the creator-census
+  # split. web-oidc is written only by `enclii secrets provision oidc
+  # --platform family-history-web` (both the client id and the secret: unlike
+  # creator-census, the web reads AUTH_JANUA_CLIENT_ID from the Secret, so the
+  # id never sits in the public repo). web-session only by
+  # `enclii secrets intake submit family-history/web-session --generate fh_session_secret`,
+  # which would otherwise prompt for the Janua pair at a masked prompt.
+  # api-access is the only human-typed value. Intake writes are merges, so the
+  # three land side by side in secret/family-history.
+  #
+  # LOWERCASE keys, because that is what Vault stores (normalizeVaultSecretKey)
+  # and what the ExternalSecrets map: `property: fh_early_access_allowlist`,
+  # `auth_janua_client_id`, `auth_janua_client_secret`, `fh_session_secret`.
+  # ESO is all-or-nothing per ExternalSecret: family-history-web stays
+  # NotReady until web-oidc AND web-session have both been written.
+  family-history/api-access:
+    label: Family History API early-access allowlist
+    description: Comma-separated Janua subjects or emails let into the early-access app (FH_EARLY_ACCESS_ALLOWLIST). Personal data, so it lives only in Vault. Must not be empty; an empty value fails closed and nobody gets in. Typed at the masked prompt; never generated.
+    vault_path: secret/family-history
+    namespace: family-history
+    external_secret: family-history-api  # pragma: allowlist secret
+    keys:
+      - fh_early_access_allowlist
+
+  family-history/web-oidc:
+    label: Family History web Janua OAuth client
+    description: Family History web (fh-app.madfam.io) Janua confidential client id + secret, filed by `enclii secrets provision oidc --platform family-history-web`. No human types either value.
+    vault_path: secret/family-history
+    namespace: family-history
+    external_secret: family-history-web  # pragma: allowlist secret
+    keys:
+      - auth_janua_client_id
+      - auth_janua_client_secret
+
+  family-history/web-session:
+    label: Family History web session signing secret
+    description: Signs and encrypts the family-history web session cookie (FH_SESSION_SECRET); never the Janua client secret. Mint server-side with --generate fh_session_secret (32 bytes crypto/rand, never returned); rotating it signs every user out.
+    vault_path: secret/family-history
+    namespace: family-history
+    external_secret: family-history-web  # pragma: allowlist secret
+    keys:
+      - fh_session_secret

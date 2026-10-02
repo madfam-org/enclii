@@ -1,6 +1,6 @@
 # Secret Intake (chat-safe credential handoff)
 
-**Last Updated:** 2026-09-24
+**Last Updated:** 2026-10-01
 
 > **Boundary checkpoint (2026-09-05, platform on-call):** Public-safe runbook —
 > target ids, Vault paths and key NAMES are routing contracts, never values. No
@@ -17,6 +17,11 @@
 > section adds target ids, key NAMES, a public redirect URI and a Janua client
 > NAME only. No client id, secret or session value appears here; the client id
 > is read from the operator's own `provision oidc` output.
+>
+> **Boundary checkpoint (2026-10-01, platform on-call):** The family-history
+> section adds target ids, key NAMES, a public redirect URI and a Janua client
+> NAME only. No client id, secret, session value or allowlist entry appears
+> here; the allowlist holds personal data and lives only in Vault.
 
 Operators supply production credentials through Enclii without pasting values into
 agent chat or git. Switchyard merges keys into Vault once; agents poll `intake_id`
@@ -85,6 +90,9 @@ ESO sources: `enclii-secrets`, `janua-secrets`, `madfam-site-secrets`, `phynd-cr
 | `angelia/courier-webhook-signing-keys` | `secret/angelia` | `courier_webhook_signing_key_alarms`, `courier_webhook_signing_key_enclii_ops`, `courier_webhook_signing_key_tulana`, `courier_webhook_signing_key_madfam_site` |
 | `creator-census/web-oidc` | `secret/creator-census` | `janua_client_secret` |
 | `creator-census/web-session` | `secret/creator-census` | `session_secret` |
+| `family-history/api-access` | `secret/family-history` | `fh_early_access_allowlist` |
+| `family-history/web-oidc` | `secret/family-history` | `auth_janua_client_id`, `auth_janua_client_secret` |
+| `family-history/web-session` | `secret/family-history` | `fh_session_secret` |
 
 **Angelia OWNS all five Courier targets** (verifier-owns): Angelia verifies every
 one of these credentials, so `secret/angelia` is their single writable home, and
@@ -165,6 +173,58 @@ so that later runs reconcile the client and never create a second one.
 `external_secret_refreshed: false` is expected on both intakes until the census
 repo creates the `creator-census-web` ExternalSecret. ESO syncs the ExternalSecret
 when it is created, so create it only after both properties are in Vault.
+
+### family-history (2026-10-01)
+
+family-history is a public product: the web (`fh-app.madfam.io`, landing
+`fh.madfam.io`) signs in through Janua with the confidential client
+`family-history-web`, and the API validates bearers for audience
+`family-history-api`. Its three Vault properties share one path,
+`secret/family-history`, and reach two ExternalSecrets in the `family-history`
+namespace. The database URLs are not in Vault. Like creator-census, they come
+from the onboarding project Secret `family-history-secrets`.
+
+| Property in `secret/family-history` | Target | Written by | ExternalSecret | Env var |
+|---|---|---|---|---|
+| `fh_early_access_allowlist` | `family-history/api-access` | operator, masked prompt | `family-history-api` | `FH_EARLY_ACCESS_ALLOWLIST` |
+| `auth_janua_client_id` | `family-history/web-oidc` | `enclii secrets provision oidc --platform family-history-web` | `family-history-web` | `AUTH_JANUA_CLIENT_ID` |
+| `auth_janua_client_secret` | `family-history/web-oidc` | `enclii secrets provision oidc --platform family-history-web` | `family-history-web` | `AUTH_JANUA_CLIENT_SECRET` |
+| `fh_session_secret` | `family-history/web-session` | `enclii secrets intake submit family-history/web-session --generate fh_session_secret` | `family-history-web` | `FH_SESSION_SECRET` |
+
+Unlike creator-census, the provisioner files the client **id** as well as the
+secret (nauta-style), so the id never sits in the public repository. The
+allowlist is a comma-separated list of Janua subjects or emails. It must not be
+empty: an empty value fails closed and nobody gets in. The production client
+has no localhost redirect URI; local development registers its own client.
+
+Owner sequence, after the registry change is deployed and the Vault policy
+re-applied (`ASSERT_PATH=family-history bash
+scripts/apply-switchyard-vault-policy-remote.sh`):
+
+```bash
+export ENCLII_API_ENDPOINT=https://api.enclii.dev
+# Creating a Janua client needs a Janua admin session (`--profile admin`).
+# Until a CLI release embeds family-history-web, pass the registry from a main checkout:
+enclii --profile admin secrets provision oidc --platform family-history-web \
+  --registry config/ecosystem-oidc-provision.yaml \
+  --reason "family-history web sign-in" --dry-run
+enclii --profile admin secrets provision oidc --platform family-history-web \
+  --registry config/ecosystem-oidc-provision.yaml \
+  --reason "family-history web sign-in"
+# prints: ✓ family-history-web client_id=jnc_… created=true intake=int_…
+enclii secrets intake submit family-history/web-session \
+  --generate fh_session_secret --reason "family-history web session secret"
+enclii secrets intake submit family-history/api-access \
+  --reason "family-history early-access allowlist"   # masked prompt
+enclii secrets intake status int_<id>
+```
+
+Then pin the printed `jnc_…` id as `janua_client.client_id` for
+`family-history-web` in `config/ecosystem-oidc-provision.yaml` (both copies) so
+later runs reconcile the client instead of creating a second one. ESO syncs
+each ExternalSecret all-or-nothing, so `family-history-web` stays NotReady until
+both `web-oidc` and `web-session` are written, and `family-history-api` until
+`api-access` is.
 
 `symbiosis-hcm` is the **producer** of the absence feed; `crea-map` cross-reads
 `map_absence_feed_key` and consumes it as `HCM_FEED_API_KEY`. One copy at the

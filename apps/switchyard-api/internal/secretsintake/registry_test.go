@@ -11,7 +11,7 @@ import (
 func TestLoadRegistry(t *testing.T) {
 	reg, err := LoadRegistry()
 	require.NoError(t, err)
-	assert.Len(t, reg, 38)
+	assert.Len(t, reg, 41)
 	assert.Contains(t, reg, "ceq/vast-api-key")
 	assert.Contains(t, reg, "karafiel/web-oidc-janua")
 	tgt := reg["ceq/vast-api-key"]
@@ -32,7 +32,7 @@ func TestGetTarget(t *testing.T) {
 func TestListTargetsSorted(t *testing.T) {
 	list, err := ListTargets()
 	require.NoError(t, err)
-	require.Len(t, list, 38)
+	require.Len(t, list, 41)
 	for i := 1; i < len(list); i++ {
 		assert.Less(t, list[i-1].ID, list[i].ID, "targets should be sorted by id")
 	}
@@ -63,6 +63,9 @@ func TestListTargetsSorted(t *testing.T) {
 		"dhanam/session-auth",
 		"dhanam/stripe-mx-live",
 		"enclii/internal-api-key",
+		"family-history/api-access",
+		"family-history/web-oidc",
+		"family-history/web-session",
 		"janua/internal-api-key",
 		"kalya/internal-api-key",
 		"karafiel/web-oidc-janua",
@@ -343,4 +346,37 @@ func TestCreatorCensusYouTubeKeyTarget(t *testing.T) {
 	assert.Equal(t, "creator-census-config", tgt.ExternalSecret)
 	assert.Equal(t, []string{"youtube_api_key"}, tgt.Keys)
 	assert.NotEmpty(t, tgt.Label)
+}
+
+// family-history: three targets on one Vault path, each written by exactly one
+// route — the provisioner (web-oidc, client id AND secret), --generate
+// (web-session) and the masked prompt (api-access). The keys are lowercase and
+// must match the family-history ExternalSecrets byte for byte: ESO syncs all of
+// an ExternalSecret's keys or none.
+func TestFamilyHistoryTargets(t *testing.T) {
+	cases := []struct {
+		id             string
+		externalSecret string
+		keys           []string
+	}{
+		{"family-history/api-access", "family-history-api", []string{"fh_early_access_allowlist"}},
+		{"family-history/web-oidc", "family-history-web", []string{"auth_janua_client_id", "auth_janua_client_secret"}},
+		{"family-history/web-session", "family-history-web", []string{"fh_session_secret"}},
+	}
+	for _, tc := range cases {
+		t.Run(tc.id, func(t *testing.T) {
+			tgt, err := GetTarget(tc.id)
+			require.NoError(t, err)
+			assert.Equal(t, "secret/family-history", tgt.VaultPath)
+			assert.Equal(t, "family-history", tgt.Namespace)
+			assert.Equal(t, tc.externalSecret, tgt.ExternalSecret)
+			assert.Equal(t, tc.keys, tgt.Keys)
+			for _, k := range tgt.Keys {
+				assert.Equal(t, strings.ToLower(k), k, "Vault stores lowercase; an upper-case key would never match the ExternalSecret property")
+			}
+			assert.NotEmpty(t, tgt.Label)
+			// FH_SESSION_SECRET must carry at least 32 bytes.
+			assert.GreaterOrEqual(t, tgt.GenerateBytes(), 32)
+		})
+	}
 }
