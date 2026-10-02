@@ -52,10 +52,13 @@ func setLiveRoute(f *tunnelFixture, host, service, namespace string) {
 
 // --- tunnels-apply (operator path) ---
 
-// The case GetByID used to get wrong: the live route already serves the API
-// from its adopted namespace. Planned from the project namespace it was a
-// REPOINT (blocked) row; planned from the recorded namespace it is a SKIP, and
-// the row says where the namespace came from.
+// The case GetByID used to get wrong, as a production dry run showed it after
+// #667: a service whose recorded namespace differs from its project's, with
+// the live route already serving from the recorded namespace. Planned from
+// the project namespace it was "REPOINT (blocked)" ("changes namespace
+// <recorded> -> <project> while the live backend is serving"); planned from
+// the recorded namespace it is a SKIP whose desired backend IS the live one,
+// and the row says where the namespace came from.
 func TestTunnelsApply_RecordedNamespaceMatchingLiveRouteIsSkip(t *testing.T) {
 	f := newTunnelFixtureWithRecordedNamespaces(t, correctedJunctions(), recordedAPINamespace())
 	f.handler.k8sClient = adoptedAPICluster(true)
@@ -68,7 +71,9 @@ func TestTunnelsApply_RecordedNamespaceMatchingLiveRouteIsSkip(t *testing.T) {
 	plan := planByHost(t, resp)
 	api := plan["api.example.test"]
 	assert.Equal(t, "SKIP", api.Label)
+	assert.False(t, api.Blocked)
 	assert.Equal(t, fixtureAdoptedNS, api.Namespace)
+	assert.Equal(t, api.CurrentService, api.DesiredService, "desired backend must equal the live one")
 	assert.Contains(t, api.Reason, "recorded namespace")
 	assert.Contains(t, api.Reason, "derived from the project: "+fixtureProdNS)
 
