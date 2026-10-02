@@ -170,7 +170,7 @@ before raw infrastructure tools. Direct `kubectl`, `helm`, SSH, provider CLIs,
 - `docs/production/REMAINING_OPS_GA.md` — open ops task queue (O-1–O-22)
 - `docs/production/COMMERCIAL_GA_TRACKER.md` — program status and execution log
 - `docs/production/GA_REMEDIATION_PLAN.md` — phase 0–4 program structure
-- `ROADMAP.md` — product roadmap with GA program section
+- `ROADMAP.md` — product roadmap with GA program section; `ROADMAP.md#engineering-backlog-platform-and-fleet-wide` is the one pending-work list (this repo plus fleet-wide runtime-image items)
 - `scripts/wave0-ga-ops.sh` — Enclii-first Wave 0 cluster ops orchestration
 - `scripts/wave1-ga-ops.sh` — Enclii-first Wave 1 stability ops orchestration
 - `enclii ops storage storageclass-apply` / `enclii ops policy cosign-enable` — Wave 1.5 Longhorn + cosign adapters
