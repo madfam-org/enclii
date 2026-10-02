@@ -82,7 +82,7 @@ func TestAddServiceDomain_ReconcilesExistingDomainRoute(t *testing.T) {
 			WithArgs(serviceID).
 			WillReturnRows(sqlmock.NewRows(serviceGetByIDColumns).AddRow(
 				serviceID, projectID, "dhanam-api", "https://github.com/madfam-org/dhanam",
-				"", []byte(`{}`), []byte(`[]`), false, "", "", now, now, []byte(`[]`), "api", "us", nil,
+				"", []byte(`{}`), []byte(`[]`), false, "", "", now, now, []byte(`[]`), "api", "us", nil, nil,
 			))
 	}
 

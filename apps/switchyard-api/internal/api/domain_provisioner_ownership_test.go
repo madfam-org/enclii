@@ -42,7 +42,7 @@ var customDomainTestColumns = []string{
 var serviceTestColumns = []string{
 	"id", "project_id", "name", "git_repo", "app_path", "build_config",
 	"volumes", "auto_deploy", "auto_deploy_branch", "auto_deploy_env",
-	"created_at", "updated_at", "jobs", "type", "region", "health_check",
+	"created_at", "updated_at", "jobs", "type", "region", "health_check", "k8s_namespace",
 }
 
 // expectHostnameOwnedBy stages the three reads hostnameOwners performs: the
@@ -63,7 +63,7 @@ func expectHostnameOwnedBy(mock sqlmock.Sqlmock, domain string, serviceID, proje
 		WillReturnRows(sqlmock.NewRows(serviceTestColumns).AddRow(
 			serviceID, projectID, "owner-svc", "madfam-org/owner", "", []byte(`{}`),
 			[]byte(`[]`), false, "main", "production", now, now, []byte(`[]`),
-			"web", "mx", []byte(`{}`),
+			"web", "mx", []byte(`{}`), nil,
 		))
 	expectJunctionOwners(mock, domain)
 }

@@ -119,3 +119,29 @@ enclii providers cloudflare tunnels-apply api.example.com --project example
 
 A blocked `tunnels-apply` dry run lists, under `Next`, the rebind dry run that
 would bind each blocked hostname to the backend serving it now.
+
+### Recorded service namespace
+
+The planners read a service's recorded namespace (`services.k8s_namespace`)
+for production routes, before the environment's namespace and the project
+slug. Services loaded by id did not carry that value until the follow-up to
+the change above, so a service adopted into a namespace of its own was
+planned in the project namespace.
+
+- **tunnels-apply** plans production rows in the recorded namespace. A row
+  whose namespace comes from the service record says so in its `reason`
+  (`namespace <ns> is the service's recorded namespace (derived from the
+  project: <slug>)`). The repoint guard, the all-or-nothing apply and
+  `--expect-plan` apply as above.
+- **The junction reconcile that runs on every junction create** never moves a
+  route because of the recorded namespace. When the recorded namespace changes
+  a hostname's backend and the live route does not already target it, the
+  reconcile logs `REFUSED: the automatic junction reconcile does not move a
+  route onto a service's recorded namespace`, lists the hostname under
+  `refused` in its summary, and writes nothing for it (no DNS, no route).
+  Move such a route with `tunnels-apply`: dry run, review every row, then
+  apply with `--expect-plan`.
+- **`domains add`** writes a new hostname's route through the same guarded
+  path as every other writer: the incumbent rule is read, the backend is
+  resolved (port from the live Service) before writing, a serving route is
+  not repointed, and the write is canaried when the canary is enabled.

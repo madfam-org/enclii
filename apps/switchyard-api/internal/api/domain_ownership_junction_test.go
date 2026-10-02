@@ -315,7 +315,7 @@ func TestAddCustomDomain_RefusesAJunctionServedHostname(t *testing.T) {
 		WillReturnRows(sqlmock.NewRows(serviceTestColumns).AddRow(
 			attackerService, attackerProject, "attacker-web", "madfam-org/attacker", "", []byte(`{}`),
 			[]byte(`[]`), false, "main", "production", now, now, []byte(`[]`),
-			"web", "mx", []byte(`{}`),
+			"web", "mx", []byte(`{}`), nil,
 		))
 	mock.ExpectQuery(`FROM environments WHERE project_id = \$1 AND name = \$2`).
 		WillReturnRows(sqlmock.NewRows([]string{
@@ -398,7 +398,7 @@ func TestCreateJunction_RefusesACaseVariantOfAnotherProjectsHostname(t *testing.
 		WillReturnRows(sqlmock.NewRows(serviceTestColumns).AddRow(
 			attackerService, attackerProject, "attacker-web", "madfam-org/attacker", "", []byte(`{}`),
 			[]byte(`[]`), false, "main", "production", now, now, []byte(`[]`),
-			"web", "mx", []byte(`{}`),
+			"web", "mx", []byte(`{}`), nil,
 		))
 	// Uniqueness: the attacker picked a different path, so this is a clean miss.
 	mock.ExpectQuery(`SELECT EXISTS\(SELECT 1 FROM junctions WHERE lower\(domain\) = lower\(\$1\) AND path = \$2\)`).
