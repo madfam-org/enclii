@@ -30,6 +30,40 @@ redirect and should not become the source of truth again.
 - Record any missing Enclii adapter gap instead of normalizing raw production
   access in docs or runbooks.
 
+## Change procedures that are easy to get wrong
+
+- **Tunnel routes (`enclii providers cloudflare tunnels-apply`).** The dry run
+  and the apply are two steps with a review between them; never run or paste
+  them as one block.
+  1. Dry run.
+  2. Review every row.
+  3. Apply with `--expect-plan <fingerprint>` bound to the reviewed plan.
+  4. When a project's hostnames are served by more than one service or
+     environment, rebind the junctions first (`enclii ops junctions rebind`,
+     a dry run unless `--apply --reason`), then start again at step 1.
+
+  A `REFUSED:` summary means nothing will be written; fix the junction data,
+  not the route. Needs CLI `v1.0.0-alpha.14` or later. Procedure:
+  [`docs/cli/commands/providers.md`](docs/cli/commands/providers.md#cloudflare-tunnels-apply-operator-procedure);
+  background:
+  [`docs/runbooks/ENCLII_JUNCTION_ROUTE_RECONCILIATION_2026-05-16.md`](docs/runbooks/ENCLII_JUNCTION_ROUTE_RECONCILIATION_2026-05-16.md).
+- **GitHub-hosted runners are pinned to `ubuntu-24.04`**, ahead of GitHub
+  moving `ubuntu-latest` to Ubuntu 26 on 2026-10-19. New workflows and doc
+  examples use `ubuntu-24.04`; moving to 26 is a deliberate change.
+- **Self-pinning workflows** (`weighbridge.yml`, `deploy-pipeline-monitor.yml`)
+  retry a rejected digest-pin push up to 5 times. Each retry fetches, resets
+  onto `origin/main`, re-applies the digest, and exits 0 when fresh main
+  already pins it. Tested by `tests/scripts/test_digest_pin_push_retry.py`.
+- **`arc-runner-image.yml` moves `:stable` only after** both smoke checks and
+  the cosign signature, and never from a pull request. Tested by
+  `tests/scripts/test_arc_runner_image_promotion.py`.
+- **`packages/sdk-py` models** are generated from `docs/api/openapi.yaml` with
+  `datamodel-code-generator==0.83.0`; CI fails on drift. Regenerate in the
+  same PR as a spec change.
+- **Skipped tests** are inventoried in
+  [`docs/testing/SKIPPED_TESTS.md`](docs/testing/SKIPPED_TESTS.md). Add a
+  line there when you add one.
+
 ## Repo entrypoints
 
 - `README.md`

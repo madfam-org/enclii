@@ -110,7 +110,8 @@ Command-specific flags: `porkbun dns-apply` takes `--domain`, `--name` (both der
   `--allow-repoint <hostname>` (repeatable) permits one intended move;
   `--expect-plan <fingerprint>` makes the apply refuse unless the plan is the
   one the dry run showed. Fix wrong bindings with
-  [`ops junctions rebind`](ops.md#ops-junctions-rebind). Background:
+  [`ops junctions rebind`](ops.md#ops-junctions-rebind). Follow the
+  [operator procedure](#cloudflare-tunnels-apply-operator-procedure). Background:
   [junction route reconciliation runbook](../../runbooks/ENCLII_JUNCTION_ROUTE_RECONCILIATION_2026-05-16.md#repoint-guard-and-environment-aware-backends-2026-10-01).
 - Cloudflare `access` and `r2` remain contract-only.
 - Cloudflare `hostnames` currently reads DNS-shaped state; full SaaS custom
@@ -129,6 +130,47 @@ Command-specific flags: `porkbun dns-apply` takes `--domain`, `--name` (both der
   requires the caller to pass the exact current price, so it stays a dashboard
   action. `auto-renew-apply` covers the case that actually causes outages.
 - Hetzner surfaces are declared but not yet backed by clients.
+
+## Cloudflare tunnels-apply: operator procedure
+
+`--allow-repoint`, `--expect-plan` and `ops junctions rebind` ship in CLI
+`v1.0.0-alpha.14` and later (released 2026-10-02); older CLIs reject the flags
+as unknown. Check with `enclii version` before you start.
+
+The dry run and the apply are **two separate steps with a review between
+them**. Never run them back to back, and never paste them as one block.
+
+1. **Dry run.** `enclii providers cloudflare tunnels-apply --project <slug>`
+   (or one `<hostname>` with `--project <slug>`). It writes nothing.
+2. **Review every row.** Read each `LABEL HOSTNAME LIVE DESIRED ENVIRONMENT`
+   line, and each row's `reason` and `environment_source`. Every `UPDATE` and
+   `CREATE` must be a change you intend. A summary that starts with
+   `REFUSED:` means at least one row is blocked, and the apply will write
+   nothing until it is resolved; fix the data, not the route.
+3. **Apply the reviewed plan, bound to it.** When the plan is clean, its
+   `Next` line is the apply for exactly that plan, carrying
+   `--expect-plan <fingerprint>`. The server re-plans and refuses, writing
+   nothing, if the plan changed since your dry run. Pass
+   `--allow-repoint <hostname>` only for a move you reviewed, one hostname at
+   a time.
+4. **Rebind junctions first when a project's hostnames are served by more than
+   one service or environment** (for example web, API and admin services, or
+   production and staging). Preview each change with
+   `enclii ops junctions rebind <hostname> --project <slug> --to-service <svc> --environment <env>`
+   (a dry run; `live_matches: true` means the live route already serves that
+   binding), apply it with `--apply --reason`, and then start again at step 1.
+   A rebind changes data only; the route follows through the next reviewed
+   `tunnels-apply`.
+
+```bash
+# Step 1: dry run. Read every row before going further.
+enclii providers cloudflare tunnels-apply --project example
+
+# Step 3, a separate decision taken after the review: the Next line of a
+# clean plan, pinned to the plan you reviewed.
+enclii providers cloudflare tunnels-apply --project example \
+  --expect-plan <fingerprint-from-the-dry-run> --apply --reason "<why>"
+```
 
 ## Cloudflare DNS apply
 

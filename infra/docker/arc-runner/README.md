@@ -157,7 +157,7 @@ here; pool renders had been running against a different library set than
 production since G16. Both are in the image as of #520, and the pools were
 repinned to the resulting build in #521.
 
-The drift lane runs on GitHub-hosted `ubuntu-latest`, for the same
+The drift lane runs on GitHub-hosted `ubuntu-24.04` (pinned), for the same
 chicken-and-egg reason `arc-runner-image.yml` does: it is about the pool's own
 image and must not depend on the pool being healthy.
 

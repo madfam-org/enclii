@@ -86,6 +86,7 @@ This documentation is organized for two audiences: **users** who deploy services
 - **[Production](./production/PRODUCTION_CHECKLIST.md)** — deployment roadmap, gap analysis, anti-fragility
 - **[GA program](./production/COMMERCIAL_GA_MASTER_PLAN.md)** — master remediation plan, tracker, scorecard, ops queue
 - **[Runbooks](./runbooks/)** — incident response, cluster remediation, database recovery
+- **[Testing](./testing/)** — [golden manifests](./testing/GOLDEN_TESTS.md), [skipped tests and known flakes](./testing/SKIPPED_TESTS.md)
 - **[Security](./security/)** and **[Compliance](./compliance/)** — secret rotation, SOC2 mapping
 
 ### Implementation history

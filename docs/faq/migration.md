@@ -330,7 +330,7 @@ name: Deploy
 on: push
 jobs:
   deploy:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
       - run: railway up  # or vercel deploy
@@ -348,7 +348,7 @@ name: Custom CI
 on: push
 jobs:
   build:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
       - run: npm test

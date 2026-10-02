@@ -232,7 +232,7 @@ kubectl logs -n sentinel -l job-name --tail=100
 jobs:
   changes:
     name: Detect Changes
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     outputs:
       api: ${{ steps.filter.outputs.api }}
       admin: ${{ steps.filter.outputs.admin }}

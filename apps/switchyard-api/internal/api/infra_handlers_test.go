@@ -1,16 +1,20 @@
 package api
 
 import (
+	"database/sql"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
 
+	"github.com/DATA-DOG/go-sqlmock"
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/madfam-org/enclii/apps/switchyard-api/internal/db"
 )
 
 // ── Test Helpers ──────────────────────────────────────────────────────
@@ -201,11 +205,32 @@ func TestExecService_BlockedCommand(t *testing.T) {
 	assert.Contains(t, resp["error"], "allowlist")
 }
 
+// An allowed command for a service id with no row answers 404 and goes no
+// further: no project lookup, no pod exec.
 func TestExecService_ServiceNotFound(t *testing.T) {
-	// This test requires a sqlmock setup for the Services repository.
-	// The validation-layer paths (bad UUID, bad JSON, blocked command) are
-	// tested above without DB dependencies.
-	t.Skip("requires sqlmock setup - covered by integration tests")
+	gin.SetMode(gin.TestMode)
+	h := setupInfraHandler(t)
+	database, mock, err := sqlmock.New()
+	require.NoError(t, err)
+	defer func() { _ = database.Close() }()
+	h.repos = &db.Repositories{Services: db.NewServiceRepository(database)}
+
+	id := uuid.New()
+	mock.ExpectQuery(`FROM services WHERE id = \$1`).WithArgs(id).WillReturnError(sql.ErrNoRows)
+
+	w := httptest.NewRecorder()
+	_, engine := gin.CreateTestContext(w)
+	engine.POST("/services/:id/exec", h.ExecService)
+	body := `{"command":["python","manage.py","check"]}`
+	req, _ := http.NewRequest("POST", "/services/"+id.String()+"/exec", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	engine.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusNotFound, w.Code, w.Body.String())
+	var resp map[string]string
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &resp))
+	assert.Equal(t, "service not found", resp["error"])
+	assert.NoError(t, mock.ExpectationsWereMet())
 }
 
 // ── RestartService Handler Tests ──────────────────────────────────────
