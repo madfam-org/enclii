@@ -41,7 +41,7 @@ func TestJunctionRebind_DryRunPlansTheIncidentRepair(t *testing.T) {
 	f := newTunnelFixture(t, incidentJunctions())
 
 	resp := f.handler.handleOpsJunctionsRebindDryRun(context.Background(), "ops.junctions.rebind",
-		rebindRequest(true, "api.dhan.am", fixtureAPIService, "production"))
+		rebindRequest(true, "api.example.test", fixtureAPIService, "production"))
 
 	require.Equal(t, "ready_to_apply", resp.Status, resp.Summary)
 	rows := rebindRows(t, resp)
@@ -52,7 +52,7 @@ func TestJunctionRebind_DryRunPlansTheIncidentRepair(t *testing.T) {
 	assert.Equal(t, junctionEnvDefault, row.CurrentEnvSource)
 	assert.Equal(t, fixtureAPIService, row.TargetService)
 	assert.Equal(t, "production", row.TargetEnvironment)
-	assert.Equal(t, "http://dhanam-api.dhanam.svc.cluster.local:80", row.BackendAfter)
+	assert.Equal(t, "http://acme-api.acme.svc.cluster.local:80", row.BackendAfter)
 	assert.True(t, row.LiveMatches, "the live route already serves the target binding")
 	f.assertLiveRoutesUnchanged()
 }
@@ -62,11 +62,11 @@ func TestJunctionRebind_StagingTargetsStagingNamespace(t *testing.T) {
 	f := newTunnelFixture(t, incidentJunctions())
 
 	resp := f.handler.handleOpsJunctionsRebindDryRun(context.Background(), "ops.junctions.rebind",
-		rebindRequest(true, "staging-admin.dhan.am", fixtureAdminServic, "staging"))
+		rebindRequest(true, "staging-admin.example.test", fixtureAdminServic, "staging"))
 
 	require.Equal(t, "ready_to_apply", resp.Status, resp.Summary)
 	row := rebindRows(t, resp)[0]
-	assert.Equal(t, "http://dhanam-admin.enclii-dhanam-staging.svc.cluster.local:80", row.BackendAfter)
+	assert.Equal(t, "http://acme-admin.enclii-acme-staging.svc.cluster.local:80", row.BackendAfter)
 	assert.True(t, row.LiveMatches)
 }
 
@@ -75,11 +75,11 @@ func TestJunctionRebind_ApplyRewritesOnlyTheBinding(t *testing.T) {
 	envID := f.envIDs["staging"]
 	f.mock.ExpectExec(`UPDATE junctions\s+SET service_id = \$1, environment_id = \$2`).
 		WithArgs(f.services[fixtureAPIService], uuid.NullUUID{UUID: envID, Valid: true}, sqlmock.AnyArg(),
-			f.junctions["staging-api.dhan.am"], f.projectID).
+			f.junctions["staging-api.example.test"], f.projectID).
 		WillReturnResult(sqlmock.NewResult(0, 1))
 
 	resp, code := f.handler.handleOpsJunctionsRebindApply(context.Background(), "ops.junctions.rebind",
-		rebindRequest(false, "staging-api.dhan.am", fixtureAPIService, "staging"))
+		rebindRequest(false, "staging-api.example.test", fixtureAPIService, "staging"))
 
 	assert.Equal(t, http.StatusOK, code, resp.Summary)
 	assert.Equal(t, "succeeded", resp.Status)
@@ -87,7 +87,7 @@ func TestJunctionRebind_ApplyRewritesOnlyTheBinding(t *testing.T) {
 	f.assertLiveRoutesUnchanged()
 	// The only follow-up offered is the scoped DRY RUN.
 	require.Len(t, resp.Next, 1)
-	assert.Equal(t, "enclii providers cloudflare tunnels-apply staging-api.dhan.am --project dhanam", resp.Next[0])
+	assert.Equal(t, "enclii providers cloudflare tunnels-apply staging-api.example.test --project acme", resp.Next[0])
 }
 
 // Idempotent: a junction already bound as asked is reported and not written.
@@ -96,7 +96,7 @@ func TestJunctionRebind_AlreadyBoundIsANoop(t *testing.T) {
 	f := newTunnelFixture(t, correctedJunctions())
 
 	resp, code := f.handler.handleOpsJunctionsRebindApply(context.Background(), "ops.junctions.rebind",
-		rebindRequest(false, "api.dhan.am", fixtureAPIService, "production"))
+		rebindRequest(false, "api.example.test", fixtureAPIService, "production"))
 
 	assert.Equal(t, http.StatusOK, code)
 	assert.Equal(t, "succeeded", resp.Status)
@@ -110,10 +110,10 @@ func TestJunctionRebind_RefusesWhatItCannotResolve(t *testing.T) {
 	cases := []struct {
 		name, host, service, env, want string
 	}{
-		{"unknown hostname", "nope.dhan.am", fixtureAPIService, "production", "has no junction for nope.dhan.am"},
-		{"unknown service", "api.dhan.am", "dhanam-worker", "production", "has no service \"dhanam-worker\""},
-		{"unknown environment", "api.dhan.am", fixtureAPIService, "preview", "has no environment \"preview\""},
-		{"missing input", "api.dhan.am", "", "production", "missing --to-service"},
+		{"unknown hostname", "nope.example.test", fixtureAPIService, "production", "has no junction for nope.example.test"},
+		{"unknown service", "api.example.test", "acme-worker", "production", "has no service \"acme-worker\""},
+		{"unknown environment", "api.example.test", fixtureAPIService, "preview", "has no environment \"preview\""},
+		{"missing input", "api.example.test", "", "production", "missing --to-service"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -131,12 +131,12 @@ func TestJunctionRebind_RefusesWhatItCannotResolve(t *testing.T) {
 // the staging environment, and tunnels-apply then plans it there.
 func TestResolveJunctionEnvironmentFallsBackToDomainRecord(t *testing.T) {
 	f := newTunnelFixture(t, incidentJunctions(),
-		fixtureDomainRecord{Host: "staging.dhan.am", Service: fixtureWebService, Environment: "staging"})
+		fixtureDomainRecord{Host: "staging.example.test", Service: fixtureWebService, Environment: "staging"})
 	project := &types.Project{ID: f.projectID, Slug: fixtureProject}
 	envs := f.handler.loadProjectEnvironments(project)
 
 	got := f.handler.resolveJunctionEnvironment(context.Background(),
-		&types.Junction{Domain: "staging.dhan.am", ServiceID: f.services[fixtureWebService]}, envs)
+		&types.Junction{Domain: "staging.example.test", ServiceID: f.services[fixtureWebService]}, envs)
 	assert.Equal(t, "staging", got.Name)
 	assert.Equal(t, junctionEnvFromDomainRecord, got.Source)
 	assert.Equal(t, fixtureStagingNS, f.handler.namespaceForEnvironment(context.Background(), project, nil, got.Name, envs))
@@ -144,8 +144,8 @@ func TestResolveJunctionEnvironmentFallsBackToDomainRecord(t *testing.T) {
 	// The same hostname in the full plan: no longer a cross-environment
 	// repoint, because the record puts it in staging, where it is served.
 	resp := f.handler.handleProviderCloudflareTunnelsApplyDryRun(context.Background(),
-		"providers.cloudflare.tunnels-apply", tunnelsApplyRequest(true, map[string]string{"target": "staging.dhan.am"}))
-	item := planByHost(t, resp)["staging.dhan.am"]
+		"providers.cloudflare.tunnels-apply", tunnelsApplyRequest(true, map[string]string{"target": "staging.example.test"}))
+	item := planByHost(t, resp)["staging.example.test"]
 	assert.Equal(t, "SKIP", item.Label, item.Reason)
 	assert.Equal(t, junctionEnvFromDomainRecord, item.EnvironmentSource)
 }

@@ -48,7 +48,7 @@ func TestTunnelsApply_IncidentBindings_DryRunRefusesEveryRepoint(t *testing.T) {
 	assert.True(t, strings.HasPrefix(resp.Summary, "REFUSED: 5 row(s) blocked (5 REPOINT (blocked))"), resp.Summary)
 
 	plan := planByHost(t, resp)
-	for _, host := range []string{"api.dhan.am", "admin.dhan.am"} {
+	for _, host := range []string{"api.example.test", "admin.example.test"} {
 		item := plan[host]
 		assert.Equal(t, tunnelLabelRepointBlocked, item.Label, host)
 		assert.Equal(t, tunnelGuardRepoint, item.Guard, host)
@@ -59,14 +59,14 @@ func TestTunnelsApply_IncidentBindings_DryRunRefusesEveryRepoint(t *testing.T) {
 	// Staging hostnames: the junction says nothing about an environment, so
 	// it plans production, and moving a staging route into production is
 	// refused as a cross-environment move.
-	for _, host := range []string{"staging-api.dhan.am", "staging-admin.dhan.am", "staging.dhan.am"} {
+	for _, host := range []string{"staging-api.example.test", "staging-admin.example.test", "staging.example.test"} {
 		item := plan[host]
 		assert.Equal(t, tunnelLabelRepointBlocked, item.Label, host)
 		assert.Equal(t, tunnelGuardCrossEnv, item.Guard, host)
 		assert.Equal(t, fixtureProdNS, item.Namespace, host)
 		assert.Equal(t, junctionEnvDefault, item.EnvironmentSource, host)
 	}
-	for _, host := range []string{"dhan.am", "www.dhan.am", "app.dhan.am"} {
+	for _, host := range []string{"example.test", "www.example.test", "app.example.test"} {
 		assert.Equal(t, "SKIP", plan[host].Label, host)
 	}
 
@@ -79,8 +79,8 @@ func TestTunnelsApply_IncidentBindings_DryRunRefusesEveryRepoint(t *testing.T) {
 		assert.True(t, strings.HasPrefix(next, "enclii ops junctions rebind "), next)
 		assert.NotContains(t, next, "--apply")
 	}
-	assert.Contains(t, resp.Next, "enclii ops junctions rebind api.dhan.am --project dhanam --to-service dhanam-api --environment production")
-	assert.Contains(t, resp.Next, "enclii ops junctions rebind staging-admin.dhan.am --project dhanam --to-service dhanam-admin --environment staging")
+	assert.Contains(t, resp.Next, "enclii ops junctions rebind api.example.test --project acme --to-service acme-api --environment production")
+	assert.Contains(t, resp.Next, "enclii ops junctions rebind staging-admin.example.test --project acme --to-service acme-admin --environment staging")
 }
 
 // The command that caused the outage, run again: refused as a whole, and the
@@ -104,15 +104,15 @@ func TestTunnelsApply_AllowRepointIsPerHostname(t *testing.T) {
 	f := newTunnelFixture(t, incidentJunctions())
 
 	resp := f.handler.handleProviderCloudflareTunnelsApplyDryRun(context.Background(),
-		"providers.cloudflare.tunnels-apply", tunnelsApplyRequest(true, map[string]string{"allow_repoint": "api.dhan.am"}))
+		"providers.cloudflare.tunnels-apply", tunnelsApplyRequest(true, map[string]string{"allow_repoint": "api.example.test"}))
 	plan := planByHost(t, resp)
-	assert.Equal(t, tunnelLabelRepointAllowed, plan["api.dhan.am"].Label)
-	assert.False(t, plan["api.dhan.am"].Blocked)
-	assert.Equal(t, tunnelLabelRepointBlocked, plan["admin.dhan.am"].Label)
+	assert.Equal(t, tunnelLabelRepointAllowed, plan["api.example.test"].Label)
+	assert.False(t, plan["api.example.test"].Blocked)
+	assert.Equal(t, tunnelLabelRepointBlocked, plan["admin.example.test"].Label)
 	assert.Equal(t, "blocked", resp.Status)
 
 	_, code := f.handler.handleProviderCloudflareTunnelsApply(context.Background(),
-		"providers.cloudflare.tunnels-apply", tunnelsApplyRequest(false, map[string]string{"allow_repoint": "api.dhan.am"}))
+		"providers.cloudflare.tunnels-apply", tunnelsApplyRequest(false, map[string]string{"allow_repoint": "api.example.test"}))
 	assert.Equal(t, http.StatusConflict, code)
 	f.assertLiveRoutesUnchanged()
 }
@@ -121,7 +121,7 @@ func TestTunnelsApply_AllowRepointIsPerHostname(t *testing.T) {
 // explicit, per-host decision, not a wall.
 func TestTunnelsApply_ScopedAllowedRepointExecutes(t *testing.T) {
 	f := newTunnelFixture(t, incidentJunctions())
-	args := map[string]string{"target": "api.dhan.am", "allow_repoint": "api.dhan.am"}
+	args := map[string]string{"target": "api.example.test", "allow_repoint": "api.example.test"}
 
 	dry := f.handler.handleProviderCloudflareTunnelsApplyDryRun(context.Background(),
 		"providers.cloudflare.tunnels-apply", tunnelsApplyRequest(true, args))
@@ -134,14 +134,14 @@ func TestTunnelsApply_ScopedAllowedRepointExecutes(t *testing.T) {
 	resp, code := f.handler.handleProviderCloudflareTunnelsApply(context.Background(),
 		"providers.cloudflare.tunnels-apply", tunnelsApplyRequest(false, args))
 	assert.Equal(t, http.StatusAccepted, code, resp.Summary)
-	assert.Equal(t, fixtureWebService+"."+fixtureProdNS, f.liveRoute("api.dhan.am"))
-	assert.Equal(t, fixtureAdminServic+"."+fixtureProdNS, f.liveRoute("admin.dhan.am"), "out-of-scope hostname touched")
+	assert.Equal(t, fixtureWebService+"."+fixtureProdNS, f.liveRoute("api.example.test"))
+	assert.Equal(t, fixtureAdminServic+"."+fixtureProdNS, f.liveRoute("admin.example.test"), "out-of-scope hostname touched")
 }
 
 // A plan that changed since the reviewed dry run is refused, not applied.
 func TestTunnelsApply_ExpectPlanMismatchRefuses(t *testing.T) {
 	f := newTunnelFixture(t, incidentJunctions())
-	args := map[string]string{"target": "api.dhan.am", "allow_repoint": "api.dhan.am", "expect_plan": "000000000000"}
+	args := map[string]string{"target": "api.example.test", "allow_repoint": "api.example.test", "expect_plan": "000000000000"}
 
 	resp, code := f.handler.handleProviderCloudflareTunnelsApply(context.Background(),
 		"providers.cloudflare.tunnels-apply", tunnelsApplyRequest(false, args))
@@ -165,6 +165,6 @@ func TestTunnelsApply_CorrectedBindingsPlanNothing(t *testing.T) {
 		assert.Equal(t, "SKIP", item.Label, "%s: %s", host, item.Reason)
 		assert.Equal(t, junctionEnvFromJunction, item.EnvironmentSource, host)
 	}
-	assert.Equal(t, fixtureStagingNS, plan["staging-api.dhan.am"].Namespace)
+	assert.Equal(t, fixtureStagingNS, plan["staging-api.example.test"].Namespace)
 	assert.Empty(t, resp.Next)
 }

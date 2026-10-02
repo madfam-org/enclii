@@ -30,25 +30,25 @@ import (
 )
 
 const (
-	fixtureProject     = "dhanam"
-	fixtureProdNS      = "dhanam"
-	fixtureStagingNS   = "enclii-dhanam-staging"
-	fixtureWebService  = "dhanam-web"
-	fixtureAPIService  = "dhanam-api"
-	fixtureAdminServic = "dhanam-admin"
+	fixtureProject     = "acme"
+	fixtureProdNS      = "acme"
+	fixtureStagingNS   = "enclii-acme-staging"
+	fixtureWebService  = "acme-web"
+	fixtureAPIService  = "acme-api"
+	fixtureAdminServic = "acme-admin"
 )
 
 // fixtureLiveRoutes is what the tunnel serves: every hostname on the right
 // workload in the right environment.
 var fixtureLiveRoutes = map[string][2]string{ // hostname -> {service, namespace}
-	"api.dhan.am":           {fixtureAPIService, fixtureProdNS},
-	"admin.dhan.am":         {fixtureAdminServic, fixtureProdNS},
-	"staging-api.dhan.am":   {fixtureAPIService, fixtureStagingNS},
-	"staging-admin.dhan.am": {fixtureAdminServic, fixtureStagingNS},
-	"staging.dhan.am":       {fixtureWebService, fixtureStagingNS},
-	"dhan.am":               {fixtureWebService, fixtureProdNS},
-	"www.dhan.am":           {fixtureWebService, fixtureProdNS},
-	"app.dhan.am":           {fixtureWebService, fixtureProdNS},
+	"api.example.test":           {fixtureAPIService, fixtureProdNS},
+	"admin.example.test":         {fixtureAdminServic, fixtureProdNS},
+	"staging-api.example.test":   {fixtureAPIService, fixtureStagingNS},
+	"staging-admin.example.test": {fixtureAdminServic, fixtureStagingNS},
+	"staging.example.test":       {fixtureWebService, fixtureStagingNS},
+	"example.test":               {fixtureWebService, fixtureProdNS},
+	"www.example.test":           {fixtureWebService, fixtureProdNS},
+	"app.example.test":           {fixtureWebService, fixtureProdNS},
 }
 
 // fixtureJunction is one junction row: the service it is bound to and the
@@ -72,14 +72,14 @@ func incidentJunctions() []fixtureJunction {
 // correctedJunctions are the target bindings the rebind writes.
 func correctedJunctions() []fixtureJunction {
 	return []fixtureJunction{
-		{"api.dhan.am", fixtureAPIService, "production"},
-		{"admin.dhan.am", fixtureAdminServic, "production"},
-		{"staging-api.dhan.am", fixtureAPIService, "staging"},
-		{"staging-admin.dhan.am", fixtureAdminServic, "staging"},
-		{"staging.dhan.am", fixtureWebService, "staging"},
-		{"dhan.am", fixtureWebService, "production"},
-		{"www.dhan.am", fixtureWebService, "production"},
-		{"app.dhan.am", fixtureWebService, "production"},
+		{"api.example.test", fixtureAPIService, "production"},
+		{"admin.example.test", fixtureAdminServic, "production"},
+		{"staging-api.example.test", fixtureAPIService, "staging"},
+		{"staging-admin.example.test", fixtureAdminServic, "staging"},
+		{"staging.example.test", fixtureWebService, "staging"},
+		{"example.test", fixtureWebService, "production"},
+		{"www.example.test", fixtureWebService, "production"},
+		{"app.example.test", fixtureWebService, "production"},
 	}
 }
 
@@ -184,10 +184,10 @@ func (f *tunnelFixture) expectReads(junctions []fixtureJunction) {
 	for i := 0; i < fixtureCopies; i++ {
 		f.mock.ExpectQuery(`FROM projects WHERE slug = \$1`).WithArgs(fixtureProject).
 			WillReturnRows(sqlmock.NewRows([]string{"id", "name", "slug", "ci_runner_mode", "created_at", "updated_at"}).
-				AddRow(f.projectID, "Dhanam", fixtureProject, "", now, now))
+				AddRow(f.projectID, "Acme", fixtureProject, "", now, now))
 		f.mock.ExpectQuery(`FROM projects WHERE id = \$1`).
 			WillReturnRows(sqlmock.NewRows([]string{"id", "name", "slug", "ci_runner_mode", "created_at", "updated_at"}).
-				AddRow(f.projectID, "Dhanam", fixtureProject, "", now, now))
+				AddRow(f.projectID, "Acme", fixtureProject, "", now, now))
 		for name, ns := range map[string]string{"production": fixtureProdNS, "staging": fixtureStagingNS} {
 			f.mock.ExpectQuery(`FROM environments WHERE project_id = \$1 AND name = \$2`).WithArgs(f.projectID, name).
 				WillReturnRows(sqlmock.NewRows(environmentColumns).AddRow(f.envIDs[name], f.projectID, name, ns, now, now))
@@ -205,7 +205,7 @@ func (f *tunnelFixture) expectReads(junctions []fixtureJunction) {
 		for name, id := range f.services {
 			f.mock.ExpectQuery(`FROM services WHERE id = \$1`).WithArgs(id).
 				WillReturnRows(sqlmock.NewRows(serviceGetByIDColumns).AddRow(
-					id, f.projectID, name, "https://github.com/example/dhanam", "",
+					id, f.projectID, name, "https://github.com/example/acme", "",
 					[]byte(`{"type":"dockerfile"}`), []byte("[]"), true, "main", "production",
 					now, now, []byte(`[]`), "web", "default", nil))
 		}
@@ -261,7 +261,7 @@ func (f *tunnelFixture) serviceListRows(now time.Time) *sqlmock.Rows {
 		"created_at", "updated_at", "jobs", "type", "region",
 	})
 	for name, id := range f.services {
-		rows.AddRow(id, f.projectID, name, "https://github.com/example/dhanam", "", []byte(`{"type":"dockerfile"}`),
+		rows.AddRow(id, f.projectID, name, "https://github.com/example/acme", "", []byte(`{"type":"dockerfile"}`),
 			true, "main", "production",
 			fixtureProdNS, "healthy", "running",
 			1, 1, "", nil,
