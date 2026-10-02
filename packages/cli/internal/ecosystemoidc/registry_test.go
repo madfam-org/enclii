@@ -376,7 +376,13 @@ func TestLoadRegistry_familyHistoryWebLoginClient(t *testing.T) {
 	for _, u := range jc.RedirectURIs {
 		assert.NotContains(t, u, "localhost", "production client must not accept a localhost callback")
 	}
-	assert.ElementsMatch(t, []string{"openid", "email", "profile", "offline_access"}, jc.AllowedScopes)
+	// Exactly the web's request. The API enforces fh:read / fh:write per
+	// method; fh:admin and fh:export must never be client-level grants, since
+	// any user of the client could then request them.
+	assert.ElementsMatch(t, []string{"openid", "profile", "email", "fh:read", "fh:write"}, jc.AllowedScopes)
+	assert.NotContains(t, jc.AllowedScopes, "fh:admin")
+	assert.NotContains(t, jc.AllowedScopes, "fh:export")
+	// The web rotates refresh tokens, so both grants are required.
 	assert.ElementsMatch(t, []string{"authorization_code", "refresh_token"}, jc.GrantTypes)
 
 	assert.Equal(t, map[string]string{
