@@ -536,29 +536,6 @@ jobs:
       - name: Check Node runner images delete npm/npx
         run: python3 scripts/check-runner-no-npm.py
 
-  workflow-contracts:
-    name: Workflow contracts (digest-pin retry, ARC :stable promotion)
-    runs-on: ubuntu-24.04
-    timeout-minutes: 5
-    # weighbridge.yml and deploy-pipeline-monitor.yml commit their own image
-    # digest to main and race other pins landing on the same push (#665): the
-    # first test runs their "Commit digest pin" script verbatim against a
-    # throwaway bare origin. arc-runner-image.yml moves :stable only after both
-    # smoke checks and the signature (#664): the second pins that order.
-    steps:
-      - uses: actions/checkout@v7
-
-      - name: Set up Python
-        uses: actions/setup-python@v7
-        with:
-          python-version: '3.11'
-
-      - name: Install Python test deps
-        run: pip install --quiet pyyaml pytest
-
-      - name: Run workflow contract tests
-        run: pytest tests/scripts/test_digest_pin_push_retry.py tests/scripts/test_arc_runner_image_promotion.py -v
-
   zero-touch-boundary:
     name: Zero-Touch Boundary Check
     runs-on: ubuntu-24.04
@@ -2206,3 +2183,26 @@ jobs:
             exit 1
           fi
           echo "✅ All CI checks passed (including Operation Ratchet + Fortification)!"
+
+  workflow-contracts:
+    name: Workflow contracts (digest-pin retry, ARC :stable promotion)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    # weighbridge.yml and deploy-pipeline-monitor.yml commit their own image
+    # digest to main and race other pins landing on the same push (#665): the
+    # first test runs their "Commit digest pin" script verbatim against a
+    # throwaway bare origin. arc-runner-image.yml moves :stable only after both
+    # smoke checks and the signature (#664): the second pins that order.
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Set up Python
+        uses: actions/setup-python@v7
+        with:
+          python-version: '3.11'
+
+      - name: Install Python test deps
+        run: pip install --quiet pyyaml pytest
+
+      - name: Run workflow contract tests
+        run: pytest tests/scripts/test_digest_pin_push_retry.py tests/scripts/test_arc_runner_image_promotion.py -v
