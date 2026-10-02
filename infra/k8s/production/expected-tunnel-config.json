@@ -159,10 +159,6 @@
     "service": "http://madfam-web.madfam-site.svc.cluster.local:80"
   },
   {
-    "hostname": "cms.madfam.io",
-    "service": "http://madfam-cms.madfam-site.svc.cluster.local:80"
-  },
-  {
     "_comment": "=== PRAVARA MES ===",
     "hostname": "mes.madfam.io",
     "service": "http://pravara-ui.pravara-mes.svc.cluster.local:80"
