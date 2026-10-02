@@ -107,7 +107,7 @@ func stagedRoutes(t *testing.T) []stagedRoute {
 				serviceID, projectID, "api", "https://github.com/org/repo", "",
 				[]byte(`{"type":"dockerfile"}`), []byte("[]"),
 				true, "main", "production",
-				now, now, []byte(`[]`), "web", "default", nil,
+				now, now, []byte(`[]`), "web", "default", nil, nil,
 			))
 	}
 	domainThenService := func(mock sqlmock.Sqlmock, projectID uuid.UUID) {
@@ -368,7 +368,7 @@ func stagedSeams() []stagedSeam {
 			WillReturnRows(sqlmock.NewRows(serviceGetByIDColumns).AddRow(
 				serviceID, projectID, "api", "https://github.com/org/repo", "",
 				[]byte(`{"type":"dockerfile"}`), []byte("[]"), true, "main", "production",
-				now, now, []byte(`[]`), "web", "default", nil,
+				now, now, []byte(`[]`), "web", "default", nil, nil,
 			))
 	}
 
@@ -534,7 +534,7 @@ func TestStagedGate_RunsBeforeTheExecAllowlist(t *testing.T) {
 		WillReturnRows(sqlmock.NewRows(serviceGetByIDColumns).AddRow(
 			serviceOfB, projectOfB, "api", "https://github.com/org/repo", "",
 			[]byte(`{"type":"dockerfile"}`), []byte("[]"), true, "main", "production",
-			now, now, []byte(`[]`), "web", "default", nil,
+			now, now, []byte(`[]`), "web", "default", nil, nil,
 		))
 	expectTenantComparison(mock, adminOfA, projectOfB, teamB, []uuid.UUID{teamA}, true)
 
@@ -761,7 +761,7 @@ func TestStagedGate_CommitBuildStatusDropsOtherTenantsRows(t *testing.T) {
 			WillReturnRows(sqlmock.NewRows(serviceGetByIDColumns).AddRow(
 				id, projectID, "api", "https://github.com/org/repo", "",
 				[]byte(`{"type":"dockerfile"}`), []byte("[]"), true, "main", "production",
-				now, now, []byte(`[]`), "web", "default", nil,
+				now, now, []byte(`[]`), "web", "default", nil, nil,
 			))
 	}
 
@@ -938,7 +938,7 @@ func TestStagedRollout_FlagOffMatchesMain_AnonymousCommitBuildStatus(t *testing.
 			WillReturnRows(sqlmock.NewRows(serviceGetByIDColumns).AddRow(
 				serviceID, uuid.New(), "api", "https://github.com/org/repo", "",
 				[]byte(`{"type":"dockerfile"}`), []byte("[]"), true, "main", "production",
-				now, now, []byte(`[]`), "web", "default", nil,
+				now, now, []byte(`[]`), "web", "default", nil, nil,
 			))
 
 		w := call(t, h)
@@ -960,7 +960,7 @@ func TestStagedRollout_FlagOffMatchesMain_AnonymousCommitBuildStatus(t *testing.
 			WillReturnRows(sqlmock.NewRows(serviceGetByIDColumns).AddRow(
 				serviceID, uuid.New(), "api", "https://github.com/org/repo", "",
 				[]byte(`{"type":"dockerfile"}`), []byte("[]"), true, "main", "production",
-				now, now, []byte(`[]`), "web", "default", nil,
+				now, now, []byte(`[]`), "web", "default", nil, nil,
 			))
 
 		w := call(t, h)

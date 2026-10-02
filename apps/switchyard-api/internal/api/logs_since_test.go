@@ -102,7 +102,7 @@ func expectServiceRow(mock sqlmock.Sqlmock, serviceID, projectID uuid.UUID) {
 			serviceID, projectID, "api", "https://github.com/org/repo", "",
 			[]byte(`{"type":"dockerfile"}`), []byte("[]"),
 			true, "main", "production",
-			time.Now(), time.Now(), []byte(`[]`), "web", "default", nil,
+			time.Now(), time.Now(), []byte(`[]`), "web", "default", nil, nil,
 		))
 }
 

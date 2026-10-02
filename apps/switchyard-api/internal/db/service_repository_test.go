@@ -54,7 +54,7 @@ var serviceBasicColumns = []string{
 
 var serviceGetByIDColumns = []string{
 	"id", "project_id", "name", "git_repo", "app_path", "build_config", "volumes",
-	"auto_deploy", "auto_deploy_branch", "auto_deploy_env", "created_at", "updated_at", "jobs", "type", "region", "health_check",
+	"auto_deploy", "auto_deploy_branch", "auto_deploy_env", "created_at", "updated_at", "jobs", "type", "region", "health_check", "k8s_namespace",
 }
 
 func newTestService() *types.Service {
@@ -160,7 +160,7 @@ func TestServiceRepository_GetByID(t *testing.T) {
 			WithArgs(id).
 			WillReturnRows(sqlmock.NewRows(serviceGetByIDColumns).
 				AddRow(id, projID, "svc1", "https://github.com/org/repo", "apps/api", bc, []byte(`[]`),
-					true, "main", "production", now, now, []byte(`[]`), "web", "default", nil))
+					true, "main", "production", now, now, []byte(`[]`), "web", "default", nil, nil))
 
 		result, err := repo.GetByID(id)
 		assert.NoError(t, err)
@@ -169,6 +169,51 @@ func TestServiceRepository_GetByID(t *testing.T) {
 		assert.Equal(t, "svc1", result.Name)
 		assert.Equal(t, "apps/api", result.AppPath)
 		assert.Equal(t, types.BuildTypeAuto, result.BuildConfig.Type)
+		assert.Nil(t, result.K8sNamespace, "a NULL k8s_namespace reads back as nil")
+		assert.NoError(t, mock.ExpectationsWereMet())
+	})
+
+	// GetByID used to omit k8s_namespace, so every planner that loaded a
+	// service by id derived the namespace from the project instead of from
+	// where the service runs.
+	t.Run("returns the recorded k8s_namespace", func(t *testing.T) {
+		repo, mock, cleanup := newServiceMockDB(t)
+		defer cleanup()
+
+		id := uuid.New()
+		now := time.Now().Truncate(time.Microsecond)
+		bc := mustMarshalBuildConfig(t, defaultBuildConfig())
+
+		mock.ExpectQuery(`(?s)SELECT id, project_id, name, git_repo, .*health_check, k8s_namespace\s+FROM services WHERE id = \$1`).
+			WithArgs(id).
+			WillReturnRows(sqlmock.NewRows(serviceGetByIDColumns).
+				AddRow(id, uuid.New(), "svc1", "https://github.com/org/repo", "", bc, []byte(`[]`),
+					true, "main", "production", now, now, []byte(`[]`), "web", "default", nil, "adopted-ns"))
+
+		result, err := repo.GetByID(id)
+		require.NoError(t, err)
+		require.NotNil(t, result.K8sNamespace)
+		assert.Equal(t, "adopted-ns", *result.K8sNamespace)
+		assert.NoError(t, mock.ExpectationsWereMet())
+	})
+
+	t.Run("an empty k8s_namespace reads back as nil", func(t *testing.T) {
+		repo, mock, cleanup := newServiceMockDB(t)
+		defer cleanup()
+
+		id := uuid.New()
+		now := time.Now().Truncate(time.Microsecond)
+		bc := mustMarshalBuildConfig(t, defaultBuildConfig())
+
+		mock.ExpectQuery(`SELECT id, project_id, name, git_repo`).
+			WithArgs(id).
+			WillReturnRows(sqlmock.NewRows(serviceGetByIDColumns).
+				AddRow(id, uuid.New(), "svc1", "https://github.com/org/repo", "", bc, []byte(`[]`),
+					true, "main", "production", now, now, []byte(`[]`), "web", "default", nil, ""))
+
+		result, err := repo.GetByID(id)
+		require.NoError(t, err)
+		assert.Nil(t, result.K8sNamespace)
 		assert.NoError(t, mock.ExpectationsWereMet())
 	})
 
@@ -198,7 +243,7 @@ func TestServiceRepository_GetByID(t *testing.T) {
 			WithArgs(id).
 			WillReturnRows(sqlmock.NewRows(serviceGetByIDColumns).
 				AddRow(id, uuid.New(), "svc", "repo", "", []byte(`{invalid json}`), []byte(`[]`),
-					false, "main", "production", now, now, []byte(`[]`), "web", "default", nil))
+					false, "main", "production", now, now, []byte(`[]`), "web", "default", nil, nil))
 
 		result, err := repo.GetByID(id)
 		assert.Nil(t, result)

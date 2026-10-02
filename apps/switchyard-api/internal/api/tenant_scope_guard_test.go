@@ -57,7 +57,7 @@ func tenantScopeFixtures(t *testing.T) []tenantScopeFixture {
 				serviceID, projectID, "api", "https://github.com/org/repo", "",
 				[]byte(`{"type":"dockerfile"}`), []byte("[]"),
 				true, "main", "production",
-				now, now, []byte(`[]`), "web", "default", nil,
+				now, now, []byte(`[]`), "web", "default", nil, nil,
 			))
 	}
 

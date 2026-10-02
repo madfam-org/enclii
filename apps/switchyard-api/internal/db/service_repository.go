@@ -136,6 +136,16 @@ func (r *ServiceRepository) UpdateK8sNamespace(ctx context.Context, serviceID uu
 	return err
 }
 
+// GetByID reads one service, including its recorded k8s_namespace.
+//
+// The namespace was missing from this query until the tunnel-route follow-up
+// to migration 041, while ListAll, ListByProject and ListByTeam already read
+// it. Every caller that loaded a service by id (the junction reconcile,
+// tunnels-apply, `domains add`) therefore derived the backend namespace from
+// the project instead of from where the service actually runs. The automatic
+// junction reconcile does not act on the namespace this now exposes when it
+// differs from the derived one: see tunnel_namespace_shift_guard.go in the api
+// package.
 func (r *ServiceRepository) GetByID(id uuid.UUID) (*types.Service, error) {
 	service := &types.Service{}
 	var buildConfigJSON []byte
@@ -143,18 +153,19 @@ func (r *ServiceRepository) GetByID(id uuid.UUID) (*types.Service, error) {
 	var volumesJSON []byte
 	var healthCheckJSON []byte
 	var appPath sql.NullString
+	var k8sNamespace sql.NullString
 
 	query := `SELECT id, project_id, name, git_repo, COALESCE(app_path, '') as app_path, build_config,
 		COALESCE(volumes, '[]'::jsonb) as volumes,
 		auto_deploy, auto_deploy_branch, auto_deploy_env, created_at, updated_at, COALESCE(jobs, '[]'::jsonb) as jobs, type, region,
-		health_check
+		health_check, k8s_namespace
 		FROM services WHERE id = $1`
 
 	err := r.db.QueryRow(query, id).Scan(
 		&service.ID, &service.ProjectID, &service.Name, &service.GitRepo,
 		&appPath, &buildConfigJSON, &volumesJSON, &service.AutoDeploy, &service.AutoDeployBranch,
 		&service.AutoDeployEnv, &service.CreatedAt, &service.UpdatedAt, &jobsJSON,
-		&service.Type, &service.Region, &healthCheckJSON,
+		&service.Type, &service.Region, &healthCheckJSON, &k8sNamespace,
 	)
 	if err != nil {
 		return nil, err
@@ -162,6 +173,10 @@ func (r *ServiceRepository) GetByID(id uuid.UUID) (*types.Service, error) {
 
 	if appPath.Valid {
 		service.AppPath = appPath.String
+	}
+	if k8sNamespace.Valid && k8sNamespace.String != "" {
+		ns := k8sNamespace.String
+		service.K8sNamespace = &ns
 	}
 
 	if err := hydrateServiceJSON(service, buildConfigJSON, jobsJSON, volumesJSON, healthCheckJSON); err != nil {

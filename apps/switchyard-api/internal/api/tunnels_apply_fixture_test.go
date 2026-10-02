@@ -102,6 +102,16 @@ type tunnelFixture struct {
 // of the default "no record" answer.
 func newTunnelFixture(t *testing.T, junctions []fixtureJunction, records ...fixtureDomainRecord) *tunnelFixture {
 	t.Helper()
+	return newTunnelFixtureWithRecordedNamespaces(t, junctions, nil, records...)
+}
+
+// newTunnelFixtureWithRecordedNamespaces is newTunnelFixture with a
+// services.k8s_namespace value per service name (absent = NULL), as
+// ServiceRepository.GetByID returns it.
+func newTunnelFixtureWithRecordedNamespaces(
+	t *testing.T, junctions []fixtureJunction, recorded map[string]string, records ...fixtureDomainRecord,
+) *tunnelFixture {
+	t.Helper()
 	database, mock, err := sqlmock.New()
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = database.Close() })
@@ -125,7 +135,7 @@ func newTunnelFixture(t *testing.T, junctions []fixtureJunction, records ...fixt
 		f.junctions[j.Host] = uuid.New()
 	}
 	f.expectDomainRecords(records)
-	f.expectReads(junctions)
+	f.expectReads(junctions, recorded)
 
 	f.handler = &Handler{
 		repos: &db.Repositories{
@@ -179,7 +189,7 @@ const fixtureCopies = 40
 
 // expectReads registers every read the planner and the rebind make, enough
 // times over that query order and repetition do not matter.
-func (f *tunnelFixture) expectReads(junctions []fixtureJunction) {
+func (f *tunnelFixture) expectReads(junctions []fixtureJunction, recorded map[string]string) {
 	now := time.Now()
 	for i := 0; i < fixtureCopies; i++ {
 		f.mock.ExpectQuery(`FROM projects WHERE slug = \$1`).WithArgs(fixtureProject).
@@ -203,11 +213,15 @@ func (f *tunnelFixture) expectReads(junctions []fixtureJunction) {
 		f.mock.ExpectQuery(`FROM services s WHERE s.project_id = \$1`).
 			WillReturnRows(f.serviceListRows(now))
 		for name, id := range f.services {
+			var namespace interface{}
+			if ns, ok := recorded[name]; ok {
+				namespace = ns
+			}
 			f.mock.ExpectQuery(`FROM services WHERE id = \$1`).WithArgs(id).
 				WillReturnRows(sqlmock.NewRows(serviceGetByIDColumns).AddRow(
 					id, f.projectID, name, "https://github.com/example/acme", "",
 					[]byte(`{"type":"dockerfile"}`), []byte("[]"), true, "main", "production",
-					now, now, []byte(`[]`), "web", "default", nil))
+					now, now, []byte(`[]`), "web", "default", nil, namespace))
 		}
 	}
 }

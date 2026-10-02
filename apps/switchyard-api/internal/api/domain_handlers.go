@@ -170,24 +170,19 @@ func (h *Handler) AddCustomDomain(c *gin.Context) {
 			logging.String("domain", req.Domain),
 			logging.String("environment", req.Environment))
 	} else if h.tunnelRoutesService != nil {
-		// Connect/keepAlive timeouts intentionally omitted — see
-		// domain_provisioner.go for the Cloudflare API quoted-string
-		// rejection that motivated dropping these fields.
-		routeSpec := &services.RouteSpec{
-			Hostname:         req.Domain,
-			ServiceName:      service.Name,
-			ServiceNamespace: namespace,
-			ServicePort:      80, // K8s Service port (not container port)
-		}
-
-		if err := h.tunnelRoutesService.AddRoute(ctx, routeSpec); err != nil {
-			h.logger.Warn(ctx, "Failed to add tunnel route (domain created, manual tunnel config may be needed)",
+		// The same door every other route writer takes: read the incumbent
+		// rule, resolve the backend (port from the live Service) before
+		// writing, refuse to repoint a serving route, and canary the write.
+		// This branch used to call AddRoute directly at a hardcoded port 80,
+		// which overwrote whatever rule already served the hostname.
+		h.ensureTunnelRoute(ctx, req.Domain, service, req.Environment, 0, ownerFromService(service))
+		tunnelRouteAdded = h.tunnelRouteTargetsService(ctx, req.Domain, service.Name, namespace)
+		if tunnelRouteAdded {
+			h.logger.Info(ctx, "Tunnel route configured for new custom domain",
 				logging.String("domain", req.Domain),
-				logging.Error("error", err))
-			// Don't fail the request - domain is created, tunnel route is optional
+				logging.String("service", service.Name))
 		} else {
-			tunnelRouteAdded = true
-			h.logger.Info(ctx, "Tunnel route added automatically",
+			h.logger.Warn(ctx, "No tunnel route targets this service after the add (refused or deferred; see domains status)",
 				logging.String("domain", req.Domain),
 				logging.String("service", service.Name))
 		}

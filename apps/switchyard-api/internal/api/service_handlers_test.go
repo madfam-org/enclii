@@ -30,7 +30,7 @@ var serviceListByGitRepoColumns = []string{
 var serviceGetByIDColumns = []string{
 	"id", "project_id", "name", "git_repo", "app_path", "build_config", "volumes",
 	"auto_deploy", "auto_deploy_branch", "auto_deploy_env",
-	"created_at", "updated_at", "jobs", "type", "region", "health_check",
+	"created_at", "updated_at", "jobs", "type", "region", "health_check", "k8s_namespace",
 }
 
 // setupServiceTestHandler builds a Handler with a sqlmock-backed Services

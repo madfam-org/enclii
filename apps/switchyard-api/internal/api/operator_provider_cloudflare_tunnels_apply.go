@@ -160,6 +160,7 @@ func (h *Handler) planJunctionTunnelRoutes(ctx context.Context, planReq tunnelPl
 	envs := h.loadProjectEnvironments(project)
 	specs := make([]*services.RouteSpec, 0, len(junctions))
 	resolved := map[string]junctionEnvironment{}
+	namespaceNotes := map[string]string{}
 	for _, junction := range junctions {
 		if junction == nil || junction.Domain == "" {
 			continue
@@ -175,6 +176,16 @@ func (h *Handler) planJunctionTunnelRoutes(ctx context.Context, planReq tunnelPl
 		env := h.resolveJunctionEnvironment(ctx, junction, envs)
 		namespace := h.namespaceForEnvironment(ctx, project, service, env.Name, envs)
 		resolved[junction.Domain] = env
+		// Production planning reads the service's recorded namespace first.
+		// When that is what moved the desired backend, the row says so, so
+		// the reviewer can tell it from a binding change.
+		if isProductionEnvironmentName(env.Name) {
+			if shift, shifted := h.recordedNamespaceShiftFor(ctx, service, env.Name); shifted {
+				namespaceNotes[junction.Domain] = fmt.Sprintf(
+					"namespace %s is the service's recorded namespace (derived from the project: %s)",
+					shift.Recorded, shift.Derived)
+			}
+		}
 		specs = append(specs, &services.RouteSpec{
 			Hostname:         junction.Domain,
 			ServiceName:      service.Name,
@@ -202,6 +213,9 @@ func (h *Handler) planJunctionTunnelRoutes(ctx context.Context, planReq tunnelPl
 		guard.evaluate(ctx, &plan[i])
 		if env.Note != "" {
 			plan[i].Reason = joinNotes(plan[i].Reason, env.Note)
+		}
+		if note := namespaceNotes[plan[i].Hostname]; note != "" {
+			plan[i].Reason = joinNotes(plan[i].Reason, note)
 		}
 	}
 	return plan, project, nil

@@ -46,7 +46,7 @@ func expectServiceLookup(mock sqlmock.Sqlmock, serviceID, projectID uuid.UUID, n
 		WillReturnRows(sqlmock.NewRows(serviceTestColumns).AddRow(
 			serviceID, projectID, name, "madfam-org/"+name, "", []byte(`{}`),
 			[]byte(`[]`), false, "main", "production", now, now, []byte(`[]`),
-			"web", "mx", []byte(`{}`),
+			"web", "mx", []byte(`{}`), nil,
 		))
 }
 

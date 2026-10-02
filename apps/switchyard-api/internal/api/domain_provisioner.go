@@ -31,6 +31,10 @@ type junctionRouteReconcileSummary struct {
 	Total  int      `json:"total"`
 	Ready  int      `json:"ready"`
 	Failed []string `json:"failed,omitempty"`
+	// Refused lists hostnames this reconcile left untouched because their
+	// service's recorded namespace would move the route
+	// (tunnel_namespace_shift_guard.go).
+	Refused []string `json:"refused,omitempty"`
 }
 
 // provisionDomainsFromYAML auto-provisions custom domains declared in enclii.yaml.
@@ -481,6 +485,13 @@ func (h *Handler) reconcileJunctionTunnelRoutesForProject(ctx context.Context, p
 		}
 
 		env := h.resolveJunctionEnvironment(ctx, junction, envs)
+		// This reconcile runs for every junction of the project whenever any
+		// one of them is created, with no review step: it never moves a route
+		// because the service's recorded namespace is now read.
+		if h.refuseRecordedNamespaceShift(ctx, junction.Domain, service, env.Name) {
+			summary.Refused = append(summary.Refused, junction.Domain)
+			continue
+		}
 		h.provisionDomainEdge(ctx, junction.Domain, service, env.Name, 0, nil)
 
 		if h.tunnelRoutesService == nil {
