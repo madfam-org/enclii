@@ -11,7 +11,7 @@
 # Policy-only (add paths without rotating writer token):
 #   POLICY_ONLY=1 VAULT_TOKEN_FILE=... ./scripts/provision-switchyard-vault-writer.sh
 #
-# Last Updated: 2026-09-24 (creator-census data+metadata paths for the census web OIDC + session intake)
+# Last Updated: 2026-10-01 (family-history data+metadata paths for the web OIDC, session and early-access intake)
 set -euo pipefail
 
 VAULT_NS="${VAULT_NS:-vault}"
@@ -215,6 +215,20 @@ path "secret/data/creator-census" {
 path "secret/data/creator-census/*" {
   capabilities = ["create", "update", "patch", "read"]
 }
+# family-history — added 2026-10-01 with the intake targets
+# family-history/web-oidc (written by `enclii secrets provision oidc --platform
+# family-history-web`), family-history/web-session (`--generate
+# fh_session_secret`) and family-history/api-access (the early-access
+# allowlist, typed at the masked prompt). Merged in git is not applied in
+# Vault: until an operator re-applies this policy (ASSERT_PATH=family-history
+# scripts/apply-switchyard-vault-policy-remote.sh), the first provision run
+# reconciles the Janua client and then 403s on the Vault merge.
+path "secret/data/family-history" {
+  capabilities = ["create", "update", "patch", "read"]
+}
+path "secret/data/family-history/*" {
+  capabilities = ["create", "update", "patch", "read"]
+}
 path "secret/metadata/ceq" {
   capabilities = ["read", "list"]
 }
@@ -321,6 +335,12 @@ path "secret/metadata/creator-census" {
   capabilities = ["read", "list"]
 }
 path "secret/metadata/creator-census/*" {
+  capabilities = ["read", "list"]
+}
+path "secret/metadata/family-history" {
+  capabilities = ["read", "list"]
+}
+path "secret/metadata/family-history/*" {
   capabilities = ["read", "list"]
 }
 EOF

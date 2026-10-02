@@ -335,3 +335,58 @@ func TestLoadRegistry_creatorCensusWebLoginClient(t *testing.T) {
 	assert.Equal(t, map[string]string{"janua_client_secret": "s3cr3t"},
 		buildIntakeValues(reg.Issuer, "jnc_census", "s3cr3t", p))
 }
+
+// family-history-web (2026-10-01). A confidential login client like
+// creator-census-web, with two deliberate differences: BOTH the id and the
+// secret are filed in Vault (the public family-history repo reads
+// AUTH_JANUA_CLIENT_ID from its ExternalSecret, nauta-style), and the
+// production client carries NO localhost redirect URI (local development uses
+// its own client). client_id is deliberately NOT asserted: the client is not
+// registered on Janua yet, and pinning its jnc_… id later must not break this.
+func TestLoadRegistry_familyHistoryWebLoginClient(t *testing.T) {
+	reg, err := LoadRegistry("")
+	require.NoError(t, err)
+
+	p, ok := reg.Platforms["family-history-web"]
+	require.True(t, ok, "family-history-web platform missing")
+
+	assert.Equal(t, "family-history/web-oidc", p.IntakeTarget)
+	// The session secret is minted server-side through its own intake target
+	// (--generate fh_session_secret), never re-minted by every provision run.
+	assert.Empty(t, p.SessionIntakeTarget)
+	// Lowercase, byte for byte what the family-history-web ExternalSecret maps;
+	// ESO syncs all of an ExternalSecret's keys or none.
+	require.Equal(t, map[string]string{
+		"auth_janua_client_id":     "client_id",
+		"auth_janua_client_secret": "client_secret",
+	}, p.IntakeKeyMap)
+
+	jc := p.JanuaClient
+	assert.Equal(t, "MADFAM Family History", jc.Name)
+	assert.Equal(t, "family-history-web", jc.ClientKey)
+	assert.Equal(t, "family-history-api", jc.Audience)
+	assert.Equal(t, "https://fh.madfam.io", jc.WebsiteURL)
+	assert.True(t, jc.confidential(), "the BFF holds the secret; the client must be confidential")
+	assert.False(t, p.publicLogin())
+	assert.Empty(t, jc.OrganizationID)
+	// Janua matches redirect URIs exactly (scheme, host, port, path). Exactly
+	// one: no localhost twin on the production client. Janua's RP-Initiated
+	// Logout admits the origin root https://fh-app.madfam.io/ from this entry.
+	assert.Equal(t, []string{"https://fh-app.madfam.io/auth/callback"}, jc.RedirectURIs)
+	for _, u := range jc.RedirectURIs {
+		assert.NotContains(t, u, "localhost", "production client must not accept a localhost callback")
+	}
+	// Exactly the web's request. The API enforces fh:read / fh:write per
+	// method; fh:admin and fh:export must never be client-level grants, since
+	// any user of the client could then request them.
+	assert.ElementsMatch(t, []string{"openid", "profile", "email", "fh:read", "fh:write"}, jc.AllowedScopes)
+	assert.NotContains(t, jc.AllowedScopes, "fh:admin")
+	assert.NotContains(t, jc.AllowedScopes, "fh:export")
+	// The web rotates refresh tokens, so both grants are required.
+	assert.ElementsMatch(t, []string{"authorization_code", "refresh_token"}, jc.GrantTypes)
+
+	assert.Equal(t, map[string]string{
+		"auth_janua_client_id":     "jnc_fh",
+		"auth_janua_client_secret": "s3cr3t",
+	}, buildIntakeValues(reg.Issuer, "jnc_fh", "s3cr3t", p))
+}
