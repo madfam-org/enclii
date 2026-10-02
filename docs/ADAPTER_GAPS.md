@@ -183,7 +183,7 @@ Documented separate AGPL repo `madfam-org/coupler` for Composio-class agent tool
 
 ### 2026-05-29 — Cloudflare tunnel route reconcile adapter
 
-- `enclii providers cloudflare tunnels-apply --project <slug>` — diff junction domains against live tunnel ingress and apply corrected K8s service backends via `resolveServiceNamespace`
+- `enclii providers cloudflare tunnels-apply --project <slug>` — diff junction domains against live tunnel ingress and apply corrected K8s service backends (since 2026-10-01: derived from each junction's service and environment, with a repoint guard; see `docs/runbooks/ENCLII_JUNCTION_ROUTE_RECONCILIATION_2026-05-16.md`)
 - Replaces break-glass `enclii junctions add` / manual Cloudflare tunnel edits when routes point at wrong namespaces
 
 ### 2026-05-29 — ESO sync-sweep + post-deploy adapter smoke

@@ -55,7 +55,8 @@ enclii providers cloudflare zone-settings-apply kalya.app --apply --reason "appl
 enclii providers cloudflare dns cotiza.studio
 enclii providers cloudflare dns-apply app.example.com --project example --service web --apply --reason "point app host at Enclii tunnel"
 enclii providers cloudflare tunnels --json
-enclii providers cloudflare tunnels-apply --project example --apply --reason "reconcile junction tunnel routes to correct K8s backends"
+enclii providers cloudflare tunnels-apply --project example
+enclii providers cloudflare tunnels-apply app.example.com --project example
 enclii providers porkbun dns-apply crm.phynd.app --domain phynd.app --type CNAME --content c9fac286-497b-4aac-9288-f784a1ea561c.cfargotunnel.com --apply --reason "restore PhyndCRM app host through Enclii"
 enclii providers porkbun nameservers-apply phynd.app --nameservers ns1.cloudflare.com,ns2.cloudflare.com --apply --reason "delegate phynd.app to Enclii-managed Cloudflare"
 enclii providers porkbun ping --tenant crea
@@ -99,7 +100,18 @@ Command-specific flags: `porkbun dns-apply` takes `--domain`, `--name` (both der
   overwriting one ([#530](https://github.com/madfam-org/enclii/issues/530),
   fixed in [#536](https://github.com/madfam-org/enclii/pull/536)). See
   [Cloudflare DNS apply](#cloudflare-dns-apply).
-- Cloudflare `tunnels-apply` reconciles junction hostnames to the correct in-cluster service URL using `resolveServiceNamespace`; use instead of `junctions add` when live tunnel routes drift.
+- Cloudflare `tunnels-apply` reconciles junction hostnames to the in-cluster
+  service URL of each junction's service **and environment**; use instead of
+  `junctions add` when live tunnel routes drift. It refuses repoints: an UPDATE
+  that changes the target service or namespace of a hostname whose live
+  backend is serving is labelled `REPOINT (blocked)`, as is any move between
+  production and another environment's namespace, and the summary leads with
+  `REFUSED`. While any row is blocked the apply writes nothing (HTTP 409).
+  `--allow-repoint <hostname>` (repeatable) permits one intended move;
+  `--expect-plan <fingerprint>` makes the apply refuse unless the plan is the
+  one the dry run showed. Fix wrong bindings with
+  [`ops junctions rebind`](ops.md#ops-junctions-rebind). Background:
+  [junction route reconciliation runbook](../../runbooks/ENCLII_JUNCTION_ROUTE_RECONCILIATION_2026-05-16.md#repoint-guard-and-environment-aware-backends-2026-10-01).
 - Cloudflare `access` and `r2` remain contract-only.
 - Cloudflare `hostnames` currently reads DNS-shaped state; full SaaS custom
   hostname inventory is a follow-up.

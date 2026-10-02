@@ -31,6 +31,7 @@ once the server-side adapter supports the operation.`,
 	cmd.AddCommand(newOpsPolicyCommand(cfg))
 	cmd.AddCommand(newOpsRunnersCommand(cfg))
 	cmd.AddCommand(newOpsDomainsCommand(cfg))
+	cmd.AddCommand(newOpsJunctionsCommand(cfg))
 	return cmd
 }
 

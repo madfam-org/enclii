@@ -306,7 +306,7 @@ func TestUpdateService_CrossTenantDenied(t *testing.T) {
 var junctionSelectColumns = []string{
 	"id", "project_id", "service_id", "domain", "path", "protocol",
 	"tls_enabled", "tls_issuer", "tls_cert_secret", "tls_min_version", "tls_force_redirect",
-	"created_at", "updated_at",
+	"created_at", "updated_at", "environment_id",
 }
 
 func TestGetJunction_CrossTenantDenied(t *testing.T) {
@@ -323,7 +323,7 @@ func TestGetJunction_CrossTenantDenied(t *testing.T) {
 		WillReturnRows(sqlmock.NewRows(junctionSelectColumns).AddRow(
 			junctionID, projectB, uuid.New(), "api.example.com", "/", "https",
 			true, "letsencrypt", nil, nil, true,
-			now, now,
+			now, now, nil,
 		))
 
 	mock.ExpectQuery(`SELECT COUNT\(\*\) FROM project_access`).
@@ -363,7 +363,7 @@ func TestDeleteJunction_CrossTenantDenied(t *testing.T) {
 		WillReturnRows(sqlmock.NewRows(junctionSelectColumns).AddRow(
 			junctionID, projectB, uuid.New(), "app.client.com", "/", "https",
 			true, "letsencrypt", nil, nil, true,
-			now, now,
+			now, now, nil,
 		))
 
 	mock.ExpectQuery(`SELECT COUNT\(\*\) FROM project_access`).

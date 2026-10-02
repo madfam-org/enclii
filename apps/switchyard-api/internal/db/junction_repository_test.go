@@ -26,7 +26,7 @@ func newJunctionMockDB(t *testing.T) (*JunctionRepository, sqlmock.Sqlmock, func
 var junctionColumns = []string{
 	"id", "project_id", "service_id", "domain", "path", "protocol",
 	"tls_enabled", "tls_issuer", "tls_cert_secret", "tls_min_version", "tls_force_redirect",
-	"created_at", "updated_at",
+	"created_at", "updated_at", "environment_id",
 }
 
 func sampleJunction(projectID, serviceID uuid.UUID) *types.Junction {
@@ -72,8 +72,17 @@ func junctionRow(j *types.Junction) *sqlmock.Rows {
 		AddRow(
 			j.ID, j.ProjectID, j.ServiceID, j.Domain, j.Path, j.Protocol,
 			tlsEnabled, tlsIssuer, tlsCertSecret, tlsMinVersion, tlsForceRedirect,
-			j.CreatedAt, j.UpdatedAt,
+			j.CreatedAt, j.UpdatedAt, environmentColumnValue(j.EnvironmentID),
 		)
+}
+
+// environmentColumnValue is what Postgres hands back for environment_id: NULL
+// or the uuid's text form.
+func environmentColumnValue(id *uuid.UUID) interface{} {
+	if id == nil {
+		return nil
+	}
+	return id.String()
 }
 
 // --- Create ---
@@ -103,7 +112,7 @@ func TestJunctionRepository_Create(t *testing.T) {
 			WithArgs(
 				sqlmock.AnyArg(), projectID, serviceID, "api.example.com", "/v1", "https",
 				true, "letsencrypt-prod", sql.NullString{Valid: false}, "1.2", true,
-				sqlmock.AnyArg(), sqlmock.AnyArg(),
+				sqlmock.AnyArg(), sqlmock.AnyArg(), sqlmock.AnyArg(),
 			).
 			WillReturnResult(sqlmock.NewResult(0, 1))
 
@@ -132,7 +141,7 @@ func TestJunctionRepository_Create(t *testing.T) {
 			WithArgs(
 				sqlmock.AnyArg(), projectID, serviceID, "app.example.com", "/", "https",
 				true, "letsencrypt-prod", sql.NullString{Valid: false}, "1.2", true,
-				sqlmock.AnyArg(), sqlmock.AnyArg(),
+				sqlmock.AnyArg(), sqlmock.AnyArg(), sqlmock.AnyArg(),
 			).
 			WillReturnResult(sqlmock.NewResult(0, 1))
 
@@ -237,8 +246,8 @@ func TestJunctionRepository_ListByProject(t *testing.T) {
 		now := time.Now().Truncate(time.Microsecond)
 
 		rows := sqlmock.NewRows(junctionColumns).
-			AddRow(uuid.New(), projectID, serviceID, "api.example.com", "/v1", "https", true, "letsencrypt-prod", sql.NullString{Valid: false}, sql.NullString{String: "1.2", Valid: true}, true, now, now).
-			AddRow(uuid.New(), projectID, serviceID, "app.example.com", "/", "https", true, "letsencrypt-staging", sql.NullString{Valid: false}, sql.NullString{String: "1.3", Valid: true}, true, now, now)
+			AddRow(uuid.New(), projectID, serviceID, "api.example.com", "/v1", "https", true, "letsencrypt-prod", sql.NullString{Valid: false}, sql.NullString{String: "1.2", Valid: true}, true, now, now, nil).
+			AddRow(uuid.New(), projectID, serviceID, "app.example.com", "/", "https", true, "letsencrypt-staging", sql.NullString{Valid: false}, sql.NullString{String: "1.3", Valid: true}, true, now, now, nil)
 
 		mock.ExpectQuery(`SELECT id, project_id, service_id, domain, path, protocol`).
 			WithArgs(projectID).
@@ -386,7 +395,7 @@ func TestJunctionRepository_ListByService(t *testing.T) {
 		now := time.Now().Truncate(time.Microsecond)
 
 		rows := sqlmock.NewRows(junctionColumns).
-			AddRow(uuid.New(), projectID, serviceID, "svc.example.com", "/", "https", true, "letsencrypt-prod", sql.NullString{Valid: false}, sql.NullString{String: "1.2", Valid: true}, true, now, now)
+			AddRow(uuid.New(), projectID, serviceID, "svc.example.com", "/", "https", true, "letsencrypt-prod", sql.NullString{Valid: false}, sql.NullString{String: "1.2", Valid: true}, true, now, now, nil)
 
 		mock.ExpectQuery(`SELECT id, project_id, service_id, domain, path, protocol`).
 			WithArgs(serviceID).
@@ -396,6 +405,71 @@ func TestJunctionRepository_ListByService(t *testing.T) {
 		assert.NoError(t, err)
 		assert.Len(t, results, 1)
 		assert.Equal(t, "svc.example.com", results[0].Domain)
+		assert.NoError(t, mock.ExpectationsWereMet())
+	})
+}
+
+// --- Environment binding ---
+
+func TestJunctionRepository_EnvironmentRoundTrip(t *testing.T) {
+	repo, mock, cleanup := newJunctionMockDB(t)
+	defer cleanup()
+
+	projectID := uuid.New()
+	serviceID := uuid.New()
+	environmentID := uuid.New()
+	junction := sampleJunction(projectID, serviceID)
+	junction.EnvironmentID = &environmentID
+
+	mock.ExpectQuery(`SELECT id, project_id, service_id, domain, path, protocol`).
+		WithArgs(junction.ID).
+		WillReturnRows(junctionRow(junction))
+
+	got, err := repo.GetByID(context.Background(), junction.ID)
+	require.NoError(t, err)
+	require.NotNil(t, got.EnvironmentID, "a recorded environment must survive the read")
+	assert.Equal(t, environmentID, *got.EnvironmentID)
+	assert.NoError(t, mock.ExpectationsWereMet())
+}
+
+func TestJunctionRepository_NullEnvironmentReadsAsNil(t *testing.T) {
+	repo, mock, cleanup := newJunctionMockDB(t)
+	defer cleanup()
+
+	junction := sampleJunction(uuid.New(), uuid.New())
+	mock.ExpectQuery(`SELECT id, project_id, service_id, domain, path, protocol`).
+		WithArgs(junction.ID).
+		WillReturnRows(junctionRow(junction))
+
+	got, err := repo.GetByID(context.Background(), junction.ID)
+	require.NoError(t, err)
+	assert.Nil(t, got.EnvironmentID, "NULL environment_id means not recorded, never uuid.Nil")
+	assert.NoError(t, mock.ExpectationsWereMet())
+}
+
+func TestJunctionRepository_Rebind(t *testing.T) {
+	t.Run("scoped to the project and writes service and environment", func(t *testing.T) {
+		repo, mock, cleanup := newJunctionMockDB(t)
+		defer cleanup()
+
+		id, projectID, serviceID, environmentID := uuid.New(), uuid.New(), uuid.New(), uuid.New()
+		mock.ExpectExec(`UPDATE junctions\s+SET service_id = \$1, environment_id = \$2, updated_at = \$3\s+WHERE id = \$4 AND project_id = \$5`).
+			WithArgs(serviceID, uuid.NullUUID{UUID: environmentID, Valid: true}, sqlmock.AnyArg(), id, projectID).
+			WillReturnResult(sqlmock.NewResult(0, 1))
+
+		require.NoError(t, repo.Rebind(context.Background(), id, projectID, serviceID, &environmentID))
+		assert.NoError(t, mock.ExpectationsWereMet())
+	})
+
+	t.Run("a junction outside the project matches nothing", func(t *testing.T) {
+		repo, mock, cleanup := newJunctionMockDB(t)
+		defer cleanup()
+
+		mock.ExpectExec(`UPDATE junctions`).
+			WillReturnResult(sqlmock.NewResult(0, 0))
+
+		err := repo.Rebind(context.Background(), uuid.New(), uuid.New(), uuid.New(), nil)
+		assert.ErrorIs(t, err, sql.ErrNoRows)
 		assert.NoError(t, mock.ExpectationsWereMet())
 	})
 }

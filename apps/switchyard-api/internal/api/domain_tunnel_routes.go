@@ -91,7 +91,10 @@ func (h *Handler) ensureTunnelRoute(
 	// a replace, and it is the value the canary reverts to.
 	existing, existingKnown := h.existingTunnelRoute(ctx, routeSpec.Hostname)
 
-	if existingKnown && existing != nil && existing.Service == tunnelRouteServiceURL(routeSpec) {
+	// Equivalent spellings of the same backend (a hand-edited
+	// `.svc:80` rule) are the same backend, not drift to rewrite.
+	if existingKnown && existing != nil &&
+		(existing.Service == tunnelRouteServiceURL(routeSpec) || sameClusterBackend(existing.Service, routeSpec)) {
 		h.logger.Debug(ctx, "Tunnel route already targets desired service",
 			logging.String("domain", domain),
 			logging.String("namespace", namespace))
@@ -109,6 +112,13 @@ func (h *Handler) ensureTunnelRoute(
 	replacing := !existingKnown || existing != nil
 	if err := h.resolveTunnelBackend(ctx, routeSpec); err != nil {
 		h.refuseUnresolvableTunnelRoute(ctx, routeSpec, existing, replacing, err, owner)
+		return
+	}
+
+	// GUARD 1b. The backend is real, but a rule that targets a DIFFERENT
+	// service or namespace and is serving is not drift: rewriting it is a
+	// repoint, and no automated reconcile does that (tunnel_route_guard.go).
+	if existingKnown && h.refuseRepointOfServingRoute(ctx, routeSpec, existing, service, envName, owner) {
 		return
 	}
 
@@ -401,6 +411,23 @@ func (h *Handler) resolveServiceNamespace(ctx context.Context, service *types.Se
 		if namespace := h.environmentNamespace(service, envName); namespace != "" {
 			return namespace
 		}
+		// No recorded namespace for this environment. The service's own
+		// namespace is used only when it is visibly this environment's
+		// (`...-staging` for staging); otherwise fall back to the convention
+		// every non-production deploy uses. Never to the service namespace
+		// unconditionally: for an adopted service that is the production
+		// namespace, and a staging hostname routed there serves production.
+		if service.K8sNamespace != nil &&
+			strings.HasSuffix(strings.TrimSpace(*service.K8sNamespace), "-"+normalizeEnvironmentName(envName)) {
+			return strings.TrimSpace(*service.K8sNamespace)
+		}
+		if h != nil && h.repos != nil && h.repos.Projects != nil {
+			if project, err := h.repos.Projects.GetByID(ctx, service.ProjectID); err == nil && project != nil &&
+				strings.TrimSpace(project.Slug) != "" {
+				return legacyAutoDeployKubeNamespace(project, envName)
+			}
+		}
+		return ""
 	}
 	if service.K8sNamespace != nil && *service.K8sNamespace != "" {
 		return *service.K8sNamespace

@@ -64,6 +64,13 @@ var opsCapabilities = []operatorCapability{
 		Scopes:      []string{"project", "service", "target"},
 	},
 	{
+		Name:        "junctions",
+		Status:      "partial",
+		Description: "Rebind a hostname's junction to the service and environment that serve it: dry-run plan by default, data only (the tunnel route follows through tunnels-apply and its repoint guard)",
+		Actions:     []string{"rebind"},
+		Scopes:      []string{"project", "target"},
+	},
+	{
 		Name:        "quote-flow",
 		Status:      "partial",
 		Description: "Enclii-first doctor for the Selva -> Yantra4D -> Cotiza -> ForgeSight quote path",
