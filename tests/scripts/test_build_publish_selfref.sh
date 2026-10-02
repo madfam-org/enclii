@@ -10,6 +10,9 @@
 # Also asserts the `on.workflow_call.secrets` contract: every `secrets.X` the
 # workflow reads is declared, and nothing undeclared is read.
 #
+# Also asserts every `uses:` is pinned to a full-length commit SHA, so callers
+# that require SHA-pinned actions can call this reusable workflow.
+#
 # Run: bash tests/scripts/test_build_publish_selfref.sh   (needs bash, jq, grep -E)
 set -euo pipefail
 
@@ -136,6 +139,22 @@ if ! awk '/^    secrets:$/{s=1;next} s&&/^    [^ ]/{s=0} s&&/^[^ ]/{s=0} s' "$WF
   ok "every declared secret is optional (required: false)"
 else
   bad "a declared secret is required: true (would break callers)"
+fi
+
+echo
+echo "action pinning contract"
+# Callers whose repo enables "require actions to be pinned to a full-length
+# commit SHA" (e.g. madfam-org/family-history) get the run refused before any
+# job starts if ANY step in this reusable workflow uses a tag or branch ref.
+# Every `uses:` must be a 40-hex commit SHA (with a `# vX.Y.Z` comment so
+# Dependabot can bump it), a local `./` path, or a `docker://` digest.
+uses_lines=$(grep -nE '^[[:space:]]*(-[[:space:]]+)?uses:[[:space:]]' "$WF" || true)
+unpinned=$(printf '%s\n' "$uses_lines" | grep -vE 'uses:[[:space:]]+(\./[^[:space:]]+|docker://[^[:space:]]+@sha256:[0-9a-f]{64}|[^[:space:]@]+@[0-9a-f]{40}[[:space:]]+#[[:space:]]*v[0-9][^[:space:]]*)[[:space:]]*$' | grep -v '^$' || true)
+if [ -n "$uses_lines" ] && [ -z "$unpinned" ]; then
+  ok "every uses: is SHA-pinned with a version comment ($(printf '%s\n' "$uses_lines" | wc -l | tr -d ' ') steps)"
+else
+  bad "uses: not pinned to a full-length commit SHA + '# vX.Y.Z':
+${unpinned:-<no uses: lines found>}"
 fi
 
 echo
