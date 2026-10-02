@@ -434,11 +434,25 @@ def test_informational_severities_go_to_a_sink():
     assert [k for k in recv if k.endswith("_configs")] == []
 
 
+HEARTBEAT_URL = "https://heartbeat.madfam.io/v1/alertmanager"
+
+
+def _duration_seconds(value: str) -> int:
+    """'90s' / '2m' / '1h' -> seconds (Alertmanager's simple duration forms)."""
+    units = {"s": 1, "m": 60, "h": 3600}
+    return int(value[:-1]) * units[value[-1]]
+
+
 def test_watchdog_is_routed_to_a_sink_above_the_severity_routes():
-    """Watchdog always fires; it must be visible in Alertmanager, not delivered.
+    """Watchdog always fires. It reaches no person, only the outside heartbeat.
 
     Unrouted, it falls to default-receiver and emails every repeat_interval
-    forever. Routed to a receiver with an integration, it pages forever.
+    forever; on any person-facing integration it pages forever. Its one
+    integration is the outside-the-cluster heartbeat the owner sanctioned on
+    2026-09-27 (internal-devops ops/cloudflare/alerting-heartbeat): a Worker
+    that pages when the beats STOP for 10 minutes. So the beat must stay well
+    under that; at the root's 15m group_interval the Worker would page
+    constantly.
     """
     cfg = _live_alertmanager_config()
     idx, route = _route_for(cfg, "Watchdog")
@@ -448,10 +462,22 @@ def test_watchdog_is_routed_to_a_sink_above_the_severity_routes():
     recv = by_name.get(route.get("receiver"))
     assert recv is not None, f"undefined receiver {route.get('receiver')!r}"
     integrations = [k for k in recv if k.endswith("_configs")]
-    assert integrations == [], (
-        f"Watchdog's receiver must have no integrations until an outside "
-        f"heartbeat is sanctioned; found {integrations}"
+    assert integrations == ["webhook_configs"], (
+        f"Watchdog's receiver may carry only the sanctioned heartbeat "
+        f"webhook; found {integrations}"
     )
+    hooks = recv["webhook_configs"]
+    assert len(hooks) == 1 and hooks[0].get("url") == HEARTBEAT_URL, hooks
+    assert hooks[0].get("send_resolved") is False
+    creds = ((hooks[0].get("http_config") or {}).get("authorization") or {}).get(
+        "credentials_file", ""
+    )
+    assert creds.startswith("/etc/alertmanager/heartbeat/"), creds
+    beat = max(
+        _duration_seconds(route.get("group_interval", "5m")),
+        _duration_seconds(route.get("repeat_interval", "4h")),
+    )
+    assert beat <= 300, f"heartbeat every {beat}s; the Worker pages after 600s"
 
 
 # ---------------------------------------------------------------------------

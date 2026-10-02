@@ -288,6 +288,47 @@ spec:
     ports:
     - protocol: TCP
       port: 8787
+  # The outside-the-cluster alerting heartbeat (watchdog-sink in
+  # alertmanager.yaml): HTTPS to the Worker at heartbeat.madfam.io, which runs
+  # on Cloudflare's edge. Scoped to Cloudflare's published IPv4 ranges
+  # (https://www.cloudflare.com/ips-v4, 15 ranges, fetched 2026-09-27), so
+  # alertmanager still cannot POST anywhere else on the internet, the
+  # property the rule above was written to keep. If Cloudflare publishes new
+  # ranges and the Worker lands on one, beats fail and the Worker pages.
+  - to:
+    - ipBlock:
+        cidr: 173.245.48.0/20
+    - ipBlock:
+        cidr: 103.21.244.0/22
+    - ipBlock:
+        cidr: 103.22.200.0/22
+    - ipBlock:
+        cidr: 103.31.4.0/22
+    - ipBlock:
+        cidr: 141.101.64.0/18
+    - ipBlock:
+        cidr: 108.162.192.0/18
+    - ipBlock:
+        cidr: 190.93.240.0/20
+    - ipBlock:
+        cidr: 188.114.96.0/20
+    - ipBlock:
+        cidr: 197.234.240.0/22
+    - ipBlock:
+        cidr: 198.41.128.0/17
+    - ipBlock:
+        cidr: 162.158.0.0/15
+    - ipBlock:
+        cidr: 104.16.0.0/13
+    - ipBlock:
+        cidr: 104.24.0.0/14
+    - ipBlock:
+        cidr: 172.64.0.0/13
+    - ipBlock:
+        cidr: 131.0.72.0/22
+    ports:
+    - protocol: TCP
+      port: 443
   # Prometheus (for silences API etc.)
   - to:
     - podSelector:

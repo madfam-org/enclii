@@ -40,6 +40,10 @@
 #     `alertmanager-slack-secret` this file used to name went with the
 #     slack_configs blocks (internal-devops
 #     decisions/2026-09-05-third-party-messaging-via-angelia-courier.md M1).
+#   - `alertmanager-heartbeat-secret`, projected by
+#     alertmanager-heartbeat-secret.externalsecret.yaml from
+#     secret/monitoring:alertmanager_heartbeat_token. Also `optional: true`:
+#     until it exists, only the Watchdog beat to the outside heartbeat fails.
 #
 # After cutover, edit `prometheus.yaml` to point Prometheus' alerting target
 # at the headless Service (`alertmanager-cluster.monitoring.svc:9093`) so
@@ -176,6 +180,10 @@ spec:
             - name: courier-secret
               mountPath: /etc/alertmanager/courier
               readOnly: true
+            # Same whole-volume shape as courier-secret, for the same reason.
+            - name: heartbeat-secret
+              mountPath: /etc/alertmanager/heartbeat
+              readOnly: true
             - name: data
               mountPath: /alertmanager
           startupProbe:
@@ -259,6 +267,16 @@ spec:
             # inert. With optional, the webhook POSTs with no credential, the
             # receiver answers 503, and email keeps carrying alerts.
             secretName: alertmanager-courier-secret
+            optional: true
+        - name: heartbeat-secret
+          secret:
+            defaultMode: 420
+            # Populated by alertmanager-heartbeat-secret.externalsecret.yaml
+            # from secret/monitoring:alertmanager_heartbeat_token, the bearer
+            # token the alerting heartbeat Worker checks on every beat.
+            # `optional: true` for the same reason as courier-secret: a
+            # missing credential must never leave the peers Pending.
+            secretName: alertmanager-heartbeat-secret  # pragma: allowlist secret
             optional: true
   # Each pod gets its own 1Gi PVC. RWO is fine because each pod owns its own
   # volume — no Multi-Attach errors. Longhorn handles per-pod replication

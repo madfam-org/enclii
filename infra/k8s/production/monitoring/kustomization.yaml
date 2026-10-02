@@ -24,6 +24,7 @@ resources:
   # decisions/2026-09-05-third-party-messaging-via-angelia-courier.md § 2 — no
   # platform in this estate holds a messaging-network bot token any more.
   - alertmanager-courier-secret.externalsecret.yaml
+  - alertmanager-heartbeat-secret.externalsecret.yaml
   # Object-state exporter (kube_job_*, kube_pod_*, kube_deployment_*).
   # WITHOUT this line the manifest file still sits in this directory,
   # kustomize never renders it, and Argo reports Synced/Healthy for a
