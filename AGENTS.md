@@ -60,6 +60,9 @@ redirect and should not become the source of truth again.
 - **`packages/sdk-py` models** are generated from `docs/api/openapi.yaml` with
   `datamodel-code-generator==0.83.0`; CI fails on drift. Regenerate in the
   same PR as a spec change.
+- **Pending work** lives in one place: the «Engineering backlog (platform and
+  fleet-wide)» section of [`ROADMAP.md`](ROADMAP.md#engineering-backlog-platform-and-fleet-wide).
+  Remove an item in the PR that finishes it.
 - **Skipped tests** are inventoried in
   [`docs/testing/SKIPPED_TESTS.md`](docs/testing/SKIPPED_TESTS.md). Add a
   line there when you add one.

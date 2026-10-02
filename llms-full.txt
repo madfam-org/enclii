@@ -36,7 +36,7 @@ gap or incident link.
 ## Repo entrypoints detected
 
 - `README.md`
-- `ROADMAP.md`
+- `ROADMAP.md` (pending work: section «Engineering backlog (platform and fleet-wide)»)
 - `ECOSYSTEM.md`
 - `docs/`
 - `infra/`
