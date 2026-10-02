@@ -154,7 +154,7 @@ platforms:
       is_confidential: true
       website_url: https://app.nauta.quest
       # 2026-08-30 apex migration: cockpit moved to app.nauta.quest (hard cutover
-      # from nauta.madfam.io / cto.madfam.io; the nauta.quest apex serves the
+      # from the two retired madfam.io cockpit hosts; the nauta.quest apex serves the
       # public landing). The callback path is /api/auth/callback/janua (Auth.js
       # provider id 'janua') — the earlier entries here omitted the /janua suffix,
       # which the live Janua registry never used. The retired-host callbacks were

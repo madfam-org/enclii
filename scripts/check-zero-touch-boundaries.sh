@@ -149,7 +149,6 @@ ALLOWED_TUNNEL_HOSTNAMES=(
     app.karafiel.mx
     app.yantra4d.com
     auth.madfam.io
-    cms.madfam.io
     crm.madfam.io
     crm.phynd.app
     dhan.am
