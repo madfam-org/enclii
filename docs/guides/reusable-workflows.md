@@ -134,6 +134,18 @@ unreviewed hand-off of those secrets. Two forms work:
 - **Tag**: `@vX.Y.Z`. Still accepted. A tag can be moved by anyone with
   write access to enclii, which a SHA cannot.
 
+**Callers that require SHA-pinned actions.** GitHub's policy "Require actions
+to be pinned to a full-length commit SHA" also applies inside called reusable
+workflows. If a caller repo (or its org) enables it, GitHub refuses the run
+before any job starts unless every `uses:` in `build-publish.yml` at the pinned
+ref is itself SHA-pinned. That holds from madfam-org/enclii#671
+(`c8b4647e8300733bc0a3d70a067173378aac633a`) onward; `v1.0.0-alpha.14` and
+earlier still pin actions by tag. Until a release tag contains #671, such a
+caller pins a `main` commit at or after it, with a comment saying so. The pin
+job accepts it because the SHA is reachable from `main` (see below). When
+bumping, diff `build-publish.yml` between the two SHAs and confirm every
+`uses:` is still SHA-pinned.
+
 Find a release's commit SHA. The `^{}` suffix peels an annotated tag to the
 commit it points at, and that commit is the SHA to pin:
 
