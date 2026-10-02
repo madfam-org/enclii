@@ -179,13 +179,8 @@ func TestGithubCallback_UserDeniedRedirects(t *testing.T) {
 	}
 }
 
-// --- Flow integration via stubbed DB (happy path) -------------------------
-
-// We use the in-process mock from the service tests to drive the handler
-// through Initiate successfully, confirming HTTP-layer JSON shape.
-func TestInitiateSignup_EndToEndHappyPath_InMemoryStub(t *testing.T) {
-	t.Skip("covered by internal/signup/service_test.go; stub DB end-to-end done at service level to avoid duplicating fixtures")
-}
+// The happy path through Initiate is covered at the service level
+// (internal/signup/service_test.go), which owns the stub DB fixtures.
 
 // --- Assertion that the IsEnabled gate closes correctly on flag flip ------
 

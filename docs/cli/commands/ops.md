@@ -152,6 +152,10 @@ Flags: `--to-service` and `--environment` (required), `--path` (only the
 junction on that path; default every junction for the hostname), plus the
 shared contract flags. API: `POST /v1/ops/junctions/rebind` with
 `scope.project`, `args.target`, `args.to_service`, `args.environment`.
+Available in CLI `v1.0.0-alpha.14` and later. Where a rebind fits in a route
+change (dry run, review, rebind, then a reviewed `tunnels-apply` bound with
+`--expect-plan`) is the
+[tunnels-apply operator procedure](providers.md#cloudflare-tunnels-apply-operator-procedure).
 
 ## `ops secrets provision-kalya-feed`
 

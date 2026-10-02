@@ -23,7 +23,7 @@ name: ARC runner render-env drift
 # `libgpg-error0` are in the platform image and the contract, and were missing
 # here.
 #
-# Runs on github-hosted ubuntu-latest for the same chicken-and-egg reason
+# Runs on github-hosted ubuntu-24.04 (pinned) for the same chicken-and-egg reason
 # arc-runner-image.yml does: this lane is about the pool's own image, and must
 # not depend on the pool being healthy.
 

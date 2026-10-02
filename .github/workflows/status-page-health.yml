@@ -23,7 +23,7 @@ name: Status Page Health Regression Test
 # Idempotency: only one open issue at a time. Subsequent failures append a
 # comment to the existing issue rather than opening a duplicate.
 #
-# Cost: ~1 min runtime, 1 ubuntu-latest minute per day.
+# Cost: ~1 min runtime, 1 GitHub-hosted (ubuntu-24.04) minute per day.
 
 on:
   schedule:
@@ -69,7 +69,7 @@ jobs:
 
       - name: Install jq (sanity check)
         run: |
-          # ubuntu-latest already ships jq, but verify so the failure mode is clear
+          # The ubuntu-24.04 image ships jq, but verify so the failure mode is clear
           # if a future runner image drops it.
           jq --version
           curl --version | head -1

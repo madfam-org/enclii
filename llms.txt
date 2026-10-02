@@ -148,6 +148,14 @@ Compact LLM context index for this repository.
   drop the deletion. CI job `runner-npm-lint` (`scripts/check-runner-no-npm.py`)
   enforces it and documents how to add npm back. Baseline: `README.md` ->
   "Security".
+- CI (2026-10-01/02): GitHub-hosted runners pinned to `ubuntu-24.04` (#662);
+  `arc-runner-image.yml` moves `:stable` only after smoke and signing (#664);
+  `weighbridge.yml` and `deploy-pipeline-monitor.yml` retry a raced digest-pin
+  push up to 5 times (#665); `sdk-py` models regenerate from
+  `docs/api/openapi.yaml` with `datamodel-code-generator==0.83.0` and CI fails
+  on drift (#663). Contract tests: `tests/scripts/test_digest_pin_push_retry.py`,
+  `tests/scripts/test_arc_runner_image_promotion.py` (CI job
+  `workflow-contracts`). Skip inventory: `docs/testing/SKIPPED_TESTS.md`.
 
 ## Production operations
 
@@ -166,7 +174,7 @@ before raw infrastructure tools. Direct `kubectl`, `helm`, SSH, provider CLIs,
 - `scripts/wave0-ga-ops.sh` — Enclii-first Wave 0 cluster ops orchestration
 - `scripts/wave1-ga-ops.sh` — Enclii-first Wave 1 stability ops orchestration
 - `enclii ops storage storageclass-apply` / `enclii ops policy cosign-enable` — Wave 1.5 Longhorn + cosign adapters
-- `enclii providers cloudflare tunnels-apply --project <slug>` — junction tunnel route reconcile; backends derive from each junction's service AND environment; repoints of serving routes and cross-environment moves are `REPOINT (blocked)` and the apply is all-or-nothing (`--allow-repoint <host>`, `--expect-plan <fp>`)
+- `enclii providers cloudflare tunnels-apply --project <slug>` — junction tunnel route reconcile; backends derive from each junction's service AND environment; repoints of serving routes and cross-environment moves are `REPOINT (blocked)` and the apply is all-or-nothing (`--allow-repoint <host>`, `--expect-plan <fp>`). Procedure (CLI `v1.0.0-alpha.14`+): dry run -> review every row -> apply with `--expect-plan` bound to the reviewed plan; rebind junctions first when a project's hosts span several services or environments. Never run the dry run and the apply as one block. `docs/cli/commands/providers.md#cloudflare-tunnels-apply-operator-procedure`
 - `enclii ops junctions rebind <host> --project <slug> --to-service <svc> --environment <env>` — correct a junction's binding (dry run by default; data only, never touches the route)
 - `enclii ops secrets sync-sweep` + `scripts/post-deploy-ga-adapters.sh` — ESO batch reconcile (O-10) + deploy smoke
 - `scripts/setup-commercial-ga-staging-env.sh` + `scripts/ga-ops-runbook.sh` — GH staging env + ROI ops orchestration

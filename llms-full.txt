@@ -119,8 +119,18 @@ wrong about all of it.
   `--allow-repoint <host>` is per hostname; `--expect-plan <fp>` pins the
   reviewed plan. Wrong bindings are fixed with `enclii ops junctions rebind`
   (dry run by default, data only). The automated reconcile paths refuse the
-  same repoints. Runbook:
-  `docs/runbooks/ENCLII_JUNCTION_ROUTE_RECONCILIATION_2026-05-16.md`.
+  same repoints. Operator procedure (CLI `v1.0.0-alpha.14`, released
+  2026-10-02, carries `--allow-repoint`, `--expect-plan` and
+  `ops junctions rebind`):
+  1. dry run;
+  2. review every row (label, `reason`, `environment_source`);
+  3. apply with `--expect-plan` bound to the reviewed plan;
+  4. when a project's hostnames are served by more than one service or
+     environment, rebind the junctions first, then start again at step 1.
+  The dry run and the apply are separate steps with a review between them;
+  never run or paste them as one block. Procedure:
+  `docs/cli/commands/providers.md#cloudflare-tunnels-apply-operator-procedure`.
+  Runbook: `docs/runbooks/ENCLII_JUNCTION_ROUTE_RECONCILIATION_2026-05-16.md`.
 - After a nameserver switch, clients on a stale resolver see NXDOMAIN for hosts
   that exist only in the new zone (and Cloudflare 1034 for a DNS-only host the
   old zone pointed at a CDN) for up to the old NS TTL. Do not cut over
@@ -211,6 +221,24 @@ only run `node server.js`); do not "fix" a runner by calling npm, and do not
 drop the deletion. CI job `runner-npm-lint` (`scripts/check-runner-no-npm.py`)
 enforces it and documents how to add npm back. Baseline: `README.md` ->
 "Security".
+
+## CI contracts (2026-10-01/02)
+
+- GitHub-hosted runners are pinned to `ubuntu-24.04` ahead of GitHub moving
+  `ubuntu-latest` to Ubuntu 26 on 2026-10-19 (#662). Doc examples use the pin.
+- `arc-runner-image.yml` pushes every build by its sha tag and moves `:stable`
+  only after both smoke checks and the cosign signature; pull requests never
+  push (#664). Pinned by `tests/scripts/test_arc_runner_image_promotion.py`.
+- `weighbridge.yml` and `deploy-pipeline-monitor.yml` commit their own digest
+  pin and race other pins on the same push. A rejected push retries up to 5
+  times: fetch, reset onto `origin/main`, re-apply the digest, exit 0 when
+  fresh main already pins it (#665). `tests/scripts/test_digest_pin_push_retry.py`
+  runs the step's script verbatim against a throwaway bare origin. Both run in
+  the `workflow-contracts` job of `ci.yml`.
+- `packages/sdk-py` models are generated from `docs/api/openapi.yaml` with
+  `datamodel-code-generator==0.83.0` (exact pin, no committed lockfile);
+  `sdk-py.yml` triggers on the spec paths and fails on drift (#663).
+- Skipped tests and known flakes: `docs/testing/SKIPPED_TESTS.md`.
 
 ## Boundary
 

@@ -244,6 +244,16 @@ It's checked in as a reference for consumers who want to work directly against
 the raw spec shape, and CI enforces it stays in sync via
 `scripts/verify_models.sh` (invoked by `make verify-models`).
 
+- **The generator is pinned exactly** (`datamodel-code-generator[http]==0.83.0`
+  in the `dev` extras). `uv.lock` is not committed for this library, so a
+  floating generator would turn a generator release into a spurious drift
+  failure. Bump it deliberately and regenerate in the same PR.
+- **`sdk-py.yml` runs on the spec it reads:** changes under
+  `packages/sdk-py/**`, `docs/api/openapi.yaml` or
+  `docs/api-reference/openapi.yaml`. A spec change that drifts
+  `generated.py` therefore fails on the PR that makes it, not on a later
+  SDK change.
+
 ## Publishing (operator)
 
 The package isn't on PyPI yet. An operator with a PyPI API token can ship it with:

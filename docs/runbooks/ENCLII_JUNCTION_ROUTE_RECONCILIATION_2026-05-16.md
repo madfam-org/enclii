@@ -55,6 +55,13 @@ enclii providers cloudflare tunnels-apply tulana-app.madfam.io --project tulana
 
 When the plan is clean, its `Next` line is the apply command for exactly that plan, carrying `--expect-plan <fingerprint>`. The apply re-plans server-side and refuses, writing nothing, if the plan changed since the dry run. Never paste a dry run and its apply as one block: the apply is a separate decision taken after reading the plan.
 
+The procedure, in order (full text in the [CLI reference](../cli/commands/providers.md#cloudflare-tunnels-apply-operator-procedure); needs CLI `v1.0.0-alpha.14` or later):
+
+   1. Dry run.
+   2. Review every row: its label, `reason` and `environment_source`.
+   3. Apply with `--expect-plan` bound to the plan you reviewed.
+   4. When a project's hostnames are served by more than one service or environment, rebind the junctions first (`enclii ops junctions rebind`, see [below](#correcting-a-junctions-binding)), then start again at step 1.
+
 2. Re-run `enclii junctions add` only if the junction row is absent.
 3. If the row exists and reconciliation still fails, cycle the junction with `enclii junctions delete <id> --force` followed by `enclii junctions add <domain> --service-id <service-id> --project <project>`.
 4. Confirm the tunnel route appears in `enclii providers cloudflare tunnels ...`.
