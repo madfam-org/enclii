@@ -1,6 +1,6 @@
 # MADFAM ecosystem OIDC auto-provision registry
 # Consumed by: enclii secrets provision oidc
-# Last Updated: 2026-10-01
+# Last Updated: 2026-10-03
 #
 # TWO COPIES, ONE CONTENT. The CLI embeds
 # packages/cli/internal/ecosystemoidc/data/ecosystem-oidc-provision.yaml (go:embed
@@ -520,3 +520,179 @@ platforms:
       grant_types:
         - authorization_code
         - refresh_token
+
+  # ---------------------------------------------------------------------------
+  # Digital-twins machine edges (2026-10-03). Nine client_credentials clients,
+  # each one edge, one client, the narrowest scope set. Eight are defined in
+  # janua apps/api/scripts/seed_service_clients.py (SERVICE_CLIENTS and the
+  # ORG_BOUND_SERVICE_CLIENTS templates); name, audience, scopes and grant are
+  # copied from that file byte for byte. The ninth, pravara-fabrication-prep,
+  # follows fabrication-prep's docs/operator-setup.md section 2 (audience
+  # fabrication-prep-api, scope fabrication-prep:slice); Janua must reserve that
+  # audience and scope before it can be registered. client_key is the client
+  # name. All are confidential, client_credentials only, with no redirect_uris.
+  #
+  # Six are platform-admin edges (no organization_id): renders, type shells and
+  # slice jobs carry no tenant. Three are ORG-BOUND to the MADFAM Ecosystem organization
+  # (slug madfam-ecosystem), because the receiving API reads tenant_id from the
+  # token and Janua sets it only on an org-bound client. Janua names an
+  # org-bound client `<template>.<org slug>`; the platform id swaps the dot for
+  # a hyphen.
+  #
+  # Existing clients are matched by NAME (none is pinned yet): the run
+  # reconciles or validates the client, then ROTATES its secret, because an
+  # existing client's secret is never retrievable. Pass `--grace-hours 0` when
+  # the previous secret must stop working at once. Pin each printed jnc_… id
+  # here (both copies) after the first run.
+  #
+  # Every pair lands in a DEDICATED `<app>-service-clients` ExternalSecret in
+  # the consumer's namespace (see switchyard's secretsintake registry), never a
+  # hand-maintained Secret. Lowercase keys, as Vault stores them.
+  # ---------------------------------------------------------------------------
+  pravara-yantra4d-step-reader:
+    intake_target: pravara-mes/yantra4d-step-reader
+    intake_key_map:
+      yantra4d_step_reader_client_id: client_id
+      yantra4d_step_reader_client_secret: client_secret  # pragma: allowlist secret
+    janua_client:
+      name: pravara-yantra4d-step-reader
+      client_key: pravara-yantra4d-step-reader  # pragma: allowlist secret
+      audience: yantra4d-api
+      description: Machine edge (client_credentials) from Pravara MES to Yantra4D render, pulling STEP exports before slicing. Platform-admin, scope yantra4d:render only.
+      is_confidential: true
+      allowed_scopes:
+        - yantra4d:render
+      grant_types:
+        - client_credentials
+
+  yantra4d-asset-shells-publisher:
+    intake_target: yantra4d/asset-shells-publisher
+    intake_key_map:
+      asset_shells_publisher_client_id: client_id
+      asset_shells_publisher_client_secret: client_secret  # pragma: allowlist secret
+    janua_client:
+      name: yantra4d-asset-shells-publisher
+      client_key: yantra4d-asset-shells-publisher  # pragma: allowlist secret
+      audience: asset-shells-api
+      description: Machine edge (client_credentials) from Yantra4D to asset-shells, publishing the solid commons' type shells. Platform-admin, scope asset-shells:publish-types only.
+      is_confidential: true
+      allowed_scopes:
+        - asset-shells:publish-types
+      grant_types:
+        - client_credentials
+
+  fashion-cabinet-asset-shells-publisher:
+    intake_target: fashion-cabinet/asset-shells-publisher
+    intake_key_map:
+      asset_shells_publisher_client_id: client_id
+      asset_shells_publisher_client_secret: client_secret  # pragma: allowlist secret
+    janua_client:
+      name: fashion-cabinet-asset-shells-publisher
+      client_key: fashion-cabinet-asset-shells-publisher  # pragma: allowlist secret
+      audience: asset-shells-api
+      description: Machine edge (client_credentials) from Fashion Cabinet to asset-shells, publishing the soft commons' type shells. Platform-admin, scope asset-shells:publish-types only.
+      is_confidential: true
+      allowed_scopes:
+        - asset-shells:publish-types
+      grant_types:
+        - client_credentials
+
+  zavlo-cfdi-emitter:
+    intake_target: zavlo/cfdi-emitter
+    intake_key_map:
+      zavlo_cfdi_emitter_client_id: client_id
+      zavlo_cfdi_emitter_client_secret: client_secret  # pragma: allowlist secret
+    janua_client:
+      name: zavlo-cfdi-emitter
+      client_key: zavlo-cfdi-emitter  # pragma: allowlist secret
+      audience: karafiel-api
+      description: Machine edge (client_credentials) from Zavlo to Karafiel's CFDI billing bridge. Platform-admin, scope cfdi:issue only.
+      is_confidential: true
+      allowed_scopes:
+        - cfdi:issue
+      grant_types:
+        - client_credentials
+
+  pravara-fabrication-prep:
+    intake_target: pravara-mes/fabrication-prep-client
+    intake_key_map:
+      fabrication_prep_client_id: client_id
+      fabrication_prep_client_secret: client_secret  # pragma: allowlist secret
+    janua_client:
+      name: pravara-fabrication-prep
+      client_key: pravara-fabrication-prep  # pragma: allowlist secret
+      audience: fabrication-prep-api
+      description: "Pravara MES → fabrication-prep slicing service client. fabrication-prep:slice only. Platform-admin: slicing carries no tenant data."
+      is_confidential: true
+      allowed_scopes:
+        - fabrication-prep:slice
+      grant_types:
+        - client_credentials
+
+  routecraft-billing-relay:
+    intake_target: routecraft/billing-relay
+    intake_key_map:
+      billing_relay_client_id: client_id
+      billing_relay_client_secret: client_secret  # pragma: allowlist secret
+    janua_client:
+      name: routecraft-billing-relay
+      client_key: routecraft-billing-relay  # pragma: allowlist secret
+      audience: dhanam-api
+      description: Machine edge (client_credentials) from RouteCraft to Dhanam's billing APIs. Platform-admin, scope billing:events only.
+      is_confidential: true
+      allowed_scopes:
+        - billing:events
+      grant_types:
+        - client_credentials
+
+  forj-pravara-intake-madfam-ecosystem:
+    intake_target: forj/pravara-intake
+    intake_key_map:
+      pravara_intake_client_id: client_id
+      pravara_intake_client_secret: client_secret  # pragma: allowlist secret
+    janua_client:
+      name: forj-pravara-intake.madfam-ecosystem
+      client_key: forj-pravara-intake.madfam-ecosystem  # pragma: allowlist secret
+      audience: pravara-api
+      description: Machine edge (client_credentials) from Forj to Pravara MES order intake. Org-bound to madfam-ecosystem, scope pravara-mes:jobs only.
+      is_confidential: true
+      organization_id: 1a6233ef-185f-43ee-9181-e2591fbb2643
+      allowed_scopes:
+        - pravara-mes:jobs
+      grant_types:
+        - client_credentials
+
+  cotiza-pravara-intake-madfam-ecosystem:
+    intake_target: digifab-quoting/pravara-intake
+    intake_key_map:
+      pravara_intake_client_id: client_id
+      pravara_intake_client_secret: client_secret  # pragma: allowlist secret
+    janua_client:
+      name: cotiza-pravara-intake.madfam-ecosystem
+      client_key: cotiza-pravara-intake.madfam-ecosystem  # pragma: allowlist secret
+      audience: pravara-api
+      description: Machine edge (client_credentials) from Cotiza (digifab-quoting) to Pravara MES job intake. Org-bound to madfam-ecosystem, scope pravara-mes:jobs only.
+      is_confidential: true
+      organization_id: 1a6233ef-185f-43ee-9181-e2591fbb2643
+      allowed_scopes:
+        - pravara-mes:jobs
+      grant_types:
+        - client_credentials
+
+  pravara-asset-shells-publisher-madfam-ecosystem:
+    intake_target: pravara-mes/asset-shells-publisher-madfam-ecosystem
+    intake_key_map:
+      asset_shells_publisher_madfam_ecosystem_client_id: client_id
+      asset_shells_publisher_madfam_ecosystem_client_secret: client_secret  # pragma: allowlist secret
+    janua_client:
+      name: pravara-asset-shells-publisher.madfam-ecosystem
+      client_key: pravara-asset-shells-publisher.madfam-ecosystem  # pragma: allowlist secret
+      audience: asset-shells-api
+      description: Machine edge (client_credentials) from Pravara MES to asset-shells, publishing instance shells and passport events for one organization. Org-bound to madfam-ecosystem, scopes asset-shells:publish-instances and asset-shells:read.
+      is_confidential: true
+      organization_id: 1a6233ef-185f-43ee-9181-e2591fbb2643
+      allowed_scopes:
+        - asset-shells:publish-instances
+        - asset-shells:read
+      grant_types:
+        - client_credentials

@@ -21,6 +21,11 @@ type ProvisionOptions struct {
 	Reason          string
 	RotateIfMissing bool
 	DryRun          bool
+	// GraceHours, when set, is the grace period (0..MaxGraceHours) sent with a
+	// secret rotation: how long the previous secrets stay valid. 0 retires them
+	// at once. nil keeps Janua's default. It never applies to a create or to a
+	// public login client, neither of which rotates.
+	GraceHours *int
 }
 
 // ProvisionResult is safe to print — no secret values.
@@ -41,6 +46,13 @@ type ProvisionResult struct {
 	// PublicLogin marks a client that holds no secret; nothing was resolved,
 	// rotated or intaken on its behalf beyond what KeysWritten lists.
 	PublicLogin bool `json:"public_login,omitempty"`
+	// GracePeriodHours and OldSecretsExpireAt are Janua's account of a
+	// rotation: how long the previous secrets stay valid, and when they stop.
+	// Set only when this run rotated the secret. Neither is secret.
+	GracePeriodHours   *int   `json:"grace_period_hours,omitempty"`
+	OldSecretsExpireAt string `json:"old_secrets_expire_at,omitempty"`
+	// PlannedGraceHours is the grace a dry run would send if the run rotates.
+	PlannedGraceHours *int `json:"planned_grace_period_hours,omitempty"`
 }
 
 // ProvisionPlatform registers/reconciles Janua OAuth client and intakes OIDC material.
@@ -51,6 +63,10 @@ func ProvisionPlatform(
 	submitter IntakeSubmitter,
 	opts ProvisionOptions,
 ) (ProvisionResult, error) {
+	// Refused before anything else, so a bad value never reaches Janua.
+	if err := ValidateGraceHours(opts.GraceHours); err != nil {
+		return ProvisionResult{}, err
+	}
 	platform, ok := reg.Platforms[opts.PlatformID]
 	if !ok {
 		return ProvisionResult{}, fmt.Errorf("unknown platform %q", opts.PlatformID)
@@ -80,6 +96,9 @@ func ProvisionPlatform(
 		if platform.SessionIntakeTarget != "" {
 			result.SessionKeys = []string{"NEXTAUTH_SECRET", "SESSION_SECRET"}
 		}
+		if !public {
+			result.PlannedGraceHours = opts.GraceHours
+		}
 		return result, nil
 	}
 	remote, created, err := janua.registerOrReconcile(ctx, platform.JanuaClient)
@@ -91,10 +110,9 @@ func ProvisionPlatform(
 	// client carrying an unused secret is exactly the kind of credential that
 	// gets copied somewhere it should not be.
 	secret := ""
-	rotated := false
+	var rotation *SecretRotation
 	if !public {
-		secret, err = janua.ResolveClientSecret(ctx, remote, created, opts.RotateIfMissing)
-		rotated = err == nil && remote.ClientSecret == nil && !created
+		secret, rotation, err = janua.ResolveClientSecret(ctx, remote, created, opts.RotateIfMissing, opts.GraceHours)
 		if err != nil {
 			return ProvisionResult{}, err
 		}
@@ -103,10 +121,14 @@ func ProvisionPlatform(
 		PlatformID:    opts.PlatformID,
 		JanuaClientID: remote.ClientID,
 		Created:       created,
-		RotatedSecret: rotated || (remote.ClientSecret == nil && secret != ""),
+		RotatedSecret: rotation != nil,
 		IntakeTarget:  platform.IntakeTarget,
 		Reconciled:    remote.reconciled,
 		PublicLogin:   public,
+	}
+	if rotation != nil {
+		result.GracePeriodHours = rotation.GracePeriodHours
+		result.OldSecretsExpireAt = rotation.OldSecretsExpireAt
 	}
 	if strings.TrimSpace(platform.IntakeTarget) == "" {
 		// Public login client with nothing to deliver through Vault: the
@@ -120,6 +142,12 @@ func ProvisionPlatform(
 	}
 	result.IntakeID = intakeID
 	result.KeysWritten = mapKeys(values)
+	// The new secret is filed first, so a grace Janua did not honour never
+	// costs the credential; the run still fails, because the previous secret
+	// may stay valid longer than the operator asked for.
+	if err := checkGraceApplied(rotation); err != nil {
+		return result, fmt.Errorf("%s (new secret filed, intake %s)", err, intakeID)
+	}
 
 	if platform.SessionIntakeTarget != "" {
 		sessionValues, serr := generateSessionAuthValues()
@@ -135,6 +163,22 @@ func ProvisionPlatform(
 	}
 
 	return result, nil
+}
+
+// checkGraceApplied fails when a run asked for a grace period and Janua's
+// rotate response does not confirm exactly that grace.
+func checkGraceApplied(rotation *SecretRotation) error {
+	if rotation == nil || rotation.RequestedGraceHours == nil {
+		return nil
+	}
+	want := *rotation.RequestedGraceHours
+	if rotation.GracePeriodHours == nil {
+		return fmt.Errorf("requested grace_period_hours=%d but Janua's rotate response reported none; previous secrets may still be valid", want)
+	}
+	if got := *rotation.GracePeriodHours; got != want {
+		return fmt.Errorf("requested grace_period_hours=%d but Janua applied %d; previous secrets stay valid until %s", want, got, rotation.OldSecretsExpireAt)
+	}
+	return nil
 }
 
 func buildIntakeValues(issuer, clientID, clientSecret string, platform Platform) map[string]string {

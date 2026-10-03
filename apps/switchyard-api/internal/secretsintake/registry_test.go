@@ -11,7 +11,7 @@ import (
 func TestLoadRegistry(t *testing.T) {
 	reg, err := LoadRegistry()
 	require.NoError(t, err)
-	assert.Len(t, reg, 41)
+	assert.Len(t, reg, 50)
 	assert.Contains(t, reg, "ceq/vast-api-key")
 	assert.Contains(t, reg, "karafiel/web-oidc-janua")
 	tgt := reg["ceq/vast-api-key"]
@@ -32,7 +32,7 @@ func TestGetTarget(t *testing.T) {
 func TestListTargetsSorted(t *testing.T) {
 	list, err := ListTargets()
 	require.NoError(t, err)
-	require.Len(t, list, 41)
+	require.Len(t, list, 50)
 	for i := 1; i < len(list); i++ {
 		assert.Less(t, list[i-1].ID, list[i].ID, "targets should be sorted by id")
 	}
@@ -62,10 +62,13 @@ func TestListTargetsSorted(t *testing.T) {
 		"dhanam/oidc-janua",
 		"dhanam/session-auth",
 		"dhanam/stripe-mx-live",
+		"digifab-quoting/pravara-intake",
 		"enclii/internal-api-key",
 		"family-history/api-access",
 		"family-history/web-oidc",
 		"family-history/web-session",
+		"fashion-cabinet/asset-shells-publisher",
+		"forj/pravara-intake",
 		"janua/internal-api-key",
 		"kalya/internal-api-key",
 		"karafiel/web-oidc-janua",
@@ -79,9 +82,15 @@ func TestListTargetsSorted(t *testing.T) {
 		"nauta/symbiosis-hcm-token",
 		"phynd-crm/oidc-janua",
 		"platform/comms-resend-api-key",
+		"pravara-mes/asset-shells-publisher-madfam-ecosystem",
+		"pravara-mes/fabrication-prep-client",
+		"pravara-mes/yantra4d-step-reader",
+		"routecraft/billing-relay",
 		"symbiosis-hcm/map-absence-feed",
 		"telesia/oidc-janua",
 		"telesia/runtime",
+		"yantra4d/asset-shells-publisher",
+		"zavlo/cfdi-emitter",
 	}, ids)
 }
 
@@ -377,6 +386,55 @@ func TestFamilyHistoryTargets(t *testing.T) {
 			assert.NotEmpty(t, tgt.Label)
 			// FH_SESSION_SECRET must carry at least 32 bytes.
 			assert.GreaterOrEqual(t, tgt.GenerateBytes(), 32)
+		})
+	}
+}
+
+// Digital-twins machine edges (2026-10-03): nine client_credentials pairs, each
+// written only by `enclii secrets provision oidc`. Every consumer reads them
+// from a DEDICATED `<app>-service-clients` ExternalSecret, never from a
+// hand-maintained Secret: an Owner ExternalSecret over an existing Secret
+// deletes the keys it does not produce. Keys are lowercase, as Vault stores
+// them, and come in id/secret pairs.
+func TestDigitalTwinsMachineEdgeTargets(t *testing.T) {
+	cases := []struct {
+		id, vaultPath, namespace, externalSecret string
+		keys                                     []string
+	}{
+		{"pravara-mes/yantra4d-step-reader", "secret/pravara-mes", "pravara-mes", "pravara-service-clients",
+			[]string{"yantra4d_step_reader_client_id", "yantra4d_step_reader_client_secret"}},
+		{"pravara-mes/asset-shells-publisher-madfam-ecosystem", "secret/pravara-mes", "pravara-mes", "pravara-service-clients",
+			[]string{"asset_shells_publisher_madfam_ecosystem_client_id", "asset_shells_publisher_madfam_ecosystem_client_secret"}},
+		{"pravara-mes/fabrication-prep-client", "secret/pravara-mes", "pravara-mes", "pravara-service-clients",
+			[]string{"fabrication_prep_client_id", "fabrication_prep_client_secret"}},
+		{"yantra4d/asset-shells-publisher", "secret/yantra4d", "yantra4d", "yantra4d-service-clients",
+			[]string{"asset_shells_publisher_client_id", "asset_shells_publisher_client_secret"}},
+		{"fashion-cabinet/asset-shells-publisher", "secret/fashion-cabinet", "fashion-cabinet", "fashion-cabinet-service-clients",
+			[]string{"asset_shells_publisher_client_id", "asset_shells_publisher_client_secret"}},
+		{"forj/pravara-intake", "secret/forj", "forj", "forj-service-clients",
+			[]string{"pravara_intake_client_id", "pravara_intake_client_secret"}},
+		{"digifab-quoting/pravara-intake", "secret/digifab-quoting", "digifab-quoting", "digifab-quoting-service-clients",
+			[]string{"pravara_intake_client_id", "pravara_intake_client_secret"}},
+		{"zavlo/cfdi-emitter", "secret/zavlo", "zavlo", "zavlo-service-clients",
+			[]string{"zavlo_cfdi_emitter_client_id", "zavlo_cfdi_emitter_client_secret"}},
+		{"routecraft/billing-relay", "secret/routecraft", "routecraft", "routecraft-service-clients",
+			[]string{"billing_relay_client_id", "billing_relay_client_secret"}},
+	}
+	for _, tc := range cases {
+		t.Run(tc.id, func(t *testing.T) {
+			tgt, err := GetTarget(tc.id)
+			require.NoError(t, err)
+			assert.Equal(t, tc.vaultPath, tgt.VaultPath)
+			assert.Equal(t, tc.namespace, tgt.Namespace)
+			assert.Equal(t, tc.externalSecret, tgt.ExternalSecret)
+			assert.True(t, strings.HasSuffix(tgt.ExternalSecret, "-service-clients"),
+				"a dedicated ExternalSecret, never a consumer's existing Secret")
+			assert.Equal(t, tc.keys, tgt.Keys)
+			for _, k := range tgt.Keys {
+				assert.Equal(t, strings.ToLower(k), k, "Vault stores lowercase; an upper-case key would never match the ExternalSecret property")
+			}
+			assert.NotEmpty(t, tgt.Label)
+			assert.NotEmpty(t, tgt.Description)
 		})
 	}
 }
