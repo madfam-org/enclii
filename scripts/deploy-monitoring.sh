@@ -156,13 +156,9 @@ add_tunnel_routes() {
   originRequest:
     noTLSVerify: true
 
-- hostname: prometheus.enclii.dev
-  service: http://prometheus.monitoring.svc.cluster.local:9090
-  originRequest:
-    noTLSVerify: true
-    # Consider adding access controls for Prometheus
-
-# Note: AlertManager should typically NOT be exposed publicly
+# Do NOT publish Prometheus or AlertManager on the tunnel: neither has
+# authentication. Grafana, which requires a login, is the UI (FDY-01,
+# 2026-10-04).
 EOF
     echo ""
     log_info "After updating, restart cloudflared:"

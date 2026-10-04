@@ -15,7 +15,16 @@ spec:
   - Ingress
   - Egress
 ---
-# Prometheus ingress — from Cloudflare tunnel (UI) and Grafana (datasource)
+# Prometheus ingress — in-cluster only: Grafana (datasource), AlertManager and
+# rules-eval.
+#
+# NO CLOUDFLARE TUNNEL RULE (2026-10-04). Prometheus has no authentication of
+# its own, and this rule let the public route prometheus.enclii.dev serve the
+# UI and the whole HTTP API (targets, labels, every series) to anyone on the
+# internet — front-door audit finding FDY-01 (P0). Read metrics through
+# Grafana, which requires a login, or port-forward for break-glass work.
+# Without this rule default-deny-all refuses cloudflared, so the public route
+# answers 502 until its tunnel route and DNS record are removed.
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
@@ -32,14 +41,6 @@ spec:
   policyTypes:
   - Ingress
   ingress:
-  # From Cloudflare tunnel (prometheus.enclii.dev UI)
-  - from:
-    - namespaceSelector:
-        matchLabels:
-          kubernetes.io/metadata.name: cloudflare-tunnel
-    ports:
-    - protocol: TCP
-      port: 9090
   # From Grafana (datasource queries)
   - from:
     - podSelector:
