@@ -87,14 +87,14 @@ function buildGraph(data: TopologyResponse): CanvasGraph {
             </div>
             <div className="space-y-1">
               <div className="flex justify-between text-[10px]">
-                <span>CPU</span>
+                <span>CPU requests</span>
                 <span>{cpuPct}%</span>
               </div>
               <div className="h-1 rounded bg-muted overflow-hidden">
                 <div className="h-full bg-blue-500" style={{ width: `${cpuPct}%` }} />
               </div>
               <div className="flex justify-between text-[10px]">
-                <span>Memory</span>
+                <span>Memory requests</span>
                 <span>{memPct}%</span>
               </div>
               <div className="h-1 rounded bg-muted overflow-hidden">
@@ -277,13 +277,13 @@ export function TopologyCanvas() {
         <div className="flex items-center gap-2 text-sm">
           <Cpu className="size-4 text-muted-foreground" />
           <span className="font-mono text-xs">
-            {data.display.cpu_used} / {data.display.cpu_capacity}
+            CPU requests {data.display.cpu_used} / {data.display.cpu_capacity}
           </span>
         </div>
         <div className="flex items-center gap-2 text-sm">
           <HardDrive className="size-4 text-muted-foreground" />
           <span className="font-mono text-xs">
-            {data.display.memory_used} / {data.display.memory_capacity}
+            Memory requests {data.display.memory_used} / {data.display.memory_capacity}
           </span>
         </div>
         <div className="ml-auto flex items-center gap-3">
@@ -302,6 +302,11 @@ export function TopologyCanvas() {
           </Button>
         </div>
       </div>
+
+      <p className="text-xs text-muted-foreground">
+        Requests from running pods; totals use cluster capacity and node percentages use allocatable capacity.
+        Live utilization is unavailable here.
+      </p>
 
       {error && (
         <div className="rounded-md border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-xs text-amber-400">
