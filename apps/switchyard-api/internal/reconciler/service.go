@@ -324,7 +324,7 @@ func (r *ServiceReconciler) ensureNamespace(ctx context.Context, namespace strin
 		r.logger.WithField("namespace", namespace).Info("Created new namespace")
 	}
 
-	// GUARDRAIL: Copy registry credentials to new namespaces
+	// GUARDRAIL: Create missing registry credentials and converge Enclii-owned copies
 	// This ensures pods can pull images from private registries (GHCR)
 	if err := r.ensureRegistryCredentials(ctx, namespace); err != nil {
 		// Log but don't fail - the credential check in triggerAutoDeploy is the primary guardrail
@@ -378,61 +378,9 @@ func (r *ServiceReconciler) ensureNamespaceLabels(ctx context.Context, namespace
 	}
 }
 
-// ensureRegistryCredentials copies the registry credentials secret to the target namespace if missing
+// ensureRegistryCredentials converges only pull-secret copies owned by Enclii.
 func (r *ServiceReconciler) ensureRegistryCredentials(ctx context.Context, targetNamespace string) error {
-	const secretName = "ghcr-credentials" // #nosec G101 -- secret reference name, not a credential
-	const sourceNamespace = "enclii"
-
-	secretClient := r.k8sClient.Clientset.CoreV1().Secrets(targetNamespace)
-
-	// Check if secret already exists
-	_, err := secretClient.Get(ctx, secretName, metav1.GetOptions{})
-	if err == nil {
-		return nil // Already exists
-	}
-	if !errors.IsNotFound(err) {
-		return fmt.Errorf("failed to check for registry credentials: %w", err)
-	}
-
-	// Get source secret
-	sourceClient := r.k8sClient.Clientset.CoreV1().Secrets(sourceNamespace)
-	sourceSecret, err := sourceClient.Get(ctx, secretName, metav1.GetOptions{})
-	if err != nil {
-		if errors.IsNotFound(err) {
-			r.logger.WithField("source_namespace", sourceNamespace).Warn("Source registry credentials not found - skipping copy")
-			return nil // Source doesn't exist, nothing to copy
-		}
-		return fmt.Errorf("failed to get source registry credentials: %w", err)
-	}
-
-	// Create copy in target namespace
-	newSecret := &corev1.Secret{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      secretName,
-			Namespace: targetNamespace,
-			Labels: map[string]string{
-				"enclii.dev/managed-by":  "switchyard-reconciler",
-				"enclii.dev/copied-from": sourceNamespace,
-			},
-		},
-		Type: sourceSecret.Type,
-		Data: sourceSecret.Data,
-	}
-
-	_, err = secretClient.Create(ctx, newSecret, metav1.CreateOptions{})
-	if err != nil {
-		if errors.IsAlreadyExists(err) {
-			return nil // Race condition - another process created it
-		}
-		return fmt.Errorf("failed to create registry credentials: %w", err)
-	}
-
-	r.logger.WithFields(logrus.Fields{
-		"namespace": targetNamespace,
-		"secret":    secretName,
-	}).Info("Copied registry credentials to namespace")
-
-	return nil
+	return r.k8sClient.EnsureRegistryCredentials(ctx, targetNamespace, "switchyard-reconciler")
 }
 
 // ensureEnvSecret creates or updates a K8s Secret containing secret env vars

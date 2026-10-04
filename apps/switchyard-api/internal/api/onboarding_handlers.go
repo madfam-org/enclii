@@ -9,8 +9,6 @@ import (
 	"strings"
 
 	"github.com/gin-gonic/gin"
-	k8scorev1 "k8s.io/api/core/v1"
-	k8smetav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 	"github.com/madfam-org/enclii/apps/switchyard-api/internal/logging"
 	"github.com/madfam-org/enclii/apps/switchyard-api/internal/netpolicy"
@@ -432,65 +430,11 @@ func (h *Handler) OnboardRepo(c *gin.Context) {
 	c.JSON(httpStatus, response)
 }
 
-// copyRegistryCredentials copies ghcr-credentials from the enclii namespace to a target namespace.
-// This allows pods in the target namespace to pull images from GHCR.
+// copyRegistryCredentials creates or converges an Enclii-owned registry copy.
 func (h *Handler) copyRegistryCredentials(ctx context.Context, targetNamespace string) {
-	if h.serviceReconciler == nil {
-		h.logger.Warn(ctx, "Service reconciler not available, skipping credential copy",
-			logging.String("namespace", targetNamespace))
-		return
-	}
-
-	// The reconciler already has ensureRegistryCredentials — leverage it indirectly
-	// by calling EnsureNamespace on the k8s client (which the reconciler's ensureNamespace does)
-	// Since the namespace is already created, and the reconciler's
-	// ensureNamespace handles credential copying, we can use the reconciler directly
-	if h.k8sClient == nil || !h.k8sClient.IsValid() {
-		return
-	}
-
-	const secretName = "ghcr-credentials" // #nosec G101 -- secret reference name, not a credential
-	const sourceNamespace = "enclii"
-
-	secretClient := h.k8sClient.Clientset.CoreV1().Secrets(targetNamespace)
-
-	// Check if secret already exists
-	_, err := secretClient.Get(ctx, secretName, k8smetav1.GetOptions{})
-	if err == nil {
-		return // Already exists
-	}
-
-	// Get source secret
-	sourceClient := h.k8sClient.Clientset.CoreV1().Secrets(sourceNamespace)
-	sourceSecret, err := sourceClient.Get(ctx, secretName, k8smetav1.GetOptions{})
-	if err != nil {
-		h.logger.Warn(ctx, "Source registry credentials not found, skipping copy",
-			logging.String("namespace", targetNamespace),
-			logging.Error("error", err))
-		return
-	}
-
-	// Create copy in target namespace
-	newSecret := &k8scorev1.Secret{
-		ObjectMeta: k8smetav1.ObjectMeta{
-			Name:      secretName,
-			Namespace: targetNamespace,
-			Labels: map[string]string{
-				"enclii.dev/managed-by":  "onboarding-api",
-				"enclii.dev/copied-from": sourceNamespace,
-			},
-		},
-		Type: sourceSecret.Type,
-		Data: sourceSecret.Data,
-	}
-
-	if _, err := secretClient.Create(ctx, newSecret, k8smetav1.CreateOptions{}); err != nil {
-		h.logger.Warn(ctx, "Failed to copy registry credentials (non-fatal)",
-			logging.String("namespace", targetNamespace),
-			logging.Error("error", err))
-	} else {
-		h.logger.Info(ctx, "Copied registry credentials to namespace",
-			logging.String("namespace", targetNamespace))
+	if err := h.k8sClient.EnsureRegistryCredentials(ctx, targetNamespace, "onboarding-api"); err != nil {
+		h.logger.Warn(ctx, "Failed to ensure registry credentials (non-fatal)",
+			logging.String("namespace", targetNamespace), logging.Error("error", err))
 	}
 }
 
