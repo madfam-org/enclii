@@ -124,7 +124,7 @@ func (p *PostgresProvisioner) provision(ctx context.Context, spec *types.Postgre
 
 	// Set password via ALTER ROLE (cannot parameterize passwords in DDL)
 	// The role name is regex-validated. The password is quoted by quoteLiteral.
-	if passwordLiteral != nil {
+	if passwordLiteral != nil { // pragma: allowlist secret -- variable name, not a value
 		_, err = db.ExecContext(ctx, fmt.Sprintf("ALTER ROLE %s WITH PASSWORD %s", roleName, *passwordLiteral))
 		if err != nil {
 			// Never wrap the driver error here: it is the only error path

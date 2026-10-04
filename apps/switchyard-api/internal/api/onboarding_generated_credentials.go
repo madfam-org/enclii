@@ -24,8 +24,8 @@ import (
 // visible failure, never an implicit rotation.
 
 const (
-	defaultOwnerURLSecretKey   = "DATABASE_URL"
-	defaultAppRoleURLSecretKey = "APP_DATABASE_URL"
+	defaultOwnerURLSecretKey   = "DATABASE_URL"     // #nosec G101 -- Secret key name, not a value // pragma: allowlist secret
+	defaultAppRoleURLSecretKey = "APP_DATABASE_URL" // #nosec G101 -- Secret key name, not a value // pragma: allowlist secret
 )
 
 // Credential actions reported per item.
@@ -89,8 +89,8 @@ func (h *Handler) credentialDeps() credentialDeps {
 	if h.pgbouncerUpdater != nil {
 		d.pooler = h.pgbouncerUpdater
 	}
-	if h.secretsProvisioner != nil {
-		d.secrets = h.secretsProvisioner
+	if h.secretsProvisioner != nil { // pragma: allowlist secret -- provisioner/field names, not a value
+		d.secrets = h.secretsProvisioner // pragma: allowlist secret -- provisioner/field names, not a value
 	}
 	return d
 }
@@ -225,7 +225,7 @@ func (r *credentialRun) ensurePoolerUser(ctx context.Context, role, dbName, urlK
 	}
 	r.poolerChanged = r.poolerChanged || changed
 
-	password := newPassword
+	password := newPassword // pragma: allowlist secret -- variable name; the value is generated at runtime
 	if password == "" {
 		has, err := r.deps.pooler.HasUser(ctx, role)
 		if err != nil {
@@ -258,7 +258,7 @@ func (r *credentialRun) generatedOwner(ctx context.Context) error {
 	if r.deps.pg == nil {
 		return fmt.Errorf("not configured (POSTGRES_ADMIN_URL not set)")
 	}
-	if r.deps.secrets == nil {
+	if r.deps.secrets == nil { // pragma: allowlist secret -- field name, not a value
 		return fmt.Errorf("secrets provisioner not configured; a generated password would have nowhere to go")
 	}
 	role := ownerRoleName(spec)
@@ -284,7 +284,7 @@ func (r *credentialRun) generatedOwner(ctx context.Context) error {
 		r.step("pgbouncer", err)
 	}
 	r.results = append(r.results, GeneratedCredential{
-		Kind: "owner_role", Name: role, Secret: r.secretName, Keys: []string{urlKey},
+		Kind: "owner_role", Name: role, Secret: r.secretName, Keys: []string{urlKey}, // pragma: allowlist secret -- field names, not a value
 		Action: action, Database: spec.DatabaseName, ConnLimit: spec.ConnectionLimit,
 	})
 	r.log(ctx, "owner_role", role, action)
@@ -296,7 +296,7 @@ func (r *credentialRun) appRole(ctx context.Context) error {
 	if r.deps.pg == nil {
 		return fmt.Errorf("not configured (POSTGRES_ADMIN_URL not set)")
 	}
-	if r.deps.secrets == nil {
+	if r.deps.secrets == nil { // pragma: allowlist secret -- field name, not a value
 		return fmt.Errorf("secrets provisioner not configured; a generated password would have nowhere to go")
 	}
 	if r.deps.pooler == nil {
@@ -333,7 +333,7 @@ func (r *credentialRun) appRole(ctx context.Context) error {
 		return err
 	}
 	r.results = append(r.results, GeneratedCredential{
-		Kind: "app_role", Name: spec.RoleName, Secret: r.secretName, Keys: keys,
+		Kind: "app_role", Name: spec.RoleName, Secret: r.secretName, Keys: keys, // pragma: allowlist secret -- field names, not a value
 		Action: string(action), Database: spec.DatabaseName, ConnLimit: spec.ConnectionLimit,
 	})
 	r.log(ctx, "app_role", spec.RoleName, string(action))
@@ -350,13 +350,13 @@ func resolvedAppRole(req *types.OnboardingRequest) types.AppRoleSpec {
 		spec.ConnectionLimit = provisioning.DefaultAppRoleConnectionLimit
 	}
 	if spec.URLSecretKey == "" {
-		spec.URLSecretKey = defaultAppRoleURLSecretKey
+		spec.URLSecretKey = defaultAppRoleURLSecretKey // pragma: allowlist secret -- provisioner/field names, not a value
 	}
 	return spec
 }
 
 func (r *credentialRun) generatedSecrets(ctx context.Context) error {
-	if r.deps.secrets == nil {
+	if r.deps.secrets == nil { // pragma: allowlist secret -- field name, not a value
 		return fmt.Errorf("secrets provisioner not configured (K8s client unavailable)")
 	}
 	var entries []types.SecretEntry
@@ -370,7 +370,7 @@ func (r *credentialRun) generatedSecrets(ctx context.Context) error {
 		if err != nil {
 			return err
 		}
-		item := GeneratedCredential{Kind: "secret", Name: g.Key, Secret: r.secretName, Keys: []string{g.Key}}
+		item := GeneratedCredential{Kind: "secret", Name: g.Key, Secret: r.secretName, Keys: []string{g.Key}} // pragma: allowlist secret -- field names, not a value
 		switch {
 		case exists && !g.Rotate:
 			item.Action = credentialKept

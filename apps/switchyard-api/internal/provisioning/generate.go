@@ -107,7 +107,7 @@ func hmacSHA256(key []byte, msg string) []byte {
 	return mac.Sum(nil)
 }
 
-// PooledConnectionURL builds postgresql://role:password@<pooler>/<db>.
+// PooledConnectionURL builds postgresql://role:password@<pooler>/<db>. // pragma: allowlist secret -- URL shape in a comment, not a credential
 func PooledConnectionURL(role, password, dbName string) string {
 	u := url.URL{
 		Scheme: "postgresql",

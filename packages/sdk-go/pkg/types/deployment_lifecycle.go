@@ -179,7 +179,7 @@ type AppRoleSpec struct {
 }
 
 // GeneratedSecretSpec asks the server to generate a random value for one key
-// of the project Secret: crypto/rand bytes, base64url without padding.
+// of the project Secret: crypto/rand bytes, base64url without padding. // pragma: allowlist secret -- doc comment, not a value
 type GeneratedSecretSpec struct {
 	Key string `json:"key"`
 	// Bytes is the number of random bytes, 16-128 (default 32).
