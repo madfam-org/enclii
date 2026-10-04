@@ -121,14 +121,14 @@ func ProvisionPlatform(
 		PlatformID:    opts.PlatformID,
 		JanuaClientID: remote.ClientID,
 		Created:       created,
-		RotatedSecret: rotation != nil,
+		RotatedSecret: rotation != nil, // pragma: allowlist secret -- field name, not a value
 		IntakeTarget:  platform.IntakeTarget,
 		Reconciled:    remote.reconciled,
 		PublicLogin:   public,
 	}
 	if rotation != nil {
 		result.GracePeriodHours = rotation.GracePeriodHours
-		result.OldSecretsExpireAt = rotation.OldSecretsExpireAt
+		result.OldSecretsExpireAt = rotation.OldSecretsExpireAt // pragma: allowlist secret -- field name, not a value
 	}
 	if strings.TrimSpace(platform.IntakeTarget) == "" {
 		// Public login client with nothing to deliver through Vault: the

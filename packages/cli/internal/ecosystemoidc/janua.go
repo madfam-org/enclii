@@ -351,7 +351,7 @@ func (c *JanuaClient) rotateSecret(ctx context.Context, internalUUID string, gra
 		return "", nil, fmt.Errorf("rotate returned empty client_secret")
 	}
 	rotation := &SecretRotation{RequestedGraceHours: graceHours, GracePeriodHours: out.GracePeriodHours}
-	if out.OldSecretsExpireAt != nil {
+	if out.OldSecretsExpireAt != nil { // pragma: allowlist secret -- field name, not a value
 		rotation.OldSecretsExpireAt = strings.TrimSpace(*out.OldSecretsExpireAt)
 	}
 	return out.ClientSecret, rotation, nil
