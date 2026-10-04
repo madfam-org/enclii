@@ -96,6 +96,14 @@ type EmailMessage struct {
 	LastEvent string   `json:"last_event"`
 }
 
+// Tag labels a message in Resend; Resend echoes tags on every webhook event
+// for it. Names and values may contain only ASCII letters, digits,
+// underscores and dashes, or Resend rejects the whole send.
+type Tag struct {
+	Name  string `json:"name"`
+	Value string `json:"value"`
+}
+
 // SendEmailRequest is the outbound email payload.
 type SendEmailRequest struct {
 	From    string
@@ -103,6 +111,13 @@ type SendEmailRequest struct {
 	Subject string
 	HTML    string
 	Text    string
+	// ReplyTo is where a reply goes instead of From. Ruling R101 (2026-10-04):
+	// mail from a no-reply address names the human inbox that answers it.
+	ReplyTo string
+	// Headers are extra message headers, e.g. Auto-Submitted.
+	Headers map[string]string
+	// Tags label the message; see Tag.
+	Tags []Tag
 }
 
 // SendEmailResponse is returned after a successful send.
@@ -241,6 +256,15 @@ func (c *Client) SendEmail(ctx context.Context, req SendEmailRequest) (*SendEmai
 	}
 	if req.Text != "" {
 		payload["text"] = req.Text
+	}
+	if req.ReplyTo != "" {
+		payload["reply_to"] = req.ReplyTo
+	}
+	if len(req.Headers) > 0 {
+		payload["headers"] = req.Headers
+	}
+	if len(req.Tags) > 0 {
+		payload["tags"] = req.Tags
 	}
 	var resp SendEmailResponse
 	if err := c.do(ctx, http.MethodPost, "/emails", payload, &resp); err != nil {
