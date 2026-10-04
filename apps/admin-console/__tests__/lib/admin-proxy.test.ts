@@ -1,126 +1,46 @@
-/**
- * Tests for lib/admin-proxy.ts
- *
- * The admin-proxy module proxies requests to the Switchyard API with
- * a resilient auth fallback strategy:
- *   1. Try user JWT
- *   2. If 401 and API key available, retry with API key
- *   3. If no user JWT, use API key (or unauthenticated)
- */
-
+/** @jest-environment node */
 import { adminProxy } from '@/lib/admin-proxy'
-
-// ---------------------------------------------------------------------------
-// Global fetch mock
-// ---------------------------------------------------------------------------
+import { switchyardProxy } from '@/lib/switchyard-proxy'
 
 const mockFetch = jest.fn()
 global.fetch = mockFetch
-
 const originalEnv = process.env
 
 beforeEach(() => {
   mockFetch.mockReset()
-  process.env = { ...originalEnv }
-  // Set defaults for tests
-  process.env.NEXT_PUBLIC_API_URL = 'https://api.enclii.dev'
-  process.env.SWITCHYARD_API_KEY = 'sk-test-key'
+  process.env = { ...originalEnv, NEXT_PUBLIC_API_URL: 'https://api.example.org', SWITCHYARD_API_KEY: 'service-key-must-not-be-used' }
 })
+afterAll(() => { process.env = originalEnv })
 
-afterAll(() => {
-  process.env = originalEnv
-})
+const proxies = [
+  { name: 'admin', call: (options?: RequestInit & { userToken?: string }) => adminProxy('/fleet', options), path: '/v1/admin/fleet' },
+  { name: 'ops', call: (options?: RequestInit & { userToken?: string }) => switchyardProxy('ops', '/apps/sync', options), path: '/v1/ops/apps/sync' },
+  { name: 'providers', call: (options?: RequestInit & { userToken?: string }) => switchyardProxy('providers', '/cloudflare/zones', options), path: '/v1/providers/cloudflare/zones' },
+]
 
-describe('adminProxy', () => {
-  it('uses user token as Bearer when provided', async () => {
-    mockFetch.mockResolvedValueOnce({ status: 200, ok: true })
-
-    await adminProxy('/fleet', { userToken: 'user-jwt-token' })
-
+describe.each(proxies)('$name caller identity', ({ call, path }) => {
+  it('forwards the caller and options without allowing header identity replacement', async () => {
+    const upstream = new Response('{}', { status: 200 })
+    mockFetch.mockResolvedValueOnce(upstream)
+    expect(await call({ userToken: 'caller-jwt', method: 'POST', body: '{}', headers: { Authorization: 'Bearer other-principal', 'X-Test': 'kept' } })).toBe(upstream)
     expect(mockFetch).toHaveBeenCalledTimes(1)
-    expect(mockFetch).toHaveBeenCalledWith(
-      'https://api.enclii.dev/v1/admin/fleet',
-      expect.objectContaining({
-        headers: expect.objectContaining({
-          Authorization: 'Bearer user-jwt-token',
-          'Content-Type': 'application/json',
-        }),
-      })
-    )
+    const [url, options] = mockFetch.mock.calls[0]
+    expect(url).toBe(`https://api.example.org${path}`)
+    expect(options).toMatchObject({ method: 'POST', body: '{}', cache: 'no-store' })
+    expect(options.headers.get('Authorization')).toBe('Bearer caller-jwt')
+    expect(options.headers.get('X-Test')).toBe('kept')
   })
 
-  it('falls back to API key when user token gets 401', async () => {
-    // First call with user token returns 401
-    mockFetch.mockResolvedValueOnce({ status: 401, ok: false })
-    // Second call with API key returns 200
-    mockFetch.mockResolvedValueOnce({ status: 200, ok: true })
-
-    await adminProxy('/fleet', { userToken: 'expired-jwt' })
-
-    expect(mockFetch).toHaveBeenCalledTimes(2)
-    // Second call should use the API key
-    expect(mockFetch.mock.calls[1][1]).toEqual(
-      expect.objectContaining({
-        headers: expect.objectContaining({
-          Authorization: 'Bearer sk-test-key',
-        }),
-      })
-    )
-  })
-
-  it('uses API key directly when no user token is provided', async () => {
-    mockFetch.mockResolvedValueOnce({ status: 200, ok: true })
-
-    await adminProxy('/clusters')
-
+  it.each([401, 403])('preserves upstream %s without retrying as a service principal', async (status) => {
+    const upstream = new Response('{}', { status })
+    mockFetch.mockResolvedValueOnce(upstream)
+    expect(await call({ userToken: 'rejected-caller' })).toBe(upstream)
     expect(mockFetch).toHaveBeenCalledTimes(1)
-    expect(mockFetch).toHaveBeenCalledWith(
-      'https://api.enclii.dev/v1/admin/clusters',
-      expect.objectContaining({
-        headers: expect.objectContaining({
-          Authorization: 'Bearer sk-test-key',
-        }),
-      })
-    )
   })
 
-  it('sends unauthenticated request when neither token nor API key available', async () => {
-    delete process.env.SWITCHYARD_API_KEY
-    mockFetch.mockResolvedValueOnce({ status: 200, ok: true })
-
-    await adminProxy('/topology')
-
-    expect(mockFetch).toHaveBeenCalledTimes(1)
-    const headers = mockFetch.mock.calls[0][1].headers
-    expect(headers).not.toHaveProperty('Authorization')
-  })
-
-  it('constructs URL using NEXT_PUBLIC_API_URL and /v1/admin prefix', async () => {
-    process.env.NEXT_PUBLIC_API_URL = 'https://custom-api.example.com'
-    mockFetch.mockResolvedValueOnce({ status: 200, ok: true })
-
-    await adminProxy('/drift')
-
-    expect(mockFetch).toHaveBeenCalledWith(
-      'https://custom-api.example.com/v1/admin/drift',
-      expect.any(Object)
-    )
-  })
-
-  it('passes through additional request options', async () => {
-    mockFetch.mockResolvedValueOnce({ status: 201, ok: true })
-
-    await adminProxy('/fleet', {
-      method: 'POST',
-      body: JSON.stringify({ name: 'test-host' }),
-    })
-
-    expect(mockFetch).toHaveBeenCalledWith(
-      'https://api.enclii.dev/v1/admin/fleet',
-      expect.objectContaining({
-        method: 'POST',
-        body: JSON.stringify({ name: 'test-host' }),
-      })
-    )
+  it('rejects missing caller credentials without contacting Switchyard', async () => {
+    const result = await call({ headers: { Authorization: 'Bearer other-principal' } })
+    expect(result.status).toBe(401)
+    expect(mockFetch).not.toHaveBeenCalled()
   })
 })
