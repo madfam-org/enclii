@@ -23,6 +23,13 @@ metadata:
     app.kubernetes.io/component: control-plane
     app.kubernetes.io/part-of: enclii
 rules:
+# Platform inventory reads; the console has no cluster credentials.
+- apiGroups: [""]
+  resources: ["nodes"]
+  verbs: ["get", "list", "watch"]
+- apiGroups: ["longhorn.io"]
+  resources: ["replicas"]
+  verbs: ["get", "list", "watch"]
 # Namespaces: create for new projects/environments, get/list/watch for queries, delete for cleanup,
 # patch for audited ops (cosign namespace labels)
 - apiGroups: [""]

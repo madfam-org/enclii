@@ -48,6 +48,10 @@ func TestOperatorCapabilitiesIncludeCoreSurfaces(t *testing.T) {
 
 func TestOperatorCapabilitiesAdvertiseReadAdapterStatus(t *testing.T) {
 	for _, capability := range opsCapabilities {
+		if capability.Name == "inventory" {
+			require.Equal(t, "implemented", capability.Status)
+			continue
+		}
 		assert.Equal(t, "partial", capability.Status, "ops %s should expose read adapters plus apply contracts", capability.Name)
 	}
 	assertCapabilityStatus(t, providerCapabilities, "github", "partial")

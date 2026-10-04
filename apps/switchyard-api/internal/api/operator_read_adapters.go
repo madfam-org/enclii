@@ -11,6 +11,7 @@ import (
 
 var operatorReadActions = map[string]map[string]map[string]bool{
 	"ops": {
+		"inventory":  {"topology": true, "applications": true, "volumes": true, "network-policies": true},
 		"apps":       {"status": true, "diff": true},
 		"pods":       {"diagnose": true, "logs": true},
 		"jobs":       {"list": true},
@@ -89,6 +90,10 @@ func operatorReadFailed(operation, domain, action string, err error) operatorOpe
 }
 
 func (h *Handler) handleOpsReadOperation(ctx context.Context, domain, action, operation string, req operatorOperationRequest) operatorOperationResponse {
+	if domain == "inventory" {
+		return h.readPlatformInventory(ctx, action, operation, req)
+	}
+
 	if domain == "quote-flow" && action == "verify" {
 		return h.handleQuoteFlowVerify(ctx, operation, req)
 	}

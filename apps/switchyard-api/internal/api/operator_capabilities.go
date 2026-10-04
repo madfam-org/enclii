@@ -7,6 +7,7 @@ import (
 )
 
 var opsCapabilities = []operatorCapability{
+	{Name: "inventory", Status: "implemented", Description: "Live cluster inventory for the operator console, authorized by platform rank", Actions: []string{"topology", "applications", "volumes", "network-policies"}},
 	{
 		Name:        "apps",
 		Status:      "partial",

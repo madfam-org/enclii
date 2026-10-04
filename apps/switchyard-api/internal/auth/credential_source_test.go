@@ -4,7 +4,6 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
-	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
@@ -33,11 +32,12 @@ func TestOIDCAuthMiddlewareRecordsCredentialSource(t *testing.T) {
 func newCredentialSourceTestManager(t *testing.T) (*JWTManager, string) {
 	t.Helper()
 	gin.SetMode(gin.TestMode)
-	manager, err := NewJWTManager(15*time.Minute, time.Hour, nil, nil)
-	if err != nil {
-		t.Fatalf("NewJWTManager: %v", err)
+	manager, mock := accountTestManager(t)
+	id := uuid.New()
+	for i := 0; i < 4; i++ {
+		mock.ExpectQuery(`FROM users WHERE id = \$1`).WithArgs(id).WillReturnRows(accountRows(id, true))
 	}
-	pair, err := manager.GenerateTokenPair(&User{ID: uuid.New(), Email: "dev@example.com", Role: "developer"})
+	pair, err := manager.GenerateTokenPair(&User{ID: id, Email: "dev@example.com", Role: "developer"})
 	if err != nil {
 		t.Fatalf("GenerateTokenPair: %v", err)
 	}
