@@ -108,6 +108,7 @@ ESO sources: `enclii-secrets`, `janua-secrets`, `madfam-site-secrets`, `phynd-cr
 | `digifab-quoting/pravara-intake` | `secret/digifab-quoting` | `pravara_intake_client_id`, `pravara_intake_client_secret` |
 | `zavlo/cfdi-emitter` | `secret/zavlo` | `zavlo_cfdi_emitter_client_id`, `zavlo_cfdi_emitter_client_secret` |
 | `routecraft/billing-relay` | `secret/routecraft` | `billing_relay_client_id`, `billing_relay_client_secret` |
+| `voxa/selva-client` | `secret/voxa` | `selva_client_id`, `selva_client_secret` |
 
 **Angelia OWNS all five Courier targets** (verifier-owns): Angelia verifies every
 one of these credentials, so `secret/angelia` is their single writable home, and
@@ -296,7 +297,34 @@ pin each printed `jnc_…` id as `janua_client.client_id` in
 `config/ecosystem-oidc-provision.yaml` (both copies) so later runs reconcile the
 pinned client.
 
-`symbiosis-hcm` is the **producer** of the absence feed; `crea-map` cross-reads
+### Voxa → Selva inference edge (2026-10-04)
+
+One more Janua `client_credentials` client, same mechanics as the digital-twins
+edges above: `voxa-selva` (Janua client `voxa-selva`, audience `selva-office`,
+scope `selva:infer`, org-bound to `madfam-ecosystem`), filed at
+`voxa/selva-client` → `secret/voxa` and delivered by a planned, dedicated
+`voxa-service-clients` ExternalSecret in the `voxa` namespace that maps
+`selva_client_id` / `selva_client_secret` to `SELVA_CLIENT_ID` /
+`SELVA_CLIENT_SECRET`. Voxa's API ignores the pair until `SELVA_ENABLED=true`,
+and every request it sends is `X-Sensitivity: restricted`, so Selva must have
+its local model backend before turning it on is useful.
+
+Owner sequence, after the registry change is deployed (switchyard-api digest
+bump) and from an up-to-date checkout:
+
+```bash
+cd ~/labspace/enclii && git pull --ff-only
+cd ~/labspace/enclii && ASSERT_PATH=voxa bash scripts/apply-switchyard-vault-policy-remote.sh < ~/.config/madfam/vault-admin.token
+# expect: APPLIED_OK_asserted_path_present
+make -C ~/labspace/enclii install-cli CLI_INSTALL_DIR=$HOME/.local/bin
+enclii login --profile admin   # only if the admin session expired
+enclii secrets provision oidc --profile admin --platform voxa-selva --json --reason "voxa word suggestions through selva (restricted)"
+```
+
+Then pin the printed `jnc_…` id as `janua_client.client_id` for `voxa-selva` in
+both registry copies.
+
+ `crea-map` cross-reads
 `map_absence_feed_key` and consumes it as `HCM_FEED_API_KEY`. One copy at the
 producer's path, read by both — not two copies that drift on rotation.
 

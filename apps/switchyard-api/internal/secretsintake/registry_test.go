@@ -11,7 +11,7 @@ import (
 func TestLoadRegistry(t *testing.T) {
 	reg, err := LoadRegistry()
 	require.NoError(t, err)
-	assert.Len(t, reg, 50)
+	assert.Len(t, reg, 51)
 	assert.Contains(t, reg, "ceq/vast-api-key")
 	assert.Contains(t, reg, "karafiel/web-oidc-janua")
 	tgt := reg["ceq/vast-api-key"]
@@ -32,7 +32,7 @@ func TestGetTarget(t *testing.T) {
 func TestListTargetsSorted(t *testing.T) {
 	list, err := ListTargets()
 	require.NoError(t, err)
-	require.Len(t, list, 50)
+	require.Len(t, list, 51)
 	for i := 1; i < len(list); i++ {
 		assert.Less(t, list[i-1].ID, list[i].ID, "targets should be sorted by id")
 	}
@@ -89,6 +89,7 @@ func TestListTargetsSorted(t *testing.T) {
 		"symbiosis-hcm/map-absence-feed",
 		"telesia/oidc-janua",
 		"telesia/runtime",
+		"voxa/selva-client",
 		"yantra4d/asset-shells-publisher",
 		"zavlo/cfdi-emitter",
 	}, ids)
@@ -437,4 +438,19 @@ func TestDigitalTwinsMachineEdgeTargets(t *testing.T) {
 			assert.NotEmpty(t, tgt.Description)
 		})
 	}
+}
+
+// Voxa's API → Selva inference gateway edge (ecosystem-oidc platform
+// voxa-selva). Same shape as the digital-twins edges: written only by the OIDC
+// provisioner, delivered by a dedicated `voxa-service-clients` ExternalSecret
+// (never the hand-made voxa-secrets Secret), lowercase id/secret pair.
+func TestVoxaSelvaClientTarget(t *testing.T) {
+	tgt, err := GetTarget("voxa/selva-client")
+	require.NoError(t, err)
+	assert.Equal(t, "secret/voxa", tgt.VaultPath)
+	assert.Equal(t, "voxa", tgt.Namespace)
+	assert.Equal(t, "voxa-service-clients", tgt.ExternalSecret)
+	assert.Equal(t, []string{"selva_client_id", "selva_client_secret"}, tgt.Keys)
+	assert.NotEmpty(t, tgt.Label)
+	assert.NotEmpty(t, tgt.Description)
 }
