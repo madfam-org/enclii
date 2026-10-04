@@ -14,28 +14,11 @@ import {
 import { cn } from "@/lib/utils";
 import { apiGet } from "@/lib/api";
 import { Spinner } from "@/components/ui/spinner";
-
-interface UsageMetric {
-  type: string;
-  label: string;
-  used: number;
-  included: number;
-  unit: string;
-  cost: number;
-}
+import type { UsageMetric, UsageSummary } from "@/hooks/use-usage-metrics";
+import { formatUsageValue, isUsageValue } from "@/lib/formatting";
 
 interface UsageMetricDisplay extends UsageMetric {
   icon: React.ReactNode;
-}
-
-interface UsageSummary {
-  period_start: string;
-  period_end: string;
-  metrics: UsageMetric[];
-  total_cost: number;
-  plan_base: number;
-  grand_total: number;
-  plan_name: string;
 }
 
 interface UsageMetersProps {
@@ -55,13 +38,6 @@ function getProgressColor(percentage: number): string {
   if (percentage >= 90) return "bg-status-error";
   if (percentage >= 75) return "bg-status-warning";
   return "bg-status-success";
-}
-
-function formatNumber(num: number): string {
-  if (num >= 1000) {
-    return (num / 1000).toFixed(1) + "k";
-  }
-  return num.toFixed(1);
 }
 
 export function UsageMeters({
@@ -128,6 +104,7 @@ export function UsageMeters({
   }));
 
   const totalCost = usageData?.total_cost || 0;
+  const incomplete = metrics.some(metric => metric.unavailable || !isUsageValue(metric.used));
 
   return (
     <Card className={cn("", className)}>
@@ -137,16 +114,17 @@ export function UsageMeters({
         </CardTitle>
         <div className="flex items-center gap-1 text-sm text-muted-foreground">
           <TrendingUp className="h-4 w-4" />
-          <span>${totalCost.toFixed(2)} overage</span>
+          <span>{incomplete ? 'Overage unavailable' : `$${totalCost.toFixed(2)} overage`}</span>
         </div>
       </CardHeader>
       <CardContent className="space-y-4">
         {metrics.map((metric) => {
           const isUnlimited = metric.included === -1;
-          const percentage = isUnlimited
-            ? 0
-            : Math.min((metric.used / metric.included) * 100, 100);
-          const overLimit = !isUnlimited && metric.used > metric.included;
+          const unavailable = metric.unavailable || !isUsageValue(metric.used);
+          const hasLimit = isUsageValue(metric.included) && metric.included > 0;
+          const percentage = !unavailable && hasLimit
+            ? Math.min((metric.used / metric.included) * 100, 100) : null;
+          const overLimit = !unavailable && hasLimit && metric.used > metric.included;
 
           return (
             <div key={metric.type} className="space-y-2">
@@ -160,19 +138,16 @@ export function UsageMeters({
                     "font-mono",
                     overLimit && "text-status-error"
                   )}>
-                    {formatNumber(metric.used)}
+                    {formatUsageValue(unavailable ? null : metric.used, metric.unit)}
                   </span>
                   <span className="text-muted-foreground">/</span>
                   <span className="text-muted-foreground font-mono">
-                    {isUnlimited ? "∞" : formatNumber(metric.included)}
-                  </span>
-                  <span className="text-muted-foreground text-xs">
-                    {metric.unit}
+                    {isUnlimited ? "∞" : formatUsageValue(metric.included, metric.unit)}
                   </span>
                 </div>
               </div>
 
-              {!isUnlimited && (
+              {percentage !== null && (
                 <div className="relative">
                   <Progress
                     value={percentage}
@@ -198,7 +173,9 @@ export function UsageMeters({
                 </div>
               )}
 
-              {metric.cost > 0 && (
+              {unavailable && <p className="text-xs text-muted-foreground">{metric.note || 'Meter unavailable'}</p>}
+              {!unavailable && !hasLimit && !isUnlimited && <p className="text-xs text-muted-foreground">Utilization unavailable</p>}
+              {!unavailable && metric.cost > 0 && (
                 <p className="text-xs text-muted-foreground">
                   +${metric.cost.toFixed(2)} overage charges
                 </p>
