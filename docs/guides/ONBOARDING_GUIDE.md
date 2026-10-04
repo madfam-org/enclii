@@ -1,5 +1,13 @@
 # Repository Onboarding Guide
 
+> **Boundary checkpoint (2026-10-04, platform ops):** public-safe. Onboarding
+> now generates database passwords and app secrets server-side
+> (`--generate-db-password`, `--app-role`, `--generate-secret`), so the examples
+> below no longer generate, type or file a credential. No secret value, private
+> host or account identifier appears here; operational detail stays in
+> `madfam-org/internal-devops`. Policy:
+> [`PUBLIC_REPO_BOUNDARY.md`](../PUBLIC_REPO_BOUNDARY.md).
+
 How to add a new repository to the Enclii platform for auto-deploy, deployment tracking, and domain provisioning.
 
 > **Zero-Touch Policy**: Onboarding a new app must NOT require modifying enclii, janua, or dhanam repos. All deployment configs live in the provisioned repo itself. See [ZERO_TOUCH_CONTRACT.md](./ZERO_TOUCH_CONTRACT.md) for the full contract.
@@ -100,13 +108,16 @@ The `enclii onboard` command handles the complete provisioning pipeline:
 # Basic onboarding
 enclii onboard --repo madfam-org/my-project --project my-project
 
-# Full provisioning with database, secrets, and R2 storage
+# Full provisioning with generated credentials and R2 storage.
+# The owner password, a runtime role (RLS applies to it) and an app key are
+# generated server-side and written to the project Secret; nothing is printed.
 enclii onboard --repo madfam-org/my-project \
   --project my-project \
   --manifest-path k8s/production \
   --secret-name my-project-secrets \
-  --db-name my_project \
-  --db-password "$(openssl rand -base64 32)" \
+  --db-name my_project --generate-db-password \
+  --app-role my_project_app --app-role-connection-limit 5 \
+  --generate-secret SESSION_SIGNING_KEY \
   --secrets-file ./my-project.env \
   --r2-bucket my-project-uploads
 
@@ -133,12 +144,13 @@ curl -X POST "https://api.enclii.dev/v1/admin/onboard" \
     "secret_name": "my-project-secrets",
     "provision_postgres": {
       "database_name": "my_project",
-      "role_password": "secure-password",
+      "generate_password": true,
       "extensions": ["pgcrypto"]
     },
+    "provision_app_role": {"role_name": "my_project_app", "connection_limit": 5},
+    "generate_secrets": [{"key": "SESSION_SIGNING_KEY", "bytes": 32}],
     "provision_secrets": [
-      {"key": "JANUA_CLIENT_ID", "value": "jnc_abc123"},
-      {"key": "DATABASE_URL", "value": "postgresql://my_project:pass@pgbouncer.data.svc.cluster.local:6432/my_project"}
+      {"key": "JANUA_CLIENT_ID", "value": "jnc_abc123"}
     ],
     "provision_r2": {
       "bucket_name": "my-project-uploads"
@@ -164,7 +176,7 @@ The onboarding pipeline executes a multi-step provisioning workflow:
 8. Provisions custom domains (Cloudflare tunnel routes + DNS CNAMEs)
 9. Registers onboarding in DB, including `status.entries[]` for later status
    ConfigMap projection without editing the Enclii repo
-10. Creates Postgres database + role, updates PgBouncer *(if requested)* — PgBouncer userlist is bootstrapped automatically if absent
+10. Creates Postgres database + role, updates PgBouncer *(if requested)* — PgBouncer userlist is bootstrapped automatically if absent. With `generate_password` the owner password is generated server-side and its URL written to the Secret (`DATABASE_URL`); with `provision_app_role` a runtime role (no `BYPASSRLS`, `CONNECTION LIMIT`) is created and its URL written (`APP_DATABASE_URL`); `generate_secrets` fills named keys with random values. Re-runs keep; only rotate flags replace. See [`onboard.md`](../cli/commands/onboard.md#generated-credentials)
 11. Creates K8s Secret (name configurable via `secret_name`, default: `<project>-credentials`) from `.env` entries *(if requested)*
 12. Creates R2 bucket + appends R2 credentials to K8s Secret *(if requested)*
 

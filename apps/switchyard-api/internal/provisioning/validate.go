@@ -72,3 +72,54 @@ func ValidateExtensionName(name string) error {
 	}
 	return nil
 }
+
+// App role connection limits. Postgres is shared and capped at 100
+// connections for every database on it, so a runtime role always carries a
+// CONNECTION LIMIT, and a large one needs a deliberate platform change rather
+// than a flag.
+const (
+	DefaultAppRoleConnectionLimit = 5
+	MaxAppRoleConnectionLimit     = 20
+)
+
+// reservedRoleNames can never be created or rotated as an application role.
+var reservedRoleNames = map[string]bool{
+	"postgres":        true,
+	"pgbouncer_admin": true,
+}
+
+// ValidateAppRoleName enforces the naming rule for a runtime role on the
+// shared cluster: a valid identifier that starts with "<database>_" and is
+// neither the database's owner role nor a platform role.
+//
+// The prefix is what keeps one project's onboarding from creating or
+// rotating another project's role: roles are cluster-wide in Postgres, so a
+// request for "janua" while onboarding "pravara" must fail before any SQL.
+func ValidateAppRoleName(role, dbName, ownerRole string) error {
+	if err := ValidateSQLIdentifier(role, "app_role"); err != nil {
+		return err
+	}
+	if err := ValidateSQLIdentifier(dbName, "database_name"); err != nil {
+		return err
+	}
+	if reservedRoleNames[role] || strings.HasPrefix(role, "pg_") {
+		return fmt.Errorf("app_role %q is a reserved role name", role)
+	}
+	if !strings.HasPrefix(role, dbName+"_") || len(role) == len(dbName)+1 {
+		return fmt.Errorf("app_role %q must start with %q (the database name and an underscore), e.g. %q",
+			role, dbName+"_", dbName+"_app")
+	}
+	if ownerRole != "" && role == ownerRole {
+		return fmt.Errorf("app_role %q is the database owner role; the runtime role must be a separate, non-owner role", role)
+	}
+	return nil
+}
+
+// ValidateConnectionLimit checks a CONNECTION LIMIT value.
+func ValidateConnectionLimit(n int, label string) error {
+	if n < 1 || n > MaxAppRoleConnectionLimit {
+		return fmt.Errorf("%s %d is out of range 1-%d (the shared Postgres has a 100-connection budget)",
+			label, n, MaxAppRoleConnectionLimit)
+	}
+	return nil
+}

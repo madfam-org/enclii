@@ -25,6 +25,7 @@ exists in the tree.
 | Test | Skips when | Runs in CI |
 |---|---|---|
 | `internal/db/*_integration_test.go` (`-tags integration`) | `TEST_DATABASE_URL` is unset | Yes: the `smoke` job of `ci.yml` runs `go test -tags integration ./internal/db/...` against its Postgres |
+| `internal/provisioning/generated_roles_integration_test.go` (`-tags integration`) | `TEST_POSTGRES_ADMIN_URL` is unset | No. Gap: no workflow runs it; run it locally against a disposable Postgres (superuser URL, TCP) |
 | `internal/api/handlers_integration_test.go`, `internal/services/auth_integration_test.go` (`-tags integration`) | `TEST_DATABASE_URL` is unset | No. Gap: no workflow runs them; run them locally against a disposable Postgres |
 | `internal/reconciler/service_integration_test.go`, `canary_integration_test.go` | `INTEGRATION_USE_REAL_CLUSTER` / `KUBECONFIG` are unset; the service variant always skips without a real cluster, because `k8s.Client` cannot wrap a fake clientset there | No. Manual, against a disposable cluster |
 | `internal/api/xc2_tenant_filter_handlers_test.go` `GetService` case | Always | No. `GetService` needs the full project-service wiring; the rule it would check is covered by `TestEnforceActingTeamForProject_*` |

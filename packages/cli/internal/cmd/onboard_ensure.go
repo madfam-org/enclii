@@ -3,6 +3,7 @@ package cmd
 import (
 	"context"
 	"fmt"
+	"os"
 	"strings"
 
 	"github.com/spf13/cobra"
@@ -18,6 +19,10 @@ func NewOnboardEnsureCommand(cfg *config.Config) *cobra.Command {
 		manifestPath string
 		namespace    string
 		branch       string
+		secretName   string
+		dbName       string
+		dbExtensions string
+		gen          generatedCredentialFlags
 	)
 
 	cmd := &cobra.Command{
@@ -29,11 +34,21 @@ Use this to repair partial runtime state without raw kubectl:
   - namespace ensure
   - GHCR credential copy into the project namespace
   - ArgoCD application registration refresh
-  - domain provisioning kick (from enclii.yaml)`,
+  - domain provisioning kick (from enclii.yaml)
+
+It also converges generated credentials (see 'enclii onboard'): with
+--generate-db-password, --app-role or --generate-secret, existing roles and
+values are KEPT, missing ones are generated, and only --rotate-* replaces a
+value. Nothing generated is printed. A partial or failed result exits non-zero.`,
 		Example: `  enclii onboard ensure --repo madfam-org/coupler \
     --project coupler \
     --manifest-path k8s/overlays/production \
-    --namespace coupler`,
+    --namespace coupler
+
+  # Add a runtime app role to an existing project (generated password)
+  enclii onboard ensure --repo madfam-org/pravara-mes --project pravara-mes \
+    --secret-name pravara-secrets --db-name pravara \
+    --app-role pravara_app --app-role-connection-limit 10`,
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			repo, _ := cmd.Flags().GetString("repo")
@@ -46,6 +61,10 @@ Use this to repair partial runtime state without raw kubectl:
 				manifestPath: manifestPath,
 				namespace:    namespace,
 				branch:       branch,
+				secretName:   secretName, // pragma: allowlist secret -- flag/field names, not a value
+				dbName:       dbName,
+				dbExtensions: dbExtensions,
+				gen:          gen,
 			})
 		},
 	}
@@ -55,6 +74,10 @@ Use this to repair partial runtime state without raw kubectl:
 	cmd.Flags().StringVar(&manifestPath, "manifest-path", "k8s/overlays/production", "K8s manifest path in repo")
 	cmd.Flags().StringVar(&namespace, "namespace", "", "Kubernetes namespace (defaults to project name)")
 	cmd.Flags().StringVar(&branch, "branch", "main", "Branch to track")
+	cmd.Flags().StringVar(&secretName, "secret-name", "", "K8s Secret name (default: <project>-credentials)")
+	cmd.Flags().StringVar(&dbName, "db-name", "", "Postgres database (with --generate-db-password: provisioned; with --app-role: the role's database)") // pragma: allowlist secret -- flag/field names, not a value
+	cmd.Flags().StringVar(&dbExtensions, "db-extensions", "", "Comma-separated Postgres extensions (with --generate-db-password)")
+	gen.register(cmd.Flags())
 	_ = cmd.MarkFlagRequired("repo")
 
 	return cmd
@@ -66,10 +89,18 @@ type onboardEnsureOpts struct {
 	manifestPath string
 	namespace    string
 	branch       string
+	secretName   string
+	dbName       string
+	dbExtensions string
+	gen          generatedCredentialFlags
 }
 
 func runOnboardEnsure(cfg *config.Config, opts onboardEnsureOpts) error {
 	ctx := context.Background()
+
+	if err := opts.gen.validate(opts.dbName, false); err != nil {
+		return err
+	}
 
 	if opts.project == "" {
 		parts := strings.SplitN(opts.repo, "/", 2)
@@ -88,9 +119,21 @@ func runOnboardEnsure(cfg *config.Config, opts onboardEnsureOpts) error {
 		ProjectName:  opts.project,
 		Namespace:    opts.namespace,
 		ManifestPath: opts.manifestPath,
+		SecretName:   opts.secretName, // pragma: allowlist secret -- flag/field names, not a value
 	}
 	if opts.branch != "" {
 		req.Branch = &opts.branch
+	}
+	// ensure never prompts: the owner is provisioned here only with a
+	// generated password.
+	if opts.dbName != "" && opts.gen.generatesOwnerPassword() {
+		req.ProvisionPostgres = &types.PostgresProvisionSpec{
+			DatabaseName: opts.dbName,
+			Extensions:   splitExtensions(opts.dbExtensions),
+		}
+	}
+	if err := opts.gen.apply(&req, opts.dbName); err != nil {
+		return err
 	}
 
 	fmt.Printf("Ensuring onboarding for %s (project %q, namespace %q)...\n", opts.repo, opts.project, opts.namespace)
@@ -101,11 +144,16 @@ func runOnboardEnsure(cfg *config.Config, opts onboardEnsureOpts) error {
 		return fmt.Errorf("onboard ensure failed: %w", err)
 	}
 
-	printOnboardEnsureResult(result)
+	if !printOnboardEnsureResult(result) {
+		return fmt.Errorf("onboard ensure did not complete (status %v) — see the failed steps above", result["status"])
+	}
 	return nil
 }
 
-func printOnboardEnsureResult(result map[string]interface{}) {
+// printOnboardEnsureResult renders the result and reports whether it
+// completed. A partial result is not success: the caller exits non-zero, the
+// same rule `enclii onboard` applies.
+func printOnboardEnsureResult(result map[string]interface{}) bool {
 	fmt.Println()
 	if mode, ok := result["mode"]; ok {
 		fmt.Printf("Mode:          %v\n", mode)
@@ -148,4 +196,9 @@ func printOnboardEnsureResult(result map[string]interface{}) {
 			}
 		}
 	}
+
+	printGeneratedCredentials(os.Stdout, result)
+
+	status := fmt.Sprintf("%v", result["status"])
+	return status == "completed" || status == "<nil>"
 }
