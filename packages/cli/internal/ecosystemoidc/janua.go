@@ -58,8 +58,39 @@ type remoteOAuthClient struct {
 }
 
 type rotateSecretResponse struct {
-	ClientID     string `json:"client_id"`
-	ClientSecret string `json:"client_secret"`
+	ClientID           string  `json:"client_id"`
+	ClientSecret       string  `json:"client_secret"`
+	GracePeriodHours   *int    `json:"grace_period_hours"`
+	OldSecretsExpireAt *string `json:"old_secrets_expire_at"`
+}
+
+// MaxGraceHours is the longest grace period Janua accepts on a rotation
+// (POST /api/v1/oauth/clients/{uuid}/rotate, grace_period_hours 0..168).
+const MaxGraceHours = 168
+
+// ValidateGraceHours refuses a grace period Janua would reject, so an
+// out-of-range value fails before any network call. nil means "not set": the
+// rotate request carries no grace and Janua's default applies.
+func ValidateGraceHours(graceHours *int) error {
+	if graceHours == nil {
+		return nil
+	}
+	if *graceHours < 0 || *graceHours > MaxGraceHours {
+		return fmt.Errorf("--grace-hours must be between 0 and %d, got %d", MaxGraceHours, *graceHours)
+	}
+	return nil
+}
+
+// SecretRotation is the non-secret part of Janua's rotate response: how long
+// the previous secrets stay valid. It is nil when no rotation happened (the
+// secret came from the create response).
+type SecretRotation struct {
+	// RequestedGraceHours is what this run asked for; nil means Janua's default.
+	RequestedGraceHours *int
+	// GracePeriodHours is the grace Janua applied, as it reported it.
+	GracePeriodHours *int
+	// OldSecretsExpireAt is when Janua retires the previous secrets.
+	OldSecretsExpireAt string
 }
 
 func (c *JanuaClient) registerOrReconcile(ctx context.Context, spec JanuaClientSpec) (remoteOAuthClient, bool, error) {
@@ -299,17 +330,31 @@ func validateMachineClient(remote remoteOAuthClient, spec JanuaClientSpec) error
 	return nil
 }
 
-func (c *JanuaClient) rotateSecret(ctx context.Context, internalUUID string) (string, error) {
+// rotateSecret mints a new secret. The body is `{}` unless a grace period is
+// set, in which case it is `{"grace_period_hours": N}`: Janua then expires the
+// previous secrets N hours from now, so 0 retires them at once.
+func (c *JanuaClient) rotateSecret(ctx context.Context, internalUUID string, graceHours *int) (string, *SecretRotation, error) {
+	if err := ValidateGraceHours(graceHours); err != nil {
+		return "", nil, err
+	}
+	body := map[string]interface{}{}
+	if graceHours != nil {
+		body["grace_period_hours"] = *graceHours
+	}
 	var out rotateSecretResponse
 	path := "/api/v1/oauth/clients/" + url.PathEscape(internalUUID) + "/rotate"
-	_, err := c.doJSON(ctx, http.MethodPost, path, map[string]interface{}{}, &out, false)
+	_, err := c.doJSON(ctx, http.MethodPost, path, body, &out, false)
 	if err != nil {
-		return "", err
+		return "", nil, err
 	}
 	if strings.TrimSpace(out.ClientSecret) == "" {
-		return "", fmt.Errorf("rotate returned empty client_secret")
+		return "", nil, fmt.Errorf("rotate returned empty client_secret")
 	}
-	return out.ClientSecret, nil
+	rotation := &SecretRotation{RequestedGraceHours: graceHours, GracePeriodHours: out.GracePeriodHours}
+	if out.OldSecretsExpireAt != nil { // pragma: allowlist secret -- field name, not a value
+		rotation.OldSecretsExpireAt = strings.TrimSpace(*out.OldSecretsExpireAt)
+	}
+	return out.ClientSecret, rotation, nil
 }
 
 func (c *JanuaClient) doJSON(ctx context.Context, method, path string, body interface{}, out interface{}, internal bool) (int, error) {
@@ -360,16 +405,18 @@ func (c *JanuaClient) doJSON(ctx context.Context, method, path string, body inte
 	return resp.StatusCode, nil
 }
 
-// ResolveClientSecret returns a plaintext secret from create response or rotate.
-func (c *JanuaClient) ResolveClientSecret(ctx context.Context, remote remoteOAuthClient, created bool, rotateIfMissing bool) (string, error) {
+// ResolveClientSecret returns a plaintext secret from the create response or,
+// for an existing client, from a rotation. graceHours only shapes a rotation;
+// the returned SecretRotation is nil when none happened.
+func (c *JanuaClient) ResolveClientSecret(ctx context.Context, remote remoteOAuthClient, created bool, rotateIfMissing bool, graceHours *int) (string, *SecretRotation, error) {
 	if remote.ClientSecret != nil && strings.TrimSpace(*remote.ClientSecret) != "" {
-		return strings.TrimSpace(*remote.ClientSecret), nil
+		return strings.TrimSpace(*remote.ClientSecret), nil, nil
 	}
 	if !rotateIfMissing {
-		return "", fmt.Errorf("client %s exists without retrievable secret — re-run with --rotate-secret", remote.ClientID)
+		return "", nil, fmt.Errorf("client %s exists without retrievable secret — re-run with --rotate-secret", remote.ClientID)
 	}
 	if strings.TrimSpace(remote.ID) == "" {
-		return "", fmt.Errorf("cannot rotate secret: missing internal client UUID")
+		return "", nil, fmt.Errorf("cannot rotate secret: missing internal client UUID")
 	}
-	return c.rotateSecret(ctx, remote.ID)
+	return c.rotateSecret(ctx, remote.ID, graceHours)
 }

@@ -347,6 +347,7 @@ enclii secrets provision oidc --all --dry-run --reason "ecosystem sweep"
 | `--registry` | Override registry YAML path |
 | `--rotate-secret` | Rotate the Janua client secret when an existing client has no retrievable secret (default `true`) |
 | `--json` | JSON output (no secret values) |
+| `--grace-hours` | Grace period, `0`–`168` hours, for the previous secrets when a secret is rotated. Unset keeps Janua's default (24 h) |
 
 For Dhanam, also auto-submits `dhanam/session-auth` (generated `SESSION_SECRET` /
 `NEXTAUTH_SECRET`) when configured in the registry. After provision, force-sync
@@ -364,6 +365,24 @@ pins the `jnc_…` id in its own `janua.client.yaml` and reads it at build time.
 pinned id), `redirect_uris`, `allowed_scopes`, `grant_types` and `audience` are
 PATCHed to match the registry and reported as `reconciled=…`. A confidentiality flip,
 a pinned-id mismatch or an inactive client is refused rather than reconciled.
+
+**Rotation grace (`--grace-hours`).** An existing confidential client's secret is
+never retrievable, so the provisioner rotates it (`POST
+/api/v1/oauth/clients/{uuid}/rotate`) and files the new one. By default Janua keeps the
+previous secrets valid for its default grace (24 h), which lets live consumers pick up
+the new value first. `--grace-hours N` sends `{"grace_period_hours": N}` instead.
+`--grace-hours 0` retires the previous secret immediately; use it only when no live
+consumer depends on it. Values outside `0`–`168` are refused before any request. On a
+rotation the output adds `grace_period_hours` and `old_secrets_expire_at` (JSON) or
+`rotated=true grace_hours=… old_secrets_expire_at=…` (human line); a dry run shows
+`planned_grace_period_hours`. A create never rotates and a public login client never
+holds a secret, so the flag has no effect on either. If Janua does not confirm the
+requested grace, the new secret is still filed and the command exits non-zero.
+
+```bash
+enclii secrets provision oidc --profile admin --platform zavlo-cfdi-emitter \
+  --grace-hours 0 --json --reason "digital-twins machine edges"
+```
 
 Rebuild CLI after pulling: `cd packages/cli && go build -o ~/.local/bin/enclii ./cmd/enclii/`
 

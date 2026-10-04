@@ -621,3 +621,115 @@ targets:
     external_secret: family-history-web  # pragma: allowlist secret
     keys:
       - fh_session_secret
+
+  # Digital-twins machine edges (2026-10-03). Nine client_credentials pairs,
+  # each written ONLY by `enclii secrets provision oidc --platform <id>`
+  # (config/ecosystem-oidc-provision.yaml); no human types either value.
+  #
+  # Each consumer gets a DEDICATED `<app>-service-clients` Secret, owned by its
+  # own ExternalSecret. These targets never merge into, or claim ownership of, a
+  # consumer's existing Secret: an Owner ExternalSecret over an existing Secret
+  # deletes every key it does not produce. The named ExternalSecrets are
+  # PLANNED; each consumer repo adds its own. Until it exists, intake still
+  # merges the pair into Vault and reports external_secret_refreshed: false,
+  # which is expected and harmless: ESO reads the pair on its first sync.
+  #
+  # LOWERCASE keys, as Vault stores them (normalizeVaultSecretKey); the planned
+  # ExternalSecrets must map these `property:` names byte for byte.
+  pravara-mes/yantra4d-step-reader:
+    label: Pravara MES → Yantra4D STEP reader client
+    description: Janua client_credentials pair (pravara-yantra4d-step-reader, scope yantra4d:render) Pravara uses to pull STEP exports from Yantra4D. Filed by `enclii secrets provision oidc --platform pravara-yantra4d-step-reader`.
+    vault_path: secret/pravara-mes
+    namespace: pravara-mes
+    external_secret: pravara-service-clients  # pragma: allowlist secret
+    keys:
+      - yantra4d_step_reader_client_id
+      - yantra4d_step_reader_client_secret
+
+  pravara-mes/asset-shells-publisher-madfam-ecosystem:
+    label: Pravara MES → asset-shells instance publisher client (madfam-ecosystem)
+    description: Janua client_credentials pair (pravara-asset-shells-publisher.madfam-ecosystem, org-bound, scopes asset-shells:publish-instances + asset-shells:read). Filed by `enclii secrets provision oidc --platform pravara-asset-shells-publisher-madfam-ecosystem`.
+    vault_path: secret/pravara-mes
+    namespace: pravara-mes
+    external_secret: pravara-service-clients  # pragma: allowlist secret
+    keys:
+      - asset_shells_publisher_madfam_ecosystem_client_id
+      - asset_shells_publisher_madfam_ecosystem_client_secret
+
+  # fabrication-prep (the slicing service) is not deployed yet; pravara-mes is
+  # the consumer, so the pair lands at pravara's path regardless.
+  pravara-mes/fabrication-prep-client:
+    label: Pravara MES → fabrication-prep slicing client
+    description: Janua client_credentials pair (pravara-fabrication-prep, scope fabrication-prep:slice) Pravara uses to submit slice jobs and read their results. Filed by `enclii secrets provision oidc --platform pravara-fabrication-prep`.
+    vault_path: secret/pravara-mes
+    namespace: pravara-mes
+    external_secret: pravara-service-clients  # pragma: allowlist secret
+    keys:
+      - fabrication_prep_client_id
+      - fabrication_prep_client_secret
+
+  yantra4d/asset-shells-publisher:
+    label: Yantra4D → asset-shells type publisher client
+    description: Janua client_credentials pair (yantra4d-asset-shells-publisher, scope asset-shells:publish-types). Filed by `enclii secrets provision oidc --platform yantra4d-asset-shells-publisher`.
+    vault_path: secret/yantra4d
+    namespace: yantra4d
+    external_secret: yantra4d-service-clients  # pragma: allowlist secret
+    keys:
+      - asset_shells_publisher_client_id
+      - asset_shells_publisher_client_secret
+
+  # fashion-cabinet's manifests carry no namespace; Enclii onboarding defaults
+  # it to the project name (fashion-cabinet, Argo app fashion-cabinet-services).
+  fashion-cabinet/asset-shells-publisher:
+    label: Fashion Cabinet → asset-shells type publisher client
+    description: Janua client_credentials pair (fashion-cabinet-asset-shells-publisher, scope asset-shells:publish-types). Filed by `enclii secrets provision oidc --platform fashion-cabinet-asset-shells-publisher`.
+    vault_path: secret/fashion-cabinet
+    namespace: fashion-cabinet
+    external_secret: fashion-cabinet-service-clients  # pragma: allowlist secret
+    keys:
+      - asset_shells_publisher_client_id
+      - asset_shells_publisher_client_secret
+
+  forj/pravara-intake:
+    label: Forj → Pravara MES order intake client (madfam-ecosystem)
+    description: Janua client_credentials pair (forj-pravara-intake.madfam-ecosystem, org-bound, scope pravara-mes:jobs). Filed by `enclii secrets provision oidc --platform forj-pravara-intake-madfam-ecosystem`.
+    vault_path: secret/forj
+    namespace: forj
+    external_secret: forj-service-clients  # pragma: allowlist secret
+    keys:
+      - pravara_intake_client_id
+      - pravara_intake_client_secret
+
+  # Cotiza's repository and namespace are both digifab-quoting.
+  digifab-quoting/pravara-intake:
+    label: Cotiza → Pravara MES job intake client (madfam-ecosystem)
+    description: Janua client_credentials pair (cotiza-pravara-intake.madfam-ecosystem, org-bound, scope pravara-mes:jobs). Filed by `enclii secrets provision oidc --platform cotiza-pravara-intake-madfam-ecosystem`.
+    vault_path: secret/digifab-quoting
+    namespace: digifab-quoting
+    external_secret: digifab-quoting-service-clients  # pragma: allowlist secret
+    keys:
+      - pravara_intake_client_id
+      - pravara_intake_client_secret
+
+  # zavlo has no cluster deployment yet (no k8s manifests in its repo), so the
+  # namespace is the repo name, the onboarding default. The pair waits in Vault.
+  # zavlo-backend reads ZAVLO_CFDI_EMITTER_CLIENT_ID / _SECRET.
+  zavlo/cfdi-emitter:
+    label: Zavlo → Karafiel CFDI emitter client
+    description: Janua client_credentials pair (zavlo-cfdi-emitter, scope cfdi:issue) for Karafiel's CFDI billing bridge. Filed by `enclii secrets provision oidc --platform zavlo-cfdi-emitter`.
+    vault_path: secret/zavlo
+    namespace: zavlo
+    external_secret: zavlo-service-clients  # pragma: allowlist secret
+    keys:
+      - zavlo_cfdi_emitter_client_id
+      - zavlo_cfdi_emitter_client_secret
+
+  routecraft/billing-relay:
+    label: RouteCraft → Dhanam billing relay client
+    description: Janua client_credentials pair (routecraft-billing-relay, scope billing:events) for Dhanam's billing APIs. Filed by `enclii secrets provision oidc --platform routecraft-billing-relay`.
+    vault_path: secret/routecraft
+    namespace: routecraft
+    external_secret: routecraft-service-clients  # pragma: allowlist secret
+    keys:
+      - billing_relay_client_id
+      - billing_relay_client_secret

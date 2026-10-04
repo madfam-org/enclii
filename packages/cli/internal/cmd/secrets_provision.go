@@ -23,6 +23,7 @@ func newSecretsProvisionCommand(cfg *config.Config) *cobra.Command {
 		rotateIfMissing bool
 		dryRun          bool
 		jsonOut         bool
+		graceHours      int
 	)
 
 	cmd := &cobra.Command{
@@ -39,7 +40,8 @@ Examples:
   enclii login
   enclii secrets provision oidc --platform dhanam --reason "post-rebuild oidc"
   enclii secrets provision oidc --all --reason "ecosystem oidc sweep"
-  enclii secrets provision oidc --platform dhanam --dry-run`,
+  enclii secrets provision oidc --platform dhanam --dry-run
+  enclii secrets provision oidc --platform zavlo-cfdi-emitter --grace-hours 0 --reason "rotate"`,
 	}
 
 	oidc := &cobra.Command{
@@ -51,6 +53,15 @@ Examples:
 			}
 			if !all && strings.TrimSpace(platform) == "" {
 				return fmt.Errorf("specify --platform NAME or --all")
+			}
+			// Unset keeps Janua's default grace (no body on the rotate call).
+			var grace *int
+			if cmd.Flags().Changed("grace-hours") {
+				g := graceHours
+				grace = &g
+			}
+			if err := ecosystemoidc.ValidateGraceHours(grace); err != nil {
+				return err
 			}
 			if cfg.APIToken == "" {
 				return fmt.Errorf("not authenticated — run `enclii login` as admin@madfam.io")
@@ -86,6 +97,7 @@ Examples:
 					Reason:          reason,
 					RotateIfMissing: rotateIfMissing,
 					DryRun:          dryRun,
+					GraceHours:      grace,
 				})
 				if err != nil {
 					return fmt.Errorf("%s: %w", id, err)
@@ -105,6 +117,7 @@ Examples:
 				if result.SessionIntakeID != "" {
 					fmt.Fprintf(os.Stderr, " session_intake=%s", result.SessionIntakeID)
 				}
+				fmt.Fprint(os.Stderr, rotationSummary(result))
 				fmt.Fprintln(os.Stderr)
 			}
 
@@ -137,9 +150,30 @@ Examples:
 	oidc.Flags().BoolVar(&rotateIfMissing, "rotate-secret", true, "Rotate Janua client secret when an existing client has no retrievable secret")
 	oidc.Flags().BoolVar(&dryRun, "dry-run", false, "Plan Janua reconcile without Vault intake")
 	oidc.Flags().BoolVar(&jsonOut, "json", false, "JSON output (no secret values)")
+	oidc.Flags().IntVar(&graceHours, "grace-hours", 0, fmt.Sprintf("Grace period (0-%d hours) for previous secrets when a secret is rotated; 0 retires them immediately. Unset keeps Janua's default", ecosystemoidc.MaxGraceHours))
 	cmd.AddCommand(oidc)
 	cmd.AddCommand(newSecretsProvisionKalyaFeedCommand(cfg))
 	return cmd
+}
+
+// rotationSummary renders the non-secret rotation facts for the human line: the
+// grace Janua applied and when the previous secrets expire, or, on a dry run,
+// the grace that would be sent.
+func rotationSummary(r ecosystemoidc.ProvisionResult) string {
+	var b strings.Builder
+	if r.RotatedSecret {
+		b.WriteString(" rotated=true")
+		if r.GracePeriodHours != nil {
+			fmt.Fprintf(&b, " grace_hours=%d", *r.GracePeriodHours)
+		}
+		if r.OldSecretsExpireAt != "" {
+			fmt.Fprintf(&b, " old_secrets_expire_at=%s", r.OldSecretsExpireAt)
+		}
+	}
+	if r.PlannedGraceHours != nil {
+		fmt.Fprintf(&b, " planned_grace_hours=%d", *r.PlannedGraceHours)
+	}
+	return b.String()
 }
 
 // newSecretsProvisionKalyaFeedCommand sits beside `provision oidc` because that

@@ -155,7 +155,8 @@ variable explicitly and treat the fallback as temporary.
 
 Each address must belong to a user that has **logged in at least once** — the
 reconcile matches on `users.email`, and an address with no user row grants
-nothing. The report's `platform_admins_in_database` tells you whether that is the case.
+nothing. The report's `platform_admin_allow_list_resolved` tells you how many
+configured operators have an active user row with the reconciled rank.
 
 Do not leave the list empty. An empty list means no principal on the platform
 can perform a cross-tenant operation, including the tenant switcher.
@@ -173,14 +174,22 @@ curl -fsS -H "Authorization: Bearer $ENCLII_TOKEN" \
   "$ENCLII_API/v1/admin/tenant-scope/dry-run" | jq
 ```
 
-Read three fields first:
+Read these fields first:
 
 - `platform_admin_allow_list_size` — must be non-zero.
-- `platform_admins_in_database` — must equal
-  the allow-list size. A shortfall means an allow-listed address has no user
-  row, or holds no admin role; that operator will be refused cross-tenant calls
-  after deploy.
+- `platform_admin_allow_list_resolved` — must equal the allow-list size. A
+  shortfall means a configured operator lacks an active, ranked user row.
+- `caller_is_platform_admin` — must be true for the operator performing the
+  rollout. This checks the same database rank used by authorization.
+- `platform_admins_in_database` — counts all active ranked principals. Extra
+  ranks outside the allow-list must not conceal unresolved configured operators.
 - `principals_losing_reach` — the count that matters.
+
+OIDC operators may retain a persisted `developer` role while their request
+context carries the operator role. The report includes ranked and allowlisted
+users regardless of that persisted role. If the two new readiness fields are
+absent, deploy the report correction before deciding whether to enforce the
+boundary; an older report can omit those operators entirely.
 
 Then read `principals[]`. For every row with `projects_lost > 0`, answer one
 question: **is this a tenant administrator that should never have had

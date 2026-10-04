@@ -390,3 +390,100 @@ func TestLoadRegistry_familyHistoryWebLoginClient(t *testing.T) {
 		"auth_janua_client_secret": "s3cr3t",
 	}, buildIntakeValues(reg.Issuer, "jnc_fh", "s3cr3t", p))
 }
+
+// Digital-twins machine edges (2026-10-03). Nine client_credentials clients:
+// eight copy janua's seed_service_clients.py (SERVICE_CLIENTS and the
+// ORG_BOUND_SERVICE_CLIENTS templates, named `<template>.<org slug>`), the
+// ninth follows fabrication-prep's operator setup. Every one is confidential,
+// has no browser leg, and files exactly an id/secret pair at its dedicated
+// intake target. client_id is deliberately NOT asserted: none is pinned yet,
+// and pinning the printed jnc_… ids later must not break this test.
+func TestLoadRegistry_digitalTwinsMachineEdges(t *testing.T) {
+	const madfamEcosystemOrg = "1a6233ef-185f-43ee-9181-e2591fbb2643"
+	reg, err := LoadRegistry("")
+	require.NoError(t, err)
+
+	cases := []struct {
+		platform, name, audience, org, target, idKey, secretKey string
+		scopes                                                  []string
+	}{
+		{"pravara-yantra4d-step-reader", "pravara-yantra4d-step-reader", "yantra4d-api", "",
+			"pravara-mes/yantra4d-step-reader", "yantra4d_step_reader_client_id", "yantra4d_step_reader_client_secret",
+			[]string{"yantra4d:render"}},
+		{"yantra4d-asset-shells-publisher", "yantra4d-asset-shells-publisher", "asset-shells-api", "",
+			"yantra4d/asset-shells-publisher", "asset_shells_publisher_client_id", "asset_shells_publisher_client_secret",
+			[]string{"asset-shells:publish-types"}},
+		{"fashion-cabinet-asset-shells-publisher", "fashion-cabinet-asset-shells-publisher", "asset-shells-api", "",
+			"fashion-cabinet/asset-shells-publisher", "asset_shells_publisher_client_id", "asset_shells_publisher_client_secret",
+			[]string{"asset-shells:publish-types"}},
+		{"zavlo-cfdi-emitter", "zavlo-cfdi-emitter", "karafiel-api", "",
+			"zavlo/cfdi-emitter", "zavlo_cfdi_emitter_client_id", "zavlo_cfdi_emitter_client_secret",
+			[]string{"cfdi:issue"}},
+		{"routecraft-billing-relay", "routecraft-billing-relay", "dhanam-api", "",
+			"routecraft/billing-relay", "billing_relay_client_id", "billing_relay_client_secret",
+			[]string{"billing:events"}},
+		{"pravara-fabrication-prep", "pravara-fabrication-prep", "fabrication-prep-api", "",
+			"pravara-mes/fabrication-prep-client", "fabrication_prep_client_id", "fabrication_prep_client_secret",
+			[]string{"fabrication-prep:slice"}},
+		{"forj-pravara-intake-madfam-ecosystem", "forj-pravara-intake.madfam-ecosystem", "pravara-api", madfamEcosystemOrg,
+			"forj/pravara-intake", "pravara_intake_client_id", "pravara_intake_client_secret",
+			[]string{"pravara-mes:jobs"}},
+		{"cotiza-pravara-intake-madfam-ecosystem", "cotiza-pravara-intake.madfam-ecosystem", "pravara-api", madfamEcosystemOrg,
+			"digifab-quoting/pravara-intake", "pravara_intake_client_id", "pravara_intake_client_secret",
+			[]string{"pravara-mes:jobs"}},
+		{"pravara-asset-shells-publisher-madfam-ecosystem", "pravara-asset-shells-publisher.madfam-ecosystem", "asset-shells-api", madfamEcosystemOrg,
+			"pravara-mes/asset-shells-publisher-madfam-ecosystem", "asset_shells_publisher_madfam_ecosystem_client_id", "asset_shells_publisher_madfam_ecosystem_client_secret",
+			[]string{"asset-shells:publish-instances", "asset-shells:read"}},
+	}
+	for _, tc := range cases {
+		t.Run(tc.platform, func(t *testing.T) {
+			p, ok := reg.Platforms[tc.platform]
+			require.True(t, ok, "platform %q missing", tc.platform)
+			assert.Equal(t, tc.target, p.IntakeTarget)
+			assert.Empty(t, p.SessionIntakeTarget, "a machine edge has no session secret")
+			require.Equal(t, map[string]string{tc.idKey: "client_id", tc.secretKey: "client_secret"}, p.IntakeKeyMap)
+
+			jc := p.JanuaClient
+			assert.Equal(t, tc.name, jc.Name, "the Janua client name; existing clients are matched by it")
+			assert.Equal(t, tc.name, jc.ClientKey)
+			assert.Equal(t, tc.audience, jc.Audience)
+			assert.Equal(t, tc.org, jc.OrganizationID)
+			assert.Equal(t, tc.scopes, jc.AllowedScopes)
+			assert.Equal(t, []string{"client_credentials"}, jc.GrantTypes)
+			assert.Empty(t, jc.RedirectURIs, "a client_credentials client has no browser leg")
+			require.NotNil(t, jc.IsConfidential)
+			assert.True(t, jc.confidential())
+			assert.False(t, p.publicLogin())
+			assert.NotEmpty(t, jc.Description)
+
+			assert.Equal(t, map[string]string{tc.idKey: "jnc_fixture", tc.secretKey: "fixture-secret"},
+				buildIntakeValues(reg.Issuer, "jnc_fixture", "fixture-secret", p))
+		})
+	}
+}
+
+// The nine digital-twins machine edges are pinned to the client ids their first
+// provision run printed (2026-10-03). A pin is exclusive: the provisioner then
+// reconciles exactly that client and refuses to create a second one, so a
+// changed or dropped pin here is a different client, not an edit.
+func TestLoadRegistry_digitalTwinsEdgesPinned(t *testing.T) {
+	reg, err := LoadRegistry("")
+	require.NoError(t, err)
+
+	pins := map[string]string{
+		"pravara-yantra4d-step-reader":                    "jnc_J3YH8KGGzBI1c7PoDSvKtwVr23fPd1Sw",
+		"yantra4d-asset-shells-publisher":                 "jnc_qtf_llhI6wXiRKb_-1pHVScuAHrfGbP_",
+		"fashion-cabinet-asset-shells-publisher":          "jnc_jb7_ZSyLKOlntsEesRnSPd5RiUzrKvP3",
+		"zavlo-cfdi-emitter":                              "jnc_6H59wA9XIfa_pXTblLPvMYUPPFdWLjgA",
+		"routecraft-billing-relay":                        "jnc_3NfmbrkXXFp9sWsPn5E53unmjaWgiD4j",
+		"forj-pravara-intake-madfam-ecosystem":            "jnc_70Aza2a0PPhnQ91vbAhyZv_ALitHbEHB",
+		"cotiza-pravara-intake-madfam-ecosystem":          "jnc_O_tTNXViDH3UetR3tOgQ0NKyWlWFuiou",
+		"pravara-asset-shells-publisher-madfam-ecosystem": "jnc_8hP5pYanYdYjS-QKapjyh4gpdk-7oKK9",
+		"pravara-fabrication-prep":                        "jnc_e3gHN2ZdyGONKSZPDo-dP2HTxjtlhj2y",
+	}
+	for id, want := range pins {
+		p, ok := reg.Platforms[id]
+		require.True(t, ok, "platform %q missing from the registry", id)
+		assert.Equal(t, want, p.JanuaClient.ClientID, "platform %q must stay pinned to its provisioned client", id)
+	}
+}
