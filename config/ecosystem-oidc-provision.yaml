@@ -1,6 +1,6 @@
 # MADFAM ecosystem OIDC auto-provision registry
 # Consumed by: enclii secrets provision oidc
-# Last Updated: 2026-10-03
+# Last Updated: 2026-10-04
 #
 # TWO COPIES, ONE CONTENT. The CLI embeds
 # packages/cli/internal/ecosystemoidc/data/ecosystem-oidc-provision.yaml (go:embed
@@ -703,5 +703,42 @@ platforms:
       allowed_scopes:
         - asset-shells:publish-instances
         - asset-shells:read
+      grant_types:
+        - client_credentials
+
+  # ---------------------------------------------------------------------------
+  # voxa-selva — Voxa's API asking Selva's inference gateway for next-word
+  # suggestions (POST /v1/chat/completions). One edge, one client, one scope:
+  # client_credentials only, scope selva:infer, no browser leg.
+  #
+  # audience `selva-office` is what Selva's verify_jwt checks `aud` against
+  # (its JANUA_CLIENT_ID). Every Voxa request also sends
+  # `X-Sensitivity: restricted`, so Selva answers only from its local model
+  # and otherwise refuses with 503; Voxa then falls back to its own local
+  # predictor. Voxa reads the pair as SELVA_CLIENT_ID / SELVA_CLIENT_SECRET and
+  # stays off until SELVA_ENABLED=true.
+  #
+  # Org-bound to madfam-ecosystem (like crea-map-payment-mail, one edge, plain
+  # name), so the token carries a signed org_id: Selva keys its tenant policy
+  # and its usage ledger on it, and a token without one has neither.
+  #
+  # NOT pinned yet: the first provision run prints the client id; pin it here
+  # (both copies) so later runs reconcile this client instead of creating a
+  # twin. The pair lands at secret/voxa through voxa/selva-client.
+  # ---------------------------------------------------------------------------
+  voxa-selva:
+    intake_target: voxa/selva-client
+    intake_key_map:
+      selva_client_id: client_id
+      selva_client_secret: client_secret  # pragma: allowlist secret
+    janua_client:
+      name: voxa-selva
+      client_key: voxa-selva  # pragma: allowlist secret
+      audience: selva-office
+      description: Machine edge (client_credentials) from Voxa's API to Selva's inference gateway for word suggestions, always sent as X-Sensitivity restricted. Org-bound to madfam-ecosystem, scope selva:infer only.
+      is_confidential: true
+      organization_id: 1a6233ef-185f-43ee-9181-e2591fbb2643
+      allowed_scopes:
+        - selva:infer
       grant_types:
         - client_credentials

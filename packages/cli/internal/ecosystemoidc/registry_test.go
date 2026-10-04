@@ -487,3 +487,36 @@ func TestLoadRegistry_digitalTwinsEdgesPinned(t *testing.T) {
 		assert.Equal(t, want, p.JanuaClient.ClientID, "platform %q must stay pinned to its provisioned client", id)
 	}
 }
+
+// voxa-selva: Voxa's API calling Selva's inference gateway. A confidential
+// client_credentials edge with no browser leg, audience selva-office (what
+// Selva's verify_jwt checks `aud` against), scope selva:infer only, org-bound
+// to madfam-ecosystem so the token carries the org_id Selva keys its tenant
+// policy and usage ledger on. client_id is deliberately NOT asserted: it is
+// pinned after the first provision run.
+func TestLoadRegistry_voxaSelvaMachineEdge(t *testing.T) {
+	reg, err := LoadRegistry("")
+	require.NoError(t, err)
+
+	p, ok := reg.Platforms["voxa-selva"]
+	require.True(t, ok, "platform voxa-selva missing")
+	assert.Equal(t, "voxa/selva-client", p.IntakeTarget)
+	assert.Empty(t, p.SessionIntakeTarget, "a machine edge has no session secret")
+	require.Equal(t, map[string]string{"selva_client_id": "client_id", "selva_client_secret": "client_secret"}, p.IntakeKeyMap)
+
+	jc := p.JanuaClient
+	assert.Equal(t, "voxa-selva", jc.Name)
+	assert.Equal(t, "voxa-selva", jc.ClientKey)
+	assert.Equal(t, "selva-office", jc.Audience)
+	assert.Equal(t, "1a6233ef-185f-43ee-9181-e2591fbb2643", jc.OrganizationID)
+	assert.Equal(t, []string{"selva:infer"}, jc.AllowedScopes)
+	assert.Equal(t, []string{"client_credentials"}, jc.GrantTypes)
+	assert.Empty(t, jc.RedirectURIs, "a client_credentials client has no browser leg")
+	require.NotNil(t, jc.IsConfidential)
+	assert.True(t, jc.confidential())
+	assert.False(t, p.publicLogin())
+	assert.NotEmpty(t, jc.Description)
+
+	assert.Equal(t, map[string]string{"selva_client_id": "jnc_fixture", "selva_client_secret": "fixture-secret"},
+		buildIntakeValues(reg.Issuer, "jnc_fixture", "fixture-secret", p))
+}

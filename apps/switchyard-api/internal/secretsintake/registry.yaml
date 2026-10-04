@@ -733,3 +733,78 @@ targets:
     keys:
       - billing_relay_client_id
       - billing_relay_client_secret
+
+  # voxa (2026-10-04) — Voxa's API → Selva inference gateway machine edge
+  # (ecosystem-oidc platform voxa-selva, scope selva:infer). Written only by
+  # `enclii secrets provision oidc --platform voxa-selva`; no human types either
+  # value. Delivered by a DEDICATED, planned `voxa-service-clients`
+  # ExternalSecret in the voxa namespace that maps these LOWERCASE properties
+  # to SELVA_CLIENT_ID / SELVA_CLIENT_SECRET, never by the hand-made
+  # voxa-secrets Secret. Voxa ignores the pair until SELVA_ENABLED=true.
+  voxa/selva-client:
+    label: Voxa → Selva inference client
+    description: Janua client_credentials pair (voxa-selva, scope selva:infer) for Selva's inference gateway, used for word suggestions sent as X-Sensitivity restricted. Filed by `enclii secrets provision oidc --platform voxa-selva`.
+    vault_path: secret/voxa
+    namespace: voxa
+    external_secret: voxa-service-clients  # pragma: allowlist secret
+    keys:
+      - selva_client_id
+      - selva_client_secret
+
+  # voxa web session + API runtime (2026-10-04). voxa-secrets is the onboarding
+  # Secret (written by `enclii onboard`, not by ESO), so intake cannot reach it:
+  # these two values get DEDICATED, planned ExternalSecrets of their own, one
+  # write route per property — the family-history split. Planned ExternalSecrets
+  # are harmless until they exist: intake merges into Vault and reports
+  # external_secret_refreshed: false; ESO reads the value on its first sync.
+  #
+  # web-session is written only by
+  # `enclii secrets intake submit voxa/web-session --generate auth_secret`
+  # (32 bytes crypto/rand, never returned). It is Auth.js's own AUTH_SECRET
+  # (ruling R42), never the Janua client secret; the planned voxa-web-session
+  # ExternalSecret maps `property: auth_secret` → AUTH_SECRET.
+  #
+  # api-runtime carries REDIS_URL for cross-pod co-editing: the shared platform
+  # Redis with its password and Voxa's OWN DB index (the first free index ≥ 10 by
+  # `redis-cli INFO keyspace` on the host, the telesia recipe). The URL is composed
+  # on the host and typed at the masked prompt; never generated, never in chat.
+  # The planned voxa-api-runtime ExternalSecret maps `property: redis_url` →
+  # REDIS_URL. Staging takes a DIFFERENT index from production.
+  #
+  # LOWERCASE keys, as Vault stores them (normalizeVaultSecretKey); the planned
+  # ExternalSecrets must map these `property:` names byte for byte.
+  voxa/web-session:
+    label: Voxa web session signing secret
+    description: Auth.js AUTH_SECRET for the Voxa web app (signs and encrypts the session cookie); never the Janua client secret. Mint server-side with --generate auth_secret (32 bytes crypto/rand, never returned); rotating it signs every user out.
+    vault_path: secret/voxa
+    namespace: voxa
+    external_secret: voxa-web-session  # pragma: allowlist secret
+    keys:
+      - auth_secret
+
+  voxa-staging/web-session:
+    label: Voxa staging web session signing secret
+    description: Auth.js AUTH_SECRET for Voxa staging; never the Janua client secret and never the production value. Mint server-side with --generate auth_secret (32 bytes crypto/rand, never returned); rotating it signs every staging user out.
+    vault_path: secret/voxa-staging
+    namespace: voxa-staging
+    external_secret: voxa-web-session  # pragma: allowlist secret
+    keys:
+      - auth_secret
+
+  voxa/api-runtime:
+    label: Voxa API runtime Redis URL
+    description: REDIS_URL for Voxa's cross-pod co-editing sync hub — the shared platform Redis with its password and Voxa's own DB index (first free index ≥ 10 by `redis-cli INFO keyspace`). Composed on the host and typed at the masked prompt; never generated.
+    vault_path: secret/voxa
+    namespace: voxa
+    external_secret: voxa-api-runtime  # pragma: allowlist secret
+    keys:
+      - redis_url
+
+  voxa-staging/api-runtime:
+    label: Voxa staging API runtime Redis URL
+    description: REDIS_URL for Voxa staging's co-editing sync hub — the shared platform Redis with a DB index DIFFERENT from production's (first free index ≥ 10 by `redis-cli INFO keyspace`). Composed on the host and typed at the masked prompt; never generated.
+    vault_path: secret/voxa-staging
+    namespace: voxa-staging
+    external_secret: voxa-api-runtime  # pragma: allowlist secret
+    keys:
+      - redis_url

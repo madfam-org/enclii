@@ -11,7 +11,7 @@
 # Policy-only (add paths without rotating writer token):
 #   POLICY_ONLY=1 VAULT_TOKEN_FILE=... ./scripts/provision-switchyard-vault-writer.sh
 #
-# Last Updated: 2026-10-03 (digital-twins machine edges: pravara-mes, yantra4d, fashion-cabinet, forj, digifab-quoting, zavlo, routecraft)
+# Last Updated: 2026-10-04 (voxa: Selva inference edge; voxa + voxa-staging web-session and api-runtime)
 set -euo pipefail
 
 VAULT_NS="${VAULT_NS:-vault}"
@@ -279,6 +279,28 @@ path "secret/data/routecraft" {
 path "secret/data/routecraft/*" {
   capabilities = ["create", "update", "patch", "read"]
 }
+# voxa — added 2026-10-04 with the voxa/selva-client intake target (Voxa's
+# API → Selva inference edge), written only by
+# `enclii secrets provision oidc --platform voxa-selva`. Merged in git is not
+# applied in Vault: re-apply this policy (ASSERT_PATH=voxa
+# scripts/apply-switchyard-vault-policy-remote.sh) before the first run, or
+# the run rotates the Janua secret and then 403s on the Vault merge.
+path "secret/data/voxa" {
+  capabilities = ["create", "update", "patch", "read"]
+}
+path "secret/data/voxa/*" {
+  capabilities = ["create", "update", "patch", "read"]
+}
+# voxa-staging — added 2026-10-04 with voxa-staging/web-session and
+# voxa-staging/api-runtime (staging's AUTH_SECRET and REDIS_URL). The
+# production voxa targets voxa/web-session and voxa/api-runtime write the
+# secret/voxa paths above. Re-apply with ASSERT_PATH=voxa-staging.
+path "secret/data/voxa-staging" {
+  capabilities = ["create", "update", "patch", "read"]
+}
+path "secret/data/voxa-staging/*" {
+  capabilities = ["create", "update", "patch", "read"]
+}
 path "secret/metadata/ceq" {
   capabilities = ["read", "list"]
 }
@@ -433,6 +455,18 @@ path "secret/metadata/routecraft" {
   capabilities = ["read", "list"]
 }
 path "secret/metadata/routecraft/*" {
+  capabilities = ["read", "list"]
+}
+path "secret/metadata/voxa" {
+  capabilities = ["read", "list"]
+}
+path "secret/metadata/voxa/*" {
+  capabilities = ["read", "list"]
+}
+path "secret/metadata/voxa-staging" {
+  capabilities = ["read", "list"]
+}
+path "secret/metadata/voxa-staging/*" {
   capabilities = ["read", "list"]
 }
 EOF
