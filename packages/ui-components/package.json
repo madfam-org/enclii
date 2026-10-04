@@ -54,6 +54,12 @@
       "require": "./dist/components/ui/select.js",
       "default": "./dist/components/ui/select.js"
     },
+    "./station-identity": {
+      "types": "./dist/components/ui/station-identity.d.ts",
+      "import": "./dist/components/ui/station-identity.js",
+      "require": "./dist/components/ui/station-identity.js",
+      "default": "./dist/components/ui/station-identity.js"
+    },
     "./table": {
       "types": "./dist/components/ui/table.d.ts",
       "import": "./dist/components/ui/table.js",
