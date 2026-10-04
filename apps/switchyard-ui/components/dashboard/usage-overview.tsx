@@ -6,7 +6,7 @@ import { CircularGauge, UsageGauge, GaugeGrid } from '@/components/ui/circular-g
 import { useUsageMetrics, useRealtimeResources } from '@/hooks/use-usage-metrics';
 import { Cpu, HardDrive, Gauge, Activity, Hammer, Globe } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import { formatBytes } from '@/lib/formatting';
+import { formatUsageValue, isUsageValue } from '@/lib/formatting';
 import { Spinner } from '@/components/ui/spinner';
 import { useIsAdminScope } from '@/contexts/ScopeContext';
 
@@ -93,6 +93,7 @@ export function UsageOverview({ className, variant = 'full' }: UsageOverviewProp
   }
 
   const metrics = usage?.metrics || [];
+  const incomplete = metrics.some((metric) => metric.unavailable || !isUsageValue(metric.used));
 
   // Compact variant - just the key metrics
   if (variant === 'compact') {
@@ -106,20 +107,18 @@ export function UsageOverview({ className, variant = 'full' }: UsageOverviewProp
         </CardHeader>
         <CardContent>
           <div className="flex flex-wrap gap-4 justify-center">
-            {metrics.slice(0, 4).map((metric) => {
-              const percentage = metric.included > 0 ? (metric.used / metric.included) * 100 : 0;
-              return (
-                <CircularGauge
-                  key={metric.type}
-                  value={percentage}
-                  max={100}
-                  size={80}
-                  strokeWidth={6}
-                  label={metric.label}
-                  variant="auto"
-                />
-              );
-            })}
+            {metrics.slice(0, 4).map((metric) => (
+              <UsageGauge
+                key={metric.type}
+                used={metric.used}
+                limit={metric.included}
+                label={metric.label}
+                unit={metric.unit}
+                unavailable={metric.unavailable}
+                note={metric.note}
+                size="sm"
+              />
+            ))}
           </div>
         </CardContent>
       </Card>
@@ -144,31 +143,15 @@ export function UsageOverview({ className, variant = 'full' }: UsageOverviewProp
           <h3 className="text-sm font-medium text-muted-foreground mb-4">Plan Limits</h3>
           <GaugeGrid columns={4}>
             {metrics.map((metric) => {
-              const isUnlimited = metric.included === -1;
-              const Icon = metricIcons[metric.type] || Activity;
-
-              if (isUnlimited) {
-                return (
-                  <div key={metric.type} className="flex flex-col items-center gap-2">
-                    <div className="h-[120px] w-[120px] rounded-full border-8 border-muted flex items-center justify-center">
-                      <div className="text-center">
-                        <Icon className="h-6 w-6 mx-auto text-muted-foreground mb-1" />
-                        <span className="text-xl font-mono font-semibold">∞</span>
-                      </div>
-                    </div>
-                    <span className="text-xs text-muted-foreground font-medium">{metric.label}</span>
-                    <span className="text-[10px] text-muted-foreground/70">Unlimited</span>
-                  </div>
-                );
-              }
-
               return (
                 <UsageGauge
                   key={metric.type}
                   used={metric.used}
                   limit={metric.included}
                   label={metric.label}
-                  unit={metric.type === 'storage' || metric.type === 'bandwidth' ? 'bytes' : 'number'}
+                  unit={metric.unit}
+                  unavailable={metric.unavailable}
+                  note={metric.note}
                   size="md"
                   // `cost` from the API represents the metered overage cost
                   // for this billing period when the user is over plan. Pass
@@ -223,9 +206,12 @@ export function UsageOverview({ className, variant = 'full' }: UsageOverviewProp
           <div className="flex items-center justify-between pt-4 border-t">
             <div>
               <p className="text-sm text-muted-foreground">Estimated total this period</p>
-              <p className="text-2xl font-bold text-enclii-blue">${usage.grand_total.toFixed(2)}</p>
+              <p className="text-2xl font-bold text-enclii-blue">
+                {incomplete ? 'Unavailable' : `$${usage.grand_total.toFixed(2)}`}
+              </p>
+              {incomplete && <p className="text-xs text-muted-foreground">Some usage meters are unavailable.</p>}
             </div>
-            {usage.total_cost > 0 && (
+            {!incomplete && usage.total_cost > 0 && (
               <div className="text-right">
                 <p className="text-sm text-muted-foreground">Overage charges</p>
                 <p className="text-lg font-medium text-status-warning">${usage.total_cost.toFixed(2)}</p>
@@ -252,29 +238,6 @@ interface AdminUsageOverviewProps {
   memoryUsage: number;
   podCount: number;
   isMetricsEnabled: boolean;
-}
-
-/**
- * Format an absolute metric value into a short, human-readable string.
- * Returns "—" when the value isn't numerically usable (null/undefined/NaN).
- * Storage / bandwidth use binary units; compute is GB-hours; build is minutes;
- * domains is a count.
- */
-function formatAbsoluteMetric(
-  type: string,
-  value: number | null | undefined,
-  unit: string,
-): string {
-  if (value === null || value === undefined || Number.isNaN(value)) return '—';
-  if (type === 'storage' || type === 'bandwidth') {
-    // API returns bytes for these; show GB-friendly string.
-    return formatBytes(value);
-  }
-  if (type === 'compute') return `${value.toFixed(1)} GB-hours`;
-  if (type === 'build') return `${value.toFixed(0)} minutes`;
-  if (type === 'domains') return `${value.toFixed(0)} ${value === 1 ? 'domain' : 'domains'}`;
-  // Fallback: show value with unit if we have one.
-  return unit ? `${value.toFixed(1)} ${unit}` : value.toFixed(1);
 }
 
 function AdminUsageOverview({
@@ -308,8 +271,7 @@ function AdminUsageOverview({
   }
 
   // On error we still render the panel (no fabricated numbers) — each tile
-  // becomes "—". The error message is shown only in full variant to keep the
-  // sidebar tile compact.
+  // becomes unavailable rather than showing a stale successful reading.
   const metrics = usage?.metrics ?? [];
   // Order tiles consistently regardless of API ordering.
   const tileOrder = ['compute', 'storage', 'bandwidth', 'build'];
@@ -319,8 +281,8 @@ function AdminUsageOverview({
     const m = tilesByType.get(type);
     const Icon = metricIcons[type] ?? Activity;
     const label = m?.label ?? defaultLabel(type);
-    const display = formatAbsoluteMetric(type, m?.used, m?.unit ?? '');
-    return { type, label, display, Icon };
+    const display = formatUsageValue(error || m?.unavailable ? null : m?.used, m?.unit ?? '');
+    return { type, label, display, Icon, note: m?.unavailable ? m.note : undefined };
   });
 
   const titleText = 'Cluster usage';
@@ -337,7 +299,7 @@ function AdminUsageOverview({
         </CardHeader>
         <CardContent className="space-y-3">
           <div className="grid grid-cols-2 gap-2">
-            {tiles.map(({ type, label, display, Icon }) => (
+            {tiles.map(({ type, label, display, Icon, note }) => (
               <div
                 key={type}
                 className="rounded-md border border-border/40 bg-muted/30 px-2 py-2"
@@ -349,6 +311,7 @@ function AdminUsageOverview({
                 <div className="mt-1 font-mono text-xs font-medium text-foreground">
                   {display}
                 </div>
+                {note && <p className="mt-1 text-xs text-muted-foreground">{note}</p>}
               </div>
             ))}
           </div>
@@ -375,7 +338,7 @@ function AdminUsageOverview({
       <CardContent className="space-y-8">
         <div>
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
-            {tiles.map(({ type, label, display, Icon }) => (
+            {tiles.map(({ type, label, display, Icon, note }) => (
               <div
                 key={type}
                 className="rounded-lg border border-border/50 bg-muted/30 p-4"
@@ -387,13 +350,14 @@ function AdminUsageOverview({
                 <div className="mt-2 font-mono text-lg font-semibold text-foreground">
                   {display}
                 </div>
+                {note && <p className="mt-1 text-xs text-muted-foreground">{note}</p>}
               </div>
             ))}
           </div>
           <p className="mt-3 text-xs text-muted-foreground">{subtitleText}</p>
           {error && (
             <p className="mt-1 text-xs text-status-warning">
-              Metrics unavailable — values shown as &quot;—&quot;.
+              Metrics unavailable — usage readings could not be refreshed.
             </p>
           )}
         </div>

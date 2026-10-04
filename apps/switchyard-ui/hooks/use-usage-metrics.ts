@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { usePolling } from '@/hooks/use-polling';
 import { apiGet } from '@/lib/api';
+import { isUsageValue } from '@/lib/formatting';
 
 // =============================================================================
 // TYPES
@@ -15,6 +16,9 @@ export interface UsageMetric {
   included: number;
   unit: string;
   cost: number;
+  unavailable?: boolean;
+  note?: string;
+  source?: string;
 }
 
 export interface UsageSummary {
@@ -123,11 +127,14 @@ export function useUsageMetrics(options: UseUsageMetricsOptions = {}): UseUsageM
 // =============================================================================
 
 interface MetricData {
-  used: number;
-  limit: number;
-  percentage: number;
-  cost: number;
+  used: number | null;
+  limit: number | null;
+  percentage: number | null;
+  cost: number | null;
   unit: string;
+  unavailable: boolean;
+  note?: string;
+  source?: string;
 }
 
 /**
@@ -137,13 +144,19 @@ export function useMetricByType(type: string): MetricData & { isLoading: boolean
   const { usage, isLoading, error } = useUsageMetrics();
 
   const metric = usage?.metrics.find(m => m.type === type);
+  const unavailable = !!error || !metric || !!metric.unavailable || !isUsageValue(metric.used);
+  const limit = metric && (isUsageValue(metric.included) || metric.included === -1)
+    ? metric.included : null;
 
   return {
-    used: metric?.used || 0,
-    limit: metric?.included || 0,
-    percentage: metric && metric.included > 0 ? (metric.used / metric.included) * 100 : 0,
-    cost: metric?.cost || 0,
+    used: unavailable ? null : metric!.used,
+    limit,
+    percentage: !unavailable && limit !== null && limit > 0 ? (metric!.used / limit) * 100 : null,
+    cost: !unavailable && isUsageValue(metric?.cost) ? metric.cost : null,
     unit: metric?.unit || '',
+    unavailable,
+    note: metric?.note,
+    source: metric?.source,
     isLoading,
     error,
   };
