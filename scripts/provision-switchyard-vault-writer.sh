@@ -11,7 +11,7 @@
 # Policy-only (add paths without rotating writer token):
 #   POLICY_ONLY=1 VAULT_TOKEN_FILE=... ./scripts/provision-switchyard-vault-writer.sh
 #
-# Last Updated: 2026-10-04 (voxa: Voxa → Selva inference edge)
+# Last Updated: 2026-10-04 (voxa: Selva inference edge; voxa + voxa-staging web-session and api-runtime)
 set -euo pipefail
 
 VAULT_NS="${VAULT_NS:-vault}"
@@ -291,6 +291,16 @@ path "secret/data/voxa" {
 path "secret/data/voxa/*" {
   capabilities = ["create", "update", "patch", "read"]
 }
+# voxa-staging — added 2026-10-04 with voxa-staging/web-session and
+# voxa-staging/api-runtime (staging's AUTH_SECRET and REDIS_URL). The
+# production voxa targets voxa/web-session and voxa/api-runtime write the
+# secret/voxa paths above. Re-apply with ASSERT_PATH=voxa-staging.
+path "secret/data/voxa-staging" {
+  capabilities = ["create", "update", "patch", "read"]
+}
+path "secret/data/voxa-staging/*" {
+  capabilities = ["create", "update", "patch", "read"]
+}
 path "secret/metadata/ceq" {
   capabilities = ["read", "list"]
 }
@@ -451,6 +461,12 @@ path "secret/metadata/voxa" {
   capabilities = ["read", "list"]
 }
 path "secret/metadata/voxa/*" {
+  capabilities = ["read", "list"]
+}
+path "secret/metadata/voxa-staging" {
+  capabilities = ["read", "list"]
+}
+path "secret/metadata/voxa-staging/*" {
   capabilities = ["read", "list"]
 }
 EOF

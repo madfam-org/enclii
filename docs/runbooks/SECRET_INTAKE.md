@@ -109,6 +109,10 @@ ESO sources: `enclii-secrets`, `janua-secrets`, `madfam-site-secrets`, `phynd-cr
 | `zavlo/cfdi-emitter` | `secret/zavlo` | `zavlo_cfdi_emitter_client_id`, `zavlo_cfdi_emitter_client_secret` |
 | `routecraft/billing-relay` | `secret/routecraft` | `billing_relay_client_id`, `billing_relay_client_secret` |
 | `voxa/selva-client` | `secret/voxa` | `selva_client_id`, `selva_client_secret` |
+| `voxa/web-session` | `secret/voxa` | `auth_secret` |
+| `voxa-staging/web-session` | `secret/voxa-staging` | `auth_secret` |
+| `voxa/api-runtime` | `secret/voxa` | `redis_url` |
+| `voxa-staging/api-runtime` | `secret/voxa-staging` | `redis_url` |
 
 **Angelia OWNS all five Courier targets** (verifier-owns): Angelia verifies every
 one of these credentials, so `secret/angelia` is their single writable home, and
@@ -297,6 +301,10 @@ pin each printed `jnc_…` id as `janua_client.client_id` in
 `config/ecosystem-oidc-provision.yaml` (both copies) so later runs reconcile the
 pinned client.
 
+`symbiosis-hcm` is the **producer** of the absence feed; `crea-map` cross-reads
+`map_absence_feed_key` and consumes it as `HCM_FEED_API_KEY`. One copy at the
+producer's path, read by both — not two copies that drift on rotation.
+
 ### Voxa → Selva inference edge (2026-10-04)
 
 One more Janua `client_credentials` client, same mechanics as the digital-twins
@@ -324,9 +332,45 @@ enclii secrets provision oidc --profile admin --platform voxa-selva --json --rea
 Then pin the printed `jnc_…` id as `janua_client.client_id` for `voxa-selva` in
 both registry copies.
 
- `crea-map` cross-reads
-`map_absence_feed_key` and consumes it as `HCM_FEED_API_KEY`. One copy at the
-producer's path, read by both — not two copies that drift on rotation.
+### Voxa web session and API runtime (2026-10-04)
+
+`voxa-secrets` is Voxa's onboarding Secret (written by `enclii onboard`, not by
+ESO), so intake cannot reach it. Voxa's two remaining runtime secrets therefore
+get dedicated, planned ExternalSecrets of their own in the voxa repo, one write
+route per property. Production lands at `secret/voxa` (namespace `voxa`) and
+staging at `secret/voxa-staging` (namespace `voxa-staging`); the values are
+never shared between the two.
+
+| Property | Targets | Written by | ExternalSecret | Env var |
+|---|---|---|---|---|
+| `auth_secret` | `voxa/web-session`, `voxa-staging/web-session` | `enclii secrets intake submit <target> --generate auth_secret` | `voxa-web-session` | `AUTH_SECRET` |
+| `redis_url` | `voxa/api-runtime`, `voxa-staging/api-runtime` | operator, masked prompt | `voxa-api-runtime` | `REDIS_URL` |
+
+`auth_secret` is Auth.js's own session secret (ruling R42), never the Janua
+client secret. It is minted server-side (32 bytes, never returned), and
+rotating it signs every user out. `redis_url` is the shared platform Redis with
+its password and Voxa's own DB index: take the first free index ≥ 10 with
+`redis-cli INFO keyspace` on the host (the telesia recipe), a different one for
+staging than for production, and compose the URL on the host. It is typed at
+the masked prompt; it is never generated and never pasted into chat. Until the
+voxa repo ships each ExternalSecret, intake reports
+`external_secret_refreshed: false`, which is expected: ESO reads the property on
+its first sync.
+
+Owner sequence, after the registry change is deployed (switchyard-api digest
+bump) and from an up-to-date checkout:
+
+```bash
+cd ~/labspace/enclii && ASSERT_PATH=voxa-staging bash scripts/apply-switchyard-vault-policy-remote.sh < ~/.config/madfam/vault-admin.token
+# expect: APPLIED_OK_asserted_path_present
+enclii secrets intake submit voxa/web-session --generate auth_secret --reason "voxa web session secret (Auth.js AUTH_SECRET)"
+enclii secrets intake submit voxa-staging/web-session --generate auth_secret --reason "voxa staging web session secret (Auth.js AUTH_SECRET)"
+# Only when cross-pod co-editing is turned on; each prompts (masked) for the URL composed on the host:
+enclii secrets intake submit voxa/api-runtime --reason "voxa co-editing redis (own DB index)"
+enclii secrets intake submit voxa-staging/api-runtime --reason "voxa staging co-editing redis (own DB index)"
+enclii secrets intake status int_<id>
+```
+
 
 Add targets via PR to the registry — do not hardcode paths in runbooks. A new
 `vault_path` also needs its block in `scripts/provision-switchyard-vault-writer.sh`;

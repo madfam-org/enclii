@@ -11,7 +11,7 @@ import (
 func TestLoadRegistry(t *testing.T) {
 	reg, err := LoadRegistry()
 	require.NoError(t, err)
-	assert.Len(t, reg, 51)
+	assert.Len(t, reg, 55)
 	assert.Contains(t, reg, "ceq/vast-api-key")
 	assert.Contains(t, reg, "karafiel/web-oidc-janua")
 	tgt := reg["ceq/vast-api-key"]
@@ -32,7 +32,7 @@ func TestGetTarget(t *testing.T) {
 func TestListTargetsSorted(t *testing.T) {
 	list, err := ListTargets()
 	require.NoError(t, err)
-	require.Len(t, list, 51)
+	require.Len(t, list, 55)
 	for i := 1; i < len(list); i++ {
 		assert.Less(t, list[i-1].ID, list[i].ID, "targets should be sorted by id")
 	}
@@ -89,7 +89,11 @@ func TestListTargetsSorted(t *testing.T) {
 		"symbiosis-hcm/map-absence-feed",
 		"telesia/oidc-janua",
 		"telesia/runtime",
+		"voxa-staging/api-runtime",
+		"voxa-staging/web-session",
+		"voxa/api-runtime",
 		"voxa/selva-client",
+		"voxa/web-session",
 		"yantra4d/asset-shells-publisher",
 		"zavlo/cfdi-emitter",
 	}, ids)
@@ -453,4 +457,44 @@ func TestVoxaSelvaClientTarget(t *testing.T) {
 	assert.Equal(t, []string{"selva_client_id", "selva_client_secret"}, tgt.Keys)
 	assert.NotEmpty(t, tgt.Label)
 	assert.NotEmpty(t, tgt.Description)
+}
+
+// Voxa web session and API runtime (2026-10-04), production and staging.
+// voxa-secrets is the onboarding Secret, not an ESO target, so each value gets
+// a DEDICATED planned ExternalSecret and exactly one write route: web-session
+// only through --generate auth_secret (Auth.js AUTH_SECRET, ruling R42: never
+// the Janua client secret), api-runtime only at the masked prompt (a REDIS_URL
+// composed on the host with Voxa's own DB index). Staging lands at its own
+// Vault path and namespace, never production's.
+func TestVoxaWebSessionAndAPIRuntimeTargets(t *testing.T) {
+	cases := []struct {
+		id             string
+		vaultPath      string
+		namespace      string
+		externalSecret string
+		keys           []string
+	}{
+		{"voxa/web-session", "secret/voxa", "voxa", "voxa-web-session", []string{"auth_secret"}},
+		{"voxa-staging/web-session", "secret/voxa-staging", "voxa-staging", "voxa-web-session", []string{"auth_secret"}},
+		{"voxa/api-runtime", "secret/voxa", "voxa", "voxa-api-runtime", []string{"redis_url"}},
+		{"voxa-staging/api-runtime", "secret/voxa-staging", "voxa-staging", "voxa-api-runtime", []string{"redis_url"}},
+	}
+	for _, tc := range cases {
+		t.Run(tc.id, func(t *testing.T) {
+			tgt, err := GetTarget(tc.id)
+			require.NoError(t, err)
+			assert.Equal(t, tc.vaultPath, tgt.VaultPath)
+			assert.Equal(t, tc.namespace, tgt.Namespace)
+			assert.Equal(t, tc.externalSecret, tgt.ExternalSecret)
+			assert.Equal(t, tc.keys, tgt.Keys)
+			for _, k := range tgt.Keys {
+				assert.Equal(t, strings.ToLower(k), k, "Vault stores lowercase; an upper-case key would never match the ExternalSecret property")
+			}
+			assert.NotEqual(t, "voxa-secrets", tgt.ExternalSecret, "voxa-secrets is the onboarding Secret; intake cannot reach it")
+			assert.NotEmpty(t, tgt.Label)
+			assert.NotEmpty(t, tgt.Description)
+			// AUTH_SECRET must carry at least 32 bytes when minted with --generate.
+			assert.GreaterOrEqual(t, tgt.GenerateBytes(), 32)
+		})
+	}
 }
