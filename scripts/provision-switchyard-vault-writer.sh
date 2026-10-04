@@ -11,7 +11,7 @@
 # Policy-only (add paths without rotating writer token):
 #   POLICY_ONLY=1 VAULT_TOKEN_FILE=... ./scripts/provision-switchyard-vault-writer.sh
 #
-# Last Updated: 2026-10-01 (family-history data+metadata paths for the web OIDC, session and early-access intake)
+# Last Updated: 2026-10-03 (digital-twins machine edges: pravara-mes, yantra4d, fashion-cabinet, forj, digifab-quoting, zavlo, routecraft)
 set -euo pipefail
 
 VAULT_NS="${VAULT_NS:-vault}"
@@ -229,6 +229,56 @@ path "secret/data/family-history" {
 path "secret/data/family-history/*" {
   capabilities = ["create", "update", "patch", "read"]
 }
+# Digital-twins machine edges — added 2026-10-03 with the nine
+# `<app>/...` client_credentials intake targets, each written only by
+# `enclii secrets provision oidc --platform <id>`. One path per consumer:
+# pravara-mes (three targets), yantra4d, fashion-cabinet, forj,
+# digifab-quoting (Cotiza), zavlo and routecraft. Merged in git is not applied
+# in Vault: re-apply this policy (ASSERT_PATH=pravara-mes
+# scripts/apply-switchyard-vault-policy-remote.sh) before the first run, or
+# the run rotates the Janua secret and then 403s on the Vault merge.
+path "secret/data/pravara-mes" {
+  capabilities = ["create", "update", "patch", "read"]
+}
+path "secret/data/pravara-mes/*" {
+  capabilities = ["create", "update", "patch", "read"]
+}
+path "secret/data/yantra4d" {
+  capabilities = ["create", "update", "patch", "read"]
+}
+path "secret/data/yantra4d/*" {
+  capabilities = ["create", "update", "patch", "read"]
+}
+path "secret/data/fashion-cabinet" {
+  capabilities = ["create", "update", "patch", "read"]
+}
+path "secret/data/fashion-cabinet/*" {
+  capabilities = ["create", "update", "patch", "read"]
+}
+path "secret/data/forj" {
+  capabilities = ["create", "update", "patch", "read"]
+}
+path "secret/data/forj/*" {
+  capabilities = ["create", "update", "patch", "read"]
+}
+path "secret/data/digifab-quoting" {
+  capabilities = ["create", "update", "patch", "read"]
+}
+path "secret/data/digifab-quoting/*" {
+  capabilities = ["create", "update", "patch", "read"]
+}
+path "secret/data/zavlo" {
+  capabilities = ["create", "update", "patch", "read"]
+}
+path "secret/data/zavlo/*" {
+  capabilities = ["create", "update", "patch", "read"]
+}
+path "secret/data/routecraft" {
+  capabilities = ["create", "update", "patch", "read"]
+}
+path "secret/data/routecraft/*" {
+  capabilities = ["create", "update", "patch", "read"]
+}
 path "secret/metadata/ceq" {
   capabilities = ["read", "list"]
 }
@@ -341,6 +391,48 @@ path "secret/metadata/family-history" {
   capabilities = ["read", "list"]
 }
 path "secret/metadata/family-history/*" {
+  capabilities = ["read", "list"]
+}
+path "secret/metadata/pravara-mes" {
+  capabilities = ["read", "list"]
+}
+path "secret/metadata/pravara-mes/*" {
+  capabilities = ["read", "list"]
+}
+path "secret/metadata/yantra4d" {
+  capabilities = ["read", "list"]
+}
+path "secret/metadata/yantra4d/*" {
+  capabilities = ["read", "list"]
+}
+path "secret/metadata/fashion-cabinet" {
+  capabilities = ["read", "list"]
+}
+path "secret/metadata/fashion-cabinet/*" {
+  capabilities = ["read", "list"]
+}
+path "secret/metadata/forj" {
+  capabilities = ["read", "list"]
+}
+path "secret/metadata/forj/*" {
+  capabilities = ["read", "list"]
+}
+path "secret/metadata/digifab-quoting" {
+  capabilities = ["read", "list"]
+}
+path "secret/metadata/digifab-quoting/*" {
+  capabilities = ["read", "list"]
+}
+path "secret/metadata/zavlo" {
+  capabilities = ["read", "list"]
+}
+path "secret/metadata/zavlo/*" {
+  capabilities = ["read", "list"]
+}
+path "secret/metadata/routecraft" {
+  capabilities = ["read", "list"]
+}
+path "secret/metadata/routecraft/*" {
   capabilities = ["read", "list"]
 }
 EOF

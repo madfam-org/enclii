@@ -1,6 +1,6 @@
 # Secret Intake (chat-safe credential handoff)
 
-**Last Updated:** 2026-10-01
+**Last Updated:** 2026-10-03
 
 > **Boundary checkpoint (2026-09-05, platform on-call):** Public-safe runbook —
 > target ids, Vault paths and key NAMES are routing contracts, never values. No
@@ -22,6 +22,12 @@
 > section adds target ids, key NAMES, a public redirect URI and a Janua client
 > NAME only. No client id, secret, session value or allowlist entry appears
 > here; the allowlist holds personal data and lives only in Vault.
+>
+> **Boundary checkpoint (2026-10-03, platform on-call):** The digital-twins
+> machine-edges section adds target ids, key NAMES, Vault paths, planned
+> ExternalSecret names, Janua client NAMES, audiences, scopes and one
+> organization slug only. No client id or secret appears here; the provisioner
+> files both straight into Vault and prints only non-secret fields.
 
 Operators supply production credentials through Enclii without pasting values into
 agent chat or git. Switchyard merges keys into Vault once; agents poll `intake_id`
@@ -93,6 +99,15 @@ ESO sources: `enclii-secrets`, `janua-secrets`, `madfam-site-secrets`, `phynd-cr
 | `family-history/api-access` | `secret/family-history` | `fh_early_access_allowlist` |
 | `family-history/web-oidc` | `secret/family-history` | `auth_janua_client_id`, `auth_janua_client_secret` |
 | `family-history/web-session` | `secret/family-history` | `fh_session_secret` |
+| `pravara-mes/yantra4d-step-reader` | `secret/pravara-mes` | `yantra4d_step_reader_client_id`, `yantra4d_step_reader_client_secret` |
+| `pravara-mes/asset-shells-publisher-madfam-ecosystem` | `secret/pravara-mes` | `asset_shells_publisher_madfam_ecosystem_client_id`, `asset_shells_publisher_madfam_ecosystem_client_secret` |
+| `pravara-mes/fabrication-prep-client` | `secret/pravara-mes` | `fabrication_prep_client_id`, `fabrication_prep_client_secret` |
+| `yantra4d/asset-shells-publisher` | `secret/yantra4d` | `asset_shells_publisher_client_id`, `asset_shells_publisher_client_secret` |
+| `fashion-cabinet/asset-shells-publisher` | `secret/fashion-cabinet` | `asset_shells_publisher_client_id`, `asset_shells_publisher_client_secret` |
+| `forj/pravara-intake` | `secret/forj` | `pravara_intake_client_id`, `pravara_intake_client_secret` |
+| `digifab-quoting/pravara-intake` | `secret/digifab-quoting` | `pravara_intake_client_id`, `pravara_intake_client_secret` |
+| `zavlo/cfdi-emitter` | `secret/zavlo` | `zavlo_cfdi_emitter_client_id`, `zavlo_cfdi_emitter_client_secret` |
+| `routecraft/billing-relay` | `secret/routecraft` | `billing_relay_client_id`, `billing_relay_client_secret` |
 
 **Angelia OWNS all five Courier targets** (verifier-owns): Angelia verifies every
 one of these credentials, so `secret/angelia` is their single writable home, and
@@ -225,6 +240,61 @@ later runs reconcile the client instead of creating a second one. ESO syncs
 each ExternalSecret all-or-nothing, so `family-history-web` stays NotReady until
 both `web-oidc` and `web-session` are written, and `family-history-api` until
 `api-access` is.
+
+### Digital-twins machine edges (2026-10-03)
+
+Nine Janua `client_credentials` clients, one per machine edge. No human types,
+sees or stores either value: `enclii secrets provision oidc` creates or rotates
+each client through the operator's Janua platform-admin session and files the
+id/secret pair straight into the consumer's Vault path. All are confidential,
+`client_credentials` only, with no redirect URIs. The three org-bound clients are
+bound to the MADFAM Ecosystem organization (slug `madfam-ecosystem`), which Janua
+names `<template>.<org slug>`.
+
+| Platform id | Janua client | Audience | Scopes | Target | ExternalSecret (planned) |
+|---|---|---|---|---|---|
+| `pravara-yantra4d-step-reader` | `pravara-yantra4d-step-reader` | `yantra4d-api` | `yantra4d:render` | `pravara-mes/yantra4d-step-reader` | `pravara-service-clients` |
+| `pravara-fabrication-prep` | `pravara-fabrication-prep` | `fabrication-prep-api` | `fabrication-prep:slice` | `pravara-mes/fabrication-prep-client` | `pravara-service-clients` |
+| `pravara-asset-shells-publisher-madfam-ecosystem` | `pravara-asset-shells-publisher.madfam-ecosystem` | `asset-shells-api` | `asset-shells:publish-instances`, `asset-shells:read` | `pravara-mes/asset-shells-publisher-madfam-ecosystem` | `pravara-service-clients` |
+| `yantra4d-asset-shells-publisher` | `yantra4d-asset-shells-publisher` | `asset-shells-api` | `asset-shells:publish-types` | `yantra4d/asset-shells-publisher` | `yantra4d-service-clients` |
+| `fashion-cabinet-asset-shells-publisher` | `fashion-cabinet-asset-shells-publisher` | `asset-shells-api` | `asset-shells:publish-types` | `fashion-cabinet/asset-shells-publisher` | `fashion-cabinet-service-clients` |
+| `forj-pravara-intake-madfam-ecosystem` | `forj-pravara-intake.madfam-ecosystem` | `pravara-api` | `pravara-mes:jobs` | `forj/pravara-intake` | `forj-service-clients` |
+| `cotiza-pravara-intake-madfam-ecosystem` | `cotiza-pravara-intake.madfam-ecosystem` | `pravara-api` | `pravara-mes:jobs` | `digifab-quoting/pravara-intake` | `digifab-quoting-service-clients` |
+| `zavlo-cfdi-emitter` | `zavlo-cfdi-emitter` | `karafiel-api` | `cfdi:issue` | `zavlo/cfdi-emitter` | `zavlo-service-clients` |
+| `routecraft-billing-relay` | `routecraft-billing-relay` | `dhanam-api` | `billing:events` | `routecraft/billing-relay` | `routecraft-service-clients` |
+
+Each consumer reads its pair from a **dedicated** `<app>-service-clients` Secret
+owned by its own ExternalSecret, never from a hand-maintained Secret: an Owner
+ExternalSecret over an existing Secret deletes every key it does not produce.
+The consumer repositories add those ExternalSecrets. Until one exists, intake
+still merges the pair into Vault and reports `external_secret_refreshed: false`;
+that is expected, and ESO reads the pair on its first sync.
+
+An existing client is matched by name and its secret is **rotated**, because a
+stored secret is never retrievable. `--grace-hours 0` retires the previous secret
+at once (see [`--grace-hours`](../cli/commands/secrets.md#enclii-secrets-provision-oidc));
+use it only when no live consumer depends on that secret.
+`pravara-fabrication-prep` needs Janua to reserve audience `fabrication-prep-api`
+and scope `fabrication-prep:slice` first; until then Janua refuses its creation and
+the loop stops at it.
+
+Owner sequence, after the registry change is deployed (switchyard-api digest bump)
+and from an up-to-date checkout:
+
+```bash
+cd ~/labspace/enclii && git pull --ff-only
+cd ~/labspace/enclii && ASSERT_PATH=pravara-mes bash scripts/apply-switchyard-vault-policy-remote.sh < ~/.config/madfam/vault-admin.token
+# expect: APPLIED_OK_asserted_path_present
+make -C ~/labspace/enclii install-cli CLI_INSTALL_DIR=$HOME/.local/bin
+enclii login --profile admin   # only if the admin session expired
+for p in pravara-yantra4d-step-reader yantra4d-asset-shells-publisher fashion-cabinet-asset-shells-publisher zavlo-cfdi-emitter routecraft-billing-relay forj-pravara-intake-madfam-ecosystem cotiza-pravara-intake-madfam-ecosystem pravara-asset-shells-publisher-madfam-ecosystem pravara-fabrication-prep; do enclii secrets provision oidc --profile admin --platform "$p" --grace-hours 0 --json --reason "digital-twins machine edges" || break; done
+```
+
+The JSON carries no secret: `janua_client_id`, `created`, `rotated_secret`,
+`grace_period_hours`, `old_secrets_expire_at`, `intake_id` and the key names. Then
+pin each printed `jnc_…` id as `janua_client.client_id` in
+`config/ecosystem-oidc-provision.yaml` (both copies) so later runs reconcile the
+pinned client.
 
 `symbiosis-hcm` is the **producer** of the absence feed; `crea-map` cross-reads
 `map_absence_feed_key` and consumes it as `HCM_FEED_API_KEY`. One copy at the
