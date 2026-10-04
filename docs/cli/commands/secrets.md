@@ -274,7 +274,7 @@ Chat-safe credential handoff into Vault — values never appear in agent transcr
 enclii secrets intake targets
 enclii secrets intake submit ceq/vast-api-key --reason "orchestrator bootstrap"
 enclii secrets intake submit ceq/vast-api-key --value-file ~/.config/madfam/vast.key --reason "orchestrator bootstrap"
-enclii secrets intake submit crea-map/internal-api-key --generate internal_api_key --reason "MAP smoke gate"
+enclii secrets intake submit <client-portal>/internal-api-key --generate internal_api_key --reason "client portal smoke gate"
 enclii secrets intake status int_1234567890
 ```
 
@@ -302,8 +302,8 @@ For shared internal keys nobody should ever read, skip generating and pasting a
 value: name the key and Switchyard mints it.
 
 ```bash
-enclii secrets intake submit crea-map/internal-api-key \
-  --generate internal_api_key --reason "MAP smoke gate bootstrap"
+enclii secrets intake submit <client-portal>/internal-api-key \
+  --generate internal_api_key --reason "client portal smoke gate bootstrap"
 ```
 
 - 32 bytes of `crypto/rand`, unpadded base64url (URL- and env-var-safe).
@@ -391,9 +391,9 @@ Rebuild CLI after pulling: `cd packages/cli && go build -o ~/.local/bin/enclii .
 Alias of [`enclii ops secrets provision-kalya-feed`](./ops.md#ops-secrets-provision-kalya-feed): mints a kalya standing-feed token server-side and files it into its consumers' Vault paths. The token is never returned or printed.
 
 ```bash
-enclii secrets provision kalya-feed --tenant crea --consumers crea-map,nauta
-enclii secrets provision kalya-feed --tenant crea --consumers crea-map,nauta \
-  --apply --reason "wire the crea standing feed"
+enclii secrets provision kalya-feed --tenant <slug> --consumers <client-portal>,nauta
+enclii secrets provision kalya-feed --tenant <slug> --consumers <client-portal>,nauta \
+  --apply --reason "wire the tenant's standing feed"
 ```
 
 It takes `--tenant` (required), `--consumers`, `--rotate`, `--kalya-origin`, and the shared operation-contract flags (`--apply`, `--reason`, `--idempotency-key`, `--json`, `--namespace`, `--project`, `--service`).

@@ -457,16 +457,16 @@ All GA work is tracked in [COMMERCIAL_GA_MASTER_PLAN.md](docs/production/COMMERC
 
 ## Cross-Ecosystem Quote Flow Verification (May-June 2026)
 
-Enclii is the default control plane for operating and verifying the Tablaco quote flow. Direct `kubectl`, Helm, or container access is reserved for confirmed incidents or break-glass recovery.
+Enclii is the default control plane for operating and verifying the client quote flow. Direct `kubectl`, Helm, or container access is reserved for confirmed incidents or break-glass recovery.
 
 ### Scope
 
 - [x] Add a quote-flow doctor that checks Selva worker readiness, Yantra4D project availability, Cotiza quote import readiness, ForgeSight verified pricing readiness, and auth/token presence.
-- [ ] Add an authenticated smoke command for the Tablaco quote flow once safe test credentials are available.
+- [ ] Add an authenticated smoke command for the client quote flow once safe test credentials are available.
 - [ ] Surface ExternalSecret health for ForgeSight and other quote-path dependencies.
 - [ ] Report whether the flow is client-ready, review-only, blocked by auth, blocked by missing market data, or blocked by unhealthy infrastructure.
 - [ ] Store the runbook in ecosystem docs with exact Enclii commands and emergency escalation rules.
 
 ### Acceptance Gate
 
-`enclii quote-flow verify --project tablaco --agent selva --require-market-verified` or the equivalent Enclii operation must produce a reproducible pass/fail report without requiring direct production container access.
+`enclii quote-flow verify --project <project> --agent selva --require-market-verified` or the equivalent Enclii operation must produce a reproducible pass/fail report without requiring direct production container access.

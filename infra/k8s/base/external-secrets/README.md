@@ -73,7 +73,7 @@ Vault (self-hosted) ← K8s ServiceAccount auth ← ESO ← ExternalSecret → K
 
 ## Cross-app secret reads (autoprovision one app's secret into another)
 
-When an app needs a secret **another app already holds** — e.g. crea-map needs
+When an app needs a secret **another app already holds** — e.g. a client portal needs
 janua's internal service key to send notification email — do **not** copy the
 value or run a Vault write. Reference the source app's Vault path directly in the
 **consumer's** ExternalSecret:

@@ -15,7 +15,7 @@
 ## Summary
 
 Standing up a new client today is a multi-hour, multi-repo, multi-credential ritual
-performed by hand. For Crea Tu Mundo (CTM) it spanned five systems, three credential
+performed by hand. For the first vCTO client it spanned five systems, three credential
 domains, at least one UUID copy-pasted between two scripts, and one raw SQL insert.
 Every step is individually documented; none of them are declared together, and nothing
 checks that the parts agree.
@@ -27,7 +27,7 @@ tenant — and `enclii tenant apply` reconciles it in a fixed, idempotent order.
 This document specifies the manifest, the orchestration order, the idempotency
 contract, and the failure doctrine. It names the two seams that do not exist yet and
 must be built in sibling platforms before execution can land. Appendix A records what
-we actually ran by hand for CTM; that trail is the requirements document, and every
+we actually ran by hand for that client; that trail is the requirements document, and every
 schema field below traces back to a line in it.
 
 ---
@@ -36,7 +36,7 @@ schema field below traces back to a line in it.
 
 ### What "a client" actually consists of
 
-The CTM onboarding is the only complete instance we have. Reconstructed from the trail
+That first client onboarding is the only complete instance we have. Reconstructed from the trail
 in Appendix A, a client is:
 
 1. **A Janua organization** — the identity root. Its slug is the client's canonical
@@ -102,10 +102,10 @@ metadata:
   # org slug, the Nauta workspace slug, the Kalya tenant slug, and the Enclii
   # team slug are all this value. 63 chars max — Nauta's VarChar(63) is the
   # binding floor (Kalya allows 120, Janua 100).
-  name: crea
-  displayName: Crea Tu Mundo Autismo
+  name: acme
+  displayName: Acme Ejemplo
   # Free-text; recorded in the plan output and in audit, never parsed.
-  description: Cliente vCTO — autismo, CDMX
+  description: Cliente vCTO (ejemplo)
 
 spec:
   # ---------------------------------------------------------------------------
@@ -113,8 +113,8 @@ spec:
   # ---------------------------------------------------------------------------
   janua:
     org:
-      slug: crea                    # defaults to metadata.name
-      name: Crea Tu Mundo Autismo   # defaults to metadata.displayName
+      slug: acme                    # defaults to metadata.name
+      name: Acme Ejemplo            # defaults to metadata.displayName
       # The owner MUST already exist as a Janua user. Janua resolves the owner
       # before any write specifically so a bad owner cannot orphan a half-made
       # org; we surface the same failure at plan time where we can.
@@ -131,22 +131,22 @@ spec:
     # A dedicated staging client is the norm, not an exception: adding a staging
     # redirect to the production client is how a staging login bounces into prod.
     oauthClients:
-      - logicalKey: crea-map
-        audience: crea-map
-        redirectURIs: ["https://crea-map.example.mx/api/auth/callback"]
-      - logicalKey: crea-map-staging
-        audience: crea-map
-        redirectURIs: ["https://staging-map.example.mx/api/auth/callback"]
+      - logicalKey: acme-portal
+        audience: acme-portal
+        redirectURIs: ["https://acme-portal.example.mx/api/auth/callback"]
+      - logicalKey: acme-portal-staging
+        audience: acme-portal
+        redirectURIs: ["https://staging-portal.example.mx/api/auth/callback"]
 
   # ---------------------------------------------------------------------------
   # RUNTIME — Enclii. One project; one service per app per environment.
   # ---------------------------------------------------------------------------
-  project: crea                     # Enclii project + team slug
-  namespace: crea                   # defaults to project
+  project: acme                     # Enclii project + team slug
+  namespace: acme                   # defaults to project
 
   apps:
-    - name: crea-map
-      repo: madfam-org/crea-map
+    - name: acme-portal
+      repo: madfam-org/acme-portal
       # The app's own enclii.yaml stays the authority for build/runtime/probes.
       # This manifest references it; it does NOT restate it. Two sources of truth
       # for a port number is a bug generator.
@@ -158,22 +158,22 @@ spec:
           domains:
             # FLAT LABELS ONLY under a Cloudflare Universal SSL apex: one label
             # below the apex is covered, nested is not. Validated (§4).
-            - host: crea-map.example.mx
+            - host: acme-portal.example.mx
               tls: true
           envFrom:
-            - secret: crea-map-secrets
+            - secret: acme-portal-secrets
           env:
-            APP_ORIGIN: https://crea-map.example.mx
-            JANUA_AUDIENCE: crea-map
-            JANUA_CLIENT_ID: crea-map
+            APP_ORIGIN: https://acme-portal.example.mx
+            JANUA_AUDIENCE: acme-portal
+            JANUA_CLIENT_ID: acme-portal
         - name: staging
           autoDeploy: false
           domains:
-            - host: staging-map.example.mx
+            - host: staging-portal.example.mx
               tls: true
           env:
-            APP_ORIGIN: https://staging-map.example.mx
-            JANUA_CLIENT_ID: crea-map-staging
+            APP_ORIGIN: https://staging-portal.example.mx
+            JANUA_CLIENT_ID: acme-portal-staging
             APP_ENVIRONMENT_LABEL: STAGING
 
   # ---------------------------------------------------------------------------
@@ -184,19 +184,19 @@ spec:
   # cluster-wide while direct still works).
   # ---------------------------------------------------------------------------
   db:
-    name: crea_map
+    name: acme_portal
     extensions: [pgcrypto]
     rls: true                       # advisory: recorded, asserted, never applied here
     clones:
-      - name: crea_map_staging
-        from: crea_map
+      - name: acme_portal_staging
+        from: acme_portal
 
   # Secret KEYS only. Values never appear in a manifest and never appear in plan
   # output. Provisioned out-of-band via `enclii admin provision secrets`; this
   # block declares the CONTRACT so a missing key is a loud plan failure rather
   # than a 3am discovery.
   secrets:
-    - name: crea-map-secrets
+    - name: acme-portal-secrets
       keys:
         - DATABASE_URL
         - DIRECT_DATABASE_URL
@@ -206,7 +206,7 @@ spec:
         - R2_SECRET_ACCESS_KEY
 
   buckets:
-    - name: crea-map-uploads
+    - name: acme-portal-uploads
       provider: r2
 
   # ---------------------------------------------------------------------------
@@ -219,14 +219,14 @@ spec:
       currency: MXN
       timezone: America/Mexico_City
       hostnames:
-        - host: crea.example.mx
+        - host: acme.example.mx
           primary: true
 
   kalya:
-    # A REFERENCE, not an inlined copy. The CTM tenant file is ~32KB of clinical
-    # scheduling detail (22 hosts, 31 availability rules, 61 blocks) that belongs
+    # A REFERENCE, not an inlined copy. A real tenant file is tens of KB of
+    # scheduling detail (hosts, availability rules, blocks) that belongs
     # under Kalya's own schema and review. Inlining it would fork the schema.
-    tenantFile: ../kalya/prisma/provision/ctm-tenant.json
+    tenantFile: ../kalya/prisma/provision/acme-tenant.json
     # Kalya's Tenant.id IS the Janua org UUID and is IMMUTABLE after creation.
     # We therefore never write it into the manifest by hand: `tenant apply`
     # resolves it from step 1 and passes it through. Declaring it here would be a
@@ -430,7 +430,7 @@ existing tenant — they operate *within* a tenant and cannot create one.
 The script itself is the best of the three: genuinely convergent, keyed on natural keys,
 soft-ends resource blocks rather than deleting them, and never touches bookings.
 **The logic is not the gap; the interface is.** `enclii tenant apply` would have to hold
-Kalya's `DATABASE_URL` to invoke it, which puts a client's clinical database credential
+Kalya's `DATABASE_URL` to invoke it, which puts a client's sensitive database credential
 inside the platform CLI's blast radius for no benefit.
 
 **Ask:** an internal-key-authed `POST /api/v1/internal/tenants` in Kalya that accepts
@@ -532,14 +532,14 @@ single-app onboarding.
 
 ---
 
-## Appendix A — the CTM hand-trail (what we actually ran)
+## Appendix A — the first client's hand-trail (what we actually ran)
 
-The provisioning of Crea Tu Mundo across 2026-08-16 → 2026-08-30, reconstructed from the
+The provisioning of the first vCTO client across 2026-08-16 → 2026-08-30, reconstructed from the
 repos. Commands are sanitized: no tokens, no secret values, no credential-bearing URLs,
-and client-specific hostnames are shown as `example.mx`. This is the requirements
+and client-specific names are shown as placeholders (`<slug>`, `<app>`, `<db>`). This is the requirements
 document — every schema field in §3 traces to a line here.
 
-**1. Janua organization.** Created for the org slug `crea`. The endpoint
+**1. Janua organization.** Created for the client's org slug. The endpoint
 (`POST /api/v1/admin/organizations`) requires a platform-admin user JWT; where that was
 not to hand the row was inserted directly against the Janua database, slug-guarded. Both
 paths produce the same thing that matters downstream: **the org UUID**. Every later step
@@ -548,43 +548,43 @@ consumes it.
 ```
 # The supported path (needs a platform-admin bearer token):
 POST https://<janua-host>/api/v1/admin/organizations
-  { "name": "Crea Tu Mundo Autismo", "slug": "crea", "owner_email": "<owner>" }
+  { "name": "<display name>", "slug": "<slug>", "owner_email": "<owner>" }
 # The workaround actually used at the time: a slug-guarded INSERT into
 # `organizations`, then reading back the generated UUID.
 ```
 
-**2. Janua OAuth clients.** Registered per app-environment. `crea-map` and
-`crea-map-staging` are separate clients precisely so the staging redirect URI never
+**2. Janua OAuth clients.** Registered per app-environment. `<app>` and
+`<app>-staging` are separate clients precisely so the staging redirect URI never
 touches the production client's allow-list.
 
 ```
 node scripts/provision-janua-client.mjs            # in the kalya repo
-# → prints {"organization_id":"<uuid>","org_slug":"crea","client_id":"...", ...}
+# → prints {"organization_id":"<uuid>","org_slug":"<slug>","client_id":"...", ...}
 # The client_secret is displayed once. It was never committed.
 ```
 
 **3. Enclii onboarding, per app.** The single-app pipeline this RFC generalizes.
 
 ```
-enclii onboard --repo madfam-org/crea-map \
-  --project crea-map \
-  --db-name crea_map \
+enclii onboard --repo madfam-org/<app> \
+  --project <app> \
+  --db-name <db> \
   --db-password "$(openssl rand -base64 32)" \
   --dry-run                                        # inspected first, every time
-enclii onboard --repo madfam-org/crea-map --project crea-map --db-name crea_map
+enclii onboard --repo madfam-org/<app> --project <app> --db-name <db>
 ```
 
 **4. Secrets.** Values assembled out-of-band, never committed, provisioned by file.
 
 ```
 enclii admin provision secrets \
-  --namespace crea-map --secret-name crea-map-secrets \
-  --secrets-file ./crea-map.env --force
+  --namespace <app> --secret-name <app>-secrets \
+  --secrets-file ./<app>.env --force
 # Keys: DATABASE_URL, DIRECT_DATABASE_URL, JANUA_CLIENT_SECRET,
 #       JANUA_INTERNAL_API_KEY, R2_ACCESS_KEY_ID, R2_SECRET_ACCESS_KEY
 ```
 
-**5. Domains.** Declared in `crea-map/enclii.yaml` under `spec.domains` and captured by
+**5. Domains.** Declared in the app's `enclii.yaml` under `spec.domains` and captured by
 onboarding — flat labels only, one level below the apex, so Universal SSL covers them.
 `APP_ORIGIN` is pinned per environment: without it, a tunnelled pod builds its
 `redirect_uri` from its internal origin and login breaks entirely (prod incident,
@@ -596,23 +596,23 @@ to the static pgbouncer userlist, and a botched hand-edit of that userlist is th
 2026-08-24 pooled-auth outage class.
 
 ```
-scripts/ensayo-twin/clone-db.sh                    # in the crea-map repo
+# the QA-twin database clone script, in the app's own repo
 ```
 
-**7. Enclii team (tenant) + re-parenting.** Migration 038 (enclii#474) inserts the `crea`
+**7. Enclii team (tenant) + re-parenting.** Migration 038 (enclii#474) inserts the client's
 team with `ON CONFLICT (slug) DO NOTHING`, re-parents both projects guarded by
 `team_id IS NULL`, and backfills the master admin as owner with a `NOT EXISTS` guard —
 the idempotency shape this RFC's §4 generalizes.
 
-**8. Nauta workspace.** Created with `slug = crea`, `januaOrganizationId` = the step-1
+**8. Nauta workspace.** Created with `slug = <slug>`, `januaOrganizationId` = the step-1
 UUID, `tier = FRACTIONAL_CTO`, plus its primary hostname.
 
 **9. Kalya tenant.** The step-1 org UUID was **hand-copied** into `tenant.id` in
-`prisma/provision/ctm-tenant.json`, then:
+the client's tenant file under `prisma/provision/`, then:
 
 ```
-npm run provision:tenant -- --config prisma/provision/ctm-tenant.json --dry-run
-npm run provision:tenant -- --config prisma/provision/ctm-tenant.json
+npm run provision:tenant -- --config prisma/provision/<slug>-tenant.json --dry-run
+npm run provision:tenant -- --config prisma/provision/<slug>-tenant.json
 ```
 
 That hand-copied UUID between step 1 and step 9 — immutable afterwards, and a hard throw

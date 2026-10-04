@@ -106,10 +106,10 @@ enclii ops domains reconcile nauta-web
 
 # Provision everything the manifest declares
 enclii ops domains reconcile nauta-web \
-  --apply --reason "crea-erp.madfam.io declared but never provisioned"
+  --apply --reason "<client>-erp.madfam.io declared but never provisioned"
 
 # Provision ONE hostname, leaving every other declared hostname untouched
-enclii ops domains reconcile nauta-web --domain crea-erp.madfam.io \
+enclii ops domains reconcile nauta-web --domain <client>-erp.madfam.io \
   --apply --reason "route the declared ERP host"
 
 # Read enclii.yaml at a specific commit instead of the default branch head
@@ -163,17 +163,18 @@ Mints a kalya standing-feed token and files it into its consumers' Vault paths,
 entirely server-side.
 
 ```bash
-enclii ops secrets provision-kalya-feed --tenant crea --consumers crea-map,nauta
-enclii ops secrets provision-kalya-feed --tenant crea --consumers crea-map,nauta \
-  --apply --reason "wire the crea standing feed"
+enclii ops secrets provision-kalya-feed --tenant <slug> --consumers <client-portal>,nauta
+enclii ops secrets provision-kalya-feed --tenant <slug> --consumers <client-portal>,nauta \
+  --apply --reason "wire the tenant's standing feed"
 ```
 
 Switchyard reads kalya's internal API key from `secret/kalya`, asks kalya to
-mint the token, and writes:
+mint the token, and writes (consumer ids and Vault paths are registered in
+`kalyaFeedConsumers`, `apps/switchyard-api/internal/api/kalya_feed_provisioner.go`):
 
 | Consumer | Vault path | Properties |
 |----------|-----------|------------|
-| `crea-map` | `secret/crea-map` | `kalya_occupancy_feed_url`, `kalya_capacity_feed_url` |
+| `<client-portal>` | `secret/<client-portal>` | `kalya_occupancy_feed_url`, `kalya_capacity_feed_url` |
 | `nauta` | `secret/nauta` | `kalya_feed_tokens` (merged, so other tenants survive) |
 
 The token is never returned by the API, never logged, and never reaches the
@@ -183,8 +184,8 @@ to replace a live token.
 
 | Flag | Description |
 |------|-------------|
-| `--tenant` | kalya tenant slug (for example `crea`); required |
-| `--consumers` | Consumers to provision: `crea-map`, `nauta` (comma-separated) |
+| `--tenant` | kalya tenant slug; required |
+| `--consumers` | Consumers to provision: a registered client portal, `nauta` (comma-separated) |
 | `--rotate` | Mint a replacement token even when the consumers are already provisioned |
 | `--kalya-origin` | kalya origin (default: kalya's verified service domain, else `https://kalya.app`) |
 

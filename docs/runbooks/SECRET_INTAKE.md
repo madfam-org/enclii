@@ -84,9 +84,9 @@ ESO sources: `enclii-secrets`, `janua-secrets`, `madfam-site-secrets`, `phynd-cr
 | `enclii/internal-api-key` | `secret/enclii` | `INTERNAL_API_KEY` |
 | `coupler/janua-service-token` | `secret/coupler` | `JANUA_SERVICE_TOKEN` |
 | `janua/internal-api-key` | `secret/janua` | `internal_api_key` |
-| `crea-map/internal-api-key` | `secret/crea-map` | `internal_api_key` |
-| `crea-map/kalya-feeds` | `secret/crea-map` | `kalya_occupancy_feed_url`, `kalya_capacity_feed_url` |
-| `symbiosis-hcm/map-absence-feed` | `secret/symbiosis-hcm` | `map_absence_feed_url`, `map_absence_feed_key` |
+| `<client-portal>/internal-api-key` | `secret/<client-portal>` | `internal_api_key` |
+| `<client-portal>/kalya-feeds` | `secret/<client-portal>` | `kalya_occupancy_feed_url`, `kalya_capacity_feed_url` |
+| `symbiosis-hcm/<portal>-absence-feed` | `secret/symbiosis-hcm` | `<portal>_absence_feed_url`, `<portal>_absence_feed_key` |
 | `nauta/kalya-feed-tokens` | `secret/nauta` | `kalya_feed_tokens` |
 | `nauta/symbiosis-hcm-token` | `secret/nauta` | `symbiosis_hcm_token` |
 | `angelia/courier-producer-keys` | `secret/angelia` | `courier_producer_key_alarms`, `courier_producer_key_enclii_ops`, `courier_producer_key_tulana`, `courier_producer_key_madfam_site` |
@@ -301,8 +301,8 @@ pin each printed `jnc_…` id as `janua_client.client_id` in
 `config/ecosystem-oidc-provision.yaml` (both copies) so later runs reconcile the
 pinned client.
 
-`symbiosis-hcm` is the **producer** of the absence feed; `crea-map` cross-reads
-`map_absence_feed_key` and consumes it as `HCM_FEED_API_KEY`. One copy at the
+`symbiosis-hcm` is the **producer** of the absence feed; the client portal cross-reads
+the feed key and consumes it as `HCM_FEED_API_KEY`. One copy at the
 producer's path, read by both — not two copies that drift on rotation.
 
 ### Voxa → Selva inference edge (2026-10-04)
@@ -387,7 +387,7 @@ a path that was never added. See
 Not every policy path has a target. `secret/kalya` is **policy-only**: nothing
 intakes it, but `enclii secrets provision kalya-feed` reads
 `secret/kalya:internal_api_key` to authorize minting the feed token before
-writing `secret/crea-map` and `secret/nauta`. The parity check scans
+writing the client portal's Vault path and `secret/nauta`. The parity check scans
 switchyard-api Go sources too, so a provisioner's Vault literal cannot drift out
 of the policy either.
 
@@ -398,9 +398,9 @@ service-to-service token — do not generate it yourself and paste it. Ask
 Switchyard to mint it:
 
 ```bash
-enclii secrets intake submit crea-map/internal-api-key \
+enclii secrets intake submit <client-portal>/internal-api-key \
   --generate internal_api_key \
-  --reason "MAP smoke gate bootstrap"
+  --reason "client portal smoke gate bootstrap"
 ```
 
 The value is drawn from `crypto/rand` inside Switchyard (32 bytes, unpadded
@@ -416,10 +416,10 @@ Mix generated and supplied keys on one target when only some values are secrets
 nobody should see:
 
 ```bash
-enclii secrets intake submit symbiosis-hcm/map-absence-feed \
-  --generate map_absence_feed_key \
+enclii secrets intake submit symbiosis-hcm/<portal>-absence-feed \
+  --generate <portal>_absence_feed_key \
   --reason "HCM absence feed bootstrap"
-# prompts (masked) for map_absence_feed_url only
+# prompts (masked) for <portal>_absence_feed_url only
 ```
 
 A key cannot be both generated and supplied — that is a `400`, not a silent

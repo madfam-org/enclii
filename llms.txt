@@ -92,9 +92,9 @@ Compact LLM context index for this repository.
   **excluded from ArgoCD**: the `external-secrets-config` Application syncs a
   five-entry `directory.include` allowlist, so a merged change to any of the 19
   per-app manifests is a **silent no-op** — no OutOfSync, no drift alert, no CI
-  failure. #535 (a `CTM_RESEND_API_KEY` key on `janua-secrets.yaml`) merged
+  failure. #535 (a tenant Resend key on `janua-secrets.yaml`) merged
   green and never reached the cluster; it was applied by a raw JSON patch on the
-  live object. #634 (`resend-webhook-secret-ctm`, 2026-09-26) repeated it. The
+  live object. #634 (a tenant webhook signing secret, 2026-09-26) repeated it. The
   directory is also non-recursive, and the live objects were bootstrapped by
   `scripts/cluster-ops-deploy.sh` (client-side `kubectl apply`). Issue #539
   tracks the sanctioned path (`enclii secrets es-apply`, or
@@ -133,8 +133,8 @@ Compact LLM context index for this repository.
   `scripts/operator/npm-registry-admin-password-rotate.sh`. Doc:
   `docs/infrastructure/npm-registry.md`.
 - Cloudflare **Redirect Rules** have no Enclii op (issue #538). The 2026-09-07
-  brand-migration 301s (`crea-map.madfam.io` -> `map.creatumundo.mx`,
-  `crea-erp` -> `erp`) were created in the dashboard as documented break-glass.
+  brand-migration 301s (a client's `madfam.io` portal hosts -> the same hosts
+  on the client's own domain) were created in the dashboard as documented break-glass.
   The source host must keep a **proxied** DNS record or the rule never fires.
   Break-glass procedure: `docs/runbooks/DOMAIN_AND_EMAIL_DNS_ONBOARDING.md`.
 - Next.js images (2026-09-30): every Next app is on **16.3.8**

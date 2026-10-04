@@ -109,7 +109,7 @@ done
 ## 5. Cut over
 
 Point DNS at the new deployment (your registrar — for MADFAM clients the domain
-is already theirs, e.g. `creatumundo.mx` on their own Porkbun account), and
+is already theirs, e.g. a client apex on the client's own Porkbun account), and
 retire the source once you've verified the target end to end.
 
 ## If restoring back onto enclii (renew / self-manage path)

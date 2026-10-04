@@ -1,5 +1,11 @@
 # Timetable and provider remediation
 
+<!-- Boundary checkpoint (2026-10-04, platform ops): public-facing remediation
+runbook. Public-safe summary: the Enclii-first steps that cleared the jobs API and
+Porkbun adapter blockers; client names are omitted. Private sink for omitted
+operational detail: internal-devops. Policy: docs/PUBLIC_REPO_BOUNDARY.md /
+repo-boundary-contract. -->
+
 Last updated: 2026-05-14
 
 ## Why this exists
@@ -35,7 +41,7 @@ Migration 027 now creates the missing normalized tables idempotently.
    rows, not HTTP 500.
 3. Trigger the ForgeSight one-off ingestion job through Enclii.
 4. Confirm `FDM - PLA / CDMX / 30d` benchmarks become non-empty before allowing
-   client-ready Tablaco quote generation.
+   client-ready quote generation.
 5. Configure the Porkbun provider adapter or transfer `phynd.app` DNS authority
    into Cloudflare/Enclii.
 6. Only after `phynd.app` is live should `crm.madfam.io` be treated as the

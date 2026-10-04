@@ -100,7 +100,7 @@ silent-session-reuse behavior. Signing out uses Janua's RP-Initiated Logout
 cookies cleared — see [Logout](#logout).
 
 > **Ecosystem directive:** every MADFAM platform adopts this «Switch account /
-> Sign in as someone else» sign-in model, **except Crea Tu Mundo MAP**.
+> Sign in as someone else» sign-in model, **except one vCTO client's portal** (single-account by design).
 
 ### CLI sign-in (account switching)
 

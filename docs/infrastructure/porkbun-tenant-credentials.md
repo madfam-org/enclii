@@ -21,7 +21,7 @@ answers **`INVALID_DOMAIN`**, which reads exactly like a typo. So "operate the
 client's registrar through the platform API" was never a permission to be
 granted — it was an impossible call.
 
-`creatumundo.mx` is the live case. It was transferred into Crea Tu Mundo's own
+A vCTO client's apex is the live case. It was transferred into the client's own
 Porkbun account on 2026-09-05. Enclii has already created its Cloudflare zone,
 which stays `pending` until the nameservers move at the registrar — and that
 move is precisely the call the global key cannot make.
@@ -47,7 +47,7 @@ A resolved tenant then splits two ways:
 
 Two rules make this safe:
 
-**Explicit scope beats domain inference.** An operator who typed `--tenant crea`
+**Explicit scope beats domain inference.** An operator who typed `--tenant <slug>`
 and silently reached MADFAM's account would be told the domain does not exist,
 with nothing on screen explaining why.
 
@@ -92,11 +92,11 @@ should mount a client's registrar keys into a pod's environment.
 
 :::warning The Vault policy is not applied by merging
 
-`secret/crea` carries **read** capability as well as write, because unlike every
+`secret/<slug>` carries **read** capability as well as write, because unlike every
 other intake path Switchyard reads it back on every registrar operation. CI's
 intake/policy parity gate proves the block exists in git; it cannot prove the
 policy was applied to the running Vault. Until an operator re-applies it, the
-first `--tenant crea` call 403s and surfaces as "credentials missing" —
+first `--tenant <slug>` call 403s and surfaces as "credentials missing" —
 indistinguishable from never having run the intake.
 
 The helper below takes the admin token **on stdin, never in argv**, so it never
@@ -107,7 +107,7 @@ bash scripts/apply-switchyard-vault-policy-remote.sh   # prompts silently
 ```
 
 It re-reads the live policy afterwards and prints
-`APPLIED_OK_asserted_path_present` when `secret/data/crea` is really there. Set
+`APPLIED_OK_asserted_path_present` when `secret/data/<slug>` is really there. Set
 `ASSERT_PATH=<path>` to prove a different one.
 
 Directly, if you already have a shell with Vault reachable:
@@ -118,18 +118,19 @@ VAULT_TOKEN=<admin> POLICY_ONLY=1 bash scripts/provision-switchyard-vault-writer
 
 :::
 
-The binding for CTM:
+The shape of a tenant-owned registrar binding (the live entries are in
+`apps/switchyard-api/internal/ecosystem/tenants.json`):
 
 ```json
 {
-  "id": "crea",
-  "displayName": "Crea Tu Mundo",
-  "domainSuffixes": ["creatumundo.mx"],
-  "projects": ["crea-map", "nauta"],
+  "id": "<slug>",
+  "displayName": "<client display name>",
+  "domainSuffixes": ["<client-domain>"],
+  "projects": ["<client-portal>", "nauta"],
   "registrar": {
     "provider": "porkbun",
     "account": "tenant",
-    "vaultPath": "secret/crea",
+    "vaultPath": "secret/<slug>",
     "apiKeyProperty": "porkbun_api_key",
     "secretKeyProperty": "porkbun_secret_key"
   }
@@ -147,16 +148,16 @@ straight to Vault through Enclii, and verifies them against the live Porkbun
 API. No agent, log, shell history, or terminal scrollback ever holds a value.
 
 ```bash
-ENCLII_TENANT=crea VERIFY_DOMAIN=creatumundo.mx \
+ENCLII_TENANT=<slug> VERIFY_DOMAIN=<client-domain> \
   scripts/operator/porkbun-tenant-credentials.sh
 ```
 
 Equivalent by hand:
 
 ```bash
-enclii secrets intake submit crea/porkbun-registrar \
-  --reason "load CTM Porkbun registrar credentials"
-enclii providers porkbun ping --tenant crea
+enclii secrets intake submit <slug>/porkbun-registrar \
+  --reason "load the tenant's Porkbun registrar credentials"
+enclii providers porkbun ping --tenant <slug>
 ```
 
 ### The one manual step that stays manual
@@ -170,25 +171,25 @@ reports it identically to a bad key. Nothing in Enclii can flip this toggle.
 
 Two commands tell the failures apart:
 
-- `enclii providers porkbun ping --tenant crea` — validates the key pair alone,
+- `enclii providers porkbun ping --tenant <slug>` — validates the key pair alone,
   naming no domain. Fails ⇒ wrong or mistyped key.
-- `enclii providers porkbun renewals --tenant crea` — lists each domain with
+- `enclii providers porkbun renewals --tenant <slug>` — lists each domain with
   `apiAccess`. `0` ⇒ the toggle is off.
 
-## CLI usage for CTM
+## CLI usage for a tenant-owned account
 
 Read-only, safe at any time:
 
 ```bash
-enclii providers porkbun credentials --tenant crea   # which account, is it usable
-enclii providers porkbun ping        --tenant crea   # validate the key pair live
-enclii providers porkbun domains     --tenant crea   # what the account holds
-enclii providers porkbun renewals    --tenant crea   # expiry, autoRenew, apiAccess
-enclii providers porkbun nameservers creatumundo.mx --tenant crea
-enclii providers porkbun dns         creatumundo.mx --tenant crea
+enclii providers porkbun credentials --tenant <slug>   # which account, is it usable
+enclii providers porkbun ping        --tenant <slug>   # validate the key pair live
+enclii providers porkbun domains     --tenant <slug>   # what the account holds
+enclii providers porkbun renewals    --tenant <slug>   # expiry, autoRenew, apiAccess
+enclii providers porkbun nameservers <client-domain> --tenant <slug>
+enclii providers porkbun dns         <client-domain> --tenant <slug>
 ```
 
-`--project crea-map` and `--project nauta` resolve to the same account, so an
+`--project <client-portal>` and `--project nauta` resolve to the same account, so an
 operator working in a project context does not have to learn a second
 vocabulary.
 
@@ -196,24 +197,24 @@ Mutating verbs are dry-run by default; `--apply` requires `--reason`:
 
 ```bash
 # Dry run first — always.
-enclii providers porkbun nameservers-apply creatumundo.mx --tenant crea \
+enclii providers porkbun nameservers-apply <client-domain> --tenant <slug> \
   --nameservers <ns1>,<ns2>
 
-enclii providers porkbun nameservers-apply creatumundo.mx --tenant crea \
+enclii providers porkbun nameservers-apply <client-domain> --tenant <slug> \
   --nameservers <ns1>,<ns2> \
-  --apply --reason "delegate creatumundo.mx to its Enclii-managed Cloudflare zone"
+  --apply --reason "delegate <client-domain> to its Enclii-managed Cloudflare zone"
 ```
 
 ```bash
-enclii providers porkbun auto-renew-apply creatumundo.mx --tenant crea --auto-renew on
-enclii providers porkbun auto-renew-apply creatumundo.mx --tenant crea --auto-renew on \
+enclii providers porkbun auto-renew-apply <client-domain> --tenant <slug> --auto-renew on
+enclii providers porkbun auto-renew-apply <client-domain> --tenant <slug> --auto-renew on \
   --apply --reason "protect the client apex from lapsing"
 ```
 
 Every response carries a `credentialScope` block naming the tenant, the account,
 how the scope was decided, and the Vault path consulted — never a value.
 
-## Verified end-to-end recipe (tenant `crea`, 2026-09-07)
+## Verified end-to-end recipe (first tenant-owned account, 2026-09-07)
 
 This ran green against the live estate. Run the three steps in order — each one
 fails in a way that looks like the previous step's problem if it is skipped.
@@ -224,14 +225,14 @@ fails in a way that looks like the previous step's problem if it is skipped.
 bash scripts/apply-switchyard-vault-policy-remote.sh
 #    → expect: APPLIED_OK_asserted_path_present
 
-# 2. Load the tenant's Porkbun key pair into secret/crea, then verify it live.
-ENCLII_TENANT=crea VERIFY_DOMAIN=creatumundo.mx \
+# 2. Load the tenant's Porkbun key pair into secret/<slug>, then verify it live.
+ENCLII_TENANT=<slug> VERIFY_DOMAIN=<client-domain> \
   bash scripts/operator/porkbun-tenant-credentials.sh
 
 # 3. Confirm through the CLI.
-enclii providers porkbun credentials --tenant crea   # which account, is it usable
-enclii providers porkbun ping        --tenant crea   # validate the key pair live
-enclii providers porkbun domains creatumundo.mx --tenant crea
+enclii providers porkbun credentials --tenant <slug>   # which account, is it usable
+enclii providers porkbun ping        --tenant <slug>   # validate the key pair live
+enclii providers porkbun domains <client-domain> --tenant <slug>
 ```
 
 ### CLI gotchas that cost time on the first run

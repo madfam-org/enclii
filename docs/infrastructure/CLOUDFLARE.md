@@ -234,7 +234,7 @@ spec:
   domains:
     - name: api.madfam.io        # absent → auto-detect (zone exists → zone path)
       environment: production
-    - name: cto.creatumundo.mx   # client-owned: custom hostname
+    - name: cto.client.example   # client-owned: custom hostname
       environment: production
       external: true
     - name: legacy.example.com   # pin the zone+CNAME path explicitly

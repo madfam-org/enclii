@@ -100,15 +100,15 @@ ADR-010: load-bearing paths must not depend on GitHub billing.
 
 ## Callers to bump
 
-Seven repos pin this workflow. All are on `v1.0.0-alpha.2` except crea-frontend,
-which is on `v1.0.0-alpha.4`. Every one of them is exposed to the quota class
+Seven repos pin this workflow. All are on `v1.0.0-alpha.2` except one vCTO
+client's marketing-site repo, which is on `v1.0.0-alpha.4`. Every one of them is exposed to the quota class
 today.
 
 | repo | call site | current pin |
 | --- | --- | --- |
 | acervo | `.github/workflows/build-deploy.yml:21` | `v1.0.0-alpha.2` |
-| crea-frontend | `.github/workflows/build-deploy.yml:35` | `v1.0.0-alpha.4` |
-| crea-map | `.github/workflows/build-deploy.yml:29` | `v1.0.0-alpha.2` |
+| vCTO client marketing site | `.github/workflows/build-deploy.yml:35` | `v1.0.0-alpha.4` |
+| vCTO client portal | `.github/workflows/build-deploy.yml:29` | `v1.0.0-alpha.2` |
 | kalya | `.github/workflows/build-deploy.yml:29` | `v1.0.0-alpha.2` |
 | lexidrop | `.github/workflows/build-deploy.yml:29` | `v1.0.0-alpha.2` |
 | marca | `.github/workflows/build-deploy.yml:21` | `v1.0.0-alpha.2` |
