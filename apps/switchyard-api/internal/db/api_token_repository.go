@@ -132,6 +132,7 @@ func (r *APITokenRepository) GetByHash(ctx context.Context, tokenHash string) (*
 		       revoked, revoked_at, created_at, updated_at
 		FROM api_tokens
 		WHERE token_hash = $1 AND revoked = false
+		  AND EXISTS (SELECT 1 FROM users WHERE users.id = api_tokens.user_id AND users.active = true)
 	`
 
 	var scopes pq.StringArray

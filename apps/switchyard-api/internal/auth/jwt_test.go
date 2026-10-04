@@ -230,15 +230,7 @@ func TestJWTManager_ValidateToken(t *testing.T) {
 }
 
 func TestJWTManager_RefreshToken(t *testing.T) {
-	manager, err := NewJWTManager(
-		15*time.Minute,
-		7*24*time.Hour,
-		nil,
-		nil,
-	)
-	if err != nil {
-		t.Fatalf("NewJWTManager() failed: %v", err)
-	}
+	manager, mock := accountTestManager(t)
 
 	user := &User{
 		ID:    uuid.New(),
@@ -253,6 +245,7 @@ func TestJWTManager_RefreshToken(t *testing.T) {
 			t.Fatalf("GenerateTokenPair() failed: %v", err)
 		}
 
+		mock.ExpectQuery(`FROM users WHERE id = \$1`).WithArgs(user.ID).WillReturnRows(accountRows(user.ID, true))
 		newTokens, err := manager.RefreshToken(tokens.RefreshToken)
 		if err != nil {
 			t.Errorf("RefreshToken() failed: %v", err)

@@ -3,7 +3,9 @@ package auth
 import (
 	"context"
 	"crypto/rand"
+	"database/sql"
 	"encoding/base64"
+	"errors"
 	"fmt"
 	"os"
 	"strings"
@@ -254,6 +256,9 @@ func (o *OIDCManager) getOrCreateUser(ctx context.Context, claims *struct {
 	// Try to find user by OIDC identity (issuer + subject)
 	user, err := o.repos.Users.GetByOIDCIdentity(ctx, issuer, claims.Sub)
 	if err == nil {
+		if !user.Active {
+			return nil, fmt.Errorf("account unavailable")
+		}
 		// User found by OIDC identity
 		logrus.WithFields(logrus.Fields{
 			"user_id":      user.ID,
@@ -269,9 +274,16 @@ func (o *OIDCManager) getOrCreateUser(ctx context.Context, claims *struct {
 		}, nil
 	}
 
+	if !errors.Is(err, sql.ErrNoRows) {
+		return nil, fmt.Errorf("failed to resolve OIDC identity: %w", err)
+	}
+
 	// Try to find user by email (migration from local auth)
 	user, err = o.repos.Users.GetByEmail(ctx, claims.Email)
 	if err == nil {
+		if !user.Active {
+			return nil, fmt.Errorf("account unavailable")
+		}
 		// User exists from local auth - link to OIDC identity
 		logrus.WithFields(logrus.Fields{
 			"user_id":      user.ID,
@@ -294,6 +306,10 @@ func (o *OIDCManager) getOrCreateUser(ctx context.Context, claims *struct {
 			ProjectIDs: o.loadUserProjectIDs(ctx, user.ID),
 			Active:     user.Active,
 		}, nil
+	}
+
+	if !errors.Is(err, sql.ErrNoRows) {
+		return nil, fmt.Errorf("failed to resolve local account: %w", err)
 	}
 
 	// User doesn't exist - create new user from OIDC claims
@@ -417,6 +433,10 @@ func (o *OIDCManager) AuthMiddleware() gin.HandlerFunc {
 		// Try local token validation first
 		localClaims, localErr := o.jwtManager.ValidateToken(tokenString)
 		if localErr == nil {
+			if err := o.jwtManager.requireActiveLocalUser(c.Request.Context(), localClaims.UserID); err != nil {
+				c.AbortWithStatusJSON(401, gin.H{"error": "Account unavailable"})
+				return
+			}
 			// Local token valid - set context and continue
 			c.Set("user_id", localClaims.UserID.String())
 			c.Set("user_email", localClaims.Email)
@@ -502,11 +522,17 @@ func (o *OIDCManager) AuthMiddleware() gin.HandlerFunc {
 // getOrCreateUserFromExternalTokenWithStatus creates or updates a user from external token claims
 // Returns the user, whether a new user was created, and any error
 func (o *OIDCManager) getOrCreateUserFromExternalTokenWithStatus(ctx context.Context, claims *ExternalClaims) (*User, bool, error) {
+	if o.repos == nil || o.repos.Users == nil || claims == nil || claims.Issuer == "" || claims.Subject == "" {
+		return nil, false, fmt.Errorf("external identity is not available")
+	}
 	issuer := claims.Issuer
 
 	// Try to find user by OIDC identity
 	user, err := o.repos.Users.GetByOIDCIdentity(ctx, issuer, claims.Subject)
 	if err == nil {
+		if !user.Active {
+			return nil, false, fmt.Errorf("external identity is not available")
+		}
 		return &User{
 			ID:         user.ID,
 			Email:      user.Email,
@@ -517,9 +543,17 @@ func (o *OIDCManager) getOrCreateUserFromExternalTokenWithStatus(ctx context.Con
 		}, false, nil
 	}
 
+	if !errors.Is(err, sql.ErrNoRows) {
+		return nil, false, fmt.Errorf("external identity lookup failed: %w", err)
+	}
+
 	// Try to find by email
 	user, err = o.repos.Users.GetByEmail(ctx, claims.Email)
 	if err == nil {
+		// Do not relink or authenticate a locally disabled account.
+		if !user.Active {
+			return nil, false, fmt.Errorf("external identity is not available")
+		}
 		// Link existing user to external identity
 		user.OIDCSubject = &claims.Subject
 		user.OIDCIssuer = &issuer
@@ -544,6 +578,10 @@ func (o *OIDCManager) getOrCreateUserFromExternalTokenWithStatus(ctx context.Con
 			ProjectIDs: o.loadUserProjectIDs(ctx, user.ID),
 			Active:     user.Active,
 		}, false, nil
+	}
+
+	if !errors.Is(err, sql.ErrNoRows) {
+		return nil, false, fmt.Errorf("external account lookup failed: %w", err)
 	}
 
 	// Create new user
