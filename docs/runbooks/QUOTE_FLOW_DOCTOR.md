@@ -3,7 +3,7 @@
 `enclii quote-flow verify` is the Enclii-first readiness check for the Selva -> Yantra4D -> Cotiza -> ForgeSight quote path.
 
 ```sh
-enclii quote-flow verify --project tablaco --agent selva --require-market-verified
+enclii quote-flow verify --project <project> --agent selva --require-market-verified
 ```
 
 The command calls Switchyard API's admin-only operation contract:

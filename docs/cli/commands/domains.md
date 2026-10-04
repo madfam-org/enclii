@@ -238,7 +238,7 @@ declared in a service's `enclii.yaml` — DNS record, junction, tunnel route, TL
 
 ```bash
 enclii domains reconcile nauta-web
-enclii domains reconcile nauta-web --domain crea-erp.madfam.io \
+enclii domains reconcile nauta-web --domain <client>-erp.madfam.io \
   --apply --reason "route the declared ERP host"
 ```
 

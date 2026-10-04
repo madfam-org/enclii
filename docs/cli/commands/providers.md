@@ -59,9 +59,9 @@ enclii providers cloudflare tunnels-apply --project example
 enclii providers cloudflare tunnels-apply app.example.com --project example
 enclii providers porkbun dns-apply crm.phynd.app --domain phynd.app --type CNAME --content c9fac286-497b-4aac-9288-f784a1ea561c.cfargotunnel.com --apply --reason "restore PhyndCRM app host through Enclii"
 enclii providers porkbun nameservers-apply phynd.app --nameservers ns1.cloudflare.com,ns2.cloudflare.com --apply --reason "delegate phynd.app to Enclii-managed Cloudflare"
-enclii providers porkbun ping --tenant crea
-enclii providers porkbun domains --tenant crea
-enclii providers porkbun nameservers-apply creatumundo.mx --tenant crea --nameservers <NS1>,<NS2> --apply --reason "delegate the client apex to its Enclii-managed Cloudflare zone"
+enclii providers porkbun ping --tenant <slug>
+enclii providers porkbun domains --tenant <slug>
+enclii providers porkbun nameservers-apply <client-domain> --tenant <slug> --nameservers <NS1>,<NS2> --apply --reason "delegate the client apex to its Enclii-managed Cloudflare zone"
 enclii providers github rerun 25430873929 --apply --reason "re-run after GHCR token scope fix"
 enclii providers resend send-test-apply enclii.dev --to ops@example.com
 enclii providers resend send-test-apply enclii.dev --to ops@example.com --apply --reason "confirm enclii.dev sends after DNS verify"
@@ -79,7 +79,7 @@ enclii providers resend send-test-apply enclii.dev --to ops@example.com --apply 
 | `--tenant` | Ecosystem tenant scope; selects per-tenant provider credentials |
 | `--json` | Emit machine-readable JSON |
 
-Command-specific flags: `porkbun dns-apply` takes `--domain`, `--name` (both derived from the target when omitted), `--type` (default `CNAME`), `--content` (default: the Enclii tunnel CNAME), and `--ttl`; `porkbun auto-renew-apply` requires `--auto-renew on|off`; `porkbun nameservers-apply` takes `--nameservers`; `resend send-test-apply` requires `--to <email>`, a single bare recipient address (such as `ops@example.com`) that the CLI validates before calling the API and sends as `args.to`. The positional target is the sender domain: the test is sent from that domain's tenant default sender (for example `noreply@creatumundo.mx` for `creatumundo.mx`), or from the server's configured sender when the domain belongs to no tenant with one, and the dry-run's `from` is what `--apply` sends. Without a Resend API key or email service the operation answers `adapter_unconfigured` (HTTP `503` on `--apply`) instead of attempting the send. `--to` first shipped in `v1.0.0-alpha.12`; older CLIs reject it as unknown.
+Command-specific flags: `porkbun dns-apply` takes `--domain`, `--name` (both derived from the target when omitted), `--type` (default `CNAME`), `--content` (default: the Enclii tunnel CNAME), and `--ttl`; `porkbun auto-renew-apply` requires `--auto-renew on|off`; `porkbun nameservers-apply` takes `--nameservers`; `resend send-test-apply` requires `--to <email>`, a single bare recipient address (such as `ops@example.com`) that the CLI validates before calling the API and sends as `args.to`. The positional target is the sender domain: the test is sent from that domain's tenant default sender (for example `noreply@<client-domain>` for `<client-domain>`), or from the server's configured sender when the domain belongs to no tenant with one, and the dry-run's `from` is what `--apply` sends. Without a Resend API key or email service the operation answers `adapter_unconfigured` (HTTP `503` on `--apply`) instead of attempting the send. `--to` first shipped in `v1.0.0-alpha.12`; older CLIs reject it as unknown.
 
 ## Remaining Adapter Work
 

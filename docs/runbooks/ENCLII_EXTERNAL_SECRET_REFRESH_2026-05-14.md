@@ -106,7 +106,7 @@ Remediation path:
 
 `enclii ops secrets sync <externalsecret> -n <namespace> --apply --reason "..."`
 (also `enclii secrets sync`) routes to this same adapter and was used
-successfully in production on 2026-09-26/27 while wiring the Crea Tu Mundo
+successfully in production on 2026-09-26/27 while wiring a client tenant's
 Resend webhook secret into `janua/janua-secrets`. It still only patches the
 annotations listed above.
 

@@ -12,7 +12,7 @@ response, a log, a Kalya request, or the database.
 2. Enable Kalya's dedicated `kalya-internal-api-key` ExternalSecret after that
    write. Deploy the native `PUT /api/v1/internal/feed-tokens` custody endpoint.
 3. Import and reconcile the tenant's schedules before publishing its feeds.
-4. Preview `enclii secrets provision kalya-feed --tenant <slug> --consumers crea-map,nauta`.
+4. Preview `enclii secrets provision kalya-feed --tenant <slug> --consumers <client-portal>,nauta`.
    Apply with an audit reason after reviewing the tenant and consumer names.
 5. Enable each consumer's isolated ExternalSecret once its Vault projection is
    present. Verify ESO synchronization, pod rollout and the authenticated feed.

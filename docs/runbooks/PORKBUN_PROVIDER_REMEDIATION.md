@@ -1,7 +1,7 @@
 # Enclii Porkbun Provider Remediation
 
 <!-- Boundary checkpoint (2026-08-24, platform ops): public-facing runbook. Names
-registrar/DNS remediation steps + example domains (phynd.app, ctm.ac) and enclii
+registrar/DNS remediation steps + example domains (phynd.app, a client apex) and enclii
 CLI commands — no secret values (API keys live in Vault, never here). Public-safe
 summary: how enclii recovers registrar/DNS control for a domain. Policy:
 docs/PUBLIC_REPO_BOUNDARY.md / repo-boundary-contract. -->
@@ -125,7 +125,7 @@ not pass before this date: those reads were issued as **GET with `X-API-Key`
 headers**, but Porkbun is a **POST-with-JSON-body** API that authenticates by
 `apikey`/`secretapikey` in the body. Over GET, Porkbun ignored the headers and
 returned a misleading `INVALID_DOMAIN` even for a domain the account owns
-(observed live against `getNs ctm.ac`). PR #432 switched the four reads
+(observed live against `getNs` for a client-held domain). PR #432 switched the four reads
 (`ListDomains`/`GetDomain`/`GetNameservers`/`ListDNSRecords`) to POST + body auth;
 `porkbun/client_test.go` now pins method=POST + body-credentials for every read so
 it cannot regress. This composed with the earlier `flexible.go` decode fix

@@ -22,8 +22,8 @@ global `ENCLII_PORKBUN_*` credentials operate. Porkbun API keys are scoped to
 unreachable with those credentials — Porkbun answers `INVALID_DOMAIN`, which
 reads like a typo rather than a permissions problem.
 
-For a client-owned registrar account (for example `creatumundo.mx`, in Crea Tu
-Mundo's own account), scope the operation with `--tenant` or `--project` and see
+For a client-owned registrar account (for example a vCTO client's apex, held in
+the client's own account), scope the operation with `--tenant` or `--project` and see
 [Porkbun per-tenant credentials](/infrastructure/porkbun-tenant-credentials).
 
 :::

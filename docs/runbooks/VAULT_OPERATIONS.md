@@ -250,21 +250,22 @@ change the running Vault — the script is the applier. A path present in git bu
 never re-applied fails exactly like a path that was never added:
 
 ```
-HTTP 500: failed to merge crea-map/crea-map-secrets into Vault secret/crea-map
+HTTP 500: failed to merge <app>/<app>-secrets into Vault secret/<app>
 ```
 
 That 500 is a wrapped 403. It is what `enclii secrets vault-backfill
-crea-map-secrets --namespace crea-map --vault-path secret/crea-map --apply`
-returned on 2026-09-04 even though `secret/data/crea-map` had been in the policy
+<app>-secrets --namespace <app> --vault-path secret/<app> --apply`
+returned on 2026-09-04 for a client portal even though `secret/data/<app>` had been in the policy
 file since 2026-09-03 (enclii#480) — the policy had simply never been re-applied.
 **After merging any policy change, re-run the `POLICY_ONLY=1` command above.**
 
-The MAP/CTM substrate apps and why each is listed:
+The client-portal substrate apps and why each is listed (exact names in
+`apps/switchyard-api/internal/secretsintake/registry.yaml`):
 
 | App | Vault path | Reached by |
 | --- | --- | --- |
-| `crea-map` | `secret/crea-map` | intake targets `crea-map/internal-api-key`, `crea-map/kalya-feeds`; `secrets vault-backfill`; write side of `secrets provision kalya-feed` |
-| `symbiosis-hcm` | `secret/symbiosis-hcm` | intake target `symbiosis-hcm/map-absence-feed` (HCM absence feed that crea-map consumes) |
+| `<client-portal>` | `secret/<client-portal>` | intake targets `<client-portal>/internal-api-key`, `<client-portal>/kalya-feeds`; `secrets vault-backfill`; write side of `secrets provision kalya-feed` |
+| `symbiosis-hcm` | `secret/symbiosis-hcm` | intake target for the HCM absence feed that the client portal consumes |
 | `kalya` | `secret/kalya` | **read** side of `secrets provision kalya-feed` — `internal_api_key` authorizes minting the feed token. No intake target writes here; the path is policy-only |
 
 `scripts/check-intake-policy-parity.sh` fails CI when a path drifts out of the

@@ -13,14 +13,14 @@ tags: [runbook, dns, cloudflare, domains, email, tenancy]
 > must supply — the Proton DKIM `<hash>`, verification tokens, the tunnel CNAME,
 > `enclii-verification=<id>` — are placeholders, not values. Private
 > operational detail and the onboarding sink live in `internal-devops`
-> (2026-09-07 CTM tenant onboarding). Policy:
+> (2026-09-07 client tenant onboarding). Policy:
 > `docs/PUBLIC_REPO_BOUNDARY.md` (repo-boundary contract).
 
 What an operator actually has to do — and what currently bites — to bring a new
 host, and a mail provider's record set, onto a zone Enclii hosts in Cloudflare.
 
-Every step below was executed against `creatumundo.mx` on **2026-09-07** during
-the CTM tenant onboarding. Read
+Every step below was executed against a vCTO client's apex on **2026-09-07** during
+that client's tenant onboarding; `<client-domain>` stands for that apex. Read
 [How `dns-apply` decides](#how-dns-apply-decides) before you plan a record set.
 
 :::info This runbook changed with #536
@@ -55,12 +55,12 @@ record *plus* every provider's verification token, and mail providers ship an
 
 ```bash
 # Both survive. No --replace, no dashboard.
-enclii providers cloudflare dns-apply creatumundo.mx \
+enclii providers cloudflare dns-apply <client-domain> \
   --type TXT --content 'protonmail-verification=<token>' \
   --apply --reason "prove domain ownership to Proton"
 # → created
 
-enclii providers cloudflare dns-apply creatumundo.mx \
+enclii providers cloudflare dns-apply <client-domain> \
   --type TXT --content 'v=spf1 include:_spf.protonmail.ch ~all' \
   --apply --reason "publish SPF"
 # → created (1 existing TXT record left in place)
@@ -81,7 +81,7 @@ destroys and the records at that name it leaves alone. Like
 Re-read authoritative state after any record-set change:
 
 ```bash
-dig +short TXT creatumundo.mx @<one of the zone's Cloudflare nameservers>
+dig +short TXT <client-domain> @<one of the zone's Cloudflare nameservers>
 ```
 
 ### MX priority
@@ -91,11 +91,11 @@ dig +short TXT creatumundo.mx @<one of the zone's Cloudflare nameservers>
 `--priority` wins when both are given, and the response reports which was used.
 
 ```bash
-enclii providers cloudflare dns-apply creatumundo.mx \
+enclii providers cloudflare dns-apply <client-domain> \
   --type MX --priority 10 --content mail.protonmail.ch \
   --apply --reason "primary MX for Proton Mail"
 
-enclii providers cloudflare dns-apply creatumundo.mx \
+enclii providers cloudflare dns-apply <client-domain> \
   --type MX --priority 20 --content mailsec.protonmail.ch \
   --apply --reason "backup MX for Proton Mail"
 ```
@@ -145,19 +145,19 @@ The apex set — two TXT and the MX pair — applies in any order; each apply ad
 record and reports the ones it joined:
 
 ```bash
-enclii providers cloudflare dns-apply creatumundo.mx --type TXT \
+enclii providers cloudflare dns-apply <client-domain> --type TXT \
   --content 'protonmail-verification=<token>' \
   --apply --reason "prove domain ownership to Proton"
 
-enclii providers cloudflare dns-apply creatumundo.mx --type TXT \
+enclii providers cloudflare dns-apply <client-domain> --type TXT \
   --content 'v=spf1 include:_spf.protonmail.ch ~all' \
   --apply --reason "publish Proton SPF"
 
-enclii providers cloudflare dns-apply creatumundo.mx --type MX \
+enclii providers cloudflare dns-apply <client-domain> --type MX \
   --priority 10 --content mail.protonmail.ch --proxied false \
   --apply --reason "primary MX for Proton Mail"
 
-enclii providers cloudflare dns-apply creatumundo.mx --type MX \
+enclii providers cloudflare dns-apply <client-domain> --type MX \
   --priority 20 --content mailsec.protonmail.ch --proxied false \
   --apply --reason "backup MX for Proton Mail"
 ```
@@ -165,8 +165,8 @@ enclii providers cloudflare dns-apply creatumundo.mx --type MX \
 Confirm the apex holds the whole set, not the last one written:
 
 ```bash
-dig +short TXT creatumundo.mx @<one of the zone's Cloudflare nameservers>   # expect 2 records
-dig +short MX  creatumundo.mx @<one of the zone's Cloudflare nameservers>   # expect 10 and 20
+dig +short TXT <client-domain> @<one of the zone's Cloudflare nameservers>   # expect 2 records
+dig +short MX  <client-domain> @<one of the zone's Cloudflare nameservers>   # expect 10 and 20
 ```
 
 The three DKIM CNAMEs and `_dmarc` are each the only record of their type at
@@ -174,7 +174,7 @@ their name:
 
 ```bash
 for n in "" 2 3; do
-  enclii providers cloudflare dns-apply "protonmail${n}._domainkey.creatumundo.mx" \
+  enclii providers cloudflare dns-apply "protonmail${n}._domainkey.<client-domain>" \
     --type CNAME --content "protonmail${n}.domainkey.<hash>.domains.proton.ch" \
     --proxied false \
     --apply --reason "Proton Mail DKIM key ${n:-1}"
@@ -214,7 +214,7 @@ delegation lands and Cloudflare stops reporting the zone as `pending`). A
 pending zone has no settings to read.
 
 ```bash
-enclii providers cloudflare zone-settings-apply creatumundo.mx \
+enclii providers cloudflare zone-settings-apply <client-domain> \
   --apply --reason "apply Enclii HTTPS posture to the client apex"
 ```
 
@@ -231,7 +231,7 @@ downgradeable while reading as secure in a browser:
 Verify from outside — a 301 is the whole point of the step:
 
 ```bash
-curl -sSI http://creatumundo.mx/ | head -1
+curl -sSI http://<client-domain>/ | head -1
 # HTTP/1.1 301 Moved Permanently
 ```
 
@@ -247,7 +247,7 @@ Verified end to end on 2026-09-07 for a host on a zone MADFAM hosts.
 
 ```bash
 cd <repo root>            # NOT optional; see below
-enclii domains add crea-erp.creatumundo.mx \
+enclii domains add erp.<client-domain> \
   --service nauta-web --env production -f enclii.yaml
 ```
 
@@ -268,7 +268,7 @@ plainly there. Run it from the repo root.
 ### 2. `dns-apply` — proxied CNAME to the tunnel
 
 ```bash
-enclii providers cloudflare dns-apply crea-erp.creatumundo.mx \
+enclii providers cloudflare dns-apply erp.<client-domain> \
   --type CNAME --content <TUNNEL_CNAME> --proxied true \
   --apply --reason "route the new brand host through the Enclii tunnel"
 ```
@@ -289,7 +289,7 @@ manifest's declared domains once rewrote live routes to a dead backend.)
 ### 4. `dns-apply` — the verification TXT
 
 ```bash
-enclii providers cloudflare dns-apply crea-erp.creatumundo.mx \
+enclii providers cloudflare dns-apply erp.<client-domain> \
   --type TXT --content 'enclii-verification=<id>' \
   --apply --reason "prove ownership of the new brand host to Enclii"
 ```
@@ -300,7 +300,7 @@ the first in place — see [How `dns-apply` decides](#how-dns-apply-decides).
 ### 5. `domains verify`
 
 ```bash
-enclii domains verify crea-erp.creatumundo.mx --service nauta-web
+enclii domains verify erp.<client-domain> --service nauta-web
 ```
 
 TLS is issued automatically once verification succeeds.
@@ -329,8 +329,8 @@ Tracked as [#538](https://github.com/madfam-org/enclii/issues/538), which
 proposes:
 
 ```bash
-enclii providers cloudflare redirect-apply crea-map.madfam.io \
-  --to https://map.creatumundo.mx --status 301 --preserve-query \
+enclii providers cloudflare redirect-apply <old-host>.madfam.io \
+  --to https://portal.<client-domain> --status 301 --preserve-query \
   --apply --reason "brand migration: MADFAM host to the client's own apex"
 ```
 
@@ -366,18 +366,18 @@ target, what you did and the result, per the Enclii-first contract.
 4. Verify from outside, and check the `Location` header — not just the status:
 
    ```bash
-   curl -sSI https://crea-map.madfam.io/some/path | grep -i '^HTTP/\|^location'
+   curl -sSI https://<old-host>.madfam.io/some/path | grep -i '^HTTP/\|^location'
    # HTTP/2 301
-   # location: https://map.creatumundo.mx/some/path
+   # location: https://portal.<client-domain>/some/path
    ```
 
 5. **Do not create the redirect until public resolvers agree on the target** —
    see [the resolver caveat](#resolver-caveat-after-a-nameserver-switch) below.
    A 301 to a host that a stale resolver still cannot see is a cached failure.
 
-Created this way on **2026-09-07** during the CTM onboarding:
-`crea-map.madfam.io` → `https://map.creatumundo.mx` and `crea-erp.madfam.io` →
-`https://erp.creatumundo.mx`, both 301. Nothing reconciles them: if someone
+Created this way on **2026-09-07** during a client tenant onboarding: the
+client's two `madfam.io` portal hosts → the same two hosts on the client's own
+apex, both 301. Nothing reconciles them: if someone
 deletes one in the dashboard, no Enclii check notices.
 
 ## Resolver caveat after a nameserver switch
@@ -394,9 +394,9 @@ Both look exactly like a broken record you just wrote. They are not — the
 authoritative check is against the new zone's own nameservers:
 
 ```bash
-dig +short crea-erp.creatumundo.mx @<one of the zone's Cloudflare nameservers>
-dig +short NS creatumundo.mx @1.1.1.1
-dig +short NS creatumundo.mx @8.8.8.8
+dig +short erp.<client-domain> @<one of the zone's Cloudflare nameservers>
+dig +short NS <client-domain> @1.1.1.1
+dig +short NS <client-domain> @8.8.8.8
 ```
 
 **Do not cut over redirects, and do not "fix" a record that already reads
@@ -442,7 +442,7 @@ follow the apex steps.
 
 ```bash
 go build -o ~/bin/enclii ./packages/cli/cmd/enclii
-enclii providers porkbun ping --tenant crea      # exists only with #527
+enclii providers porkbun ping --tenant <slug>      # exists only with #527
 ```
 
 The same floor applies to the operator scripts that shell out to the CLI,

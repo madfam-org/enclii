@@ -222,7 +222,7 @@ sending no prompt (silent session reuse). This is implemented in
 `OIDCAuthProvider.login()` and covered by `contexts/AuthContext.test.tsx`.
 
 > **Ecosystem note:** every MADFAM platform adopts this «Switch account /
-> Sign in as someone else» model, **except Crea Tu Mundo MAP**.
+> Sign in as someone else» model, **except one vCTO client's portal** (single-account by design).
 
 ## Deployment
 

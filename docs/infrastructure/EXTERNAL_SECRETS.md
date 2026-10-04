@@ -280,17 +280,18 @@ this map does not list; ESO manages only the keys below.
 | `oauth-github-client-secret` | `secret/janua` | `oauth_github_client_secret` |
 | `internal-api-key` | `secret/janua` | `internal_api_key` |
 | `resend-api-key` | `secret/comms` | `resend_api_key` |
-| `ctm-resend-api-key` | `secret/janua` | `ctm_resend_api_key` ([#535](https://github.com/madfam-org/enclii/pull/535), 2026-09-07) |
-| `resend-webhook-secret-ctm` | `secret/janua` | `resend_webhook_secret_ctm` ([#634](https://github.com/madfam-org/enclii/pull/634), 2026-09-26) |
+| `<tenant>-resend-api-key` | `secret/janua` | `<tenant>_resend_api_key` ([#535](https://github.com/madfam-org/enclii/pull/535), 2026-09-07) |
+| `resend-webhook-secret-<tenant>` | `secret/janua` | `resend_webhook_secret_<tenant>` ([#634](https://github.com/madfam-org/enclii/pull/634), 2026-09-26) |
 | `federation-api-token` | `secret/dhanam` | `federation_api_token` |
 | `janua-service-token` | `secret/coupler` | `janua_service_token` |
 
-`resend-webhook-secret-ctm` is the signing secret for Crea Tu Mundo's Resend
-webhook. janua-api reads it as the optional env `RESEND_WEBHOOK_SECRET_CTM`;
-without it the CTM webhook receiver answers 404 and CTM mail records no
+`resend-webhook-secret-<tenant>` is the signing secret for a client tenant's
+Resend webhook (the real `<tenant>` rows are in `vault-secrets/janua-secrets.yaml`).
+janua-api reads it as the optional env `RESEND_WEBHOOK_SECRET_<TENANT>`;
+without it that tenant's webhook receiver answers 404 and its mail records no
 delivery, bounce or open events.
 
-Both CTM rows were merged to git and then made live **by hand**, because this
+Both tenant rows were merged to git and then made live **by hand**, because this
 file is not synced by ArgoCD — see the next section.
 
 ## What ArgoCD actually syncs — and what it does not
@@ -373,7 +374,7 @@ follow the procedure below; a merge alone does nothing.
 ### Current break-glass, and how it bit (2026-09-07)
 
 [#535](https://github.com/madfam-org/enclii/pull/535) added a
-`CTM_RESEND_API_KEY` entry to `vault-secrets/janua-secrets.yaml`. It merged
+tenant Resend key entry to `vault-secrets/janua-secrets.yaml`. It merged
 green, and the key did **not** appear in `janua/janua-secrets`. It was made live
 by a raw JSON patch against the live ExternalSecret object.
 
@@ -388,7 +389,7 @@ signal.
 ### It happened again (2026-09-26, #634)
 
 [#634](https://github.com/madfam-org/enclii/pull/634) added
-`resend-webhook-secret-ctm` (from `secret/janua#resend_webhook_secret_ctm`) to
+a tenant webhook signing secret (from `secret/janua#resend_webhook_secret_<tenant>`) to
 `vault-secrets/janua-secrets.yaml` and merged green on 2026-09-26. The live
 ExternalSecret did not change. The owner patched the live object by hand the
 same day, and the key then synced. Same cause as #535, same fix — which is why

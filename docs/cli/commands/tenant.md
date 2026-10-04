@@ -27,8 +27,8 @@ enclii tenant validate -f <manifest>
 apiVersion: enclii.dev/v1alpha
 kind: Tenant
 metadata:
-  name: crea                      # THE joining key across every platform
-  displayName: Crea Tu Mundo Autismo
+  name: acme                      # THE joining key across every platform
+  displayName: Acme Ejemplo
 spec:
   janua:
     org:
@@ -36,37 +36,37 @@ spec:
     tiers:
       enclii: pro                 # essentials | pro | madfam
     oauthClients:
-      - logicalKey: crea-map
-        redirectURIs: ["https://crea-map.example.mx/api/auth/callback"]
+      - logicalKey: acme-portal
+        redirectURIs: ["https://acme-portal.example.mx/api/auth/callback"]
   apps:
-    - name: crea-map
-      repo: madfam-org/crea-map
+    - name: acme-portal
+      repo: madfam-org/acme-portal
       manifest: enclii.yaml       # the app's own manifest stays authoritative
       environments:
         - name: production
           domains:
-            - host: crea-map.example.mx
+            - host: acme-portal.example.mx
               tls: true
           envFrom:
-            - secret: crea-map-secrets
+            - secret: acme-portal-secrets
   db:
-    name: crea_map
+    name: acme_portal
     clones:
-      - name: crea_map_staging
-        from: crea_map
+      - name: acme_portal_staging
+        from: acme_portal
   secrets:
-    - name: crea-map-secrets
+    - name: acme-portal-secrets
       keys: [DATABASE_URL, JANUA_CLIENT_SECRET]   # KEY NAMES ONLY
   buckets:
-    - name: crea-map-uploads
+    - name: acme-portal-uploads
   nauta:
     workspace:
       tier: FRACTIONAL_CTO        # SELF_SERVE | PROJECT | FRACTIONAL_CTO
       hostnames:
-        - host: crea.example.mx
+        - host: acme.example.mx
           primary: true
   kalya:
-    tenantFile: ../kalya/prisma/provision/ctm-tenant.json
+    tenantFile: ../kalya/prisma/provision/acme-tenant.json
 ```
 
 `metadata.name` is capped at 63 characters — nauta's `workspaces.slug` is `VarChar(63)`, the tightest constraint of the four platforms that key on it.
@@ -75,7 +75,7 @@ spec:
 
 Every rule below exists because its absence has already cost something:
 
-- **Nested domain labels.** Cloudflare Universal SSL covers an apex and one label below it. `map.crea.example.mx` resolves, serves a TLS error, and reads as an outage. The error names the flat-label host to use instead.
+- **Nested domain labels.** Cloudflare Universal SSL covers an apex and one label below it. `portal.acme.example.mx` resolves, serves a TLS error, and reads as an outage. The error names the flat-label host to use instead.
 - **Duplicate hosts** across apps or environments — one host resolves to exactly one backend, and a second capture rewrites the first's tunnel route.
 - **Secret values in the key list.** `keys: [FOO=bar]` is rejected; the diagnostic does not echo the value back.
 - **`envFrom` referencing an undeclared secret**, and **`db.clones[].from`** referencing a database this manifest does not declare (cloning across owners means a new DB role, which means a pgbouncer userlist edit).
@@ -100,14 +100,14 @@ Every step is check-then-act: read by natural key, classify as `created | unchan
 ## Example
 
 ```bash
-$ enclii tenant apply -f tenants/crea.yaml
-Tenant: crea (Crea Tu Mundo Autismo)
-Project: crea   Namespace: crea
+$ enclii tenant apply -f tenants/acme.yaml
+Tenant: acme (Acme Ejemplo)
+Project: acme   Namespace: acme
 
 === ORDERED PLAN — DRY RUN, nothing is executed ===
 
   #   STEP                              OWNER   DETAIL
-  1   janua org                         janua   slug=crea owner=owner@example.org
+  1   janua org                         janua   slug=acme owner=owner@example.org
   2   janua entitlements                janua   enclii=pro kalya=essentials nauta=pro
   ...
   15  kalya tenant                      kalya   ... (Tenant.id = the janua org UUID from step 1, immutable)

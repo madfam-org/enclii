@@ -35,7 +35,7 @@ Migration 027 now creates the missing normalized tables idempotently.
    rows, not HTTP 500.
 3. Trigger the ForgeSight one-off ingestion job through Enclii.
 4. Confirm `FDM - PLA / CDMX / 30d` benchmarks become non-empty before allowing
-   client-ready Tablaco quote generation.
+   client-ready quote generation.
 5. Configure the Porkbun provider adapter or transfer `phynd.app` DNS authority
    into Cloudflare/Enclii.
 6. Only after `phynd.app` is live should `crm.madfam.io` be treated as the

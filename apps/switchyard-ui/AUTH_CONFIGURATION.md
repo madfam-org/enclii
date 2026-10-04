@@ -183,7 +183,7 @@ default sign-in sends no prompt and keeps silent session reuse. Janua honors
 Behavior is covered by `contexts/AuthContext.test.tsx`.
 
 > **Ecosystem directive:** every MADFAM platform adopts this «Switch account /
-> Sign in as someone else» model, **except Crea Tu Mundo MAP**.
+> Sign in as someone else» model, **except one vCTO client's portal** (single-account by design).
 
 ## Route Protection
 
