@@ -47,28 +47,27 @@ func (j *JWTManager) AuthMiddleware() gin.HandlerFunc {
 		if j.HasExternalJWKS() {
 			externalClaims, externalErr := j.ValidateExternalToken(tokenString)
 			if externalErr == nil {
-				// External token validated successfully
-				logrus.WithFields(logrus.Fields{
-					"email":  externalClaims.Email,
-					"issuer": externalClaims.Issuer,
-				}).Debug("User authenticated via external token")
-
-				// Use subject as user_id string (handlers expect string, not uuid.UUID)
-				userID := externalClaims.Subject
-
-				// Determine role - default to developer, but check admin email mapping
-				userRole := "developer"
-				if j.adminEmails != nil && j.adminEmails[externalClaims.Email] {
+				// Provider subjects are not Switchyard user IDs. Resolve the
+				// validated issuer+subject before any local authorization.
+				if j.repos == nil || j.repos.Users == nil || externalClaims.Issuer == "" || externalClaims.Subject == "" {
+					c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "External identity is not available"})
+					return
+				}
+				user, lookupErr := j.repos.Users.GetByOIDCIdentity(c.Request.Context(), externalClaims.Issuer, externalClaims.Subject)
+				if lookupErr != nil || user == nil || !user.Active {
+					c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "External identity is not available"})
+					return
+				}
+				userID := user.ID.String()
+				userRole := user.Role
+				// Preserve the configured role mapping for the linked local
+				// account. This does not confer the separate platform rank.
+				if j.adminEmails[user.Email] {
 					userRole = "admin"
-					logrus.WithFields(logrus.Fields{
-						"email":         externalClaims.Email,
-						"original_role": "developer",
-						"new_role":      "admin",
-					}).Info("Applied admin role based on email mapping")
 				}
 
 				c.Set("user_id", userID)
-				c.Set("user_email", externalClaims.Email)
+				c.Set("user_email", user.Email)
 				c.Set("user_role", userRole)
 				c.Set("project_ids", []string{})
 				c.Set("external_token", true)
