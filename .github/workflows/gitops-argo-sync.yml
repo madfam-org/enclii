@@ -7,9 +7,14 @@ on:
   workflow_dispatch:
     inputs:
       app:
-        description: Argo Application name (argocd namespace)
+        description: Argo Application (core-services recovery syncs API and docs Deployments only)
         required: true
         default: blueprint-harvester-services
+        type: string
+      revision:
+        description: Exact reviewed Git revision (required for core-services)
+        required: false
+        default: ''
         type: string
       reason:
         description: Audit reason for sync (min 12 characters)
@@ -32,6 +37,8 @@ jobs:
         env:
           DEPLOY_ACK: ${{ inputs.deploy_ack }}
           REASON: ${{ inputs.reason }}
+          APP: ${{ inputs.app }}
+          REVISION: ${{ inputs.revision }}
         run: |
           set -euo pipefail
           if [ "$DEPLOY_ACK" != "production-kustomization" ]; then
@@ -40,6 +47,10 @@ jobs:
           fi
           if [ ${#REASON} -lt 12 ]; then
             echo "reason must be at least 12 characters"
+            exit 1
+          fi
+          if [ "$APP" = "core-services" ] && ! [[ "$REVISION" =~ ^[a-fA-F0-9]{40}$ ]]; then
+            echo "core-services requires an exact reviewed 40-character Git revision"
             exit 1
           fi
 
@@ -59,6 +70,8 @@ jobs:
           KUBECONFIG_B64: ${{ secrets.KUBECONFIG_PRODUCTION }}
           APP: ${{ inputs.app }}
           REASON: ${{ inputs.reason }}
+          REVISION: ${{ inputs.revision }}
+          REQUEST_ID: gha-${{ github.run_id }}-${{ github.run_attempt }}
         run: |
           set -euo pipefail
           if [ -z "${KUBECONFIG_B64:-}" ]; then
@@ -74,21 +87,50 @@ jobs:
             kubectl config set-cluster "${CLUSTER_NAME}" \
               --server="https://${KUBERNETES_SERVICE_HOST}:${KUBERNETES_SERVICE_PORT:-443}"
           fi
-          kubectl cluster-info --request-timeout=15s
-          NS="argocd"
-          if ! kubectl get application "$APP" -n "$NS" >/dev/null 2>&1; then
-            echo "Argo Application ${APP} not found in ${NS}" >&2
-            kubectl get applications -n "$NS" || true
-            exit 1
-          fi
-          kubectl patch application "$APP" -n "$NS" --type merge -p \
-            "{\"metadata\":{\"annotations\":{\"enclii.dev/last-ops-reason\":\"${REASON}\"}},\"operation\":{\"sync\":{\"syncStrategy\":{\"apply\":{\"force\":false}}},\"initiatedBy\":{\"username\":\"github-actions-enclii-gitops-sync\"}}}"
-          echo "Sync requested for ${APP} in ${NS}"
+          umask 077
+          SYNC_TMP=$(mktemp -d)
+          trap 'rm -rf "$SYNC_TMP"' EXIT
+          kubectl get application "$APP" -n argocd -o json > "$SYNC_TMP/current.json"
+          python3 - "$SYNC_TMP/current.json" "$SYNC_TMP/requested.json" <<'PY_SYNC'
+          import json, os, sys
+          from pathlib import Path
+          app = json.loads(Path(sys.argv[1]).read_text())
+          if app.get("operation"):
+              sys.exit("An Argo operation is already active; inspect it before retrying")
+          metadata = app["metadata"]
+          if not metadata.get("resourceVersion"):
+              sys.exit("Application resourceVersion is missing; refusing an unconditional write")
+          annotations = metadata.setdefault("annotations", {})
+          annotations["enclii.dev/last-ops-reason"] = os.environ["REASON"]
+          annotations["enclii.dev/last-ops-request-id"] = os.environ["REQUEST_ID"]
+          sync = {"prune": False, "syncStrategy": {"apply": {"force": False}}}
+          if os.environ["APP"] == "core-services":
+              # Bounded recovery: only the reviewed report API and docs images.
+              # Construct this allowlist afresh; never inherit a selective sync.
+              sync["resources"] = [
+                  {"group": "apps", "kind": "Deployment", "name": "switchyard-api", "namespace": "enclii"},
+                  {"group": "apps", "kind": "Deployment", "name": "docs-site", "namespace": "enclii"},
+              ]
+          if os.environ.get("REVISION"):
+              sync["revision"] = os.environ["REVISION"]
+          app["operation"] = {
+              "sync": sync,
+              "initiatedBy": {"username": "github-actions-enclii-gitops-sync"},
+              "info": [{"name": "enclii-request-id", "value": os.environ["REQUEST_ID"]}],
+          }
+          Path(sys.argv[2]).write_text(json.dumps(app))
+          PY_SYNC
+          # Replace is an atomic resourceVersion CAS. Never retry a conflict or
+          # merge a concurrent operation's revision/resources/automated fields.
+          kubectl replace -f "$SYNC_TMP/requested.json" >/dev/null
+          echo "Sync requested for ${APP}; prune=false; request=${REQUEST_ID}"
 
       - name: Wait for sync completion
         env:
           KUBECONFIG_B64: ${{ secrets.KUBECONFIG_PRODUCTION }}
           APP: ${{ inputs.app }}
+          REVISION: ${{ inputs.revision }}
+          REQUEST_ID: gha-${{ github.run_id }}-${{ github.run_attempt }}
         run: |
           set -euo pipefail
           mkdir -p ~/.kube
@@ -100,19 +142,51 @@ jobs:
             kubectl config set-cluster "${CLUSTER_NAME}" \
               --server="https://${KUBERNETES_SERVICE_HOST}:${KUBERNETES_SERVICE_PORT:-443}"
           fi
-          NS="argocd"
+          umask 077
+          SYNC_TMP=$(mktemp -d)
+          trap 'rm -rf "$SYNC_TMP"' EXIT
           for i in $(seq 1 40); do
-            phase="$(kubectl get application "$APP" -n "$NS" -o jsonpath='{.status.sync.status}' 2>/dev/null || echo Unknown)"
-            health="$(kubectl get application "$APP" -n "$NS" -o jsonpath='{.status.health.status}' 2>/dev/null || echo Unknown)"
-            echo "attempt $i: sync=$phase health=$health"
-            if [ "$phase" = "Synced" ]; then
-              echo "Argo sync phase reached Synced (health=$health)"
-              exit 0
-            fi
+            kubectl get application "$APP" -n argocd -o json > "$SYNC_TMP/current.json"
+            state=$(python3 - "$SYNC_TMP/current.json" <<'PY_WAIT'
+          import json, os, sys
+          from pathlib import Path
+          app = json.loads(Path(sys.argv[1]).read_text())
+          state = app.get("status", {}).get("operationState", {})
+          info = state.get("operation", {}).get("info", [])
+          ours = any(item.get("name") == "enclii-request-id" and item.get("value") == os.environ["REQUEST_ID"] for item in info)
+          phase = state.get("phase", "Unknown")
+          if not ours:
+              print("waiting")
+          elif phase in ("Failed", "Error"):
+              print("failed")
+          elif phase == "Succeeded" and state.get("finishedAt"):
+              expected = os.environ.get("REVISION")
+              actual = state.get("syncResult", {}).get("revision")
+              print("completed" if not expected or actual == expected else "wrong_revision")
+          else:
+              print("waiting")
+          PY_WAIT
+            )
+            echo "attempt $i: request=${REQUEST_ID} state=$state"
+            case "$state" in
+              completed)
+                if [ "$APP" = "core-services" ]; then
+                  # An unrelated platform service may already be Degraded.
+                  # Verify the recovery target; the operator also checks its exact digest.
+                  kubectl rollout status deployment/switchyard-api -n enclii --timeout=300s
+                fi
+                echo "Requested Argo operation completed successfully"
+                exit 0
+                ;;
+              failed|wrong_revision)
+                echo "::error::Requested Argo operation failed or applied an unexpected revision"
+                exit 1
+                ;;
+            esac
             sleep 15
           done
-          echo "::warning::Timed out waiting for Synced+Healthy; continuing with rollout steps"
-          kubectl get application "$APP" -n "$NS" -o jsonpath='{range .status.resources[*]}{.kind}/{.name} sync={.status} health={.health.status}{"\n"}{end}' 2>/dev/null || true
+          echo "::error::Timed out waiting for the requested Argo operation to complete"
+          exit 1
 
       - name: Refresh GHCR pull secret (blueprint-harvester)
         if: inputs.app == 'blueprint-harvester-services'
