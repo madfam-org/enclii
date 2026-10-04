@@ -461,3 +461,29 @@ func TestLoadRegistry_digitalTwinsMachineEdges(t *testing.T) {
 		})
 	}
 }
+
+// The nine digital-twins machine edges are pinned to the client ids their first
+// provision run printed (2026-10-03). A pin is exclusive: the provisioner then
+// reconciles exactly that client and refuses to create a second one, so a
+// changed or dropped pin here is a different client, not an edit.
+func TestLoadRegistry_digitalTwinsEdgesPinned(t *testing.T) {
+	reg, err := LoadRegistry("")
+	require.NoError(t, err)
+
+	pins := map[string]string{
+		"pravara-yantra4d-step-reader":                    "jnc_J3YH8KGGzBI1c7PoDSvKtwVr23fPd1Sw",
+		"yantra4d-asset-shells-publisher":                 "jnc_qtf_llhI6wXiRKb_-1pHVScuAHrfGbP_",
+		"fashion-cabinet-asset-shells-publisher":          "jnc_jb7_ZSyLKOlntsEesRnSPd5RiUzrKvP3",
+		"zavlo-cfdi-emitter":                              "jnc_6H59wA9XIfa_pXTblLPvMYUPPFdWLjgA",
+		"routecraft-billing-relay":                        "jnc_3NfmbrkXXFp9sWsPn5E53unmjaWgiD4j",
+		"forj-pravara-intake-madfam-ecosystem":            "jnc_70Aza2a0PPhnQ91vbAhyZv_ALitHbEHB",
+		"cotiza-pravara-intake-madfam-ecosystem":          "jnc_O_tTNXViDH3UetR3tOgQ0NKyWlWFuiou",
+		"pravara-asset-shells-publisher-madfam-ecosystem": "jnc_8hP5pYanYdYjS-QKapjyh4gpdk-7oKK9",
+		"pravara-fabrication-prep":                        "jnc_e3gHN2ZdyGONKSZPDo-dP2HTxjtlhj2y",
+	}
+	for id, want := range pins {
+		p, ok := reg.Platforms[id]
+		require.True(t, ok, "platform %q missing from the registry", id)
+		assert.Equal(t, want, p.JanuaClient.ClientID, "platform %q must stay pinned to its provisioned client", id)
+	}
+}
