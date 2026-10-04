@@ -1,5 +1,12 @@
 # Quote-flow doctor
 
+<!-- Boundary checkpoint (2026-10-04, platform ops): public-facing runbook.
+Public-safe summary: the Enclii-first quote-flow readiness command, the operation
+contract it calls and how to read its report; the client project is a placeholder.
+Private sink for omitted operational detail (client engagement, production
+evidence): internal-devops. Policy: docs/PUBLIC_REPO_BOUNDARY.md /
+repo-boundary-contract. -->
+
 `enclii quote-flow verify` is the Enclii-first readiness check for the Selva -> Yantra4D -> Cotiza -> ForgeSight quote path.
 
 ```sh

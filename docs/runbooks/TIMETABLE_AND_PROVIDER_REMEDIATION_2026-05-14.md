@@ -1,5 +1,11 @@
 # Timetable and provider remediation
 
+<!-- Boundary checkpoint (2026-10-04, platform ops): public-facing remediation
+runbook. Public-safe summary: the Enclii-first steps that cleared the jobs API and
+Porkbun adapter blockers; client names are omitted. Private sink for omitted
+operational detail: internal-devops. Policy: docs/PUBLIC_REPO_BOUNDARY.md /
+repo-boundary-contract. -->
+
 Last updated: 2026-05-14
 
 ## Why this exists
