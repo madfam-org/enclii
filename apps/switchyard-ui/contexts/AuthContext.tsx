@@ -20,6 +20,8 @@ import React, {
   type ReactNode,
 } from "react";
 import type { AuthMode, AuthContextType, User, RedirectTokens, LoginWithOIDCOptions } from "./auth-types";
+import { getStoredTokens, setStoredTokens, clearStorage, SESSION_CHANGED, TOKEN_STORAGE_KEY } from "@/lib/auth-session";
+import { JANUA_BASE_URL, OAUTH_CLIENT_ID } from "@/lib/constants";
 import { apiFetchResponse, apiPublicFetchResponse, attemptTokenRefresh } from "@/lib/api";
 
 // =============================================================================
@@ -28,8 +30,6 @@ import { apiFetchResponse, apiPublicFetchResponse, attemptTokenRefresh } from "@
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:4200";
 const AUTH_MODE = (process.env.NEXT_PUBLIC_AUTH_MODE || "local") as AuthMode;
-const JANUA_BASE_URL = process.env.NEXT_PUBLIC_JANUA_URL || "https://auth.madfam.io";
-const OAUTH_CLIENT_ID = process.env.NEXT_PUBLIC_OAUTH_CLIENT_ID || "jnc_RqeHy54KYGjVr8yQiBeUncMhnQFhS2NA";
 
 const STORAGE_KEYS = {
   TOKENS: "enclii_tokens",
@@ -59,26 +59,6 @@ async function generateCodeChallenge(verifier: string): Promise<string> {
 // STORAGE HELPERS
 // =============================================================================
 
-function getStoredTokens(): { accessToken: string; refreshToken?: string; expiresAt: number } | null {
-  if (typeof window === "undefined") return null;
-  const stored = localStorage.getItem(STORAGE_KEYS.TOKENS);
-  if (!stored) return null;
-  try {
-    return JSON.parse(stored);
-  } catch {
-    return null;
-  }
-}
-
-function setStoredTokens(tokens: { accessToken: string; refreshToken?: string; expiresAt: number }) {
-  if (typeof window === "undefined") return;
-  localStorage.setItem(STORAGE_KEYS.TOKENS, JSON.stringify(tokens));
-  const maxAge = Math.floor((tokens.expiresAt - Date.now()) / 1000);
-  if (maxAge > 0) {
-    document.cookie = `${STORAGE_KEYS.COOKIE}=${tokens.accessToken}; path=/; secure; samesite=lax; max-age=${maxAge}`;
-  }
-}
-
 function setStoredUser(user: User) {
   if (typeof window === "undefined") return;
   localStorage.setItem(STORAGE_KEYS.USER, JSON.stringify(user));
@@ -93,14 +73,6 @@ function getStoredUser(): User | null {
   } catch {
     return null;
   }
-}
-
-function clearStorage() {
-  if (typeof window === "undefined") return;
-  localStorage.removeItem(STORAGE_KEYS.TOKENS);
-  localStorage.removeItem(STORAGE_KEYS.USER);
-  document.cookie = `${STORAGE_KEYS.COOKIE}=; path=/; secure; samesite=lax; max-age=0`;
-  document.cookie = `enclii_user_email=; path=/; secure; samesite=lax; max-age=0`;
 }
 
 function parseJwt(token: string): Record<string, unknown> | null {
@@ -177,66 +149,127 @@ function OIDCAuthProvider({ children }: { children: ReactNode }) {
   const [authError, setAuthError] = useState<string | null>(null);
   const tokenRef = useRef<string | null>(null);
 
-  // Check auth on mount — single /auth/me call with Bearer token (not cookie-based polling)
-  useEffect(() => {
-    checkAuth();
-  }, []);
+  const refreshTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const checkVersion = useRef(0);
 
   const checkAuth = useCallback(async () => {
+    const version = ++checkVersion.current;
     try {
-      // Read token from cookie (set by server-side /api/auth/session route)
-      const cookieToken = document.cookie
-        .split("; ")
-        .find((r) => r.startsWith("enclii_auth="))
-        ?.split("=")[1];
-
-      if (!cookieToken) {
-        setIsLoading(false);
-        return;
+      let tokens = getStoredTokens();
+      if (!tokens) {
+        const cookieToken = document.cookie.split('; ').find((r) => r.startsWith('enclii_auth='))?.slice('enclii_auth='.length);
+        // Decode exp only for scheduling. Identity is always verified below.
+        const exp = cookieToken ? parseJwt(cookieToken)?.exp : null;
+        if (cookieToken && typeof exp === 'number' && Number.isFinite(exp)) {
+          tokens = { accessToken: cookieToken, expiresAt: exp * 1000 };
+          setStoredTokens(tokens);
+        }
       }
-
-      // Verify token with Janua using Bearer header (not cookie-based session)
-      const response = await fetch(`${JANUA_BASE_URL}/api/v1/auth/me`, {
-        headers: { Authorization: `Bearer ${cookieToken}` },
+      if (!tokens) { tokenRef.current = null; setUser(null); return; }
+      if (tokens.expiresAt <= Date.now()) {
+        if (!await attemptTokenRefresh()) {
+          tokenRef.current = null;
+          setUser(null);
+          setAuthError('Session expired. Please sign in again.');
+          return;
+        }
+        tokens = getStoredTokens();
+      }
+      if (!tokens || version !== checkVersion.current) return;
+      let checkedToken = tokens.accessToken;
+      const verify = (token: string) => fetch(`${JANUA_BASE_URL}/api/v1/auth/me`, {
+        headers: { Authorization: `Bearer ${token}` },
       });
-
+      let response = await verify(checkedToken);
+      const refreshedAfterRejection = response.status === 401 && await attemptTokenRefresh();
+      if (refreshedAfterRejection) {
+        const refreshed = getStoredTokens();
+        if (!refreshed || version !== checkVersion.current) return;
+        checkedToken = refreshed.accessToken;
+        response = await verify(checkedToken);
+      }
+      if (version !== checkVersion.current || getStoredTokens()?.accessToken !== checkedToken) return;
       if (response.ok) {
         const userData = await response.json();
-        const userRoles: string[] = userData.roles || [];
-        if (userData.is_admin && !userRoles.includes("admin")) {
-          userRoles.push("admin");
-        }
-
-        tokenRef.current = cookieToken;
-
-        // Sync token to localStorage so lib/api.ts can use it for API calls
-        if (!localStorage.getItem(STORAGE_KEYS.TOKENS)) {
-          localStorage.setItem(STORAGE_KEYS.TOKENS, JSON.stringify({
-            accessToken: cookieToken,
-            refreshToken: null,
-            expiresAt: Date.now() + 24 * 60 * 60 * 1000, // Match cookie maxAge (24h)
-          }));
-        }
-
+        if (version !== checkVersion.current || getStoredTokens()?.accessToken !== checkedToken) return;
+        tokenRef.current = checkedToken;
         setUser({
-          id: userData.id || "",
-          email: userData.email || "",
+          id: userData.id || '', email: userData.email || '',
           name: userData.name || userData.display_name,
-          roles: userRoles,
-          foundry_tier: (userData.user_metadata?.foundry_tier as User["foundry_tier"]) || null,
+          roles: extractRoles(userData),
+          foundry_tier: (userData.user_metadata?.foundry_tier as User['foundry_tier']) || null,
         });
+        setAuthError(null);
+      } else if (response.status === 401 || response.status === 403) {
+        tokenRef.current = null;
+        setUser(null);
+        // A rejected access token plus an unavailable issuer is recoverable.
+        // Retain its refresh credential, but expose no authenticated user.
+        if (refreshedAfterRejection || !getStoredTokens()?.refreshToken) clearStorage();
+        setAuthError('Session expired. Please sign in again.');
       } else {
-        // Token invalid — clear cookies via server-side route
-        await fetch("/api/auth/session", { method: "DELETE" }).catch(() => {});
-        clearStorage();
+        setAuthError('Authentication service unavailable. Please retry.');
       }
-    } catch (err) {
-      console.error("Auth check failed:", err);
-      setAuthError("Authentication check failed");
-    } finally {
-      setIsLoading(false);
-    }
+    } catch {
+      setAuthError('Authentication check failed. Please retry.');
+    } finally { if (version === checkVersion.current) setIsLoading(false); }
   }, []);
+
+  const refreshTokens = useCallback(async () => {
+    // A background tab may wake after expiry; hide authenticated state before
+    // waiting for the issuer instead of extending access through network delay.
+    if ((getStoredTokens()?.expiresAt ?? 0) <= Date.now()) {
+      tokenRef.current = null;
+      setUser(null);
+    }
+    const refreshed = await attemptTokenRefresh();
+    if (refreshed) await checkAuth();
+    if (!refreshed && (getStoredTokens()?.expiresAt ?? 0) <= Date.now()) {
+      tokenRef.current = null;
+      setUser(null);
+      setAuthError('Session expired. Please sign in again.');
+    }
+    return refreshed;
+  }, [checkAuth]);
+
+  useEffect(() => {
+    let active = true;
+    const schedule = () => {
+      if (refreshTimerRef.current) clearTimeout(refreshTimerRef.current);
+      const tokens = getStoredTokens();
+      tokenRef.current = tokens && tokens.expiresAt > Date.now() ? tokens.accessToken : null;
+      if (!tokens) { ++checkVersion.current; setUser(null); setIsLoading(false); return; }
+      if (tokens.expiresAt <= Date.now()) {
+        setUser(null);
+        setAuthError('Session expired. Please sign in again.');
+      }
+      // Retry transient failures at a bounded cadence, then fail closed at expiry.
+      const delay = tokens.refreshToken ? Math.max(1000, tokens.expiresAt - Date.now() - 60_000)
+        : Math.max(0, tokens.expiresAt - Date.now());
+      refreshTimerRef.current = setTimeout(async () => {
+        const refreshed = await refreshTokens();
+        if (active && !refreshed) {
+          const latest = getStoredTokens();
+          if (latest && latest.expiresAt > Date.now()) {
+            refreshTimerRef.current = setTimeout(schedule, Math.min(30_000, latest.expiresAt - Date.now()));
+          }
+        }
+      }, Math.min(delay, 2_147_483_647));
+    };
+    const onStorage = (event: StorageEvent) => {
+      if (event.key === TOKEN_STORAGE_KEY || event.key === null) { schedule(); void checkAuth(); }
+    };
+    window.addEventListener(SESSION_CHANGED, schedule);
+    window.addEventListener('storage', onStorage);
+    void checkAuth().then(() => { if (active) schedule(); });
+    return () => {
+      active = false;
+      ++checkVersion.current;
+      if (refreshTimerRef.current) clearTimeout(refreshTimerRef.current);
+      window.removeEventListener(SESSION_CHANGED, schedule);
+      window.removeEventListener('storage', onStorage);
+    };
+  }, [checkAuth, refreshTokens]);
 
   const login = useCallback(async (options?: LoginWithOIDCOptions) => {
     // Generate PKCE parameters
@@ -279,6 +312,10 @@ function OIDCAuthProvider({ children }: { children: ReactNode }) {
         .find((r) => r.startsWith("enclii_auth="))
         ?.split("=")[1];
 
+      ++checkVersion.current;
+      tokenRef.current = null;
+      setUser(null);
+      clearStorage();
       if (cookieToken) {
         // Notify Janua of logout
         await fetch(`${JANUA_BASE_URL}/api/v1/auth/logout`, {
@@ -312,7 +349,7 @@ function OIDCAuthProvider({ children }: { children: ReactNode }) {
     handleOAuthCallback: async () => { /* Handled by callback page */ },
     storeTokensFromRedirect: async () => { /* Not used in PKCE flow */ },
     logout,
-    refreshTokens: async () => true,
+    refreshTokens,
     getAccessToken: () => tokenRef.current,
     getIDPToken: () => null,
   };
