@@ -4294,7 +4294,9 @@ export interface components {
          * @description Request body for repository onboarding. The onboarding pipeline executes
          *     these steps in order: namespace, argocd_config, network_policies,
          *     status_registration, registry_credentials, domain_provisioning,
-         *     postgres, secrets, r2. Each step reports ok/failed/skipped in step_results.
+         *     postgres, app_role, generated_secrets, secrets, r2. Each step reports
+         *     ok/failed/skipped in step_results. Generated credentials are summarised
+         *     in the response's generated_credentials (names and actions, never values).
          */
         OnboardingRequest: {
             /** @description GitHub owner/repo (e.g. madfam-org/my-project) */
@@ -4315,13 +4317,63 @@ export interface components {
             provision_postgres?: components["schemas"]["PostgresProvisionSpec"];
             provision_secrets?: components["schemas"]["SecretEntry"][];
             provision_r2?: components["schemas"]["R2ProvisionSpec"];
+            provision_app_role?: components["schemas"]["AppRoleSpec"];
+            /** @description Project-Secret keys whose values the server generates. Values are never returned. */
+            generate_secrets?: components["schemas"]["GeneratedSecretSpec"][];
         };
+        /**
+         * @description Database and owner role. Exactly one of role_password and
+         *     generate_password must be set; the server rejects both or neither
+         *     with 400. With generate_password the server generates the owner
+         *     password, stores it in Postgres as a SCRAM-SHA-256 verifier and writes
+         *     the pooled connection URL to the project Secret under url_secret_key.
+         *     A re-run keeps an existing role and URL unless rotate_password is set.
+         */
         PostgresProvisionSpec: {
             database_name: string;
             /** @description Defaults to database_name */
             role_name?: string;
-            role_password: string;
+            /** @description Caller-chosen owner password. Mutually exclusive with generate_password. */
+            role_password?: string;
+            /** @description Generate the owner password server-side (onboarding only). */
+            generate_password?: boolean;
+            /** @description Replace the generated password of an existing role. Requires generate_password. */
+            rotate_password?: boolean;
+            /** @description Secret key for the owner URL (default DATABASE_URL). Requires generate_password. */
+            url_secret_key?: string;
+            /** @description CONNECTION LIMIT for the owner role (omit to leave it unchanged). */
+            connection_limit?: number;
             extensions?: string[];
+        };
+        /**
+         * @description Runtime database role that row-level security applies to: LOGIN
+         *     NOSUPERUSER NOBYPASSRLS NOINHERIT NOCREATEDB NOCREATEROLE NOREPLICATION
+         *     with a CONNECTION LIMIT, a server-generated password, CONNECT on the
+         *     database, and a PgBouncer userlist entry. Its pooled URL is written to
+         *     the project Secret. Table grants stay with the application's own
+         *     migrations. A re-run keeps an existing role unless rotate_password is
+         *     set; a role that exists without its Secret key is refused.
+         */
+        AppRoleSpec: {
+            /** @description Must start with "<database_name>_" (e.g. pravara_app). */
+            role_name: string;
+            /** @description Defaults to provision_postgres.database_name. */
+            database_name?: string;
+            /** @default 5 */
+            connection_limit: number;
+            /** @default APP_DATABASE_URL */
+            url_secret_key: string;
+            /** @description Optionally also store the bare password under this key, for split connection settings. */
+            password_secret_key?: string;
+            rotate_password?: boolean;
+        };
+        /** @description A project-Secret value generated server-side from crypto/rand, base64url without padding. */
+        GeneratedSecretSpec: {
+            key: string;
+            /** @default 32 */
+            bytes: number;
+            /** @description Replace an existing value. Without it an existing key is kept. */
+            rotate?: boolean;
         };
         SecretEntry: {
             key: string;

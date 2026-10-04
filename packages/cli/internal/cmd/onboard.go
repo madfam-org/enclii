@@ -32,6 +32,7 @@ func NewOnboardCommand(cfg *config.Config) *cobra.Command {
 		skipPostgres bool
 		skipSecrets  bool
 		skipR2       bool
+		gen          generatedCredentialFlags
 	)
 
 	cmd := &cobra.Command{
@@ -46,17 +47,23 @@ This command handles the complete onboarding pipeline:
   - Postgres database + role creation (optional)
   - PgBouncer configuration update (optional)
   - K8s secret creation from .env file (optional)
-  - R2 bucket creation (optional)`,
+  - R2 bucket creation (optional)
+
+Generated credentials (optional): with --generate-db-password, --app-role and
+--generate-secret, Switchyard generates the owner password, a runtime role's
+password and project-Secret values, and writes them into the project Secret.
+Nothing generated is printed, returned or prompted for. Re-runs keep existing
+values; the --rotate-* flags replace them.`,
 		Example: `  # Basic onboarding
   enclii onboard --repo madfam-org/karafiel --project karafiel
 
-  # Full provisioning with database, secrets, and R2
+  # Full provisioning with generated credentials and R2 (no password handled)
   enclii onboard --repo madfam-org/karafiel \
     --project karafiel \
     --manifest-path infra/k8s/production \
-    --db-name karafiel \
-    --db-password "$(openssl rand -base64 32)" \
-    --secrets-file ./karafiel.env \
+    --db-name karafiel --generate-db-password \
+    --app-role karafiel_app --app-role-connection-limit 8 \
+    --generate-secret DJANGO_SECRET_KEY:48 \
     --r2-bucket karafiel-uploads
 
   # Dry run to preview what would be provisioned
@@ -86,6 +93,7 @@ This command handles the complete onboarding pipeline:
 				skipPostgres: skipPostgres,
 				skipSecrets:  skipSecrets,
 				skipR2:       skipR2,
+				gen:          gen,
 			})
 		},
 	}
@@ -97,7 +105,7 @@ This command handles the complete onboarding pipeline:
 	cmd.Flags().StringVar(&secretName, "secret-name", "", "K8s Secret name (default: <project>-credentials)")
 	cmd.Flags().BoolVar(&preflight, "preflight", false, "Validate manifests against cluster before onboarding")
 	cmd.Flags().StringVar(&dbName, "db-name", "", "Postgres database name to create")
-	cmd.Flags().StringVar(&dbPassword, "db-password", "", "Postgres role password (prompted if --db-name set)")
+	cmd.Flags().StringVar(&dbPassword, "db-password", "", "Postgres role password (prompted if --db-name is set without --generate-db-password)")
 	cmd.Flags().StringVar(&dbExtensions, "db-extensions", "", "Comma-separated Postgres extensions")
 	cmd.Flags().StringVar(&secretsFile, "secrets-file", "", "Path to .env file with K8s secret entries")
 	cmd.Flags().StringVar(&r2Bucket, "r2-bucket", "", "R2 bucket name to create")
@@ -105,6 +113,7 @@ This command handles the complete onboarding pipeline:
 	cmd.Flags().BoolVar(&skipPostgres, "skip-postgres", false, "Skip Postgres provisioning")
 	cmd.Flags().BoolVar(&skipSecrets, "skip-secrets", false, "Skip secrets provisioning")
 	cmd.Flags().BoolVar(&skipR2, "skip-r2", false, "Skip R2 provisioning")
+	gen.register(cmd.Flags())
 
 	_ = cmd.MarkFlagRequired("repo")
 
@@ -129,10 +138,17 @@ type onboardOpts struct {
 	skipPostgres bool
 	skipSecrets  bool
 	skipR2       bool
+	gen          generatedCredentialFlags
 }
 
 func runOnboard(cfg *config.Config, opts onboardOpts) error {
 	ctx := context.Background()
+
+	// Generation flags are validated before anything else, so a bad flag
+	// never reaches the network or the password prompt.
+	if err := opts.gen.validate(opts.dbName, opts.dbPassword != ""); err != nil {
+		return err
+	}
 
 	// Derive project name from repo if not set
 	if opts.project == "" {
@@ -158,22 +174,14 @@ func runOnboard(cfg *config.Config, opts onboardOpts) error {
 	// Postgres provisioning
 	if opts.dbName != "" && !opts.skipPostgres {
 		password := opts.dbPassword
-		if password == "" {
+		if password == "" && !opts.gen.generatesOwnerPassword() {
 			var err error
 			password, err = promptPassword(fmt.Sprintf("Enter password for Postgres role %q: ", opts.dbName))
 			if err != nil {
 				return fmt.Errorf("failed to read password: %w", err)
 			}
 		}
-		var extensions []string
-		if opts.dbExtensions != "" {
-			for _, ext := range strings.Split(opts.dbExtensions, ",") {
-				ext = strings.TrimSpace(ext)
-				if ext != "" {
-					extensions = append(extensions, ext)
-				}
-			}
-		}
+		extensions := splitExtensions(opts.dbExtensions)
 		req.ProvisionPostgres = &types.PostgresProvisionSpec{
 			DatabaseName: opts.dbName,
 			RolePassword: password,
@@ -187,6 +195,9 @@ func runOnboard(cfg *config.Config, opts onboardOpts) error {
 		if err != nil {
 			return fmt.Errorf("failed to parse secrets file: %w", err)
 		}
+		if err := opts.gen.checkConflictsWithSecretsFile(entries); err != nil {
+			return err
+		}
 		req.ProvisionSecrets = entries
 	}
 
@@ -195,6 +206,10 @@ func runOnboard(cfg *config.Config, opts onboardOpts) error {
 		req.ProvisionR2 = &types.R2ProvisionSpec{
 			BucketName: opts.r2Bucket,
 		}
+	}
+
+	if err := opts.gen.apply(&req, opts.dbName); err != nil {
+		return err
 	}
 
 	// Dry run
@@ -282,6 +297,7 @@ func printDryRun(opts onboardOpts, req types.OnboardingRequest) {
 	} else {
 		fmt.Println("    [6] R2 bucket: skipped")
 	}
+	printGenerationPlan(os.Stdout, req)
 
 	fmt.Println()
 	fmt.Println("Run without --dry-run to execute.")
@@ -364,6 +380,8 @@ func printOnboardResult(result map[string]interface{}) bool {
 		fmt.Printf("  R2 bucket:     %v\n", bucket)
 	}
 
+	printGeneratedCredentials(os.Stdout, result)
+
 	if warnings, ok := result["provision_warnings"]; ok {
 		if warnList, ok := warnings.([]interface{}); ok && len(warnList) > 0 {
 			fmt.Println()
@@ -443,4 +461,16 @@ func promptPassword(prompt string) (string, error) {
 		return "", err
 	}
 	return strings.TrimSpace(string(password)), nil
+}
+
+// splitExtensions parses --db-extensions.
+func splitExtensions(raw string) []string {
+	var extensions []string
+	for _, ext := range strings.Split(raw, ",") {
+		ext = strings.TrimSpace(ext)
+		if ext != "" {
+			extensions = append(extensions, ext)
+		}
+	}
+	return extensions
 }
