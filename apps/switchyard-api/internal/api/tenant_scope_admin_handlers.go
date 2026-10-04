@@ -11,6 +11,7 @@ package api
 
 import (
 	"net/http"
+	"strings"
 
 	"github.com/gin-gonic/gin"
 
@@ -83,11 +84,18 @@ type TenantScopeDryRunResponse struct {
 	// can tell an operator.
 	AllowListSize int `json:"platform_admin_allow_list_size"`
 
-	// PlatformAdmins is how many principals actually carry the rank in the
-	// database. It should equal AllowListSize; a shortfall means an
-	// allow-listed address has no user row yet (the operator has never logged
-	// in) and that principal will be refused after deploy.
+	// PlatformAdmins counts active principals with the database rank, including
+	// OIDC users whose persisted role is developer. ResolvedOperators separately
+	// proves which configured operators are ready for enforcement.
 	PlatformAdmins int `json:"platform_admins_in_database"`
+
+	// Count only configured operators with a proven database rank. A stale
+	// rank on another account must not mask an allow-listed operator missing it.
+	ResolvedOperators int `json:"platform_admin_allow_list_resolved"`
+
+	// Direct proof for the authenticated caller, using the same resolver as
+	// operator authorization rather than inferring it from aggregate counts.
+	CallerIsPlatformAdmin bool `json:"caller_is_platform_admin"`
 
 	// PrincipalsLosingReach is the count of rows below with projects_lost > 0.
 	PrincipalsLosingReach int `json:"principals_losing_reach"`
@@ -114,7 +122,8 @@ func (h *Handler) TenantScopeDryRun(c *gin.Context) {
 		return
 	}
 
-	principals, err := h.repos.TenantScope.ReportCrossTenantReachLoss(ctx)
+	allowList := auth.PlatformAdminAllowList()
+	principals, err := h.repos.TenantScope.ReportCrossTenantReachLoss(ctx, allowList)
 	if err != nil {
 		if h.logger != nil {
 			h.logger.Error(ctx, "ADR-003 dry-run report failed", logging.Error("error", err))
@@ -124,15 +133,23 @@ func (h *Handler) TenantScopeDryRun(c *gin.Context) {
 	}
 
 	resp := TenantScopeDryRunResponse{
-		EnforcementActive: auth.TenantScopeEnforced(),
-		AllowListSize:     len(auth.PlatformAdminAllowList()),
-		Principals:        principals,
-		Warnings:          []string{},
+		EnforcementActive:     auth.TenantScopeEnforced(),
+		AllowListSize:         len(allowList),
+		CallerIsPlatformAdmin: h.callerIsPlatformAdmin(c),
+		Principals:            principals,
+		Warnings:              []string{},
 	}
 
+	operators := make(map[string]bool, len(allowList))
+	for _, email := range allowList {
+		operators[email] = true
+	}
 	for _, p := range principals {
 		if p.IsPlatformAdmin {
 			resp.PlatformAdmins++
+			if operators[strings.ToLower(p.Email)] {
+				resp.ResolvedOperators++
+			}
 		}
 		if p.ProjectsLost > 0 {
 			resp.PrincipalsLosingReach++
@@ -144,10 +161,10 @@ func (h *Handler) TenantScopeDryRun(c *gin.Context) {
 			"platform-admin allow-list is empty: after deploy no principal will have cross-tenant reach. "+
 				"Set ENCLII_PLATFORM_ADMIN_EMAILS before deploying.")
 	}
-	if resp.PlatformAdmins < resp.AllowListSize {
+	if resp.ResolvedOperators < resp.AllowListSize {
 		resp.Warnings = append(resp.Warnings,
-			"fewer principals carry the platform rank than the allow-list names: an allow-listed address has no "+
-				"user row yet, or holds no admin role. That principal will be refused cross-tenant calls after deploy.")
+			"one or more allow-listed operators have no active user row with the platform rank. "+
+				"Sign in to create the OIDC user row, reconcile the allow-list, and verify the report before enforcement.")
 	}
 	if resp.PrincipalsLosingReach > 0 {
 		resp.Warnings = append(resp.Warnings,
