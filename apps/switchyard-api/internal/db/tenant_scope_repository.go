@@ -125,17 +125,29 @@ type PrincipalReach struct {
 // an explicit project_access grant, or membership of the team that owns the
 // project.
 //
+// OIDC operators can retain a persisted developer role: the allow-list gives
+// them their admin role in request context. Include both the database platform
+// bit and configured operator emails, including operators not yet reconciled;
+// filtering only persisted roles would silently omit the production operators.
+//
 // Principals already carrying the platform rank are reported with
 // projects_lost = 0; they are included so the operator can see the whole
 // admin population in one output rather than inferring the complement.
-func (r *TenantScopeRepository) ReportCrossTenantReachLoss(ctx context.Context) ([]PrincipalReach, error) {
+func (r *TenantScopeRepository) ReportCrossTenantReachLoss(ctx context.Context, operatorEmails []string) ([]PrincipalReach, error) {
+	if operatorEmails == nil {
+		operatorEmails = []string{}
+	}
 	rows, err := r.db.QueryContext(ctx, `
 		WITH total AS (SELECT COUNT(*)::int AS n FROM projects),
 		admins AS (
 			SELECT u.id, u.email, u.role, u.is_platform_admin
 			  FROM users u
 			 WHERE u.active
-			   AND lower(u.role) IN ('admin', 'superadmin', 'tenant_admin', 'platform_admin')
+			   AND (
+                   lower(u.role) IN ('admin', 'superadmin', 'tenant_admin', 'platform_admin')
+                   OR u.is_platform_admin
+                   OR lower(u.email) = ANY($1)
+               )
 		),
 		reach AS (
 			SELECT a.id AS user_id,
@@ -170,13 +182,13 @@ func (r *TenantScopeRepository) ReportCrossTenantReachLoss(ctx context.Context) 
 		  LEFT JOIN reach r ON r.user_id = a.id
 		  LEFT JOIN teams t ON t.user_id = a.id
 		 ORDER BY a.email
-	`)
+	`, pq.Array(operatorEmails))
 	if err != nil {
 		return nil, err
 	}
 	defer func() { _ = rows.Close() }()
 
-	var out []PrincipalReach
+	out := make([]PrincipalReach, 0)
 	for rows.Next() {
 		var p PrincipalReach
 		if err := rows.Scan(

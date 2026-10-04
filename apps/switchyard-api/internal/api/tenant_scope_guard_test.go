@@ -17,6 +17,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
@@ -519,4 +520,33 @@ func TestStagedRollout_DryRunReportWorksWithTheFlagOff(t *testing.T) {
 	require.Len(t, body.Warnings, 1, "an allow-list that covers every operator leaves exactly the reach-loss warning")
 	assert.Contains(t, body.Warnings[0], "lose reach")
 	assert.NoError(t, mock.ExpectationsWereMet())
+}
+
+func TestTenantScopeDryRunDoesNotHideUnrankedOIDCOperators(t *testing.T) {
+	t.Setenv("ENCLII_PLATFORM_ADMIN_EMAILS", "ranked@example.org,awaiting-rank@example.org")
+	h, mock, cleanup := setupTenantScopeHandler(t)
+	defer cleanup()
+	callerID := uuid.New()
+	mock.ExpectQuery(`(?s)WITH total AS`).WithArgs(sqlmock.AnyArg()).
+		WillReturnRows(sqlmock.NewRows([]string{"id", "email", "role", "is_platform_admin", "team_n", "total", "after"}).
+			AddRow(callerID, "ranked@example.org", "developer", true, 0, 12, 12).
+			AddRow(uuid.New(), "awaiting-rank@example.org", "developer", false, 0, 12, 0).
+			AddRow(uuid.New(), "stale-rank@example.org", "admin", true, 0, 12, 12))
+	mock.ExpectQuery(`SELECT is_platform_admin FROM users WHERE id`).
+		WithArgs(callerID).
+		WillReturnRows(sqlmock.NewRows([]string{"is_platform_admin"}).AddRow(true))
+	w := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(w)
+	c.Request = httptest.NewRequest(http.MethodGet, "/v1/admin/tenant-scope/dry-run", nil)
+	c.Set("user_id", callerID.String())
+	c.Set("user_role", "admin") // OIDC allow-list override, not persisted developer role.
+	h.TenantScopeDryRun(c)
+	require.Equal(t, http.StatusOK, w.Code)
+	var body TenantScopeDryRunResponse
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &body))
+	require.Equal(t, 2, body.PlatformAdmins)
+	require.Equal(t, 1, body.ResolvedOperators, "a stale extra rank cannot conceal an unresolved operator")
+	require.True(t, body.CallerIsPlatformAdmin)
+	require.Contains(t, strings.Join(body.Warnings, " "), "allow-listed operators")
+	require.NoError(t, mock.ExpectationsWereMet())
 }
