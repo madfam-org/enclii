@@ -33,6 +33,10 @@ func (j *JWTManager) AuthMiddleware() gin.HandlerFunc {
 		// Try local token validation first
 		claims, err := j.ValidateToken(tokenString)
 		if err == nil {
+			if err := j.requireActiveLocalUser(c.Request.Context(), claims.UserID); err != nil {
+				c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "Account unavailable"})
+				return
+			}
 			// Local token validated successfully
 			c.Set("user_id", claims.UserID.String())
 			c.Set("user_email", claims.Email)
