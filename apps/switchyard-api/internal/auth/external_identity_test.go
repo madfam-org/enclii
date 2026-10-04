@@ -230,6 +230,7 @@ func TestExternalIdentityChangesPreserveLocalAndAPIKeyIdentity(t *testing.T) {
 					pair, err := manager.GenerateTokenPair(&User{ID: localID, Email: "local@example.org", Role: "admin", Active: true})
 					require.NoError(t, err)
 					token = pair.AccessToken
+					mock.ExpectQuery(`FROM users WHERE id = \$1`).WithArgs(localID).WillReturnRows(linkedExternalRow(localID, "fixture-subject", true))
 				}
 				response := identityRequest(middleware, token, func(c *gin.Context) {
 					require.Equal(t, localID.String(), c.GetString("user_id"))
