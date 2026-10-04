@@ -6,6 +6,9 @@ module.exports = {
     './components/**/*.{js,ts,jsx,tsx,mdx}',
     './app/**/*.{js,ts,jsx,tsx,mdx}',
     '../../packages/ui-components/src/**/*.{ts,tsx}',
+    // Janua ships source components; generate their provider-button colors
+    // (including dark variants) instead of inheriting the surrounding text.
+    './node_modules/@janua/ui/src/**/*.{ts,tsx}',
     // @madfam/ui from solarpunk-foundry (workspace link or node_modules)
     './node_modules/@madfam/ui/src/**/*.{ts,tsx}',
     './node_modules/@madfam/ui/dist/**/*.{js,mjs}',
