@@ -3,6 +3,7 @@ package notifications
 import (
 	"context"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/madfam-org/enclii/apps/switchyard-api/internal/resend"
@@ -15,6 +16,7 @@ type EmailService struct {
 	client    *resend.Client
 	fromEmail string
 	fromName  string
+	replyTo   string
 	baseURL   string
 	enabled   bool
 }
@@ -24,7 +26,37 @@ type EmailConfig struct {
 	APIKey    string // RESEND_API_KEY
 	FromEmail string // EMAIL_FROM_ADDRESS (default: noreply@enclii.dev)
 	FromName  string // EMAIL_FROM_NAME (default: Enclii)
+	ReplyTo   string // Reply-To on every email (default: support@madfam.io, ruling R101)
 	BaseURL   string // APP_BASE_URL (e.g., https://app.enclii.dev)
+}
+
+// MessageClass answers ruling R101's question (2026-10-04): should a person be
+// able to reply? Either way the mail leaves from the no-reply sender with a
+// Reply-To on a human inbox, because noreply@enclii.dev has no mailbox behind
+// it and a reply to it would bounce.
+type MessageClass string
+
+const (
+	// MessageSystem is a code, a link, an alert or a notice. It also carries
+	// Auto-Submitted: auto-generated and a closing line saying a reply still
+	// reaches a person.
+	MessageSystem MessageClass = "system"
+	// MessageConversation opens a conversation (welcome). Same Reply-To, no
+	// Auto-Submitted header and no automated-mail line.
+	MessageConversation MessageClass = "conversation"
+)
+
+// AutomatedNotice closes every system message. The Reply-To is what makes it
+// true.
+const AutomatedNotice = "This message is automated; if you reply, a person will answer."
+
+// stream is the Resend tag that keeps transactional and conversational
+// reputation separable (R101 supporting rule 3).
+func (c MessageClass) stream() string {
+	if c == MessageConversation {
+		return "conversational"
+	}
+	return "transactional"
 }
 
 // NewEmailService creates a new email service.
@@ -41,6 +73,7 @@ func NewEmailService(cfg EmailConfig, logger *logrus.Logger) *EmailService {
 		client:    client,
 		fromEmail: withDefault(cfg.FromEmail, "noreply@enclii.dev"),
 		fromName:  withDefault(cfg.FromName, "Enclii"),
+		replyTo:   withDefault(cfg.ReplyTo, "support@madfam.io"),
 		baseURL:   withDefault(cfg.BaseURL, "https://app.enclii.dev"),
 		enabled:   enabled,
 	}
@@ -103,6 +136,7 @@ func (s *EmailService) SendTeamInvitation(ctx context.Context, data TeamInvitati
         <p>This invitation expires on %s.</p>
         <div class="footer">
             <p>If you weren't expecting this invitation, you can safely ignore this email.</p>
+            <p>%s</p>
             <p>&copy; Enclii - Self-hosted DevOps Platform</p>
         </div>
     </div>
@@ -112,6 +146,7 @@ func (s *EmailService) SendTeamInvitation(ctx context.Context, data TeamInvitati
 		data.InviterName, data.InviterEmail, data.TeamName, data.Role,
 		inviteURL, inviteURL,
 		data.ExpiresAt.Format("January 2, 2006 at 3:04 PM UTC"),
+		AutomatedNotice,
 	)
 
 	textBody := fmt.Sprintf(`You're invited to join %s on Enclii
@@ -133,19 +168,22 @@ If you weren't expecting this invitation, you can safely ignore this email.
 		data.ExpiresAt.Format("January 2, 2006 at 3:04 PM UTC"),
 	)
 
-	return s.send(ctx, data.InviteeEmail, subject, htmlBody, textBody)
+	return s.send(ctx, data.InviteeEmail, subject, htmlBody, textBody, MessageSystem)
 }
 
 // resendEmail represents the Resend API email payload (used in tests).
 type resendEmail struct {
-	From    string   `json:"from"`
-	To      []string `json:"to"`
-	Subject string   `json:"subject"`
-	HTML    string   `json:"html,omitempty"`
-	Text    string   `json:"text,omitempty"`
+	From    string            `json:"from"`
+	To      []string          `json:"to"`
+	Subject string            `json:"subject"`
+	HTML    string            `json:"html,omitempty"`
+	Text    string            `json:"text,omitempty"`
+	ReplyTo string            `json:"reply_to,omitempty"`
+	Headers map[string]string `json:"headers,omitempty"`
+	Tags    []resend.Tag      `json:"tags,omitempty"`
 }
 
-func (s *EmailService) send(ctx context.Context, to, subject, htmlBody, textBody string) error {
+func (s *EmailService) send(ctx context.Context, to, subject, htmlBody, textBody string, class MessageClass) error {
 	logger := s.logger.WithFields(logrus.Fields{
 		"to":      to,
 		"subject": subject,
@@ -157,13 +195,29 @@ func (s *EmailService) send(ctx context.Context, to, subject, htmlBody, textBody
 		return nil
 	}
 
-	_, err := s.client.SendEmail(ctx, resend.SendEmailRequest{
+	req := resend.SendEmailRequest{
 		From:    fmt.Sprintf("%s <%s>", s.fromName, s.fromEmail),
 		To:      []string{to},
 		Subject: subject,
 		HTML:    htmlBody,
 		Text:    textBody,
-	})
+		Tags: []resend.Tag{
+			{Name: "source_app", Value: "enclii"},
+			{Name: "stream", Value: class.stream()},
+		},
+	}
+	// Ruling R101: a reply to the no-reply sender reaches a person.
+	if s.replyTo != "" && !strings.EqualFold(s.replyTo, s.fromEmail) {
+		req.ReplyTo = s.replyTo
+	}
+	if class == MessageSystem {
+		// RFC 3834: keeps out-of-office robots from answering a notice.
+		req.Headers = map[string]string{"Auto-Submitted": "auto-generated"}
+		if req.Text != "" && !strings.Contains(req.Text, AutomatedNotice) {
+			req.Text = strings.TrimRight(req.Text, "\n") + "\n\n" + AutomatedNotice + "\n"
+		}
+	}
+	_, err := s.client.SendEmail(ctx, req)
 	if err != nil {
 		logger.WithError(err).Error("Failed to send email")
 		return fmt.Errorf("failed to send email: %w", err)
@@ -186,6 +240,14 @@ func (s *EmailService) FromEmail() string {
 	return s.fromEmail
 }
 
+// ReplyTo returns the configured Reply-To address.
+func (s *EmailService) ReplyTo() string {
+	if s == nil {
+		return ""
+	}
+	return s.replyTo
+}
+
 // FromName returns the configured sender display name.
 func (s *EmailService) FromName() string {
 	if s == nil {
@@ -194,12 +256,24 @@ func (s *EmailService) FromName() string {
 	return s.fromName
 }
 
-// SendGeneric sends a plain-text transactional email.
+// SendGeneric sends a plain-text transactional email (a system message: it
+// gets the Auto-Submitted header and the automated-mail line).
 func (s *EmailService) SendGeneric(ctx context.Context, to, subject, body string) error {
 	if to == "" {
 		s.logger.WithField("subject", subject).
 			Info("SendGeneric: no recipient, logging only")
 		return nil
 	}
-	return s.send(ctx, to, subject, "", body)
+	return s.send(ctx, to, subject, "", body, MessageSystem)
+}
+
+// SendConversation sends a plain-text message that invites a reply (welcome).
+// The Reply-To still applies; the automated-mail extras do not.
+func (s *EmailService) SendConversation(ctx context.Context, to, subject, body string) error {
+	if to == "" {
+		s.logger.WithField("subject", subject).
+			Info("SendConversation: no recipient, logging only")
+		return nil
+	}
+	return s.send(ctx, to, subject, "", body, MessageConversation)
 }

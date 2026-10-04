@@ -61,5 +61,7 @@ If you get stuck, reply to this email — a human will answer.
 
 — The Enclii team
 `, name, projectURL)
-	return a.svc.SendGeneric(ctx, to, subject, body)
+	// Conversation, not a notice: the sentence above invites a reply, and the
+	// Reply-To (ruling R101) is what delivers it to a person.
+	return a.svc.SendConversation(ctx, to, subject, body)
 }

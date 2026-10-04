@@ -19,6 +19,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/madfam-org/enclii/apps/switchyard-api/internal/resend"
 	"github.com/madfam-org/enclii/packages/sdk-go/pkg/types"
 )
 
@@ -621,6 +622,73 @@ func TestEmailService_Enabled_SendsToResend(t *testing.T) {
 	assert.Contains(t, email.Subject, "Acme Corp")
 	assert.Contains(t, email.HTML, "tok_invite_xyz")
 	assert.Contains(t, email.Text, "Jane Doe")
+
+	// Ruling R101: an invitation is a system message. A reply reaches a
+	// person, robots are told not to answer, and the mail says so.
+	assert.Equal(t, "support@madfam.io", email.ReplyTo)
+	assert.Equal(t, map[string]string{"Auto-Submitted": "auto-generated"}, email.Headers)
+	assert.Contains(t, email.HTML, AutomatedNotice)
+	assert.True(t, strings.HasSuffix(email.Text, AutomatedNotice+"\n"), "text ends with the automated-mail line")
+	assert.Contains(t, email.Tags, resend.Tag{Name: "stream", Value: "transactional"})
+	assert.Contains(t, email.Tags, resend.Tag{Name: "source_app", Value: "enclii"})
+}
+
+// captureResend returns an enabled EmailService whose sends land in *got.
+func captureResend(t *testing.T, cfg EmailConfig, got *resendEmail) *EmailService {
+	t.Helper()
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		body, err := io.ReadAll(r.Body)
+		require.NoError(t, err)
+		require.NoError(t, json.Unmarshal(body, got))
+		_, _ = w.Write([]byte(`{"id":"msg_1"}`))
+	}))
+	t.Cleanup(server.Close)
+	if cfg.APIKey == "" {
+		cfg.APIKey = "re_test_key"
+	}
+	svc := NewEmailService(cfg, testLogger())
+	svc.client.SetHTTPClient(redirectTransport(server))
+	return svc
+}
+
+func TestEmailService_SendGeneric_IsASystemMessage(t *testing.T) {
+	var email resendEmail
+	svc := captureResend(t, EmailConfig{}, &email)
+
+	require.NoError(t, svc.SendGeneric(context.Background(), "persona@example.com", "Export ready", "Your export is ready.\n"))
+
+	assert.Equal(t, "Enclii <noreply@enclii.dev>", email.From)
+	assert.Equal(t, "support@madfam.io", email.ReplyTo)
+	assert.Equal(t, "auto-generated", email.Headers["Auto-Submitted"])
+	assert.Equal(t, "Your export is ready.\n\n"+AutomatedNotice+"\n", email.Text)
+	assert.Contains(t, email.Tags, resend.Tag{Name: "stream", Value: "transactional"})
+}
+
+func TestEmailService_SendConversation_InvitesAReplyWithoutTheAutomatedExtras(t *testing.T) {
+	var email resendEmail
+	svc := captureResend(t, EmailConfig{}, &email)
+
+	body := "Hi Ana,\n\nIf you get stuck, reply to this email — a human will answer.\n"
+	require.NoError(t, svc.SendConversation(context.Background(), "persona@example.com", "Welcome", body))
+
+	assert.Equal(t, "support@madfam.io", email.ReplyTo, "the reply the body promises must reach a person")
+	assert.Empty(t, email.Headers, "no Auto-Submitted on conversation")
+	assert.Equal(t, body, email.Text, "no automated-mail line on conversation")
+	assert.Contains(t, email.Tags, resend.Tag{Name: "stream", Value: "conversational"})
+}
+
+func TestEmailService_ReplyToEqualToFromIsOmitted(t *testing.T) {
+	var email resendEmail
+	svc := captureResend(t, EmailConfig{FromEmail: "hola@madfam.io", ReplyTo: "HOLA@madfam.io"}, &email)
+
+	require.NoError(t, svc.SendGeneric(context.Background(), "persona@example.com", "Aviso", "Hola"))
+
+	assert.Empty(t, email.ReplyTo, "a Reply-To that repeats From is noise")
+}
+
+func TestEmailService_SendConversation_NoRecipientLogsOnly(t *testing.T) {
+	svc := NewEmailService(EmailConfig{APIKey: "re_test_key"}, testLogger())
+	assert.NoError(t, svc.SendConversation(context.Background(), "", "Welcome", "Hi"))
 }
 
 func TestEmailService_ResendError(t *testing.T) {
@@ -919,6 +987,7 @@ func TestNewEmailService_Defaults(t *testing.T) {
 	assert.True(t, svc.IsEnabled())
 	assert.Equal(t, "noreply@enclii.dev", svc.fromEmail)
 	assert.Equal(t, "Enclii", svc.fromName)
+	assert.Equal(t, "support@madfam.io", svc.ReplyTo())
 	assert.Equal(t, "https://app.enclii.dev", svc.baseURL)
 }
 
