@@ -5,6 +5,9 @@
 #   GHCR_USERNAME=madfam-bot GHCR_PAT=ghp_xxx ./scripts/rotate-ghcr-credentials.sh
 #   GHCR_USERNAME=madfam-bot GHCR_PAT=ghp_xxx ./scripts/rotate-ghcr-credentials.sh --dry-run
 #
+# Legacy bootstrap / documented break-glass only; routine convergence uses Enclii.
+# --dry-run prints namespace/object metadata only and never serializes credentials.
+#
 # Prerequisites:
 #   - kubectl configured with cluster access
 #   - GHCR_PAT with read:packages (and write:packages if pushing) scope
@@ -16,6 +19,10 @@ GHCR_USERNAME="${GHCR_USERNAME:-madfam-bot}"
 GHCR_PAT="${GHCR_PAT:-}"
 SECRET_NAME="ghcr-credentials"
 DRY_RUN="${1:-}"
+if [[ $# -gt 1 || ( -n "$DRY_RUN" && "$DRY_RUN" != "--dry-run" ) ]]; then
+    echo "Usage: $0 [--dry-run]" >&2
+    exit 2
+fi
 
 # All namespaces that need GHCR pull access
 NAMESPACES=(
@@ -42,7 +49,7 @@ log_warn()    { echo -e "${YELLOW}[WARN]${NC}    $1"; }
 log_error()   { echo -e "${RED}[ERROR]${NC}   $1"; }
 
 # ── Validate inputs ──────────────────────────────────────────────────────────
-if [[ -z "${GHCR_PAT}" ]]; then
+if [[ "${DRY_RUN}" != "--dry-run" && -z "${GHCR_PAT}" ]]; then
     log_error "GHCR_PAT environment variable is required"
     echo ""
     echo "Usage: GHCR_USERNAME=madfam-bot GHCR_PAT=ghp_xxx $0"
@@ -55,7 +62,9 @@ if [[ -z "${GHCR_PAT}" ]]; then
 fi
 
 # ── Validate credential (optional, uses crane if available) ──────────────────
-if command -v crane &>/dev/null; then
+if [[ "${DRY_RUN}" == "--dry-run" ]]; then
+    log_info "Dry run: skipping registry login and credential validation"
+elif command -v crane &>/dev/null; then
     log_info "Validating GHCR credentials with crane..."
     if echo "${GHCR_PAT}" | crane auth login ghcr.io --username "${GHCR_USERNAME}" --password-stdin 2>/dev/null; then
         log_success "GHCR credential is valid"
@@ -78,8 +87,12 @@ for NS in "${NAMESPACES[@]}"; do
         continue
     }
 
-    log_info "Rotating ${SECRET_NAME} in namespace '${NS}'..."
+    if [[ "${DRY_RUN}" == "--dry-run" ]]; then
+        log_info "(dry-run) Would ensure Secret ${NS}/${SECRET_NAME} (type=kubernetes.io/dockerconfigjson, registry=ghcr.io)"
+        continue
+    fi
 
+    log_info "Rotating ${SECRET_NAME} in namespace '${NS}'..."
     CMD=(kubectl create secret docker-registry "${SECRET_NAME}"
         --namespace="${NS}"
         --docker-server=ghcr.io
@@ -87,17 +100,12 @@ for NS in "${NAMESPACES[@]}"; do
         --docker-password="${GHCR_PAT}"
         --dry-run=client -o yaml)
 
-    if [[ "${DRY_RUN}" == "--dry-run" ]]; then
-        "${CMD[@]}" | head -5
-        log_info "(dry-run) Would apply to namespace '${NS}'"
+    if "${CMD[@]}" | kubectl apply -f - 2>/dev/null; then
+        log_success "${NS}/${SECRET_NAME} updated"
+        UPDATED=$((UPDATED + 1))
     else
-        if "${CMD[@]}" | kubectl apply -f - 2>/dev/null; then
-            log_success "${NS}/${SECRET_NAME} updated"
-            ((UPDATED++))
-        else
-            log_error "Failed to update ${NS}/${SECRET_NAME}"
-            ((FAILED++))
-        fi
+        log_error "Failed to update ${NS}/${SECRET_NAME}"
+        FAILED=$((FAILED + 1))
     fi
 done
 
