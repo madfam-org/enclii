@@ -508,89 +508,7 @@ func SetupRoutes(router *gin.Engine, h *Handler) {
 			// Dashboard stats (authenticated; was public for local dev only)
 			protected.GET("/dashboard/stats", h.GetDashboardStats)
 
-			// Projects
-			protected.POST("/projects", h.auth.RequireRole(string(types.RoleAdmin)), middleware.RequireTierForProject(h.repos), h.CreateProject)
-			protected.GET("/projects", h.ListProjects)
-			protected.GET("/projects/cards", h.ListProjectCards)
-			protected.GET("/project-processes/summary", h.GetProjectProcessSummaries)
-			protected.GET("/project-processes/stream", h.StreamProjectProcessSummaries)
-			protected.GET("/projects/:slug", h.GetProject)
-			protected.GET("/projects/:slug/processes", h.GetProjectProcesses)
-			protected.GET("/projects/:slug/processes/stream", h.StreamProjectProcesses)
-			protected.DELETE("/projects/:slug", h.auth.RequireRole(string(types.RoleAdmin)), h.DeleteProject)
-			// Re-parent a project to a team (its tenant), or un-parent it.
-			// Admin-gated: reparenting changes which tenant owns the project.
-			protected.PUT("/projects/:slug/team", h.auth.RequireRole(string(types.RoleAdmin)), h.SetProjectTeam)
-
-			// CI Runner Configuration
-			protected.GET("/projects/:slug/ci-runner-config", h.GetCIRunnerConfig)
-			protected.PUT("/projects/:slug/ci-runner-config", h.auth.RequireRole(string(types.RoleDeveloper)), h.UpdateCIRunnerConfig)
-
-			// Environments
-			protected.POST("/projects/:slug/environments", h.auth.RequireRole(string(types.RoleDeveloper)), h.CreateEnvironment)
-			protected.GET("/projects/:slug/environments", h.ListEnvironments)
-			protected.GET("/projects/:slug/environments/:env_name", h.GetEnvironment)
-
-			// Services
-			protected.POST("/projects/:slug/services", h.auth.RequireRole(string(types.RoleDeveloper)), middleware.RequireTierForService(h.repos), h.CreateService)
-			protected.POST("/projects/:slug/services/bulk", h.auth.RequireRole(string(types.RoleDeveloper)), h.BulkCreateServices)
-			protected.GET("/projects/:slug/services", h.ListServices)
-			protected.GET("/services/:id", h.GetService)
-			protected.GET("/services/:id/settings", h.GetServiceSettings)
-			protected.PATCH("/services/:id", h.auth.RequireRole(string(types.RoleDeveloper)), h.UpdateService)
-			protected.DELETE("/services/:id", h.auth.RequireRole(string(types.RoleAdmin)), h.DeleteService)
-
-			// Build & Deploy
-			protected.POST("/services/:id/build", h.auth.RequireRole(string(types.RoleDeveloper)), h.BuildService)
-			protected.GET("/services/:id/releases", h.ListReleases)
-			protected.POST("/services/:id/deploy", h.auth.RequireRole(string(types.RoleDeveloper)), middleware.RequireTierForDeploy(h.repos), h.DeployService)
-
-			// Status & Deployments
-			protected.GET("/services/:id/status", h.GetServiceStatus)
-			protected.GET("/services/:id/metrics", h.GetServiceResourceMetrics)
-			protected.GET("/services/:id/deployments", h.ListServiceDeployments)
-			protected.GET("/services/:id/deployments/latest", h.GetLatestDeployment)
-			// P2.6: lookup by Heroku-style v-number. Route accepts either
-			// the bare integer ("42") or the prefixed form ("v42") — the
-			// handler normalizes. We use a separate `/versions/:v` segment
-			// because gin can't register `:version` next to the static
-			// `latest` above (httprouter rejects the mix at boot).
-			protected.GET("/services/:id/versions/:version", h.GetDeploymentByVersion)
-			protected.GET("/deployments", h.ListAllDeployments)
-			protected.GET("/deployments/:id", h.GetDeployment)
-			protected.GET("/deployments/:id/logs", h.GetLogs)
-			protected.POST("/deployments/:id/rollback", h.auth.RequireRole(string(types.RoleDeveloper)), h.RollbackDeployment)
-			// Instant rollback via Service-selector flip (P0.5). Traffic flips in <30s
-			// for still-running targets, <90s for scale-back-up. Coexists with the
-			// deployments/:id/rollback endpoint above — ArgoCD path is the fallback.
-			protected.POST("/services/:id/rollback", h.auth.RequireRole(string(types.RoleDeveloper)), h.InstantRollback)
-
-			// Canary releases (P2.7). Replica-proportion traffic splitting with
-			// auto-promote after a validation window. See internal/reconciler/canary.go.
-			protected.POST("/services/:id/canary", h.auth.RequireRole(string(types.RoleDeveloper)), h.StartCanary)
-			protected.GET("/services/:id/canary", h.ListServiceCanaries)
-			protected.GET("/services/:id/canary/:rollout_id", h.GetCanary)
-			protected.POST("/services/:id/canary/:rollout_id/promote", h.auth.RequireRole(string(types.RoleDeveloper)), h.PromoteCanary)
-			protected.POST("/services/:id/canary/:rollout_id/rollback", h.auth.RequireRole(string(types.RoleDeveloper)), h.RollbackCanary)
-
-			// Real-time Logs (WebSocket streaming)
-			protected.GET("/services/:id/logs/stream", h.StreamServiceLogsWS)
-			protected.GET("/services/:id/logs/history", h.GetLogsHistory)
-			protected.POST("/services/:id/logs/search", h.SearchLogs)
-			protected.GET("/deployments/:id/logs/stream", h.StreamLogsWS)
-
-			// P2.1 — Loki-backed log tail for app.enclii.dev UI.
-			// /logs     returns a windowed, paginated historical slice.
-			// /logs/tail is a WebSocket that pushes entries as they land
-			// in Loki (typically <2s from ingest).
-			protected.GET("/services/:id/logs", h.loggedLogsQuery)
-			protected.GET("/services/:id/logs/tail", h.loggedLogsTail)
-			protected.GET("/services/:id/builds/:build_id/logs", h.GetBuildLogs)
-			protected.GET("/services/:id/builds/:build_id/logs/stream", h.StreamBuildLogsWS)
-
-			// Build Status (Unified CI + Build + Deploy status)
-			// Note: :build_id here can be either a release UUID or commit SHA
-			protected.GET("/services/:id/builds/:build_id/status", h.GetUnifiedBuildStatus)
+			h.registerProjectServiceRoutes(protected)
 
 			// Topology
 			protected.GET("/topology", h.GetTopology)
@@ -707,8 +625,7 @@ func SetupRoutes(router *gin.Engine, h *Handler) {
 			// MADFAM operator/provider replacement layer. These endpoints are
 			// contract-first and plan-safe: dry-runs return structured plans;
 			// apply requests require concrete adapters and audit reasons.
-			protected.GET("/ops/capabilities", h.auth.RequireRole(string(types.RoleAdmin)), h.GetOpsCapabilities)
-			protected.POST("/ops/:domain/:action", h.auth.RequireRole(string(types.RoleAdmin)), h.HandleOpsOperation)
+			registerOperatorRoutes(protected, h)
 			// Chat-safe secret intake: write-only values path; agents poll status by intake_id.
 			//
 			// ADR-003 (R21 PR 2): PLATFORM-ONLY. An intake target is a Vault
@@ -725,8 +642,6 @@ func SetupRoutes(router *gin.Engine, h *Handler) {
 			protected.GET("/secrets/intake/targets", h.auth.RequireRole(string(types.RoleAdmin)), h.RequirePlatformAdmin(), h.ListSecretIntakeTargets)
 			protected.POST("/secrets/intake", h.auth.RequireRole(string(types.RoleAdmin)), h.RequirePlatformAdmin(), h.SubmitSecretIntake)
 			protected.GET("/secrets/intake/:id", h.auth.RequireRole(string(types.RoleAdmin)), h.RequirePlatformAdmin(), h.GetSecretIntakeStatus)
-			protected.GET("/providers/capabilities", h.auth.RequireRole(string(types.RoleAdmin)), h.GetProviderCapabilities)
-			protected.POST("/providers/:provider/:action", h.auth.RequireRole(string(types.RoleAdmin)), h.HandleProviderOperation)
 
 			// Deployment Lifecycle Timeline
 			protected.GET("/lifecycle/timeline/:owner/:repo", h.GetLifecycleTimeline)
@@ -788,44 +703,7 @@ func SetupRoutes(router *gin.Engine, h *Handler) {
 			protected.GET("/user/tokens/:token_id", h.GetAPIToken)
 			protected.DELETE("/user/tokens/:token_id", h.RevokeAPIToken)
 
-			// Database Add-ons (PostgreSQL, Redis, MySQL)
-			// Global addon listing (all addons user has access to)
-			protected.GET("/addons", h.ListAllAddons)
-			protected.GET("/databases", h.ListAllAddons) // Alias for better UX
-			// Managed-DB plan catalog (P3.1 Sprint 1)
-			protected.GET("/addons/plans", h.ListManagedDBPlans)
-			// Project-specific addon operations
-			protected.POST("/projects/:slug/addons", h.auth.RequireRole(string(types.RoleDeveloper)), h.CreateAddon)
-			protected.GET("/projects/:slug/addons", h.ListAddons)
-			protected.GET("/addons/:id", h.GetAddon)
-			protected.GET("/addons/:id/credentials", h.GetAddonCredentials)
-			protected.GET("/addons/:id/events", h.GetAddonEvents) // P3.1 Sprint 1: lifecycle ledger
-			protected.POST("/addons/:id/refresh", h.RefreshAddonStatus)
-			protected.DELETE("/addons/:id", h.auth.RequireRole(string(types.RoleAdmin)), h.DeleteAddon)
-			protected.POST("/addons/:id/bindings", h.auth.RequireRole(string(types.RoleDeveloper)), h.CreateAddonBinding)
-			protected.DELETE("/addons/:id/bindings/:service_id", h.auth.RequireRole(string(types.RoleDeveloper)), h.DeleteAddonBinding)
-
-			// Data API (auto-generated REST over managed Postgres, PostgREST).
-			// See docs/architecture/data-api-postgrest.md.
-			protected.GET("/addons/:id/data-api", h.GetDataAPI)
-			protected.POST("/addons/:id/data-api", h.auth.RequireRole(string(types.RoleDeveloper)), h.EnableDataAPI)
-			protected.DELETE("/addons/:id/data-api", h.auth.RequireRole(string(types.RoleAdmin)), h.DisableDataAPI)
-			protected.POST("/addons/:id/data-api/token", h.auth.RequireRole(string(types.RoleDeveloper)), h.MintDataAPIToken)
-			protected.GET("/services/:id/bindings", h.GetServiceBindings)
-
-			// Realtime DB change subscriptions (parity gap C2). The WS stream
-			// sits under :slug so RequireProjectAccessBySlug gates the upgrade;
-			// StreamAddonRealtime re-checks the addon→project link as defense
-			// in depth. The trigger-management routes are addon-scoped (they
-			// self-gate via loadAddonWithAccess) and require Developer role for
-			// the mutating enable/disable, matching the other addon mutations.
-			// See docs/architecture/ADR_002_REALTIME_DB_SUBSCRIPTIONS.md.
-			protected.GET("/projects/:slug/addons/:id/realtime", h.RequireProjectAccessBySlug(), h.StreamAddonRealtime)
-			protected.POST("/addons/:id/realtime/tables", h.auth.RequireRole(string(types.RoleDeveloper)), h.EnableAddonRealtimeTable)
-			protected.GET("/addons/:id/realtime/tables", h.ListAddonRealtimeTables)
-			protected.DELETE("/addons/:id/realtime/tables/:schema/:table", h.auth.RequireRole(string(types.RoleDeveloper)), h.DisableAddonRealtimeTable)
-
-			h.registerStorageRoutes(protected)
+			h.registerManagedDataRoutes(protected)
 
 			// Infrastructure Operations (exec, restart, scale, migrate, health)
 			protected.POST("/services/:id/exec", h.auth.RequireRole(string(types.RoleAdmin)), h.ExecService)
