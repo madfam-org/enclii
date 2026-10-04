@@ -3,7 +3,9 @@ package auth
 import (
 	"context"
 	"crypto/rand"
+	"database/sql"
 	"encoding/base64"
+	"errors"
 	"fmt"
 	"os"
 	"strings"
@@ -502,11 +504,17 @@ func (o *OIDCManager) AuthMiddleware() gin.HandlerFunc {
 // getOrCreateUserFromExternalTokenWithStatus creates or updates a user from external token claims
 // Returns the user, whether a new user was created, and any error
 func (o *OIDCManager) getOrCreateUserFromExternalTokenWithStatus(ctx context.Context, claims *ExternalClaims) (*User, bool, error) {
+	if o.repos == nil || o.repos.Users == nil || claims == nil || claims.Issuer == "" || claims.Subject == "" {
+		return nil, false, fmt.Errorf("external identity is not available")
+	}
 	issuer := claims.Issuer
 
 	// Try to find user by OIDC identity
 	user, err := o.repos.Users.GetByOIDCIdentity(ctx, issuer, claims.Subject)
 	if err == nil {
+		if !user.Active {
+			return nil, false, fmt.Errorf("external identity is not available")
+		}
 		return &User{
 			ID:         user.ID,
 			Email:      user.Email,
@@ -517,9 +525,17 @@ func (o *OIDCManager) getOrCreateUserFromExternalTokenWithStatus(ctx context.Con
 		}, false, nil
 	}
 
+	if !errors.Is(err, sql.ErrNoRows) {
+		return nil, false, fmt.Errorf("external identity lookup failed: %w", err)
+	}
+
 	// Try to find by email
 	user, err = o.repos.Users.GetByEmail(ctx, claims.Email)
 	if err == nil {
+		// Do not relink or authenticate a locally disabled account.
+		if !user.Active {
+			return nil, false, fmt.Errorf("external identity is not available")
+		}
 		// Link existing user to external identity
 		user.OIDCSubject = &claims.Subject
 		user.OIDCIssuer = &issuer
@@ -544,6 +560,10 @@ func (o *OIDCManager) getOrCreateUserFromExternalTokenWithStatus(ctx context.Con
 			ProjectIDs: o.loadUserProjectIDs(ctx, user.ID),
 			Active:     user.Active,
 		}, false, nil
+	}
+
+	if !errors.Is(err, sql.ErrNoRows) {
+		return nil, false, fmt.Errorf("external account lookup failed: %w", err)
 	}
 
 	// Create new user
