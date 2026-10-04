@@ -2,33 +2,14 @@
  * Server-side proxy for Switchyard provider and ops contract endpoints.
  */
 
+import { callerProxy } from './caller-proxy'
+
 export async function switchyardProxy(
   prefix: 'providers' | 'ops',
   path: string,
   options?: RequestInit & { userToken?: string }
 ) {
-  const { userToken, ...fetchOptions } = options || {}
-  const apiKey = process.env.SWITCHYARD_API_KEY
-  const apiBase = process.env.NEXT_PUBLIC_API_URL || 'https://api.enclii.dev'
-  const url = `${apiBase}/v1/${prefix}${path}`
-
-  const doFetch = (token?: string) =>
-    fetch(url, {
-      ...fetchOptions,
-      headers: {
-        'Content-Type': 'application/json',
-        ...(token ? { Authorization: `Bearer ${token}` } : {}),
-        ...fetchOptions?.headers,
-      },
-    })
-
-  if (userToken) {
-    const res = await doFetch(userToken)
-    if (res.status !== 401 || !apiKey) return res
-    return doFetch(apiKey)
-  }
-
-  return doFetch(apiKey)
+  return callerProxy(`/${prefix}${path}`, options)
 }
 
 export type OperatorRequest = {

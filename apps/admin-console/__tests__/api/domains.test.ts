@@ -28,6 +28,10 @@ jest.mock('next/server', () => {
   return { NextResponse: MockNextResponse }
 })
 
+jest.mock('next/headers', () => ({
+  cookies: jest.fn(async () => ({ get: (name: string) => name === 'dispatch_auth' ? { value: 'caller-jwt' } : undefined })),
+}))
+
 jest.mock('@/lib/switchyard-proxy', () => ({
   switchyardProviderCall: jest.fn(),
 }))
@@ -65,7 +69,7 @@ describe('GET /api/domains', () => {
     const response = await GET()
     const body = await response.json()
 
-    expect(mockProviderCall).toHaveBeenCalledWith('cloudflare', 'zones', { dry_run: true })
+    expect(mockProviderCall).toHaveBeenCalledWith('cloudflare', 'zones', { dry_run: true }, 'caller-jwt')
     expect(body.success).toBe(true)
     expect(body.data).toEqual([
       expect.objectContaining({
@@ -91,6 +95,11 @@ describe('GET /api/domains', () => {
     expect((response as { status: number }).status).toBe(502)
     expect(body.success).toBe(false)
     expect(body.error).toBe('Cloudflare API timeout')
+  })
+
+  it.each([401, 403])('preserves upstream auth refusal %s', async (status) => {
+    mockProviderCall.mockResolvedValueOnce({ ok: false, status, data: { error: 'Unauthorized' } })
+    expect((await GET()).status).toBe(status)
   })
 
   it('returns 500 when proxy throws', async () => {
@@ -136,7 +145,7 @@ describe('POST /api/domains', () => {
       dry_run: false,
       reason: 'Commission domain newsite.dev via Dispatch',
       args: { target: 'newsite.dev' },
-    })
+    }, 'caller-jwt')
     expect(body.success).toBe(true)
     expect(body.data.nameservers).toEqual(['ns1.cf', 'ns2.cf'])
     expect(body.data.instructions).toEqual(
