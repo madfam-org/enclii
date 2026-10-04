@@ -7,9 +7,11 @@ import (
 	"testing"
 	"time"
 
+	"github.com/DATA-DOG/go-sqlmock"
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 	"github.com/gorilla/websocket"
+	"github.com/madfam-org/enclii/apps/switchyard-api/internal/db"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
@@ -51,9 +53,16 @@ func TestWebsocketOriginAllowed(t *testing.T) {
 // and a browser (query token, page Origin) connect.
 func TestLogStreamUpgrade_OriginPolicyBehindAuthMiddleware(t *testing.T) {
 	gin.SetMode(gin.TestMode)
-	manager, err := auth.NewJWTManager(15*time.Minute, time.Hour, nil, nil)
+	conn, mock, err := sqlmock.New()
 	require.NoError(t, err)
-	pair, err := manager.GenerateTokenPair(&auth.User{ID: uuid.New(), Email: "dev@example.com", Role: "developer"})
+	t.Cleanup(func() { require.NoError(t, mock.ExpectationsWereMet()); conn.Close() })
+	id := uuid.New()
+	for i := 0; i < 6; i++ {
+		mock.ExpectQuery(`FROM users WHERE id = \$1`).WithArgs(id).WillReturnRows(sqlmock.NewRows([]string{"id", "email", "password_hash", "name", "role", "oidc_subject", "oidc_issuer", "active", "created_at", "updated_at", "last_login_at"}).AddRow(id, "dev@example.com", "", "Developer", "developer", nil, nil, true, time.Now(), time.Now(), nil))
+	}
+	manager, err := auth.NewJWTManager(15*time.Minute, time.Hour, &db.Repositories{Users: db.NewUserRepository(conn)}, nil)
+	require.NoError(t, err)
+	pair, err := manager.GenerateTokenPair(&auth.User{ID: id, Email: "dev@example.com", Role: "developer"})
 	require.NoError(t, err)
 	token := pair.AccessToken
 
