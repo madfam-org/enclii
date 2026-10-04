@@ -3,6 +3,7 @@
 import { useEffect, useState, Suspense, useRef } from "react";
 import { useSearchParams } from "next/navigation";
 import { Spinner } from "@/components/ui/spinner";
+import { setStoredTokens } from "@/lib/auth-session";
 import { identifyUser } from "@/lib/analytics/posthog";
 
 /**
@@ -78,13 +79,8 @@ function AuthCallbackContent() {
         const tokenData = await tokenResponse.json();
         const { access_token, expires_in, refresh_token } = tokenData;
 
-        // Store in localStorage so lib/api.ts can use it for API calls
+        // Publish the verified session below, together with its browser cookie.
         const expiresAt = Date.now() + (expires_in || 900) * 1000;
-        localStorage.setItem("enclii_tokens", JSON.stringify({
-          accessToken: access_token,
-          refreshToken: refresh_token || null,
-          expiresAt,
-        }));
 
         // Step 2: Get user data with Bearer header (not cookie-based)
         const meResponse = await fetch(`${JANUA_URL}/api/v1/auth/me`, {
@@ -98,18 +94,24 @@ function AuthCallbackContent() {
         const userData = await meResponse.json();
 
         // Step 3: Set cookies via server-side API route (avoids client-side race conditions)
-        const sessionResponse = await fetch("/api/auth/session", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            token: access_token,
-            email: userData.email,
-          }),
-        });
+        await setStoredTokens({
+          accessToken: access_token,
+          refreshToken: refresh_token || undefined,
+          expiresAt,
+        }, async () => {
+          const sessionResponse = await fetch("/api/auth/session", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              token: access_token,
+              email: userData.email,
+            }),
+          });
 
-        if (!sessionResponse.ok) {
-          throw new Error("Failed to establish session");
-        }
+          if (!sessionResponse.ok) {
+            throw new Error("Failed to establish session");
+          }
+        });
 
         setStatus("success");
 

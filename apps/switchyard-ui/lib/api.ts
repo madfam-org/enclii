@@ -8,7 +8,7 @@
  */
 
 import { API_BASE_URL, AUTH_MODE, JANUA_BASE_URL, OAUTH_CLIENT_ID } from '@/lib/constants';
-import { getStoredTokens, setStoredTokens, clearStorage, TOKEN_STORAGE_KEY } from '@/lib/auth-session';
+import { captureSession, getStoredTokens, persistTokens, clearStorage, clearStoredSession, sameSession, withSessionLock, canRestoreCookieSession, type StoredTokens } from '@/lib/auth-session';
 
 // CSRF token cache
 let csrfToken: string | null = null;
@@ -29,71 +29,93 @@ let csrfEndpointAvailable: boolean | null = null;
 // One rotation shared by provider timers and requests in this tab.
 let refreshPromise: Promise<boolean> | null = null;
 
-async function attemptTokenRefresh(): Promise<boolean> {
-  if (typeof window === 'undefined') return false;
-  if (refreshPromise) return refreshPromise;
-  const snapshot = localStorage.getItem(TOKEN_STORAGE_KEY);
-  const tokens = getStoredTokens();
-  if (!tokens || typeof tokens.refreshToken !== 'string' || !tokens.refreshToken) return false;
+let refreshSession: StoredTokens | null = null;
 
-  const rotate = async () => {
-    // Another tab may have completed rotation while this tab awaited the lock.
-    if (localStorage.getItem(TOKEN_STORAGE_KEY) !== snapshot) {
-      const current = getStoredTokens();
-      return !!current && current.expiresAt > Date.now();
-    }
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 15_000);
+async function attemptTokenRefresh(expected: StoredTokens | null = getStoredTokens()): Promise<boolean> {
+  if (typeof window === 'undefined' || !expected) return false;
+  if (refreshPromise) return sameSession(expected, refreshSession) ? refreshPromise : false;
+  refreshSession = expected;
+  refreshPromise = (async () => {
     try {
-      const oidc = AUTH_MODE === 'oidc';
-      const response = await fetch(oidc ? `${JANUA_BASE_URL}/api/v1/oauth/token` : `${API_BASE_URL}/v1/auth/refresh`, {
-        method: 'POST',
-        headers: { 'Content-Type': oidc ? 'application/x-www-form-urlencoded' : 'application/json' },
-        ...(oidc ? {} : { credentials: 'include' as const }),
-        signal: controller.signal,
-        body: oidc ? new URLSearchParams({
-          grant_type: 'refresh_token', client_id: OAUTH_CLIENT_ID, refresh_token: tokens.refreshToken!,
-        }).toString() : JSON.stringify({ refresh_token: tokens.refreshToken }),
+      const tokens = expected.sessionId ? expected : await captureSession();
+      if (!tokens?.refreshToken || !sameSession(tokens, getStoredTokens())) return false;
+      refreshSession = tokens;
+      return await withSessionLock(async () => {
+        const current = getStoredTokens();
+        if (!sameSession(tokens, current) || !current) return false;
+        // Only the same login generation may adopt another tab's rotation.
+        if (current.accessToken !== tokens.accessToken) return current.expiresAt > Date.now();
+        if (current.refreshAttempted) return false;
+        // A lost reply may have consumed a single-use grant. Persist its use
+        // before dispatch so reloads/timers cannot replay it after uncertainty.
+        persistTokens({ ...current, refreshAttempted: true }, current);
+        const controller = new AbortController();
+        const timeout = setTimeout(() => controller.abort(), 15_000);
+        let issuerSucceeded = false;
+        try {
+          const oidc = AUTH_MODE === 'oidc';
+          const response = await fetch(oidc ? `${JANUA_BASE_URL}/api/v1/oauth/token` : `${API_BASE_URL}/v1/auth/refresh`, {
+            method: 'POST',
+            headers: { 'Content-Type': oidc ? 'application/x-www-form-urlencoded' : 'application/json' },
+            ...(oidc ? {} : { credentials: 'include' as const }),
+            signal: controller.signal,
+            body: oidc ? new URLSearchParams({
+              grant_type: 'refresh_token', client_id: OAUTH_CLIENT_ID, refresh_token: current.refreshToken!,
+            }).toString() : JSON.stringify({ refresh_token: current.refreshToken }),
+          });
+          const stillOwned = () => sameSession(current, getStoredTokens()) &&
+            getStoredTokens()?.accessToken === current.accessToken;
+          if (!stillOwned()) return false;
+          if (!response.ok) {
+            const error = await response.json().catch(() => ({}));
+            if (response.status === 400 && (error.error === 'invalid_grant' ||
+                (typeof error.detail === 'string' && error.detail.startsWith('invalid_grant:'))) &&
+                current.expiresAt <= Date.now() && stillOwned()) clearStoredSession(current);
+            return false;
+          }
+          issuerSucceeded = true;
+          const data = await response.json();
+          const expiresAt = oidc
+            ? (typeof data.expires_in === 'number' && Number.isFinite(data.expires_in) && data.expires_in > 0
+              ? Date.now() + data.expires_in * 1000 : NaN)
+            : new Date(data.expires_at).getTime();
+          if (typeof data.access_token !== 'string' || !data.access_token ||
+              !Number.isFinite(expiresAt) || expiresAt <= Date.now() ||
+              (data.refresh_token !== undefined && (typeof data.refresh_token !== 'string' || !data.refresh_token))) throw new Error('Invalid token response');
+          if (!stillOwned()) return false;
+          persistTokens({ ...current, accessToken: data.access_token,
+            refreshToken: data.refresh_token ?? current.refreshToken, expiresAt,
+            refreshAttempted: !data.refresh_token || data.refresh_token === current.refreshToken }, current);
+          return true;
+        } catch {
+          if (issuerSucceeded && sameSession(current, getStoredTokens())) clearStoredSession(current);
+          // Unknown outcomes retain access until expiry, but the durable attempt
+          // marker blocks another grant. Failed publication quarantines access too.
+          return false;
+        } finally { clearTimeout(timeout); }
       });
-      // A logout or another sign-in while awaiting the issuer wins over this response.
-      if (localStorage.getItem(TOKEN_STORAGE_KEY) !== snapshot) return false;
-      if (!response.ok) {
-        const error = await response.json().catch(() => ({}));
-        if (response.status === 400 && (error.error === 'invalid_grant' ||
-            (typeof error.detail === 'string' && error.detail.startsWith('invalid_grant:'))) && tokens.expiresAt <= Date.now()) {
-          if (localStorage.getItem(TOKEN_STORAGE_KEY) === snapshot) clearStorage();
-        }
-        return false;
-      }
-      const data = await response.json();
-      const expiresAt = oidc
-        ? (typeof data.expires_in === 'number' && Number.isFinite(data.expires_in) && data.expires_in > 0
-          ? Date.now() + data.expires_in * 1000 : NaN)
-        : new Date(data.expires_at).getTime();
-      if (typeof data.access_token !== 'string' || !data.access_token ||
-          !Number.isFinite(expiresAt) || expiresAt <= Date.now() ||
-          (data.refresh_token !== undefined && (typeof data.refresh_token !== 'string' || !data.refresh_token))) return false;
-      if (localStorage.getItem(TOKEN_STORAGE_KEY) !== snapshot) return false;
-      setStoredTokens({ ...tokens, accessToken: data.access_token,
-        refreshToken: data.refresh_token ?? tokens.refreshToken, expiresAt });
-      return true;
-    } catch {
-      // Network failure does not invalidate a still-valid access token.
-      return false;
-    } finally { clearTimeout(timeout); }
-  };
-  refreshPromise = Promise.resolve(typeof navigator !== 'undefined' && navigator.locks
-    ? navigator.locks.request('enclii-token-refresh', rotate)
-    : rotate());
+    } catch { return false; }
+  })();
   try { return await refreshPromise; }
-  finally { refreshPromise = null; }
+  finally { refreshPromise = null; refreshSession = null; }
 }
 
-/** A late 401 from an old request can use an already-rotated token. */
-async function refreshForRequest(accessToken: string | undefined): Promise<boolean> {
+/** A late 401 may reuse rotation only within its original login generation. */
+async function refreshForRequest(session: StoredTokens | null): Promise<boolean> {
   const current = getStoredTokens();
-  if (current && current.accessToken !== accessToken && current.expiresAt > Date.now()) return true;
-  return attemptTokenRefresh();
+  if (!session || !current || !sameSession(session, current)) return false;
+  if (current.accessToken !== session.accessToken && current.expiresAt > Date.now()) return true;
+  return attemptTokenRefresh(session);
+}
+
+/** Serialize the identity check and fetch dispatch with all session writers. */
+async function fetchForSession(session: StoredTokens | null, run: () => Promise<Response>): Promise<Response> {
+  const pending = await withSessionLock(() => {
+    if (!sameSession(session, getStoredTokens())) throw new Error('Session changed. Please retry.');
+    // Do not hold the lock for the network round trip; the bearer is captured now.
+    return { response: run() };
+  });
+  return pending.response;
 }
 
 /**
@@ -121,24 +143,14 @@ export function getAuthHeaders(includeCSRF: boolean = false): HeadersInit {
 
   // Get JWT token from localStorage - matches AuthContext storage key
   if (typeof window !== "undefined") {
-    const storedTokens = localStorage.getItem("enclii_tokens");
-    if (storedTokens) {
-      try {
-        const tokens = JSON.parse(storedTokens);
-        if (tokens.accessToken) {
-          headers["Authorization"] = `Bearer ${tokens.accessToken}`;
-        }
-        // Include IDP token for Janua API calls (e.g., GitHub integration status)
-        if (tokens.idpToken) {
-          headers["X-IDP-Token"] = tokens.idpToken;
-        }
-      } catch {
-        // Invalid JSON, ignore
-      }
+    const tokens = getStoredTokens();
+    if (tokens) {
+      headers["Authorization"] = `Bearer ${tokens.accessToken}`;
+      if (tokens.idpToken) headers["X-IDP-Token"] = tokens.idpToken;
     }
 
     // Development fallback
-    if (!headers["Authorization"]) {
+    if (!headers["Authorization"] && canRestoreCookieSession()) {
       const devToken = process.env.NEXT_PUBLIC_API_TOKEN;
       if (devToken) {
         headers["Authorization"] = `Bearer ${devToken}`;
@@ -242,6 +254,8 @@ export async function apiRequest<T = unknown>(
     method.toUpperCase(),
   );
 
+  const requestSession = await captureSession();
+
   // Fetch CSRF token for write operations if not cached and the endpoint
   // hasn't already been marked unavailable for this session. The
   // endpoint-availability sticky flag means a 404 on the first write
@@ -255,7 +269,6 @@ export async function apiRequest<T = unknown>(
     await fetchCSRFToken();
   }
 
-  const requestAccessToken = getStoredTokens()?.accessToken;
   const headers: HeadersInit = {
     ...getAuthHeaders(isWriteOperation),
     ...options.headers,
@@ -278,31 +291,26 @@ export async function apiRequest<T = unknown>(
   }
 
   try {
-    const response = await fetch(url, {
+    const response = await fetchForSession(requestSession, () => fetch(url, {
       ...options,
       headers,
       credentials: "include", // Include cookies for CSRF
       signal: timeoutController.signal,
-    });
+    }));
 
     // Handle authentication errors with retry
     if (response.status === 401) {
       // Attempt to refresh the token before giving up
-      const refreshed = await refreshForRequest(requestAccessToken);
+      const refreshed = await refreshForRequest(requestSession);
+      if (!sameSession(requestSession, getStoredTokens())) throw new Error('Session changed. Please retry.');
       if (refreshed) {
         // Retry the request with the new token
-        const retryHeaders: HeadersInit = {
-          ...options.headers,
-          ...getAuthHeaders(isWriteOperation),
-        };
-        const retryResponse = await fetch(url, {
+        const retryResponse = await fetchForSession(requestSession, () => fetch(url, {
           ...options,
-          headers: retryHeaders,
+          headers: { ...options.headers, ...getAuthHeaders(isWriteOperation) },
           credentials: "include",
-          // Reuse the same timeout controller so the retry inherits the
-          // request budget instead of doubling it.
           signal: timeoutController.signal,
-        });
+        }));
 
         if (retryResponse.ok) {
           return await retryResponse.json();
@@ -323,6 +331,7 @@ export async function apiRequest<T = unknown>(
       // Check if the stored token is actually expired before triggering logout.
       // A 401 with a non-expired token is transient (e.g., race condition during
       // auth callback); only escalate when the token is genuinely expired or missing.
+      if (!sameSession(requestSession, getStoredTokens())) throw new Error('Session changed. Please retry.');
       let tokenActuallyExpired = true;
       if (typeof window !== "undefined") {
         try {
@@ -342,8 +351,7 @@ export async function apiRequest<T = unknown>(
         if (AUTH_MODE !== "oidc") {
           // Local auth: clear tokens so user is prompted to log in
           if (typeof window !== "undefined") {
-            localStorage.removeItem("enclii_tokens");
-            localStorage.removeItem("enclii_user");
+            await clearStorage(requestSession);
           }
         }
         // OIDC preserves the refresh credential on transient issuer failures.
@@ -556,6 +564,7 @@ export async function apiFetchResponse(
   const isWriteOperation = ["POST", "PUT", "DELETE", "PATCH"].includes(
     method.toUpperCase(),
   );
+  const requestSession = await captureSession();
   if (
     isWriteOperation &&
     !csrfToken &&
@@ -568,7 +577,7 @@ export async function apiFetchResponse(
   const timeoutId = setTimeout(() => timeoutController.abort(), DEFAULT_REQUEST_TIMEOUT_MS);
 
   const doFetch = (retry = false) =>
-    fetch(url, {
+    fetchForSession(requestSession, () => fetch(url, {
       ...options,
       headers: {
         ...getAuthHeadersRecord(isWriteOperation),
@@ -577,13 +586,12 @@ export async function apiFetchResponse(
       },
       credentials: "include",
       signal: timeoutController.signal,
-    });
+    }));
 
   try {
-    const requestAccessToken = getStoredTokens()?.accessToken;
     let response = await doFetch();
     if (response.status === 401) {
-      const refreshed = await refreshForRequest(requestAccessToken);
+      const refreshed = await refreshForRequest(requestSession);
       if (refreshed) {
         response = await doFetch(true);
       }
