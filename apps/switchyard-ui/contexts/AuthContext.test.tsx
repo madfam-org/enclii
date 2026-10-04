@@ -156,3 +156,114 @@ describe('AuthContext OIDC login — prompt (account switching)', () => {
     expect(url.searchParams.get('code_challenge_method')).toBe('S256')
   })
 })
+
+function SessionConsumer() {
+  const auth = useAuth()
+  return <>
+    <span data-testid="session-loading">{String(auth.isLoading)}</span>
+    <span data-testid="session-user">{auth.user?.email || 'signed-out'}</span>
+    <span data-testid="session-token">{auth.getAccessToken() || 'none'}</span>
+    <span data-testid="session-error">{auth.authError}</span>
+    <button onClick={() => auth.refreshTokens()}>Refresh session</button>
+  </>
+}
+
+const response = (body: unknown, status = 200) => ({ ok: status < 400, status, json: async () => body }) as Response
+const identity = { id: 'fixture-operator', email: 'operator@example.test', roles: ['admin'] }
+
+describe('OIDC session lifecycle', () => {
+  beforeEach(() => {
+    localStorage.clear()
+    Object.defineProperty(document, 'cookie', { writable: true, value: '', configurable: true })
+    global.fetch = jest.fn()
+  })
+  afterEach(() => jest.restoreAllMocks())
+
+  function seed(expiresAt = Date.now() + 3600_000) {
+    localStorage.setItem('enclii_tokens', JSON.stringify({ accessToken: 'stored-access', refreshToken: 'stored-refresh', expiresAt }))
+  }
+  function mount() { return render(<AuthProvider><SessionConsumer /></AuthProvider>) }
+
+  it('restores from stored credentials even when the access cookie has expired', async () => {
+    seed(Date.now() - 1000)
+    jest.mocked(fetch).mockResolvedValueOnce(response({ access_token: 'rotated-access', refresh_token: 'rotated-refresh', expires_in: 3600 }))
+      .mockResolvedValueOnce(response(identity))
+    mount()
+    await waitFor(() => expect(screen.getByTestId('session-user')).toHaveTextContent(identity.email))
+    expect(String(jest.mocked(fetch).mock.calls[0][0])).toContain('/api/v1/oauth/token')
+    expect(jest.mocked(fetch).mock.calls[1][1]?.headers).toEqual({ Authorization: 'Bearer rotated-access' })
+    expect(screen.getByTestId('session-token')).toHaveTextContent('rotated-access')
+  })
+
+  it('refreshTokens performs a real rotation and updates provider consumers', async () => {
+    seed()
+    jest.mocked(fetch).mockResolvedValueOnce(response(identity))
+      .mockResolvedValueOnce(response({ access_token: 'rotated-access', refresh_token: 'rotated-refresh', expires_in: 3600 }))
+      .mockResolvedValueOnce(response(identity))
+    mount()
+    await waitFor(() => expect(screen.getByTestId('session-user')).toHaveTextContent(identity.email))
+    await act(async () => { screen.getByText('Refresh session').click() })
+    expect(screen.getByTestId('session-token')).toHaveTextContent('rotated-access')
+    expect(JSON.parse(localStorage.getItem('enclii_tokens')!).refreshToken).toBe('rotated-refresh')
+  })
+
+  it('does not erase a recoverable session when Janua is temporarily unavailable', async () => {
+    seed()
+    const before = localStorage.getItem('enclii_tokens')
+    jest.mocked(fetch).mockResolvedValue(response({}, 503))
+    mount()
+    await waitFor(() => expect(screen.getByTestId('session-loading')).toHaveTextContent('false'))
+    expect(localStorage.getItem('enclii_tokens')).toBe(before)
+    expect(screen.getByTestId('session-user')).toHaveTextContent('signed-out')
+    expect(screen.getByTestId('session-error')).toHaveTextContent('unavailable')
+  })
+
+  it('fails closed when an expired token cannot be refreshed, retaining retry credentials on network failure', async () => {
+    seed(Date.now() - 1000)
+    jest.mocked(fetch).mockRejectedValue(new TypeError('Network unavailable'))
+    mount()
+    await waitFor(() => expect(screen.getByTestId('session-loading')).toHaveTextContent('false'))
+    expect(screen.getByTestId('session-user')).toHaveTextContent('signed-out')
+    expect(screen.getByTestId('session-token')).toHaveTextContent('none')
+    expect(localStorage.getItem('enclii_tokens')).toContain('stored-refresh')
+  })
+
+  it('fails closed while retaining refresh credentials after access rejection and an issuer outage', async () => {
+    seed()
+    jest.mocked(fetch).mockResolvedValueOnce(response({}, 401)).mockResolvedValueOnce(response({}, 503))
+    mount()
+    await waitFor(() => expect(screen.getByTestId('session-loading')).toHaveTextContent('false'))
+    expect(localStorage.getItem('enclii_tokens')).toContain('stored-refresh')
+    expect(screen.getByTestId('session-user')).toHaveTextContent('signed-out')
+  })
+
+  it('automatically refreshes before actual expiry instead of using a fabricated 24-hour lifetime', async () => {
+    jest.useFakeTimers()
+    try {
+      seed(Date.now() + 61_000)
+      jest.mocked(fetch).mockResolvedValueOnce(response(identity))
+        .mockResolvedValueOnce(response({ access_token: 'scheduled-access', refresh_token: 'scheduled-refresh', expires_in: 3600 }))
+        .mockResolvedValueOnce(response(identity))
+      mount()
+      await act(async () => { await Promise.resolve() })
+      expect(fetch).toHaveBeenCalledTimes(1)
+      await act(async () => { await jest.advanceTimersByTimeAsync(1001) })
+      expect(fetch).toHaveBeenCalledTimes(3)
+      expect(screen.getByTestId('session-token')).toHaveTextContent('scheduled-access')
+    } finally { jest.useRealTimers() }
+  })
+
+  it('ignores a late identity response after logout in another tab', async () => {
+    seed()
+    let resolve!: (value: Response) => void
+    jest.mocked(fetch).mockReturnValue(new Promise((done) => { resolve = done }))
+    mount()
+    await act(async () => {
+      localStorage.clear()
+      document.cookie = ''
+      window.dispatchEvent(new StorageEvent('storage', { key: 'enclii_tokens' }))
+      resolve(response(identity))
+    })
+    expect(screen.getByTestId('session-user')).toHaveTextContent('signed-out')
+  })
+})
