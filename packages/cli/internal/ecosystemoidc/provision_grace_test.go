@@ -78,10 +78,15 @@ func (c *captureSubmitter) SubmitIntake(_ context.Context, target, _ string, val
 }
 
 // remoteFor is what Janua's inventory would return for an existing client that
-// matches the registry exactly; the list endpoint never carries a secret.
+// matches the registry exactly; the list endpoint never carries a secret. A
+// pinned spec gets its pinned id back, as the real inventory would return it.
 func remoteFor(spec JanuaClientSpec) remoteOAuthClient {
+	clientID := "jnc_fixture"
+	if spec.ClientID != "" {
+		clientID = spec.ClientID
+	}
 	r := remoteOAuthClient{
-		ID: "uuid-fixture", ClientID: "jnc_fixture", Name: spec.Name, ClientKey: pointer(spec.ClientKey),
+		ID: "uuid-fixture", ClientID: clientID, Name: spec.Name, ClientKey: pointer(spec.ClientKey),
 		Audience: pointer(spec.Audience), IsConfidential: spec.confidential(), IsActive: true,
 		RedirectURIs: spec.RedirectURIs, AllowedScopes: spec.AllowedScopes, GrantTypes: spec.GrantTypes,
 	}
@@ -174,7 +179,7 @@ func TestProvisionRotationWithGraceZeroReportsRetirement(t *testing.T) {
 	assert.Equal(t, []string{`{"grace_period_hours":0}`}, f.rotateBodies())
 	assert.Equal(t, "zavlo/cfdi-emitter", sub.target)
 	assert.Equal(t, map[string]string{
-		"zavlo_cfdi_emitter_client_id":     "jnc_fixture",
+		"zavlo_cfdi_emitter_client_id":     spec.ClientID,
 		"zavlo_cfdi_emitter_client_secret": fixtureRotatedSecret,
 	}, sub.values)
 
@@ -265,17 +270,45 @@ func TestDryRunShowsPlannedGrace(t *testing.T) {
 	assert.NotContains(t, FormatResultJSON(unset), "grace")
 }
 
+// withoutPin returns a copy of the registry in which one platform's client_id
+// pin is cleared: the registry as it stood before that edge's first run.
+func withoutPin(reg *Registry, id string) *Registry {
+	cp := *reg
+	cp.Platforms = make(map[string]Platform, len(reg.Platforms))
+	for k, v := range reg.Platforms {
+		cp.Platforms[k] = v
+	}
+	p := cp.Platforms[id]
+	p.JanuaClient.ClientID = ""
+	cp.Platforms[id] = p
+	return &cp
+}
+
 // The org-bound entries CREATE through the admin path with the madfam-ecosystem
 // organization pinned, and validateMachineClient accepts what Janua returns.
-// Creation never rotates, so a grace has nothing to act on.
+// Creation never rotates, so a grace has nothing to act on. The registry now
+// pins their ids, so the first run is modelled on an unpinned copy; with the
+// pin in place, a client Janua cannot find is refused rather than recreated.
 func TestProvisionCreatesOrgBoundMachineClientWithoutRotation(t *testing.T) {
-	reg := embedded(t)
+	pinned := embedded(t)
 	for _, id := range []string{
 		"forj-pravara-intake-madfam-ecosystem",
 		"cotiza-pravara-intake-madfam-ecosystem",
 		"pravara-asset-shells-publisher-madfam-ecosystem",
 	} {
 		t.Run(id, func(t *testing.T) {
+			require.NotEmpty(t, pinned.Platforms[id].JanuaClient.ClientID, "the edge is pinned after its first run")
+			refused := &fakeJanua{t: t}
+			_, err := ProvisionPlatform(context.Background(), pinned, refused.client(), &captureSubmitter{}, ProvisionOptions{
+				PlatformID: id, Reason: "test", RotateIfMissing: true, GraceHours: intPtr(0),
+			})
+			require.Error(t, err)
+			assert.Contains(t, err.Error(), "pinned Janua client was not found")
+			for _, r := range refused.requests {
+				assert.NotEqual(t, http.MethodPost, r.method, "a pinned client that is missing must not be recreated")
+			}
+
+			reg := withoutPin(pinned, id)
 			spec := reg.Platforms[id].JanuaClient
 			created := remoteFor(spec)
 			created.ClientSecret = pointer(fixtureCreatedSecret)
