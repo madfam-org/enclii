@@ -21,6 +21,14 @@ func (h *Handler) ProvisionPostgres(c *gin.Context) {
 		return
 	}
 
+	if req.Spec.GeneratePassword {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "generated passwords are only available through onboarding (enclii onboard / onboard ensure), which owns the project Secret they are written to"})
+		return
+	}
+	if req.Spec.RolePassword == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "spec.role_password is required"})
+		return
+	}
 	if h.postgresProvisioner == nil {
 		c.JSON(http.StatusServiceUnavailable, gin.H{"error": "Postgres provisioning not configured (POSTGRES_ADMIN_URL not set)"})
 		return

@@ -48,7 +48,7 @@ func (u *PgBouncerUpdater) AddDatabase(ctx context.Context, dbName, roleName, ro
 	}
 
 	// Update PgBouncer ConfigMap — add database entry
-	if err := u.updateConfigMap(ctx, dbName); err != nil {
+	if _, err := u.updateConfigMap(ctx, dbName); err != nil {
 		return fmt.Errorf("update pgbouncer configmap: %w", err)
 	}
 
@@ -69,31 +69,32 @@ func (u *PgBouncerUpdater) AddDatabase(ctx context.Context, dbName, roleName, ro
 	return nil
 }
 
-// updateConfigMap adds a database entry to the [databases] section of pgbouncer.ini.
-func (u *PgBouncerUpdater) updateConfigMap(ctx context.Context, dbName string) error {
+// updateConfigMap adds a database entry to the [databases] section of
+// pgbouncer.ini and reports whether it changed anything.
+func (u *PgBouncerUpdater) updateConfigMap(ctx context.Context, dbName string) (bool, error) {
 	cmClient := u.clientset.CoreV1().ConfigMaps(pgbouncerNamespace)
 	cm, err := cmClient.Get(ctx, pgbouncerConfigMap, k8smetav1.GetOptions{})
 	if err != nil {
-		return fmt.Errorf("get configmap %s/%s: %w", pgbouncerNamespace, pgbouncerConfigMap, err)
+		return false, fmt.Errorf("get configmap %s/%s: %w", pgbouncerNamespace, pgbouncerConfigMap, err)
 	}
 
 	ini, ok := cm.Data[pgbouncerConfigKey]
 	if !ok {
-		return fmt.Errorf("configmap %s missing key %s", pgbouncerConfigMap, pgbouncerConfigKey)
+		return false, fmt.Errorf("configmap %s missing key %s", pgbouncerConfigMap, pgbouncerConfigKey)
 	}
 
 	// Check if database already configured
 	dbEntry := fmt.Sprintf("%s = host=%s dbname=%s", dbName, pgbouncerHost, dbName)
 	if strings.Contains(ini, dbName+" =") || strings.Contains(ini, dbName+"=") {
 		u.logger.Info(ctx, "Database already in PgBouncer config", logging.String("database", dbName))
-		return nil
+		return false, nil
 	}
 
 	// Insert after [databases] header
 	marker := "[databases]"
 	idx := strings.Index(ini, marker)
 	if idx < 0 {
-		return fmt.Errorf("pgbouncer.ini missing [databases] section")
+		return false, fmt.Errorf("pgbouncer.ini missing [databases] section")
 	}
 	insertPos := idx + len(marker)
 	// Find end of line after [databases]
@@ -107,8 +108,10 @@ func (u *PgBouncerUpdater) updateConfigMap(ctx context.Context, dbName string) e
 
 	cm.Data[pgbouncerConfigKey] = ini[:insertPos] + dbEntry + "\n" + ini[insertPos:]
 
-	_, err = cmClient.Update(ctx, cm, k8smetav1.UpdateOptions{})
-	return err
+	if _, err = cmClient.Update(ctx, cm, k8smetav1.UpdateOptions{}); err != nil {
+		return false, err
+	}
+	return true, nil
 }
 
 // updateUserlist adds a role entry to the PgBouncer userlist secret.
@@ -173,4 +176,104 @@ func (u *PgBouncerUpdater) restartPgBouncer(ctx context.Context) error {
 		k8smetav1.PatchOptions{},
 	)
 	return err
+}
+
+// EnsureDatabase adds the database entry to pgbouncer.ini when missing and
+// reports whether it changed the ConfigMap. It does not restart the pooler;
+// call Restart once after all changes.
+func (u *PgBouncerUpdater) EnsureDatabase(ctx context.Context, dbName string) (bool, error) {
+	if err := ValidateSQLIdentifier(dbName, "database_name"); err != nil {
+		return false, err
+	}
+	changed, err := u.updateConfigMap(ctx, dbName)
+	if err != nil {
+		return false, fmt.Errorf("update pgbouncer configmap: %w", err)
+	}
+	return changed, nil
+}
+
+// HasUser reports whether the userlist carries a line for roleName.
+func (u *PgBouncerUpdater) HasUser(ctx context.Context, roleName string) (bool, error) {
+	secret, err := u.clientset.CoreV1().Secrets(pgbouncerNamespace).Get(ctx, pgbouncerUserlistName, k8smetav1.GetOptions{})
+	if k8serrors.IsNotFound(err) {
+		return false, nil
+	}
+	if err != nil {
+		return false, fmt.Errorf("get secret %s/%s: %w", pgbouncerNamespace, pgbouncerUserlistName, err)
+	}
+	for _, name := range parseUserlistUsernames(string(secret.Data[pgbouncerUserKey])) {
+		if name == roleName {
+			return true, nil
+		}
+	}
+	return false, nil
+}
+
+// EnsureUser makes the userlist carry `"role" "password"` and reports whether
+// it changed the Secret. With replace=false an existing line for the role is
+// left as it is; with replace=true (a password was just set) the line is
+// rewritten, which is what keeps a rotation from leaving the pooler on the
+// old password. Every other line is preserved byte for byte.
+//
+// It does not restart the pooler; call Restart once after all changes.
+func (u *PgBouncerUpdater) EnsureUser(ctx context.Context, roleName, password string, replace bool) (bool, error) {
+	if err := ValidateSQLIdentifier(roleName, "role_name"); err != nil {
+		return false, err
+	}
+	if password == "" || strings.ContainsAny(password, "\"\n\r") {
+		return false, fmt.Errorf("userlist password for %s is empty or not representable in userlist.txt", roleName)
+	}
+	entry := fmt.Sprintf("\"%s\" \"%s\"", roleName, password)
+
+	secretClient := u.clientset.CoreV1().Secrets(pgbouncerNamespace)
+	secret, err := secretClient.Get(ctx, pgbouncerUserlistName, k8smetav1.GetOptions{})
+	if k8serrors.IsNotFound(err) {
+		if err := u.updateUserlist(ctx, roleName, password); err != nil {
+			return false, err
+		}
+		return true, nil
+	}
+	if err != nil {
+		return false, fmt.Errorf("get secret %s/%s: %w", pgbouncerNamespace, pgbouncerUserlistName, err)
+	}
+
+	userlist := string(secret.Data[pgbouncerUserKey])
+	lines := strings.Split(userlist, "\n")
+	found := false
+	for i, line := range lines {
+		names := parseUserlistUsernames(line)
+		if len(names) != 1 || names[0] != roleName {
+			continue
+		}
+		found = true
+		if !replace || strings.TrimSpace(line) == entry {
+			return false, nil
+		}
+		lines[i] = entry
+	}
+	if found {
+		userlist = strings.Join(lines, "\n")
+	} else {
+		if userlist != "" && !strings.HasSuffix(userlist, "\n") {
+			userlist += "\n"
+		}
+		userlist += entry + "\n"
+	}
+	if secret.Data == nil {
+		secret.Data = map[string][]byte{}
+	}
+	secret.Data[pgbouncerUserKey] = []byte(userlist)
+	if _, err := secretClient.Update(ctx, secret, k8smetav1.UpdateOptions{}); err != nil {
+		return false, fmt.Errorf("update secret %s/%s: %w", pgbouncerNamespace, pgbouncerUserlistName, err)
+	}
+	u.logger.Info(ctx, "PgBouncer userlist updated", logging.String("role", roleName))
+	return true, nil
+}
+
+// Restart rolls the pooler so it re-reads its config and userlist.
+func (u *PgBouncerUpdater) Restart(ctx context.Context) error {
+	if err := u.restartPgBouncer(ctx); err != nil {
+		return fmt.Errorf("restart pgbouncer: %w", err)
+	}
+	return nil
 }

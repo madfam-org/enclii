@@ -243,3 +243,22 @@ func (p *SecretsProvisioner) AppendEntriesWithAnnotations(
 
 	return nil
 }
+
+// Lookup returns the value of one key of a Secret, and whether it is
+// present. A missing Secret is reported as absent, not as an error. The value
+// stays server-side: callers use it only to decide whether to keep a
+// generated credential or to repair a pooler line from it.
+func (p *SecretsProvisioner) Lookup(ctx context.Context, namespace, secretName, key string) ([]byte, bool, error) {
+	existing, err := p.clientset.CoreV1().Secrets(namespace).Get(ctx, secretName, k8smetav1.GetOptions{})
+	if err != nil {
+		if k8serrors.IsNotFound(err) {
+			return nil, false, nil
+		}
+		return nil, false, fmt.Errorf("get secret %s/%s: %w", namespace, secretName, err)
+	}
+	v, ok := existing.Data[key]
+	if !ok || len(v) == 0 {
+		return nil, false, nil
+	}
+	return v, true, nil
+}

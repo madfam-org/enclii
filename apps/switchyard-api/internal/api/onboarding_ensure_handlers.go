@@ -57,6 +57,10 @@ func (h *Handler) EnsureOnboarding(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "repo_full_name and project_name are required"})
 		return
 	}
+	if err := validateGeneratedCredentialRequest(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
 
 	existing, lookupErr := h.repos.Onboardings.GetByRepo(ctx, req.RepoFullName)
 	if lookupErr != nil || existing == nil {
@@ -241,26 +245,9 @@ func (h *Handler) EnsureOnboarding(c *gin.Context) {
 	// names; see onboarding_manifest_documents.go.
 	domainResults := h.provisionDomainsFromManifest(ctx, &steps, project, namespace, req.RepoFullName, encliiDocs)
 
-	if req.ProvisionPostgres != nil {
-		var pgErr error
-		if h.postgresProvisioner != nil {
-			pgErr = h.postgresProvisioner.Provision(ctx, req.ProvisionPostgres)
-			if pgErr == nil {
-				roleName := req.ProvisionPostgres.RoleName
-				if roleName == "" {
-					roleName = req.ProvisionPostgres.DatabaseName
-				}
-				if h.pgbouncerUpdater != nil {
-					if pbErr := h.pgbouncerUpdater.AddDatabase(ctx, req.ProvisionPostgres.DatabaseName, roleName, req.ProvisionPostgres.RolePassword); pbErr != nil {
-						h.recordStep(ctx, &steps, "pgbouncer", false, pbErr)
-					}
-				}
-			}
-		} else {
-			pgErr = fmt.Errorf("not configured (POSTGRES_ADMIN_URL not set)")
-		}
-		h.recordStep(ctx, &steps, "postgres", false, pgErr)
-	}
+	// Step: Postgres owner role, runtime app role and generated Secret values
+	// (optional). Generated values never appear in the response or the logs.
+	generatedCredentials := h.provisionDatabaseCredentials(ctx, &steps, &req, namespace)
 
 	if len(req.ProvisionSecrets) > 0 {
 		var secErr error
@@ -371,6 +358,9 @@ func (h *Handler) EnsureOnboarding(c *gin.Context) {
 	}
 	if req.ProvisionPostgres != nil {
 		response["postgres_database"] = req.ProvisionPostgres.DatabaseName
+	}
+	if len(generatedCredentials) > 0 {
+		response["generated_credentials"] = generatedCredentials
 	}
 	if len(req.ProvisionSecrets) > 0 {
 		response["secrets_count"] = len(req.ProvisionSecrets)
