@@ -285,7 +285,20 @@ func (h *Handler) handleOpsSecretsVaultBackfillApply(ctx context.Context, operat
 		}, statusCode
 	}
 
-	updates, keys, err := normalizedVaultUpdates(secret.Data)
+	existing, err := h.vaultClient.GetSecretData(ctx, vaultPath)
+	if err != nil {
+		return operatorOperationResponse{
+			OperationID: operationID,
+			Operation:   operation,
+			Status:      "failed",
+			DryRun:      false,
+			Summary:     fmt.Sprintf("failed to read Vault %s before merging; the writer policy must grant read on this path", vaultPath),
+			Warnings:    []string{err.Error()},
+		}, http.StatusInternalServerError
+	}
+
+	overwrite := vaultBackfillOverwriteRequested(req)
+	plan, err := buildVaultBackfillPlan(secret.Data, existing, overwrite)
 	if err != nil {
 		return operatorOperationResponse{
 			OperationID: operationID,
@@ -296,23 +309,62 @@ func (h *Handler) handleOpsSecretsVaultBackfillApply(ctx context.Context, operat
 			Warnings:    []string{err.Error()},
 		}, http.StatusBadRequest
 	}
+	keys := make([]string, 0, len(plan.Keys))
+	for _, row := range plan.Keys {
+		keys = append(keys, row.VaultProperty)
+	}
+	sort.Strings(keys)
 
-	vaultVersion, err := h.vaultClient.MergeSecretData(ctx, vaultPath, updates)
-	if err != nil {
+	// A differing value means Vault already holds something else for this
+	// property. Replacing it silently could undo a rotation done through Vault,
+	// so the apply refuses and names the keys; --allow-overwrite is the explicit
+	// opt-in. Nothing is written in this case.
+	if len(plan.DifferingKeys) > 0 && !overwrite {
+		data := plan.data()
+		data["namespace"] = namespace
+		data["sourceSecret"] = sourceSecret
+		data["vaultPath"] = vaultPath
 		return operatorOperationResponse{
 			OperationID: operationID,
 			Operation:   operation,
-			Status:      "failed",
+			Status:      "conflict",
 			DryRun:      false,
-			Summary:     fmt.Sprintf("failed to merge %s/%s into Vault %s", namespace, sourceSecret, vaultPath),
-			Warnings:    []string{err.Error()},
-		}, http.StatusInternalServerError
+			Summary: fmt.Sprintf("refused: %d key(s) in %s/%s differ from the value already in Vault %s; nothing was written",
+				len(plan.DifferingKeys), namespace, sourceSecret, vaultPath),
+			Data:     data,
+			Warnings: []string{fmt.Sprintf("differing keys: %s", strings.Join(plan.DifferingKeys, ", "))},
+			Next: []string{
+				"confirm which value is current; rerun with --allow-overwrite only if the Kubernetes value is the one to keep",
+			},
+		}, http.StatusConflict
+	}
+
+	// Idempotent re-runs: when every key already matches, no new Vault version
+	// is written. The ExternalSecret refresh below still runs if requested.
+	vaultVersion := 0
+	vaultWritten := false
+	if len(plan.writes) > 0 {
+		vaultVersion, err = h.vaultClient.MergeSecretData(ctx, vaultPath, plan.writes)
+		if err != nil {
+			return operatorOperationResponse{
+				OperationID: operationID,
+				Operation:   operation,
+				Status:      "failed",
+				DryRun:      false,
+				Summary:     fmt.Sprintf("failed to merge %s/%s into Vault %s", namespace, sourceSecret, vaultPath),
+				Warnings:    []string{err.Error()},
+			}, http.StatusInternalServerError
+		}
+		vaultWritten = true
 	}
 
 	now := time.Now().UTC()
 	warnings := []string{
-		"secret values were read from the Kubernetes source Secret and written to Vault; values are omitted from the response",
+		"secret values were read from the Kubernetes source Secret and compared or written server-side; values are omitted from the response",
 		"source Kubernetes Secret cleanup remains a follow-up after ESO verification succeeds",
+	}
+	if !vaultWritten {
+		warnings = append(warnings, "every key already matched Vault; no new Vault version was written")
 	}
 	externalSecretRefreshed := false
 	externalSecretResourceVersion := ""
@@ -339,28 +391,41 @@ func (h *Handler) handleOpsSecretsVaultBackfillApply(ctx context.Context, operat
 		}
 	}
 
+	data := plan.data()
+	for k, v := range map[string]any{
+		"namespace":                     namespace,
+		"sourceSecret":                  sourceSecret,
+		"vaultPath":                     vaultPath,
+		"vaultVersion":                  vaultVersion,
+		"vaultWritten":                  vaultWritten,
+		"normalizedKeys":                keys,
+		"keyCount":                      len(keys),
+		"externalSecret":                externalSecret,
+		"externalSecretRefreshed":       externalSecretRefreshed,
+		"externalSecretResourceVersion": externalSecretResourceVersion,
+	} {
+		data[k] = v
+	}
+	status := "submitted"
+	summary := fmt.Sprintf("merged %d key(s) from %s/%s into Vault through Enclii (%d new, %d unchanged, %d overwritten)",
+		len(plan.writes), namespace, sourceSecret, len(plan.NewKeys), len(plan.UnchangedKeys), len(plan.writes)-len(plan.NewKeys))
+	if !vaultWritten {
+		status = "unchanged"
+		summary = fmt.Sprintf("all %d key(s) from %s/%s already match Vault %s; nothing written", len(keys), namespace, sourceSecret, vaultPath)
+	}
+
 	return operatorOperationResponse{
 		OperationID: operationID,
 		Operation:   operation,
-		Status:      "submitted",
+		Status:      status,
 		DryRun:      false,
-		Summary:     fmt.Sprintf("merged %d key(s) from %s/%s into Vault through Enclii", len(keys), namespace, sourceSecret),
-		Data: map[string]any{
-			"namespace":                     namespace,
-			"sourceSecret":                  sourceSecret,
-			"vaultPath":                     vaultPath,
-			"vaultVersion":                  vaultVersion,
-			"normalizedKeys":                keys,
-			"keyCount":                      len(keys),
-			"externalSecret":                externalSecret,
-			"externalSecretRefreshed":       externalSecretRefreshed,
-			"externalSecretResourceVersion": externalSecretResourceVersion,
-		},
+		Summary:     summary,
+		Data:        data,
 		Steps: []operatorOperationStep{
 			{Name: "authorize", Status: "completed", Detail: "reason supplied and caller passed endpoint authorization"},
-			{Name: "load-state", Status: "completed", Detail: "loaded Kubernetes source Secret from cluster"},
-			{Name: "diff", Status: "completed", Detail: "normalized source keys and prepared a Vault KV v2 merge without exposing values"},
-			{Name: "vault-merge", Status: "completed", Detail: "merged normalized keys into Vault KV v2"},
+			{Name: "load-state", Status: "completed", Detail: "loaded the Kubernetes source Secret and the Vault path"},
+			{Name: "diff", Status: "completed", Detail: "classified each key as new, unchanged or differing without exposing values"},
+			{Name: "vault-merge", Status: stepStatus(!vaultWritten, vaultWritten), Detail: "merged new (and, with --allow-overwrite, differing) keys into Vault KV v2"},
 			{Name: "eso-refresh", Status: stepStatus(externalSecret == "", externalSecretRefreshed), Detail: "requested ExternalSecret force-sync when a target was supplied"},
 			{Name: "audit", Status: "completed", Detail: "operation reason and idempotency metadata recorded on refreshed ExternalSecret when available"},
 		},
@@ -401,27 +466,6 @@ func stepStatus(skipped, completed bool) string {
 		return "completed"
 	}
 	return "warning"
-}
-
-func normalizedVaultUpdates(data map[string][]byte) (map[string]interface{}, []string, error) {
-	if len(data) == 0 {
-		return nil, nil, fmt.Errorf("source Secret has no data keys")
-	}
-	updates := make(map[string]interface{}, len(data))
-	keys := make([]string, 0, len(data))
-	for key, value := range data {
-		normalized := normalizeVaultSecretKey(key)
-		if normalized == "" {
-			return nil, nil, fmt.Errorf("source key %q normalizes to an empty Vault key", key)
-		}
-		if _, exists := updates[normalized]; exists {
-			return nil, nil, fmt.Errorf("multiple source keys normalize to %q", normalized)
-		}
-		updates[normalized] = string(value)
-		keys = append(keys, normalized)
-	}
-	sort.Strings(keys)
-	return updates, keys, nil
 }
 
 func normalizeVaultSecretKey(key string) string {

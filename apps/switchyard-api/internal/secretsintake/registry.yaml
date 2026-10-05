@@ -822,3 +822,40 @@ targets:
     external_secret: voxa-api-runtime  # pragma: allowlist secret
     keys:
       - redis_url
+
+  # yantra4d backend Secret, adopted from a hand-written object. The live
+  # Secret's values are copied into Vault server-side by
+  # `enclii secrets vault-backfill yantra4d-secrets --namespace yantra4d --vault-path secret/yantra4d`
+  # (never printed); the yantra4d repo's ExternalSecret `yantra4d-secrets`
+  # (creationPolicy Merge, deletionPolicy Retain) then keeps it in step. Later
+  # value changes go through this target.
+  yantra4d/backend-secrets:
+    label: Yantra4D backend secrets
+    description: Values the yantra4d backend and render-worker read from yantra4d-secrets (Janua issuer/audience, Selva gateway, webhook secrets, tier overrides, access grants, render-artifact object store).
+    vault_path: secret/yantra4d
+    namespace: yantra4d
+    external_secret: yantra4d-secrets  # pragma: allowlist secret
+    keys:
+      - JANUA_ISSUER
+      - JANUA_AUDIENCE
+      - AI_BASE_URL
+      - AI_API_KEY
+      - COTIZA_WEBHOOK_SECRET
+      - FORGESIGHT_WEBHOOK_SECRET
+      - TIER_OVERRIDES
+      - PROJECT_ACCESS_GRANTS
+      - RENDER_ARTIFACT_S3_ENDPOINT
+      - RENDER_ARTIFACT_S3_ACCESS_KEY_ID
+      - RENDER_ARTIFACT_S3_SECRET_ACCESS_KEY
+
+  # Generated server-side only:
+  # `enclii secrets intake submit yantra4d/redis --generate redis_password`.
+  # 32 bytes of crypto/rand, base64url, so it is safe inside a redis:// URL.
+  yantra4d/redis:
+    label: Yantra4D Redis password
+    description: requirepass for yantra4d-redis; consumed through the yantra4d repo's ExternalSecret yantra4d-redis-auth.
+    vault_path: secret/yantra4d
+    namespace: yantra4d
+    external_secret: yantra4d-redis-auth  # pragma: allowlist secret
+    keys:
+      - redis_password

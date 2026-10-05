@@ -6,6 +6,9 @@ This project follows [Conventional Commits](https://www.conventionalcommits.org/
 
 ## [Unreleased]
 
+### Changed
+- `secrets vault-backfill`: the dry run returns the per-key plan (names and new/unchanged/differing states only); apply refuses differing values unless `overwrite` is set and writes nothing when every key already matches. Intake targets `yantra4d/backend-secrets` and `yantra4d/redis`. Removed the unused yantra4d ExternalSecret manifest from `vault-secrets/` (yantra4d declares its ExternalSecrets in its own repository).
+
 ### Added
 - Cloudflare tunnel routes for vault.madfam.io and analytics.madfam.io (backends pending deploy)
 - ArgoCD network-policies app for GitOps-managed NetworkPolicy enforcement
