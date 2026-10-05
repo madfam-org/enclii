@@ -122,8 +122,11 @@ rotation. Same shape as the `symbiosis-hcm` note below. `courier_alertmanager_se
 read cross-path by this repo's Alertmanager in the `monitoring` namespace
 (`infra/k8s/production/monitoring/alertmanager-courier-secret.externalsecret.yaml`).
 Until the targets are populated every Courier route answers `503
-not_provisioned` and Alertmanager's `email_configs` carry alerts on their own,
-which is what happens today.
+not_provisioned` and Alertmanager's `email_configs` carry alerts on their own.
+As of 2026-10-05 they are populated: the Courier ExternalSecrets report
+`SecretSynced=True` and Alertmanager's webhook delivers critical alerts through
+Courier. Every Courier webhook in `alertmanager.yaml` carries `max_alerts`,
+because Courier refuses a body over 1 MiB with 413 and loses the whole batch.
 
 `angelia/courier-webhook-signing-keys` (R23, ruled 2026-09-05) is the arming step
 for Courier's `webhook` channel — customer-supplied HTTPS targets, signed

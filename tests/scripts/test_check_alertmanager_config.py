@@ -217,7 +217,10 @@ def test_telegram_rejects_bad_parse_mode(tmp_path):
 def test_live_monitoring_config_would_load():
     """The committed production config must pass. This is the ratchet."""
     code, out, err = run_script(LIVE_CONFIG)
-    assert code == 0, f"live alertmanager config would crash on load:\n{out}\n{err}"
+    assert code == 0, (
+        f"live alertmanager config would crash on load or breaks a policy "
+        f"rule:\n{out}\n{err}"
+    )
 
 
 def test_live_config_has_no_telegram_configs():
@@ -399,6 +402,43 @@ def test_email_failure_is_routed_to_courier_only():
     assert auth["credentials_file"] == COURIER_CREDENTIALS_FILE
 
 
+# Courier's receiver is Fastify with its default bodyLimit (angelia
+# apps/api/src/courier/routes.ts sets none). The per-alert budget is the
+# pessimistic size the alertmanager.yaml note derives (largest rule in this
+# repo about 2.7 KB serialised, budgeted at 4 KiB).
+COURIER_BODY_LIMIT_BYTES = 1024 * 1024
+ALERT_BUDGET_BYTES = 4 * 1024
+ENVELOPE_BUDGET_BYTES = 8 * 1024
+
+
+def test_every_live_courier_webhook_is_batch_capped_with_2x_headroom():
+    """No Courier batch can outgrow the receiver's body limit.
+
+    On 2026-10-05 the uncapped warning digest (3128-3572 alerts) was refused
+    whole with `413 FST_ERR_CTP_BODY_TOO_LARGE` every 3h, and each refusal
+    fired CourierReceiverDown, a false page. Every Courier webhook is capped,
+    critical ones too: a critical storm past the limit is refused the same
+    way and takes the page with it.
+    """
+    cfg = _live_alertmanager_config()
+    hooks = [
+        (recv.get("name"), hook)
+        for recv in cfg.get("receivers") or []
+        for hook in recv.get("webhook_configs") or []
+        if hook.get("url") == COURIER_WEBHOOK_URL
+    ]
+    names = sorted(name for name, _ in hooks)
+    assert names == ["courier-only-receiver", "critical-receiver", "warning-receiver"]
+    for name, hook in hooks:
+        cap = hook.get("max_alerts")
+        assert isinstance(cap, int) and cap > 0, f"{name}: max_alerts={cap!r}"
+        worst = cap * ALERT_BUDGET_BYTES + ENVELOPE_BUDGET_BYTES
+        assert worst * 2 <= COURIER_BODY_LIMIT_BYTES, (
+            f"{name}: max_alerts={cap} gives a worst-case batch of {worst} B, "
+            f"less than 2x headroom under Courier's {COURIER_BODY_LIMIT_BYTES} B"
+        )
+
+
 def test_critical_route_keeps_paging_within_the_email_budget():
     """Every critical still pages, and the timings stay inside Gmail's cap.
 
@@ -561,6 +601,110 @@ def test_webhook_without_url_fails(tmp_path):
     code, out, _ = run_script(tmp_path)
     assert code == 1
     assert "one of url or url_file must be configured" in out
+
+
+def _courier_hook_config(extra: str) -> str:
+    return configmap(
+        f"""
+        route:
+          receiver: 'r'
+        receivers:
+          - name: 'r'
+            webhook_configs:
+              - url: '{COURIER_WEBHOOK_URL}'
+                send_resolved: true
+                {extra}
+        """
+    )
+
+
+def test_courier_webhook_without_max_alerts_fails_as_policy(tmp_path):
+    """The 2026-10-05 class: an uncapped batch is refused whole with 413.
+
+    The config LOADS, so this must read as a policy failure and never as the
+    crash message, which would send a reader looking for the wrong bug.
+    """
+    write(tmp_path, _courier_hook_config(""))
+    code, out, err = run_script(tmp_path)
+    assert code == 1
+    assert "FAIL (policy)" in out
+    assert "no positive max_alerts" in out
+    assert "breaks an alerting policy rule" in err
+    assert "REJECTED AT LOAD" not in err
+
+
+def test_courier_webhook_with_zero_max_alerts_fails(tmp_path):
+    """`max_alerts: 0` is Alertmanager's "no limit", the bug itself."""
+    write(tmp_path, _courier_hook_config("max_alerts: 0"))
+    code, out, _ = run_script(tmp_path)
+    assert code == 1
+    assert "no positive max_alerts (got 0)" in out
+
+
+def test_courier_webhook_with_max_alerts_passes(tmp_path):
+    write(tmp_path, _courier_hook_config("max_alerts: 100"))
+    code, out, err = run_script(tmp_path)
+    assert code == 0, f"{out}\n{err}"
+
+
+def test_courier_rule_matches_on_path_not_host(tmp_path):
+    """A host or scheme change must not quietly exempt a Courier webhook."""
+    write(
+        tmp_path,
+        configmap(
+            """
+            route:
+              receiver: 'r'
+            receivers:
+              - name: 'r'
+                webhook_configs:
+                  - url: 'https://courier.example.invalid/v1/courier/alertmanager'
+            """
+        ),
+    )
+    code, out, _ = run_script(tmp_path)
+    assert code == 1
+    assert "no positive max_alerts" in out
+
+
+def test_non_courier_webhook_needs_no_max_alerts(tmp_path):
+    write(
+        tmp_path,
+        configmap(
+            """
+            route:
+              receiver: 'r'
+            receivers:
+              - name: 'r'
+                webhook_configs:
+                  - url: 'http://heartbeat.example.invalid/ping'
+            """
+        ),
+    )
+    code, out, err = run_script(tmp_path)
+    assert code == 0, f"{out}\n{err}"
+
+
+def test_negative_max_alerts_is_a_load_rejection(tmp_path):
+    """MaxAlerts is a uint64; a negative value fails to unmarshal at load."""
+    write(
+        tmp_path,
+        configmap(
+            """
+            route:
+              receiver: 'r'
+            receivers:
+              - name: 'r'
+                webhook_configs:
+                  - url: 'http://heartbeat.example.invalid/ping'
+                    max_alerts: -1
+            """
+        ),
+    )
+    code, out, err = run_script(tmp_path)
+    assert code == 1
+    assert "cannot unmarshal max_alerts -1 into uint64" in out
+    assert "REJECTED AT LOAD" in err
 
 
 def test_slack_both_api_url_forms_fails(tmp_path):

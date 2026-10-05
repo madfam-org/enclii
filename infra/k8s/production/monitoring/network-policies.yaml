@@ -264,7 +264,7 @@ spec:
   # The Angelia Courier receiver — the estate's ONE last mile for third-party
   # messaging (internal-devops
   # decisions/2026-09-05-third-party-messaging-via-angelia-courier.md M1).
-  # Both `critical-receiver` and `warning-receiver` POST to
+  # `critical-receiver`, `warning-receiver` and `courier-only-receiver` POST to
   # http://angelia-api.angelia.svc.cluster.local/v1/courier/alertmanager. That
   # Service listens on 80 and targets CONTAINER port 8787, and a NetworkPolicy
   # matches the container port, not the Service port: writing 80 here would be

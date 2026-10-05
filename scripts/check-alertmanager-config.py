@@ -61,6 +61,20 @@ Two layers, in order:
      less than no check because it still looks like coverage. Only a
      validator that ran and REJECTED the config fails the build.
 
+  3. POLICY (always runs, after structural). Rules that are this estate's
+     own, not Alertmanager's: the config LOADS, but it is still wrong here.
+     Reported separately so a policy failure never reads as a crash.
+     Today there is one rule:
+
+       Every webhook pointing at Angelia Courier's Alertmanager receiver
+       (url path /v1/courier/alertmanager) carries a positive `max_alerts`.
+       Courier's receiver has a 1 MiB request-body limit, and a batch past
+       it is refused whole: on 2026-10-05 the warning digest
+       (3128-3572 alerts) was answered `413 FST_ERR_CTP_BODY_TOO_LARGE`
+       every 3h, and each refusal fired CourierReceiverDown, a false page.
+       Sizing is in the comment above `critical-receiver` in
+       infra/k8s/production/monitoring/alertmanager.yaml.
+
 HONEST LIMITATIONS
 ==================
 The structural layer does NOT reimplement `yaml.UnmarshalStrict`, so it will
@@ -83,8 +97,9 @@ USAGE
         python3 scripts/check-alertmanager-config.py infra/k8s/
 
 Exit codes:
-  0 — every alertmanager.yml found is loadable
-  1 — at least one would be rejected at config load (process would crash)
+  0 — every alertmanager.yml found is loadable and meets the policy rules
+  1 — at least one would be rejected at config load (process would crash),
+      or breaks a policy rule
   2 — could not parse manifests, or no alertmanager config was found at all
 """
 from __future__ import annotations
@@ -115,14 +130,22 @@ TELEGRAM_PARSE_MODES = {"", "Markdown", "MarkdownV2", "HTML"}
 WECHAT_MESSAGE_TYPES = {"", "text", "markdown"}
 
 
+# Finding kinds. LOAD: Alertmanager itself would reject the config.
+# POLICY: it loads, but breaks a rule of this estate (see POLICY above).
+LOAD = "load"
+POLICY = "policy"
+
+
 @dataclass(frozen=True)
 class Finding:
     path: Path
     where: str
     message: str
+    kind: str = LOAD
 
     def render(self) -> str:
-        return f"FAIL {self.path}: {self.where}: {self.message}"
+        tag = "FAIL" if self.kind == LOAD else "FAIL (policy)"
+        return f"{tag} {self.path}: {self.where}: {self.message}"
 
 
 def iter_yaml_docs(root: Path) -> Iterator[tuple[Path, dict]]:
@@ -218,6 +241,15 @@ def check_webhook(where: str, cfg: dict) -> list[str]:
         errs.append("at most one of url & url_file must be configured")
     elif _present(url) and not str(url).startswith(("http://", "https://")):
         errs.append("scheme required for webhook url")
+    # MaxAlerts is a uint64 (config/notifiers.go:490); yaml refuses a negative
+    # or non-integer value when it unmarshals the field, at load.
+    if "max_alerts" in cfg and cfg["max_alerts"] is not None:
+        cap = cfg["max_alerts"]
+        if isinstance(cap, bool) or not isinstance(cap, int) or cap < 0:
+            errs.append(
+                f"cannot unmarshal max_alerts {cap!r} into uint64 "
+                "(must be a non-negative integer)"
+            )
     return [f"{where}: {e}" for e in errs]
 
 
@@ -284,6 +316,42 @@ def check_wechat(where: str, cfg: dict) -> list[str]:
             "options ^(text|markdown)$"
         ]
     return []
+
+
+# --- POLICY -----------------------------------------------------------------
+
+# Angelia Courier's Alertmanager receiver. Matched on the PATH so a host or
+# scheme change does not quietly exempt a webhook from the rule below.
+COURIER_RECEIVER_PATH = "/v1/courier/alertmanager"
+
+
+def check_courier_batch_cap(where: str, cfg: dict) -> list[str]:
+    """Every Courier webhook carries a positive max_alerts.
+
+    Without it a large group is POSTed whole, Courier's 1 MiB body limit
+    refuses it with 413, the whole batch is lost and CourierReceiverDown
+    fires. `max_alerts: 0` is Alertmanager's "no limit", so it fails too.
+    """
+    url = cfg.get("url")
+    if not isinstance(url, str) or COURIER_RECEIVER_PATH not in url:
+        return []
+    cap = cfg.get("max_alerts")
+    if isinstance(cap, bool) or not isinstance(cap, int) or cap <= 0:
+        return [
+            f"{where}: webhook to Courier ({COURIER_RECEIVER_PATH}) has no "
+            f"positive max_alerts (got {cap!r}). Courier refuses a body over "
+            "1 MiB with 413 and the whole batch is lost; on 2026-10-05 that "
+            "made CourierReceiverDown fire falsely every 3h. Set max_alerts "
+            "(sizing: the note above critical-receiver in "
+            "infra/k8s/production/monitoring/alertmanager.yaml)."
+        ]
+    return []
+
+
+# notifier key -> policy checks, run after the load-time checks.
+POLICY_CHECKS = {
+    "webhook_configs": (check_courier_batch_cap,),
+}
 
 
 # notifier key -> validator. Notifier types absent here (opsgenie, sns,
@@ -372,6 +440,7 @@ def check_alertmanager_yml(path: Path, cm_name: str, key: str, body: str) -> lis
         return [Finding(path, prefix, "config is not a YAML mapping")]
 
     messages: list[str] = list(check_routing(cfg))
+    policy: list[str] = []
     for recv in _as_list(cfg.get("receivers")):
         if not isinstance(recv, dict):
             continue
@@ -385,8 +454,12 @@ def check_alertmanager_yml(path: Path, cm_name: str, key: str, body: str) -> lis
                     continue
                 where = f"receiver '{rname}' {notifier_key}[{idx}]"
                 messages.extend(checker(where, entry))
+                for policy_check in POLICY_CHECKS.get(notifier_key, ()):
+                    policy.extend(policy_check(where, entry))
 
-    return [Finding(path, prefix, m) for m in messages]
+    return [Finding(path, prefix, m) for m in messages] + [
+        Finding(path, prefix, m, POLICY) for m in policy
+    ]
 
 
 # How long to give the optional validator before treating it as unavailable.
@@ -585,16 +658,23 @@ def main(argv: list[str]) -> int:
         f"{len(findings)} failure(s). " + amtool_status
     )
 
-    if findings:
+    if any(f.kind == LOAD for f in findings):
         print(
             "FAIL: this Alertmanager config would be REJECTED AT LOAD — the "
             "process exits 1 and the pod crashloops. Fix it before merge.",
             file=sys.stderr,
         )
+    if any(f.kind == POLICY for f in findings):
+        print(
+            "FAIL: this Alertmanager config would load but breaks an alerting "
+            "policy rule (see the FAIL (policy) lines). Fix it before merge.",
+            file=sys.stderr,
+        )
+    if findings:
         return 1
     if amtool_failed:  # pragma: no cover - defensive
         return 1
-    print("OK: Alertmanager config would load.")
+    print("OK: Alertmanager config would load and meets the policy rules.")
     return 0
 
 
