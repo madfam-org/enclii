@@ -590,7 +590,7 @@ Keep implementation guidance public-safe. If a detail is private/sensitive, plac
 - **The Node runner images carry no npm.** The runner stage of `status`, `dispatch` and `switchyard-ui` deletes `npm` and `npx` (#660). Trivy failed those images on HIGH CVEs that lived only in npm's own vendored tree (brace-expansion 5.0.9, undici 6.28.0), no npm release bundled the fixes, and the runtimes only execute `node server.js` (healthchecks use `wget`). CI job `runner-npm-lint` (`scripts/check-runner-no-npm.py`) keeps the deletion in place and rejects a runner `CMD`/`HEALTHCHECK` that calls npm. To add npm back to a runtime, follow the steps in that script's header: allowlist the service with a reason, and pin an npm whose bundled dependencies pass Trivy.
 
 **Responsible Disclosure:**
-Email: [security@enclii.dev](mailto:security@enclii.dev)
+Email: [security@madfam.io](mailto:security@madfam.io)
 
 ---
 

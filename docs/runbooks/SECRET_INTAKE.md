@@ -1,6 +1,6 @@
 # Secret Intake (chat-safe credential handoff)
 
-**Last Updated:** 2026-10-03
+**Last Updated:** 2026-10-05
 
 > **Boundary checkpoint (2026-09-05, platform on-call):** Public-safe runbook —
 > target ids, Vault paths and key NAMES are routing contracts, never values. No
@@ -28,6 +28,11 @@
 > ExternalSecret names, Janua client NAMES, audiences, scopes and one
 > organization slug only. No client id or secret appears here; the provisioner
 > files both straight into Vault and prints only non-secret fields.
+>
+> **Boundary checkpoint (2026-10-05, platform on-call):** The Alertmanager SMTP
+> section adds a target id, a key NAME, a Vault path, Kubernetes object names
+> and file paths only. The SMTP password is typed at the masked prompt and
+> appears nowhere here.
 
 Operators supply production credentials through Enclii without pasting values into
 agent chat or git. Switchyard merges keys into Vault once; agents poll `intake_id`
@@ -115,6 +120,7 @@ ESO sources: `enclii-secrets`, `janua-secrets`, `madfam-site-secrets`, `phynd-cr
 | `voxa-staging/web-session` | `secret/voxa-staging` | `auth_secret` |
 | `voxa/api-runtime` | `secret/voxa` | `redis_url` |
 | `voxa-staging/api-runtime` | `secret/voxa-staging` | `redis_url` |
+| `monitoring/alertmanager-smtp` | `secret/monitoring` | `alertmanager_smtp_password` |
 
 **Angelia OWNS all five Courier targets** (verifier-owns): Angelia verifies every
 one of these credentials, so `secret/angelia` is their single writable home, and
@@ -124,8 +130,11 @@ rotation. Same shape as the `symbiosis-hcm` note below. `courier_alertmanager_se
 read cross-path by this repo's Alertmanager in the `monitoring` namespace
 (`infra/k8s/production/monitoring/alertmanager-courier-secret.externalsecret.yaml`).
 Until the targets are populated every Courier route answers `503
-not_provisioned` and Alertmanager's `email_configs` carry alerts on their own,
-which is what happens today.
+not_provisioned` and Alertmanager's `email_configs` carry alerts on their own.
+As of 2026-10-05 they are populated: the Courier ExternalSecrets report
+`SecretSynced=True` and Alertmanager's webhook delivers critical alerts through
+Courier. Every Courier webhook in `alertmanager.yaml` carries `max_alerts`,
+because Courier refuses a body over 1 MiB with 413 and loses the whole batch.
 
 `angelia/courier-webhook-signing-keys` (R23, ruled 2026-09-05) is the arming step
 for Courier's `webhook` channel — customer-supplied HTTPS targets, signed
@@ -372,6 +381,76 @@ enclii secrets intake submit voxa/api-runtime --reason "voxa co-editing redis (o
 enclii secrets intake submit voxa-staging/api-runtime --reason "voxa staging co-editing redis (own DB index)"
 enclii secrets intake status int_<id>
 ```
+
+### Alertmanager SMTP credential (2026-10-05)
+
+Alertmanager's email fallback authenticates to the Gmail smarthost with
+`smtp_auth_password_file` (`infra/k8s/production/monitoring/alertmanager.yaml`).
+Until 2026-10-05 that file came from `alertmanager-smtp-secret`, a Secret
+created by hand with `kubectl create secret` and mounted with `subPath`, so it
+had no writer of record and a new password reached no peer until a restart.
+On 2026-10-05 one peer had failed 942 of 948 email notifications and
+`AlertmanagerEmailDeliveryFailing` had fired since 2026-10-03. Because
+`CourierReceiverDown` routes to email only, a real Courier failure reached
+nobody. The owner decided (internal-devops owner action 24, option A) to route
+the credential through intake.
+
+| Property in `secret/monitoring` | Target | Written by | ExternalSecret → Secret | File in the peers |
+|---|---|---|---|---|
+| `alertmanager_smtp_password` | `monitoring/alertmanager-smtp` | owner, masked prompt | `alertmanager-smtp` → `alertmanager-smtp` (key `smtp-password`) | `/etc/alertmanager/smtp/smtp-password` |
+
+- **One copy.** `alertmanager_smtp_password` is the property the git-only
+  `monitoring-secrets` ExternalSecret has always read; the new
+  `alertmanager-smtp` ExternalSecret (synced by the `monitoring` Argo app)
+  reads the same one. The submit merges this one property into
+  `secret/monitoring`; the Grafana properties there are left as they are.
+- **Never `--generate` it.** It is a Gmail app password, minted by Google for
+  the sending account. A generated value is a password Gmail refuses (`535`).
+  The API does not refuse `--generate` on this target, so the rule lives here
+  and in the registry description.
+- **No restart.** The Secret is a directory mount (`optional: true`), and
+  Alertmanager v0.26.0 reads the password file on every send, so a submitted
+  or rotated password is used within about a kubelet sync period. Nothing
+  reloads or restarts.
+- **Before the first submit** the ExternalSecret reports `SecretSyncedError`,
+  the directory is empty, and every email fails with `could not read
+  /etc/alertmanager/smtp/smtp-password`. Courier still pages
+  `AlertmanagerEmailDeliveryFailing`.
+
+Owner sequence, after the change is deployed (switchyard-api digest bump for
+the registry, and the `monitoring` Argo sync that rolls the Alertmanager
+peers), from an up-to-date checkout:
+
+```bash
+cd ~/labspace/enclii && git pull --ff-only
+cd ~/labspace/enclii && ASSERT_PATH=monitoring bash scripts/apply-switchyard-vault-policy-remote.sh < ~/.config/madfam/vault-admin.token
+# expect: APPLIED_OK_asserted_path_present
+```
+
+Mint a **new** app password for the sending account (Google Account →
+Security → App passwords) and revoke the old one. Never paste it into chat.
+Type the 16 characters at the masked prompt, without the spaces Google shows
+between groups: Alertmanager sends the file's bytes as they are.
+
+```bash
+enclii secrets intake submit monitoring/alertmanager-smtp --reason "alertmanager smtp via intake (owner action 24, option A)"
+# prompts (masked): Enter value for alertmanager_smtp_password
+enclii secrets intake status int_<id>
+# expect: external_secret_refreshed: true
+```
+
+Then verify read-only: `alertmanager_notifications_failed_total{integration="email"}`
+stops rising on every peer, and `AlertmanagerEmailDeliveryFailing` resolves
+(its window is `increase(...[15m]) > 0` for 10m, so allow about 15 minutes after
+the first good send). Only after that, delete the retired hand-made Secret
+`alertmanager-smtp-secret` in `monitoring`. Enclii has no command that deletes
+an arbitrary namespace Secret, so this one step is break-glass `kubectl` over
+the authorized tunnel. The legacy `alertmanager` Deployment in
+`alertmanager.yaml` still names that Secret, but it is held at `replicas: 0` and
+runs nothing.
+
+Rotation is the same `intake submit` with a new app password. Never recreate
+`alertmanager-smtp-secret`.
 
 
 Add targets via PR to the registry — do not hardcode paths in runbooks. A new

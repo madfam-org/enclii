@@ -859,3 +859,27 @@ targets:
     external_secret: yantra4d-redis-auth  # pragma: allowlist secret
     keys:
       - redis_password
+
+  # monitoring (2026-10-05) — Alertmanager's SMTP password, the credential
+  # behind every `email_configs` block in infra/k8s/production/monitoring/
+  # alertmanager.yaml (`smtp_auth_password_file`). Owner decision 2026-10-05:
+  # route it through intake instead of a hand-made Secret (internal-devops
+  # owner action 24, option A). Typed by the owner at the masked prompt: it is a
+  # Gmail app password minted on Google's side, so NEVER --generate it (a random
+  # value is a password Gmail rejects, and email would fail with 535).
+  #
+  # secret/monitoring is also where grafana_admin_password and
+  # grafana_smtp_password live (monitoring-secrets.yaml reads all three); the
+  # intake write is a merge (lockbox MergeSecretData), so they survive.
+  # alertmanager_smtp_password is the property the git-only monitoring-secrets
+  # ExternalSecret already reads, so there is one source of truth. The DEDICATED
+  # alertmanager-smtp ExternalSecret (synced by the monitoring Argo app)
+  # projects it as the file Alertmanager reads; intake force-syncs that one.
+  monitoring/alertmanager-smtp:
+    label: Alertmanager SMTP password (Gmail app password)
+    description: Password for Alertmanager's email fallback (smtp_auth_password_file). A Gmail app password for the sending account, minted on Google's side and typed at the masked prompt; never generated. Projected to /etc/alertmanager/smtp/smtp-password by the alertmanager-smtp ExternalSecret; Alertmanager reads the file on every send, so no restart is needed.
+    vault_path: secret/monitoring
+    namespace: monitoring
+    external_secret: alertmanager-smtp  # pragma: allowlist secret
+    keys:
+      - alertmanager_smtp_password

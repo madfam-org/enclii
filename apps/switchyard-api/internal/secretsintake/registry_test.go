@@ -11,7 +11,7 @@ import (
 func TestLoadRegistry(t *testing.T) {
 	reg, err := LoadRegistry()
 	require.NoError(t, err)
-	assert.Len(t, reg, 58)
+	assert.Len(t, reg, 59)
 	assert.Contains(t, reg, "ceq/vast-api-key")
 	assert.Contains(t, reg, "karafiel/web-oidc-janua")
 	adminSession := reg["karafiel/admin-session"]
@@ -36,7 +36,7 @@ func TestGetTarget(t *testing.T) {
 func TestListTargetsSorted(t *testing.T) {
 	list, err := ListTargets()
 	require.NoError(t, err)
-	require.Len(t, list, 58)
+	require.Len(t, list, 59)
 	for i := 1; i < len(list); i++ {
 		assert.Less(t, list[i-1].ID, list[i].ID, "targets should be sorted by id")
 	}
@@ -79,6 +79,7 @@ func TestListTargetsSorted(t *testing.T) {
 		"karafiel/web-oidc-janua",
 		"lexidrop/oidc-janua",
 		"lexidrop/selva-inference",
+		"monitoring/alertmanager-smtp",
 		"nauta/internal-probe-key",
 		"nauta/kalya-feed-tokens",
 		"nauta/oidc-janua",
@@ -522,4 +523,36 @@ func TestYantra4DSecretTargets(t *testing.T) {
 	assert.Equal(t, "yantra4d-redis-auth", redis.ExternalSecret)
 	assert.Equal(t, []string{"redis_password"}, redis.Keys)
 	assert.Equal(t, DefaultGenerateBytes, redis.GenerateBytes())
+}
+
+// Alertmanager's SMTP password (2026-10-05, owner decision: route it through
+// intake). Pinned end to end because every link fails silently: a wrong Vault
+// path is a write nothing reads, a wrong property name is an ExternalSecret
+// that syncs zero keys, and a wrong ExternalSecret name means intake never
+// force-syncs the Secret Alertmanager mounts. The values here must match
+// infra/k8s/production/monitoring/alertmanager-smtp.externalsecret.yaml, which
+// tests/scripts/test_alertmanager_secret_mounts.py checks from the manifest
+// side. The key is the property monitoring-secrets already reads, so the
+// estate keeps one copy of this credential.
+func TestMonitoringAlertmanagerSMTPTarget(t *testing.T) {
+	tgt, err := GetTarget("monitoring/alertmanager-smtp")
+	require.NoError(t, err)
+	assert.Equal(t, "secret/monitoring", tgt.VaultPath)
+	assert.Equal(t, "monitoring", tgt.Namespace)
+	assert.Equal(t, "alertmanager-smtp", tgt.ExternalSecret,
+		"the dedicated ExternalSecret Alertmanager mounts, never the git-only monitoring-secrets")
+	assert.NotEqual(t, "alertmanager-smtp-secret", tgt.ExternalSecret,
+		"alertmanager-smtp-secret is the retired hand-made Secret; ESO must not adopt it")
+	assert.Equal(t, []string{"alertmanager_smtp_password"}, tgt.Keys,
+		"one key: the prompt must ask for the app password and nothing else")
+	for _, k := range tgt.Keys {
+		assert.Equal(t, strings.ToLower(k), k, "Vault stores lowercase; an upper-case key would never match the ExternalSecret property")
+	}
+	assert.NotEmpty(t, tgt.Label)
+	assert.NotEmpty(t, tgt.Description)
+	// Value-intake, not generatable: a Gmail app password is minted by Google.
+	// No generate policy is declared; the description and the runbook say
+	// never to pass --generate (the API does not refuse it, see SECRET_INTAKE.md).
+	assert.Nil(t, tgt.Generate)
+	assert.Contains(t, tgt.Description, "never generated")
 }

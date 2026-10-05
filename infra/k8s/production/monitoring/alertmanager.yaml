@@ -16,7 +16,7 @@ data:
       smtp_smarthost: 'smtp.gmail.com:587'
       smtp_from: 'innovacionesmadfam@gmail.com'
       smtp_auth_username: 'innovacionesmadfam@gmail.com'
-      smtp_auth_password_file: '/etc/alertmanager/smtp-password'
+      smtp_auth_password_file: '/etc/alertmanager/smtp/smtp-password'
       smtp_require_tls: true
 
     # EMAIL BUDGET. Every email route shares one Gmail account whose
@@ -159,8 +159,7 @@ data:
       # a warning POSTed to it is counted as `skipped` with reason `severity`
       # and no message is sent. Routing warnings to the webhook now costs
       # nothing and means the day Angelia widens that env var, warnings arrive
-      # with no change here. Until then warnings reach people by email only,
-      # exactly as they do today.
+      # with no change here. Until then warnings reach people by email only.
       #
       # Courier dedups on `alarm:<alertname>:<hour>`, an hourly idempotency
       # window, so a critical repeat_interval under 1h would not page more
@@ -168,11 +167,54 @@ data:
       # (the shared email budget, see the note above `route:`), so a condition
       # that stays broken re-pages the phone every 4h.
       #
-      # Until the operator populates `secret/angelia:courier_alertmanager_secret`
-      # (intake target `angelia/courier-alertmanager`), the receiver answers
-      # 503 not_provisioned, Alertmanager records a failed webhook notification,
-      # CourierReceiverDown fires, and email carries the page — which is the
-      # same behaviour as today, when there was no working last mile at all.
+      # PROVISIONED. `secret/angelia:courier_alertmanager_secret` (intake
+      # target `angelia/courier-alertmanager`) is populated and the webhook
+      # delivers: on 2026-10-05 one peer counted 86 webhook notifications and
+      # 11 failures, all client errors; the latest were the 413 described
+      # below. If the credential is
+      # ever lost the receiver answers 503 not_provisioned (or 401 on a
+      # mismatch), Alertmanager records a failed webhook notification,
+      # CourierReceiverDown fires, and the page falls to email, which is only
+      # as alive as the SMTP credential (AlertmanagerEmailDeliveryFailing says
+      # when it is not).
+      #
+      # EVERY COURIER WEBHOOK CARRIES `max_alerts`, so no batch can outgrow
+      # the receiver's request-body limit. Without it, on 2026-10-05 the
+      # warning digest was refused whole with
+      # `413 FST_ERR_CTP_BODY_TOO_LARGE` at each 3h group_interval (the last
+      # three batches: 3128, 3354, 3572 alerts), and each refusal fired
+      # CourierReceiverDown, a false page
+      # about a pager that was working. The digest keeps growing because
+      # Alertmanager v0.26.0 deletes a group's resolved alerts only after a
+      # notification that succeeded on EVERY integration of the receiver
+      # (dispatch.go aggrGroup.flush), and email has been failing, so the
+      # resolved alerts stay in the group.
+      #
+      # Sizing, from angelia's receiver (apps/api/src/courier/routes.ts):
+      #   limit       Fastify's default bodyLimit, 1 MiB (1,048,576 B); the
+      #               route sets none.
+      #   one alert   the largest rule in this repo serialises to about 2.7 KB
+      #               (labels + annotations + the generatorURL, which carries
+      #               the URL-encoded expression), counted with 12 extra series
+      #               labels; PodNotReady is about 1.2 KB. Budget 4 KiB.
+      #   envelope    group/common labels and annotations, under 8 KiB.
+      #   100 alerts  100 x 4 KiB + 8 KiB = 408 KiB, under half the limit, so
+      #               at least 2.5x headroom at the pessimistic size (about
+      #               3.8x at the measured 2.7 KB).
+      # Alertmanager sends the first 100 alerts of the group (ordered by job,
+      # instance, then labels, not by status) and reports the rest in
+      # `truncatedAlerts`, which Courier's schema accepts. What a person sees
+      # does not change: Courier pages once per alertname per hour
+      # (`alarm:<alertname>:<hour>`), the critical route groups by alertname so
+      # any firing alert in a batch carries the page, and warnings are skipped
+      # by severity. One corner remains: a critical group of more than 100
+      # alerts whose first 100 are all RESOLVED sends no firing alert in that
+      # batch. It needs resolved alerts piling up, which stops once email
+      # delivers again. The cap is on all three webhooks, not only the warning
+      # digest, because a critical storm of one alertname past the limit would
+      # be refused whole the same way and drop the page with it.
+      # scripts/check-alertmanager-config.py fails any Courier webhook without
+      # a positive max_alerts.
       - name: 'critical-receiver'
         email_configs:
           - to: 'admin@madfam.io'
@@ -182,6 +224,8 @@ data:
         webhook_configs:
           - url: 'http://angelia-api.angelia.svc.cluster.local/v1/courier/alertmanager'
             send_resolved: true
+            # Batch cap; sizing in the note above `critical-receiver`.
+            max_alerts: 100
             http_config:
               authorization:
                 type: Bearer
@@ -196,6 +240,8 @@ data:
         webhook_configs:
           - url: 'http://angelia-api.angelia.svc.cluster.local/v1/courier/alertmanager'
             send_resolved: true
+            # Batch cap; sizing in the note above `critical-receiver`.
+            max_alerts: 100
             http_config:
               authorization:
                 type: Bearer
@@ -207,6 +253,8 @@ data:
         webhook_configs:
           - url: 'http://angelia-api.angelia.svc.cluster.local/v1/courier/alertmanager'
             send_resolved: true
+            # Batch cap; sizing in the note above `critical-receiver`.
+            max_alerts: 100
             http_config:
               authorization:
                 type: Bearer
@@ -228,14 +276,14 @@ data:
 
     templates: []
 ---
-# AlertManager SMTP Secret — NOT committed to git.
-# Create manually before deploying AlertManager:
-#
-#   kubectl create secret generic alertmanager-smtp-secret -n monitoring \
+# AlertManager SMTP password — from Vault since 2026-10-05; never by hand.
+# alertmanager-smtp.externalsecret.yaml projects it (intake target
+# monitoring/alertmanager-smtp); owner steps: docs/runbooks/SECRET_INTAKE.md,
+# "Alertmanager SMTP credential". The RETIRED hand-made Secret came from:
 #     --from-literal=smtp-password='YOUR_GMAIL_APP_PASSWORD'
-#
-# Use a Gmail App Password (not account password).
-# Long-term: migrate to Resend SMTP relay or External Secrets Operator.
+# (`kubectl create secret generic alertmanager-smtp-secret`). Do not recreate
+# it; the owner deletes it once email is verified. The Deployment below sits
+# at replicas 0 and still names it; the StatefulSet is what runs.
 ---
 # AlertManager Deployment
 apiVersion: apps/v1

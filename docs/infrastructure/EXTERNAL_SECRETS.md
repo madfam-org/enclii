@@ -8,7 +8,7 @@
 > missing Enclii adapter gap.
 
 
-**Last Updated:** 2026-09-27
+**Last Updated:** 2026-10-05
 **Status:** Operational (Vault-backed)
 **Active Providers:** `vault-store` (HashiCorp Vault KV v2) + `kubernetes-store` (legacy, cross-namespace)
 
@@ -247,6 +247,18 @@ apply — each target has exactly one writer. `npm-registry-secrets`
 and is not present in the live cluster; it is left in place because
 `scripts/check-zero-touch-boundaries.sh` allowlists the filename. Retiring it
 is a separate change.
+
+**Two readers of `secret/monitoring:alertmanager_smtp_password` (2026-10-05).**
+`monitoring-secrets` (git-only, target `monitoring-secrets`, key
+`ALERTMANAGER_SMTP_PASSWORD`) has always read it, and nothing mounts that key.
+`alertmanager-smtp` (`infra/k8s/production/monitoring/alertmanager-smtp.externalsecret.yaml`,
+synced by the `monitoring` Argo app) reads the same property into a
+**different** target Secret, key `smtp-password`, which the Alertmanager
+StatefulSet mounts as the file behind `smtp_auth_password_file`. Each target
+has one writer, so the multi-writer rule does not apply. The property's only
+writer is the intake target `monitoring/alertmanager-smtp`
+([Secret Intake](../runbooks/SECRET_INTAKE.md#alertmanager-smtp-credential-2026-10-05)).
+It replaced the hand-made `alertmanager-smtp-secret`.
 
 **Dhanam merge model (2026-06-16, corrected 2026-08-06):** `dhanam-secrets`
 (core), `dhanam-secrets-extended` and the platform
