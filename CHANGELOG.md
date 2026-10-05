@@ -21,7 +21,6 @@ This project follows [Conventional Commits](https://www.conventionalcommits.org/
 - Cluster operations deployment script (`scripts/cluster-ops-deploy.sh`)
 
 ### Fixed
-- Alertmanager SMTP password now comes from Vault through secret intake (target `monitoring/alertmanager-smtp`, ExternalSecret `alertmanager-smtp`) and a directory mount, replacing the hand-made, subPath-mounted `alertmanager-smtp-secret`; a rotated password reaches every peer without a restart (2026-10-05)
 - NetworkPolicy default-deny across all namespaces
 - Cosign image verification (Audit mode, Enforce pending verification)
 

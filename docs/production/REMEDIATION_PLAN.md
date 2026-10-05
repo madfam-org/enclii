@@ -185,10 +185,6 @@ done
 ### 4A. AlertManager Enhancement
 
 - Migrate SMTP credentials to Vault ExternalSecret
-  - *Note added 2026-10-05:* done for Alertmanager. The password is intake
-    target `monitoring/alertmanager-smtp` → `secret/monitoring`, projected by
-    `infra/k8s/production/monitoring/alertmanager-smtp.externalsecret.yaml`;
-    see [Secret Intake](../runbooks/SECRET_INTAKE.md#alertmanager-smtp-credential-2026-10-05).
 - Add Slack webhook receiver for critical alerts
 - Add PagerDuty/Opsgenie for on-call escalation
 - Switch AlertManager storage from emptyDir to PVC
