@@ -214,9 +214,12 @@ spec:
               - docker
               - info
           initialDelaySeconds: 0
-          failureThreshold: 24
-          periodSeconds: 5
-          timeoutSeconds: 3
+          # `docker info` can take more than 3s while the builder nodes run hot (~95% CPU):
+          # the old 3s timeout logged Unhealthy warnings with 0 restarts, which read like a
+          # failure. Same 2-minute budget (12 x 10s), fewer false alarms.
+          failureThreshold: 12
+          periodSeconds: 10
+          timeoutSeconds: 10
         volumeMounts:
           - name: work
             mountPath: /home/runner/_work
