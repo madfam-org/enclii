@@ -111,7 +111,6 @@ ALLOWED_EXTERNAL_SECRET_FILES=(
     npm-registry-secrets.yaml
     pravara-mes-secrets.yaml
     tezca-secrets.yaml
-    yantra4d-secrets.yaml
 )
 
 ALLOWED_JANUA_ORIGINS=(

@@ -117,16 +117,21 @@ func newSecretsVaultBackfillCommand(cfg *config.Config) *cobra.Command {
 	var flags operationFlags
 	var vaultPath string
 	var externalSecret string
+	var allowOverwrite bool
 	cmd := &cobra.Command{
 		Use:   "vault-backfill SOURCE_SECRET",
 		Short: "Backfill Vault from a Kubernetes Secret through Enclii",
 		Long: `Backfill a Vault KV v2 path from an existing Kubernetes Secret through
 Enclii's audited operator layer.
 
-Without --apply, the command requests a dry-run plan. With --apply, --reason is
+Without --apply, the command requests a dry-run plan: every source key, the
+Vault property it maps to, and whether it is new, unchanged or differs from the
+value already in Vault (compared server-side). With --apply, --reason is
 required and the Switchyard API reads the source Kubernetes Secret, normalizes
-keys to lower snake case, merges them into Vault, and optionally force-syncs an
-ExternalSecret. Secret values are never printed.
+keys to lower snake case, merges new keys into Vault, and optionally force-syncs
+an ExternalSecret. The apply refuses, writing nothing, when any key differs
+from Vault unless --allow-overwrite is passed, and writes no new Vault version
+when every key already matches. Secret values are never printed.
 
 Examples:
   enclii secrets vault-backfill enclii-secrets --namespace enclii --vault-path secret/enclii
@@ -140,12 +145,16 @@ Examples:
 			if strings.TrimSpace(externalSecret) != "" {
 				extra["external_secret"] = strings.TrimSpace(externalSecret)
 			}
+			if allowOverwrite {
+				extra["overwrite"] = "true"
+			}
 			return runOperation(cmd, cfg, opsPath("secrets", "vault-backfill"), "ops.secrets.vault-backfill", flags, extra)
 		},
 	}
 	addOperationFlags(cmd, &flags)
 	cmd.Flags().StringVar(&vaultPath, "vault-path", "", "Vault KV v2 logical path to merge into, for example secret/enclii")
 	cmd.Flags().StringVar(&externalSecret, "external-secret", "", "ExternalSecret to force-sync after Vault merge")
+	cmd.Flags().BoolVar(&allowOverwrite, "allow-overwrite", false, "Replace Vault values that differ from the Kubernetes Secret (refused by default)")
 	_ = cmd.MarkFlagRequired("vault-path")
 	return cmd
 }

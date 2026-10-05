@@ -107,7 +107,7 @@ func TestOpsSecretsVaultBackfillFlags(t *testing.T) {
 	// --vault-path is the arg the server adapter requires for apply; the
 	// generic ops-action command had no way to pass it ("missing
 	// args.vault_path; apply would be rejected").
-	for _, want := range []string{"vault-path", "apply", "reason", "namespace", "project", "service", "json"} {
+	for _, want := range []string{"vault-path", "allow-overwrite", "apply", "reason", "namespace", "project", "service", "json"} {
 		assert.NotNil(t, backfill.Flags().Lookup(want), "expected --%s", want)
 	}
 }

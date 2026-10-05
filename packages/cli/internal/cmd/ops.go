@@ -242,6 +242,7 @@ Examples:
 func newOpsSecretsVaultBackfillCommand(cfg *config.Config) *cobra.Command {
 	var flags operationFlags
 	var vaultPath string
+	var allowOverwrite bool
 	cmd := &cobra.Command{
 		Use:   "vault-backfill [target]",
 		Short: "Backfill Vault from a Kubernetes Secret",
@@ -265,11 +266,15 @@ Example:
 			if strings.TrimSpace(vaultPath) != "" {
 				extra["vault_path"] = strings.TrimSpace(vaultPath)
 			}
+			if allowOverwrite {
+				extra["overwrite"] = "true"
+			}
 			return runOperation(cmd, cfg, opsPath("secrets", "vault-backfill"), "ops.secrets.vault-backfill", flags, extra)
 		},
 	}
 	addOperationFlags(cmd, &flags)
 	cmd.Flags().StringVar(&vaultPath, "vault-path", "", "Destination Vault KV v2 path (e.g. secret/rondelio); required for --apply")
+	cmd.Flags().BoolVar(&allowOverwrite, "allow-overwrite", false, "Replace Vault values that differ from the Kubernetes Secret (refused by default)")
 	return cmd
 }
 

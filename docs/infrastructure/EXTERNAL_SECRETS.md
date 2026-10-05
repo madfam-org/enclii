@@ -223,7 +223,6 @@ kubectl get externalsecret -n <namespace> \
 | `dhanam-secrets-extended` | dhanam | `secret/dhanam` | 13 (merges into `dhanam-secrets`) |
 | `selva-secrets` | selva | `secret/selva` | 3 |
 | `tezca-secrets` | tezca | `secret/tezca` | 11 |
-| `yantra4d-secrets` | yantra4d | `secret/yantra4d` | 3 |
 | `karafiel-secrets` | karafiel | `secret/karafiel` | 15 |
 | `forgesight-secrets` | forgesight | `secret/forgesight` | 9 |
 | `pravara-mes-secrets` | pravara-mes | `secret/pravara-mes` | 11 |
@@ -326,7 +325,7 @@ directory:
 | `external-secrets/cluster-secret-store.yaml`, `vault-cluster-secret-store.yaml` | yes |
 | `external-secrets/external-secrets-tokenreview-rbac.yaml` | yes |
 | `external-secrets/ecosystem-service-auth-external-secrets.yaml` | yes |
-| **`external-secrets/vault-secrets/*.yaml`** (all 19 per-app manifests) | **no — excluded** |
+| **`external-secrets/vault-secrets/*.yaml`** (all 18 per-app manifests) | **no — excluded** |
 | `verdaccio/auth-externalsecret.yaml` (lives with its workload) | yes, via `npm-registry-services` |
 
 The exclusion is deliberate, and the in-repo comment says why: several legacy
@@ -375,7 +374,7 @@ ArgoCD controller:
 
 | ExternalSecret manifest | Changes reach the cluster by |
 |-------------------------|------------------------------|
-| All 19 files in `external-secrets/vault-secrets/` (`.yaml`): `arc-runners-secrets`, `cloudflare-secrets`, `data-secrets`, `dhanam-secrets`, `dhanam-secrets-extended`, `enclii-builds-secrets`, `enclii-secrets`, `forgesight-secrets`, `janua-secrets`, `karafiel-secrets`, `kyverno-secrets`, `longhorn-secrets`, `madfam-site-secrets`, `monitoring-secrets`, `npm-registry-secrets`, `pravara-mes-secrets`, `selva-secrets`, `tezca-secrets`, `yantra4d-secrets` | **hand patch of the live object only** (git-only) |
+| All 18 files in `external-secrets/vault-secrets/` (`.yaml`): `arc-runners-secrets`, `cloudflare-secrets`, `data-secrets`, `dhanam-secrets`, `dhanam-secrets-extended`, `enclii-builds-secrets`, `enclii-secrets`, `forgesight-secrets`, `janua-secrets`, `karafiel-secrets`, `kyverno-secrets`, `longhorn-secrets`, `madfam-site-secrets`, `monitoring-secrets`, `npm-registry-secrets`, `pravara-mes-secrets`, `selva-secrets`, `tezca-secrets` (yantra4d's ExternalSecrets live in the yantra4d repository, `k8s/production`, synced by `yantra4d-services`) | **hand patch of the live object only** (git-only) |
 | `external-secrets/ecosystem-service-auth-external-secrets.yaml` | ArgoCD, `external-secrets-config` (automated, self-heal) |
 | `verdaccio/auth-externalsecret.yaml` | ArgoCD, `npm-registry-services` |
 | ExternalSecrets declared in a product repository's synced manifest path | ArgoCD, that project's `<project>-services` Application |

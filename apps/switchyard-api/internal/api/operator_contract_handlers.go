@@ -257,6 +257,12 @@ func (h *Handler) handleApplyOperatorDryRun(ctx context.Context, prefix, domain,
 	if !adapterReady {
 		warnings = append(warnings, "apply adapter client is not configured in this Switchyard API instance")
 	}
+	// With the adapter wired and both arguments present, the backfill dry run
+	// computes the real per-key plan (names and states only) instead of the
+	// generic description below.
+	if domain == "secrets" && action == "vault-backfill" && adapterReady && requiredArgsReady {
+		return h.handleOpsSecretsVaultBackfillDryRun(ctx, operation, req), true
+	}
 
 	status := "planned"
 	if adapterReady && requiredArgsReady {

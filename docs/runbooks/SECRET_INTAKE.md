@@ -108,6 +108,8 @@ ESO sources: `enclii-secrets`, `janua-secrets`, `madfam-site-secrets`, `phynd-cr
 | `pravara-mes/asset-shells-publisher-madfam-ecosystem` | `secret/pravara-mes` | `asset_shells_publisher_madfam_ecosystem_client_id`, `asset_shells_publisher_madfam_ecosystem_client_secret` |
 | `pravara-mes/fabrication-prep-client` | `secret/pravara-mes` | `fabrication_prep_client_id`, `fabrication_prep_client_secret` |
 | `yantra4d/asset-shells-publisher` | `secret/yantra4d` | `asset_shells_publisher_client_id`, `asset_shells_publisher_client_secret` |
+| `yantra4d/backend-secrets` | `secret/yantra4d` | `janua_issuer`, `janua_audience`, `ai_base_url`, `ai_api_key`, `cotiza_webhook_secret`, `forgesight_webhook_secret`, `tier_overrides`, `project_access_grants`, `render_artifact_s3_endpoint`, `render_artifact_s3_access_key_id`, `render_artifact_s3_secret_access_key` |
+| `yantra4d/redis` | `secret/yantra4d` | `redis_password` (generate server-side: `--generate redis_password`) |
 | `fashion-cabinet/asset-shells-publisher` | `secret/fashion-cabinet` | `asset_shells_publisher_client_id`, `asset_shells_publisher_client_secret` |
 | `forj/pravara-intake` | `secret/forj` | `pravara_intake_client_id`, `pravara_intake_client_secret` |
 | `digifab-quoting/pravara-intake` | `secret/digifab-quoting` | `pravara_intake_client_id`, `pravara_intake_client_secret` |

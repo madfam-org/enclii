@@ -11,7 +11,7 @@ import (
 func TestLoadRegistry(t *testing.T) {
 	reg, err := LoadRegistry()
 	require.NoError(t, err)
-	assert.Len(t, reg, 57)
+	assert.Len(t, reg, 59)
 	assert.Contains(t, reg, "ceq/vast-api-key")
 	assert.Contains(t, reg, "karafiel/web-oidc-janua")
 	adminSession := reg["karafiel/admin-session"]
@@ -36,7 +36,7 @@ func TestGetTarget(t *testing.T) {
 func TestListTargetsSorted(t *testing.T) {
 	list, err := ListTargets()
 	require.NoError(t, err)
-	require.Len(t, list, 57)
+	require.Len(t, list, 59)
 	for i := 1; i < len(list); i++ {
 		assert.Less(t, list[i-1].ID, list[i].ID, "targets should be sorted by id")
 	}
@@ -101,6 +101,8 @@ func TestListTargetsSorted(t *testing.T) {
 		"voxa/selva-client",
 		"voxa/web-session",
 		"yantra4d/asset-shells-publisher",
+		"yantra4d/backend-secrets",
+		"yantra4d/redis",
 		"zavlo/cfdi-emitter",
 	}, ids)
 }
@@ -503,6 +505,24 @@ func TestVoxaWebSessionAndAPIRuntimeTargets(t *testing.T) {
 			assert.GreaterOrEqual(t, tgt.GenerateBytes(), 32)
 		})
 	}
+}
+
+func TestYantra4DSecretTargets(t *testing.T) {
+	reg, err := LoadRegistry()
+	require.NoError(t, err)
+
+	backend := reg["yantra4d/backend-secrets"]
+	assert.Equal(t, "secret/yantra4d", backend.VaultPath)
+	assert.Equal(t, "yantra4d", backend.Namespace)
+	assert.Equal(t, "yantra4d-secrets", backend.ExternalSecret)
+	assert.Contains(t, backend.Keys, "JANUA_ISSUER")
+	assert.Contains(t, backend.Keys, "TIER_OVERRIDES")
+
+	redis := reg["yantra4d/redis"]
+	assert.Equal(t, "secret/yantra4d", redis.VaultPath)
+	assert.Equal(t, "yantra4d-redis-auth", redis.ExternalSecret)
+	assert.Equal(t, []string{"redis_password"}, redis.Keys)
+	assert.Equal(t, DefaultGenerateBytes, redis.GenerateBytes())
 }
 
 // Alertmanager's SMTP password (2026-10-05, owner decision: route it through

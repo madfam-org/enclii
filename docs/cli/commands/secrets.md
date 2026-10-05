@@ -241,7 +241,7 @@ Pods that take the Secret as env vars pick up new values only after they
 restart; `enclii ops pods restart` is not implemented yet
 ([ops.md](./ops.md#remaining-adapter-work)).
 
-`sync`, `rotate`, and `vault-backfill` share the operation-contract flags: `--apply`, `--reason`, `--idempotency-key` (retry key for safe repeats), `--json`, `--namespace`/`-n`, `--project`, and `--service`. `rotate` adds `--provider-version`; `vault-backfill` adds `--vault-path` and `--external-secret`.
+`sync`, `rotate`, and `vault-backfill` share the operation-contract flags: `--apply`, `--reason`, `--idempotency-key` (retry key for safe repeats), `--json`, `--namespace`/`-n`, `--project`, and `--service`. `rotate` adds `--provider-version`; `vault-backfill` adds `--vault-path`, `--external-secret` and `--allow-overwrite`.
 
 ## `enclii secrets rotate`
 
@@ -264,7 +264,22 @@ enclii secrets vault-backfill enclii-secrets --namespace enclii --vault-path sec
 enclii secrets vault-backfill enclii-secrets --namespace enclii --vault-path secret/enclii --external-secret enclii-internal-api-key --apply --reason "replace bridge secret with Vault source"
 ```
 
-Without `--apply`, the command requests a dry-run plan. With `--apply`, `--reason` is required. The server reads the source Kubernetes Secret, normalizes keys to lower snake case, merges them into Vault, and optionally force-syncs the named ExternalSecret. Secret values are never printed.
+Without `--apply`, the command requests a dry-run plan computed on the server: for every source key, the Vault property it maps to (lower snake case) and its state against the value already at that property:
+
+| State | Meaning | Apply |
+|-------|---------|-------|
+| `new` | Vault has no such property | written |
+| `unchanged` | Vault already holds the same value | skipped |
+| `differs` | Vault holds a different value | refused unless `--allow-overwrite` |
+
+The plan also names the other properties already at the path (`vaultOnlyProperties`); a merge preserves them. Values are compared server-side and never returned.
+
+With `--apply`, `--reason` is required. The apply re-computes the plan; if any key differs it returns HTTP 409 and writes nothing, so a value rotated through Vault is not replaced by an older Kubernetes copy by accident. Pass `--allow-overwrite` only when the Kubernetes value is the one to keep. When every key already matches, the apply writes no new Vault version (`status: unchanged`), so re-running it is safe. With `--external-secret`, the named ExternalSecret is force-synced and annotated either way. Secret values are never printed.
+
+```bash
+# Key names and states only
+enclii secrets vault-backfill app-secrets --namespace app --vault-path secret/app --json | jq '{status, summary, plan: .data.plan}'
+```
 
 ## `enclii secrets intake`
 

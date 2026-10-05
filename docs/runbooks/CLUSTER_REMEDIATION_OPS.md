@@ -286,7 +286,6 @@ Repeat for each namespace. The full list of namespaces with ExternalSecret manif
 | monitoring | `monitoring-secrets.yaml` |
 | cloudflare-tunnel | `cloudflare-secrets.yaml` |
 | tezca | `tezca-secrets.yaml` |
-| yantra4d | `yantra4d-secrets.yaml` |
 | karafiel | `karafiel-secrets.yaml` |
 | forgesight | `forgesight-secrets.yaml` |
 | pravara-mes | `pravara-mes-secrets.yaml` |
