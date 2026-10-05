@@ -80,6 +80,20 @@ targets:
       - web_janua_secret_key
       - web_oidc_issuer
 
+  # Karafiel admin console session-cookie key (karafiel KF-12, ruling R42: app
+  # sessions use their own secret, never the Janua OAuth client secret). A
+  # single-key target so `--generate admin_session_secret` mints it without
+  # prompting for any other key: 32 bytes of crypto/rand, written into Vault and
+  # never returned. Rotating it signs every operator out once.
+  karafiel/admin-session:
+    label: Karafiel admin session secret
+    description: Signs the admin.karafiel.mx operator session cookie (HS256); mint server-side with --generate admin_session_secret; must never equal the Janua client secret
+    vault_path: secret/karafiel
+    namespace: karafiel
+    external_secret: karafiel-admin-session # pragma: allowlist secret — Kubernetes object name, not a credential
+    keys:
+      - admin_session_secret
+
   phynd-crm/oidc-janua:
     label: Phynd CRM Janua OAuth client
     description: Staff SSO for crm.madfam.io
