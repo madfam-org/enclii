@@ -533,7 +533,7 @@ Single unified tunnel. Routes managed remotely via Cloudflare Tunnel Configurati
 | argocd.enclii.dev | argocd-server.argocd.svc:443 | 404 | noTLSVerify, self-signed |
 | grafana.enclii.dev | grafana.monitoring.svc:3000 | 302 | Login redirect |
 | prometheus.enclii.dev | prometheus.monitoring.svc:9090 | 502 | **Closed 2026-10-04 (FDY-01):** the monitoring NetworkPolicy refuses the tunnel because Prometheus has no authentication. Route and DNS record removal pending. |
-| alertmanager.enclii.dev | alertmanager.monitoring.svc:9093 | 200 | |
+| alertmanager.enclii.dev | alertmanager.monitoring.svc:9093 | — | **Closed:** in-cluster only; the monitoring NetworkPolicy does not admit the tunnel. Alerts and silences are read in Grafana's Alerting view. Route and DNS record removed by the owner. |
 | ssh.madfam.io | ssh://<CONTROL_PLANE_IP>:22 | 302 | Cloudflare Access gate |
 
 ### Janua SSO Routes
