@@ -424,6 +424,36 @@ jobs:
             check-config /w/{name}
         run: python3 scripts/check-alertmanager-config.py infra/k8s/
 
+  client-slo-rules-test:
+    name: Client SLO rule coverage
+    runs-on: ubuntu-24.04
+    # Cheap. The client-slo group's five rules share one enumerated
+    # client-namespace selector, and a namespace missing from it pages nobody:
+    # on 2026-10-05 production `voxa` was absent from the critical
+    # ClientDeploymentUnavailable rule. The structural tests pin the selector
+    # (identical across the group, `voxa` in, `voxa-staging` out); the
+    # promtool case evaluates the real rule with the evaluator from the image
+    # production runs. If that image cannot be pulled the promtool case skips
+    # with its reason and the structural tests still gate.
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Set up Python
+        uses: actions/setup-python@v7
+        with:
+          python-version: '3.11'
+
+      - name: Install deps
+        run: pip install --quiet pyyaml pytest
+
+      - name: Run client-slo rule tests
+        env:
+          ENCLII_PROMTOOL: >-
+            docker run --rm --entrypoint /bin/promtool -v {dir}:/w:ro
+            docker.io/prom/prometheus:v2.53.3
+            test rules /w/{name}
+        run: pytest tests/scripts/test_client_slo_rules.py -v -rs
+
   courier-envelope-lint:
     name: Courier envelope shape (ops scripts)
     runs-on: ubuntu-24.04
