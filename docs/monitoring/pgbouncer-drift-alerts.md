@@ -11,11 +11,16 @@ YAML in this doc is retained as rationale + reference; **the config file is
 the source of truth** if the two ever diverge.
 
 The live Alertmanager config (`infra/k8s/production/monitoring/alertmanager.yaml`)
-routes `critical-receiver` and `warning-receiver` to `email_configs` and
-`slack_configs`. Telegram is NOT wired: the staged `telegram_configs` blocks
-were removed 2026-08-26 because their `chat_id: 0` sentinel crashlooped
-Alertmanager v0.26.0 at config load. They return in one commit once Tier 0.1's
-arming steps (Vault `telegram_bot_token` + a real `chat_id`) both complete.
+routes `critical-receiver` and `warning-receiver` to `email_configs` and to one
+webhook, Angelia Courier's `/v1/courier/alertmanager` receiver, which pages
+critical alerts to Telegram and skips warnings. Every Courier webhook carries
+`max_alerts` so a batch stays under Courier's 1 MiB body limit (an uncapped
+warning digest was refused with 413 on 2026-10-05). Alertmanager has no
+`slack_configs` or `telegram_configs`: third-party messaging goes through
+Courier only (internal-devops
+`decisions/2026-09-05-third-party-messaging-via-angelia-courier.md`), and the
+earlier `telegram_configs` blocks were removed 2026-08-26 after their
+`chat_id: 0` sentinel crashlooped Alertmanager v0.26.0 at config load.
 
 ## What this closes
 
