@@ -1173,7 +1173,18 @@ data:
   # Ported here verbatim from that CRD's spec.
   #
   # Keep this selector in sync with any future client-namespace scheme
-  # change. When a new client onboards under a bare namespace, add it here.
+  # change. When a new client onboards under a bare namespace, add it here,
+  # to EVERY rule in the group: the five rules share one selector so that a
+  # namespace is either fully covered or not covered at all.
+  # tests/scripts/test_client_slo_rules.py fails if the copies drift apart.
+  #
+  # `voxa` added 2026-10-05: the production namespace had kube-state-metrics
+  # series but no critical availability rule, so a voxa Deployment below its
+  # desired replicas paged nobody (only PodCrashLooping, ArgoCDAppDegraded and
+  # the shared-dependency rules covered it). PromQL anchors `=~` at both ends,
+  # so `voxa` does NOT match `voxa-staging`. Staging stays out on purpose: it
+  # can run an old build for weeks and would page falsely. Add a staging
+  # namespace here only once it is held to production's availability bar.
   # =========================================================================
   client-slo-rules.yml: |
     groups:
@@ -1183,9 +1194,9 @@ data:
           - alert: ClientServiceErrorRate
             expr: |
               (
-                sum by (namespace) (rate(http_requests_total{code=~"5..", namespace=~"enclii-.*|project-.*|nauta|janua|karafiel|coupler|dhanam|tezca|pravara-mes|primavera3d|fortuna|forgesight|selva"}[5m]))
+                sum by (namespace) (rate(http_requests_total{code=~"5..", namespace=~"enclii-.*|project-.*|nauta|janua|karafiel|coupler|dhanam|tezca|pravara-mes|primavera3d|fortuna|forgesight|selva|voxa"}[5m]))
                 /
-                sum by (namespace) (rate(http_requests_total{namespace=~"enclii-.*|project-.*|nauta|janua|karafiel|coupler|dhanam|tezca|pravara-mes|primavera3d|fortuna|forgesight|selva"}[5m]))
+                sum by (namespace) (rate(http_requests_total{namespace=~"enclii-.*|project-.*|nauta|janua|karafiel|coupler|dhanam|tezca|pravara-mes|primavera3d|fortuna|forgesight|selva|voxa"}[5m]))
               ) > 0.01
             for: 5m
             labels:
@@ -1198,7 +1209,7 @@ data:
           - alert: ClientServiceLatencyP95
             expr: |
               histogram_quantile(0.95,
-                sum by (namespace, le) (rate(http_request_duration_seconds_bucket{namespace=~"enclii-.*|project-.*|nauta|janua|karafiel|coupler|dhanam|tezca|pravara-mes|primavera3d|fortuna|forgesight|selva"}[5m]))
+                sum by (namespace, le) (rate(http_request_duration_seconds_bucket{namespace=~"enclii-.*|project-.*|nauta|janua|karafiel|coupler|dhanam|tezca|pravara-mes|primavera3d|fortuna|forgesight|selva|voxa"}[5m]))
               ) > 2
             for: 5m
             labels:
@@ -1211,7 +1222,7 @@ data:
           - alert: ClientPodRestartRate
             expr: |
               sum by (namespace) (
-                increase(kube_pod_container_status_restarts_total{namespace=~"enclii-.*|project-.*|nauta|janua|karafiel|coupler|dhanam|tezca|pravara-mes|primavera3d|fortuna|forgesight|selva"}[1h])
+                increase(kube_pod_container_status_restarts_total{namespace=~"enclii-.*|project-.*|nauta|janua|karafiel|coupler|dhanam|tezca|pravara-mes|primavera3d|fortuna|forgesight|selva|voxa"}[1h])
               ) > 3
             for: 5m
             labels:
@@ -1223,9 +1234,9 @@ data:
 
           - alert: ClientDeploymentUnavailable
             expr: |
-              kube_deployment_status_replicas_available{namespace=~"enclii-.*|project-.*|nauta|janua|karafiel|coupler|dhanam|tezca|pravara-mes|primavera3d|fortuna|forgesight|selva"}
+              kube_deployment_status_replicas_available{namespace=~"enclii-.*|project-.*|nauta|janua|karafiel|coupler|dhanam|tezca|pravara-mes|primavera3d|fortuna|forgesight|selva|voxa"}
               <
-              kube_deployment_spec_replicas{namespace=~"enclii-.*|project-.*|nauta|janua|karafiel|coupler|dhanam|tezca|pravara-mes|primavera3d|fortuna|forgesight|selva"}
+              kube_deployment_spec_replicas{namespace=~"enclii-.*|project-.*|nauta|janua|karafiel|coupler|dhanam|tezca|pravara-mes|primavera3d|fortuna|forgesight|selva|voxa"}
             for: 5m
             labels:
               severity: critical
@@ -1237,9 +1248,9 @@ data:
           - alert: TenantResourceQuotaNearLimit
             expr: |
               (
-                kube_resourcequota{type="used", namespace=~"enclii-.*|project-.*|nauta|janua|karafiel|coupler|dhanam|tezca|pravara-mes|primavera3d|fortuna|forgesight|selva"}
+                kube_resourcequota{type="used", namespace=~"enclii-.*|project-.*|nauta|janua|karafiel|coupler|dhanam|tezca|pravara-mes|primavera3d|fortuna|forgesight|selva|voxa"}
                 /
-                kube_resourcequota{type="hard", namespace=~"enclii-.*|project-.*|nauta|janua|karafiel|coupler|dhanam|tezca|pravara-mes|primavera3d|fortuna|forgesight|selva"}
+                kube_resourcequota{type="hard", namespace=~"enclii-.*|project-.*|nauta|janua|karafiel|coupler|dhanam|tezca|pravara-mes|primavera3d|fortuna|forgesight|selva|voxa"}
               ) > 0.9
             for: 5m
             labels:
