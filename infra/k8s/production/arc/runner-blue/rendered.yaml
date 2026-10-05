@@ -213,10 +213,12 @@ spec:
             command:
               - docker
               - info
-          initialDelaySeconds: 0
+          # The first probe used to run at t=0, before dockerd had created its socket, and
+          # logged one Unhealthy warning per pod. Wait 5s for that first check.
+          initialDelaySeconds: 5
           # `docker info` can take more than 3s while the builder nodes run hot (~95% CPU):
           # the old 3s timeout logged Unhealthy warnings with 0 restarts, which read like a
-          # failure. Same 2-minute budget (12 x 10s), fewer false alarms.
+          # failure. Budget: 5s + 12 x 10s.
           failureThreshold: 12
           periodSeconds: 10
           timeoutSeconds: 10
