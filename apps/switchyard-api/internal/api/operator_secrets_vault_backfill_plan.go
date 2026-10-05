@@ -144,9 +144,9 @@ func (h *Handler) handleOpsSecretsVaultBackfillDryRun(ctx context.Context, opera
 
 	base := map[string]any{
 		"namespace":      namespace,
-		"sourceSecret":   sourceSecret,
+		"sourceSecret":   sourceSecret, // pragma: allowlist secret -- map key name, not a value
 		"vaultPath":      vaultPath,
-		"externalSecret": externalSecret,
+		"externalSecret": externalSecret, // pragma: allowlist secret -- map key name, not a value
 		"overwrite":      overwrite,
 	}
 

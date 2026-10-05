@@ -178,7 +178,7 @@ func TestNewSecretsVaultBackfillCommand(t *testing.T) {
 	cmd := findSubcommand(parent, "vault-backfill")
 	require.NotNil(t, cmd, "vault-backfill subcommand should exist")
 
-	for _, want := range []string{"apply", "reason", "idempotency-key", "namespace", "project", "service", "vault-path", "external-secret", "json"} {
+	for _, want := range []string{"apply", "reason", "idempotency-key", "namespace", "project", "service", "vault-path", "external-secret", "allow-overwrite", "json"} {
 		assert.NotNil(t, cmd.Flags().Lookup(want), "expected --%s", want)
 	}
 }

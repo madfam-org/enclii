@@ -6,8 +6,14 @@ This project follows [Conventional Commits](https://www.conventionalcommits.org/
 
 ## [Unreleased]
 
+> **Boundary checkpoint (2026-10-05, platform ops):** public-safe summary of an
+> operator-tooling change (vault-backfill plan and overwrite guard, two intake
+> targets, one unused manifest removed). No secret values, key inventories or
+> rollout detail are recorded here; the operator rollout record is kept in the
+> private operator records. Policy: [`docs/PUBLIC_REPO_BOUNDARY.md`](./docs/PUBLIC_REPO_BOUNDARY.md).
+
 ### Changed
-- `secrets vault-backfill`: the dry run returns the per-key plan (names and new/unchanged/differing states only); apply refuses differing values unless `overwrite` is set and writes nothing when every key already matches. Intake targets `yantra4d/backend-secrets` and `yantra4d/redis`. Removed the unused yantra4d ExternalSecret manifest from `vault-secrets/` (yantra4d declares its ExternalSecrets in its own repository).
+- `secrets vault-backfill`: the dry run returns the per-key plan (names and new/unchanged/differing states only); apply refuses differing values unless `--allow-overwrite` is passed and writes nothing when every key already matches. Intake targets `yantra4d/backend-secrets` and `yantra4d/redis`. Removed the unused yantra4d ExternalSecret manifest from `vault-secrets/` (yantra4d declares its ExternalSecrets in its own repository).
 
 ### Added
 - Cloudflare tunnel routes for vault.madfam.io and analytics.madfam.io (backends pending deploy)
