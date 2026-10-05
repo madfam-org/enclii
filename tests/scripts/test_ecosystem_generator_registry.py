@@ -21,7 +21,8 @@ What these pin (coherence audit 2026-09-23, ruling R39, findings E-002/E-011):
 
 `fixtures/ecosystem-projection.public.json` is a frozen copy of
 `solarpunk-foundry/packages/core/src/products/projection.public.json` (registry
-v4, 2026-09-23). Tests that need a specific shape build their own document.
+v4; re-copied 2026-10-04 at sha256 `df253f61cb88…`). Tests that need a specific
+shape build their own document.
 """
 from __future__ import annotations
 

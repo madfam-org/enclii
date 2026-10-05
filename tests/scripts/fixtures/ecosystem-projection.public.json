@@ -1,5 +1,5 @@
 {
-  "$comment": "GENERATED — do not edit. Public-safe projection of internal-devops/ecosystem/registry/products.yaml, emitted by scripts/generate-product-projections.py. Private fields (notes, registry_notes, hub, commerce.dhanam_plan_prefix) are stripped by allow-list; customer_facing:false and client_owned:true products are dropped entirely; retired products ship only as tombstones under `retired`. `repo` is present because export_private_repo_names is true (ruling R15) — flipping that flag in the registry removes it everywhere at once.",
+  "$comment": "GENERATED — do not edit. Public-safe projection of internal-devops/ecosystem/registry/products.yaml, emitted by scripts/generate-product-projections.py. Private fields (notes, registry_notes, hub, commerce.dhanam_plan_prefix, domains.client_hosts) are stripped by allow-list; customer_facing:false and client_owned:true products are dropped entirely; retired products ship only as tombstones under `retired`. `repo` is present because export_private_repo_names is true (ruling R15) — flipping that flag in the registry removes it everywhere at once.",
   "schema": "madfam-product-projection/v1",
   "generated_from": "internal-devops/ecosystem/registry/products.yaml",
   "registry_version": 4,
@@ -32,7 +32,6 @@
           "npm.madfam.io",
           "status.madfam.io",
           "grafana.enclii.dev",
-          "prometheus.enclii.dev",
           "alertmanager.enclii.dev"
         ]
       },
@@ -570,8 +569,12 @@
       },
       "domains": {
         "primary": "voxa.madfam.io",
-        "hosts": [],
-        "infra_hosts": []
+        "hosts": [
+          "voxa-app.madfam.io"
+        ],
+        "infra_hosts": [
+          "voxa-api.madfam.io"
+        ]
       },
       "site": {
         "category": "Applications",
@@ -587,8 +590,7 @@
           "family",
           "clinic"
         ],
-        "admin_tier": "admin",
-        "checkout_slug": "voxa"
+        "admin_tier": "admin"
       }
     },
     {
@@ -805,10 +807,7 @@
         "hosts": [
           "app.nauta.quest",
           "www.nauta.quest",
-          "erp.creatumundo.mx",
-          "crea.madfam.io",
-          "ensayo.madfam.io",
-          "crea-erp.madfam.io"
+          "ensayo.madfam.io"
         ],
         "infra_hosts": []
       },
