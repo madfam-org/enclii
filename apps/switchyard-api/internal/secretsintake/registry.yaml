@@ -90,7 +90,7 @@ targets:
     description: Signs the admin.karafiel.mx operator session cookie (HS256); mint server-side with --generate admin_session_secret; must never equal the Janua client secret
     vault_path: secret/karafiel
     namespace: karafiel
-    external_secret: karafiel-admin-session
+    external_secret: karafiel-admin-session # pragma: allowlist secret — Kubernetes object name, not a credential
     keys:
       - admin_session_secret
 
