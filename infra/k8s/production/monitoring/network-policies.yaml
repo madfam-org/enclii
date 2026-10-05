@@ -339,6 +339,11 @@ spec:
     - podSelector:
         matchLabels:
           app: prometheus
+    # Grafana — its provisioned AlertManager datasource (grafana.yaml);
+    # grafana-egress already carries the matching rule.
+    - podSelector:
+        matchLabels:
+          app: grafana
     - namespaceSelector:
         matchLabels:
           kubernetes.io/metadata.name: cloudflare-tunnel
@@ -356,6 +361,41 @@ spec:
       port: 9094
     - protocol: UDP
       port: 9094
+---
+# AlertManager ingress — alert senders in other namespaces. A namespace that
+# carries the label `enclii.dev/alert-sender: "true"` may reach the v2 API on
+# 9093. The label is declared on the Namespace by whoever owns that namespace,
+# the same way `enclii.dev/data-access` admits a namespace to Postgres
+# (../../policies/data-network-policies.yaml); no namespace is named here.
+# Which pods inside a labelled namespace may open 9093 is decided by that
+# namespace's own egress policy.
+#
+# A bare namespaceSelector, like the data-access rules. Do not pair it with a
+# podSelector in the same `from` entry: this cluster's policy controller has
+# rendered that combined form as deny-all.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: alertmanager-ingress-alert-senders
+  namespace: monitoring
+  labels:
+    app.kubernetes.io/name: alertmanager
+    app.kubernetes.io/component: monitoring
+    app.kubernetes.io/part-of: enclii
+spec:
+  podSelector:
+    matchLabels:
+      app: alertmanager
+  policyTypes:
+  - Ingress
+  ingress:
+  - from:
+    - namespaceSelector:
+        matchLabels:
+          enclii.dev/alert-sender: "true"
+    ports:
+    - protocol: TCP
+      port: 9093
 ---
 # Grafana egress — DNS, Prometheus datasource, OIDC provider
 apiVersion: networking.k8s.io/v1
