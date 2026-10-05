@@ -223,7 +223,7 @@ Enclii is not PCI DSS certified. For payment processing:
 ### How do I report a security issue?
 
 **Responsible disclosure**:
-- Email: security@enclii.dev
+- Email: security@madfam.io
 - PGP key available on request
 - Response within 48 hours
 
