@@ -119,9 +119,22 @@ OPS_FILES="$(git ls-files -z -- '*.md' '*.mdx' '*.txt' '*.yml' '*.yaml' '*.sh' \
   grep -vE '(^|/)(tests?|__tests__|e2e)/' || true)"
 OCTET='(25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9]?[0-9])'
 NON_PUBLIC_IP='^(10\.|127\.|169\.254\.|192\.168\.|172\.(1[6-9]|2[0-9]|3[01])\.|192\.0\.2\.|198\.51\.100\.|203\.0\.113\.|0\.0\.0\.0|255\.|1\.1\.1\.1$|1\.0\.0\.1$|8\.8\.8\.8$|8\.8\.4\.4$|9\.9\.9\.9$)'
+# Cloudflare's published edge ranges (https://www.cloudflare.com/ips-v4,
+# fetched 2026-09-27), as the NETWORK ADDRESSES of the CIDRs that
+# infra/k8s/production/monitoring/network-policies.yaml lets alertmanager
+# reach for the outside-the-cluster heartbeat Worker. They are Cloudflare's,
+# published for exactly this use, and identify no MADFAM node. Exact network
+# addresses only: any other address inside those ranges (for example what a
+# MADFAM hostname resolves to) is still a finding. If Cloudflare changes its
+# list, update this and the NetworkPolicy together.
+# Both regexes reach awk through ENVIRON, never `awk -v`: -v processes backslash
+# escapes, so every `\.` became `.` and `^10\.` matched any address starting
+# 100-109 (public ranges such as 104.x were never flagged). Found 2026-09-27.
+PUBLISHED_PROVIDER_RANGES='^(173\.245\.48\.0|103\.21\.244\.0|103\.22\.200\.0|103\.31\.4\.0|141\.101\.64\.0|108\.162\.192\.0|190\.93\.240\.0|188\.114\.96\.0|197\.234\.240\.0|198\.41\.128\.0|162\.158\.0\.0|104\.16\.0\.0|104\.24\.0\.0|172\.64\.0\.0|131\.0\.72\.0)$'
 ip_matches=$(printf '%s\n' "$OPS_FILES" |
   xargs -r grep -nEo "\\b($OCTET\\.){3}$OCTET\\b" 2>/dev/null |
-  awk -F: -v re="$NON_PUBLIC_IP" '{ ip=$NF; if (ip !~ re) print }' || true)
+  NON_PUBLIC_IP="$NON_PUBLIC_IP" PUBLISHED_PROVIDER_RANGES="$PUBLISHED_PROVIDER_RANGES" \
+    awk -F: '{ ip=$NF; if (ip !~ ENVIRON["NON_PUBLIC_IP"] && ip !~ ENVIRON["PUBLISHED_PROVIDER_RANGES"]) print }' || true)
 if [[ -n "$ip_matches" ]]; then
   printf '\n[public-hygiene] Public IPv4 literal\n' >&2
   printf '%s\n' "$ip_matches" >&2
