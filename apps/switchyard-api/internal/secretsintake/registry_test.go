@@ -11,9 +11,13 @@ import (
 func TestLoadRegistry(t *testing.T) {
 	reg, err := LoadRegistry()
 	require.NoError(t, err)
-	assert.Len(t, reg, 55)
+	assert.Len(t, reg, 56)
 	assert.Contains(t, reg, "ceq/vast-api-key")
 	assert.Contains(t, reg, "karafiel/web-oidc-janua")
+	adminSession := reg["karafiel/admin-session"]
+	assert.Equal(t, "secret/karafiel", adminSession.VaultPath)
+	assert.Equal(t, "karafiel-admin-session", adminSession.ExternalSecret)
+	assert.Equal(t, []string{"admin_session_secret"}, adminSession.Keys)
 	tgt := reg["ceq/vast-api-key"]
 	assert.Equal(t, "secret/ceq", tgt.VaultPath)
 	assert.Equal(t, "ceq-orchestrator-secrets", tgt.ExternalSecret)
@@ -32,7 +36,7 @@ func TestGetTarget(t *testing.T) {
 func TestListTargetsSorted(t *testing.T) {
 	list, err := ListTargets()
 	require.NoError(t, err)
-	require.Len(t, list, 55)
+	require.Len(t, list, 56)
 	for i := 1; i < len(list); i++ {
 		assert.Less(t, list[i-1].ID, list[i].ID, "targets should be sorted by id")
 	}
@@ -71,6 +75,7 @@ func TestListTargetsSorted(t *testing.T) {
 		"forj/pravara-intake",
 		"janua/internal-api-key",
 		"kalya/internal-api-key",
+		"karafiel/admin-session",
 		"karafiel/web-oidc-janua",
 		"lexidrop/oidc-janua",
 		"lexidrop/selva-inference",
