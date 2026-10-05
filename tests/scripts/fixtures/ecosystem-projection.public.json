@@ -31,8 +31,7 @@
         "infra_hosts": [
           "npm.madfam.io",
           "status.madfam.io",
-          "grafana.enclii.dev",
-          "alertmanager.enclii.dev"
+          "grafana.enclii.dev"
         ]
       },
       "site": {
