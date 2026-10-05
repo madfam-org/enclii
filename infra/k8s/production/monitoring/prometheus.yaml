@@ -2302,8 +2302,11 @@ data:
                 Read the reason in the pod log:
                   kubectl -n monitoring logs {{ $labels.pod }} --since=30m | grep 'email\['
                   535 BadCredentials    the Gmail app password was revoked or
-                                        rotated; recreate it and re-create
-                                        `alertmanager-smtp-secret`.
+                                        rotated; mint a new one and submit it:
+                                        `enclii secrets intake submit monitoring/alertmanager-smtp`.
+                  could not read        the alertmanager-smtp Secret has not
+                  .../smtp-password     synced: same intake submit, then
+                                        check the ExternalSecret's status.
                   454 Too many login    Google is throttling the retry storm
                                         from a bad password. It clears once
                                         logins succeed.

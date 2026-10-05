@@ -14,6 +14,11 @@ resources:
   # cutover window. See alertmanager-statefulset.yaml header comment
   # for the migration sequence.
   - alertmanager-statefulset.yaml
+  # Projects secret/monitoring:alertmanager_smtp_password (intake target
+  # monitoring/alertmanager-smtp) into the Secret the StatefulSet mounts for
+  # `smtp_auth_password_file`. Replaces the hand-made alertmanager-smtp-secret
+  # (owner decision 2026-10-05). See the file's header.
+  - alertmanager-smtp.externalsecret.yaml
   # Projects Angelia's courier_alertmanager_secret into the monitoring
   # namespace for Alertmanager's webhook_configs credentials_file. Cross-path
   # read of secret/angelia — Angelia owns the property, this namespace does not

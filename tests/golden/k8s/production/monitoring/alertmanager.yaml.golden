@@ -16,7 +16,7 @@ data:
       smtp_smarthost: 'smtp.gmail.com:587'
       smtp_from: 'innovacionesmadfam@gmail.com'
       smtp_auth_username: 'innovacionesmadfam@gmail.com'
-      smtp_auth_password_file: '/etc/alertmanager/smtp-password'
+      smtp_auth_password_file: '/etc/alertmanager/smtp/smtp-password'
       smtp_require_tls: true
 
     # EMAIL BUDGET. Every email route shares one Gmail account whose
@@ -276,14 +276,14 @@ data:
 
     templates: []
 ---
-# AlertManager SMTP Secret — NOT committed to git.
-# Create manually before deploying AlertManager:
-#
-#   kubectl create secret generic alertmanager-smtp-secret -n monitoring \
+# AlertManager SMTP password — from Vault since 2026-10-05; never by hand.
+# alertmanager-smtp.externalsecret.yaml projects it (intake target
+# monitoring/alertmanager-smtp); owner steps: docs/runbooks/SECRET_INTAKE.md,
+# "Alertmanager SMTP credential". The RETIRED hand-made Secret came from:
 #     --from-literal=smtp-password='YOUR_GMAIL_APP_PASSWORD'
-#
-# Use a Gmail App Password (not account password).
-# Long-term: migrate to Resend SMTP relay or External Secrets Operator.
+# (`kubectl create secret generic alertmanager-smtp-secret`). Do not recreate
+# it; the owner deletes it once email is verified. The Deployment below sits
+# at replicas 0 and still names it; the StatefulSet is what runs.
 ---
 # AlertManager Deployment
 apiVersion: apps/v1

@@ -409,7 +409,7 @@ jobs:
         run: pip install --quiet pyyaml pytest
 
       - name: Run Alertmanager config self-tests
-        run: pytest tests/scripts/test_check_alertmanager_config.py -v
+        run: pytest tests/scripts/test_check_alertmanager_config.py tests/scripts/test_alertmanager_secret_mounts.py -v
 
       - name: Run Alertmanager config loadability lint
         # ENCLII_AMTOOL points the lint at the real validator from the same

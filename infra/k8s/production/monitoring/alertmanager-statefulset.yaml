@@ -31,7 +31,12 @@
 #   - `alertmanager-cluster` headless Service (defined in alertmanager.yaml,
 #     selectors stay compatible — both old Deployment and new StatefulSet
 #     pods carry `app: alertmanager`).
-#   - `alertmanager-config` + `alertmanager-smtp-secret` (already exist).
+#   - `alertmanager-config` (already exists).
+#   - `alertmanager-smtp`, projected by alertmanager-smtp.externalsecret.yaml
+#     from secret/monitoring:alertmanager_smtp_password (intake target
+#     monitoring/alertmanager-smtp). Mounted `optional: true`: until it
+#     exists the peers start and only email fails. It replaced the hand-made
+#     `alertmanager-smtp-secret` on 2026-10-05.
 #   - `alertmanager-courier-secret`, projected by
 #     alertmanager-courier-secret.externalsecret.yaml from
 #     secret/angelia:courier_alertmanager_secret. Mounted `optional: true`, so
@@ -152,9 +157,17 @@ spec:
             - name: config
               mountPath: /etc/alertmanager/config
               readOnly: true
+            # The SMTP password, read by `smtp_auth_password_file:
+            # /etc/alertmanager/smtp/smtp-password` in alertmanager.yaml. A
+            # DIRECTORY mount for the same reason as courier-secret below: the
+            # subPath mount it replaces (2026-10-05) never received Secret
+            # updates, so a new password reached no peer until a restart.
+            # Alertmanager v0.26.0 reads the file on every send, so a submitted
+            # or rotated password takes effect within about a kubelet sync
+            # period. tests/scripts/test_alertmanager_secret_mounts.py fails if
+            # a file the config reads sits under a subPath mount.
             - name: smtp-secret
-              mountPath: /etc/alertmanager/smtp-password
-              subPath: smtp-password
+              mountPath: /etc/alertmanager/smtp
               readOnly: true
             # The Courier receiver's shared secret, read by
             # `http_config.authorization.credentials_file` in both
@@ -242,7 +255,15 @@ spec:
         - name: smtp-secret
           secret:
             defaultMode: 420
-            secretName: alertmanager-smtp-secret
+            # Populated by alertmanager-smtp.externalsecret.yaml from
+            # secret/monitoring:alertmanager_smtp_password, written only by
+            # `enclii secrets intake submit monitoring/alertmanager-smtp`.
+            # `optional: true` for the same reason as the courier volume below,
+            # a missing credential must never leave the peers Pending. Without
+            # it every email fails ("could not read .../smtp-password") and
+            # AlertmanagerEmailDeliveryFailing pages through Courier.
+            secretName: alertmanager-smtp  # pragma: allowlist secret
+            optional: true
         - name: courier-secret
           secret:
             defaultMode: 420

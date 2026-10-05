@@ -11,7 +11,7 @@
 # Policy-only (add paths without rotating writer token):
 #   POLICY_ONLY=1 VAULT_TOKEN_FILE=... ./scripts/provision-switchyard-vault-writer.sh
 #
-# Last Updated: 2026-10-04 (voxa: Selva inference edge; voxa + voxa-staging web-session and api-runtime)
+# Last Updated: 2026-10-05 (monitoring: Alertmanager SMTP password, intake target monitoring/alertmanager-smtp)
 set -euo pipefail
 
 VAULT_NS="${VAULT_NS:-vault}"
@@ -301,6 +301,20 @@ path "secret/data/voxa-staging" {
 path "secret/data/voxa-staging/*" {
   capabilities = ["create", "update", "patch", "read"]
 }
+# monitoring — added 2026-10-05 with the monitoring/alertmanager-smtp intake
+# target (Alertmanager's SMTP password, typed by the owner at the masked
+# prompt). secret/monitoring also holds the Grafana properties that
+# monitoring-secrets reads; the intake write is a read-merge-write, so READ is
+# required here too, and a denied read fails the submit rather than replacing
+# the path. Merged in git is not applied in Vault: re-apply this policy
+# (ASSERT_PATH=monitoring scripts/apply-switchyard-vault-policy-remote.sh)
+# before the first submit, or it 403s.
+path "secret/data/monitoring" {
+  capabilities = ["create", "update", "patch", "read"]
+}
+path "secret/data/monitoring/*" {
+  capabilities = ["create", "update", "patch", "read"]
+}
 path "secret/metadata/ceq" {
   capabilities = ["read", "list"]
 }
@@ -467,6 +481,12 @@ path "secret/metadata/voxa-staging" {
   capabilities = ["read", "list"]
 }
 path "secret/metadata/voxa-staging/*" {
+  capabilities = ["read", "list"]
+}
+path "secret/metadata/monitoring" {
+  capabilities = ["read", "list"]
+}
+path "secret/metadata/monitoring/*" {
   capabilities = ["read", "list"]
 }
 EOF
