@@ -11,7 +11,7 @@
 # Policy-only (add paths without rotating writer token):
 #   POLICY_ONLY=1 VAULT_TOKEN_FILE=... ./scripts/provision-switchyard-vault-writer.sh
 #
-# Last Updated: 2026-10-05 (monitoring: Alertmanager SMTP password, intake target monitoring/alertmanager-smtp)
+# Last Updated: 2026-10-05 (tulana and converge-dash server-generated intake targets; monitoring: Alertmanager SMTP password, intake target monitoring/alertmanager-smtp)
 set -euo pipefail
 
 VAULT_NS="${VAULT_NS:-vault}"
@@ -301,6 +301,27 @@ path "secret/data/voxa-staging" {
 path "secret/data/voxa-staging/*" {
   capabilities = ["create", "update", "patch", "read"]
 }
+# tulana — added 2026-10-05 with the four tulana/* intake targets, each a key
+# tulana generates for itself (`--generate <key>`) at secret/tulana. Merged in
+# git is not applied in Vault: re-apply this policy (ASSERT_PATH=tulana
+# scripts/apply-switchyard-vault-policy-remote.sh) before the first intake, or
+# the intake 403s on the Vault merge.
+path "secret/data/tulana" {
+  capabilities = ["create", "update", "patch", "read"]
+}
+path "secret/data/tulana/*" {
+  capabilities = ["create", "update", "patch", "read"]
+}
+# converge-dash — added 2026-10-05 with converge-dash/session and
+# converge-dash/internal-read (`--generate dash_session_secret`,
+# `--generate dash_internal_read_token`). Re-apply with
+# ASSERT_PATH=converge-dash before the first intake.
+path "secret/data/converge-dash" {
+  capabilities = ["create", "update", "patch", "read"]
+}
+path "secret/data/converge-dash/*" {
+  capabilities = ["create", "update", "patch", "read"]
+}
 # monitoring — added 2026-10-05 with the monitoring/alertmanager-smtp intake
 # target (Alertmanager's SMTP password, typed by the owner at the masked
 # prompt). secret/monitoring also holds the Grafana properties that
@@ -481,6 +502,18 @@ path "secret/metadata/voxa-staging" {
   capabilities = ["read", "list"]
 }
 path "secret/metadata/voxa-staging/*" {
+  capabilities = ["read", "list"]
+}
+path "secret/metadata/tulana" {
+  capabilities = ["read", "list"]
+}
+path "secret/metadata/tulana/*" {
+  capabilities = ["read", "list"]
+}
+path "secret/metadata/converge-dash" {
+  capabilities = ["read", "list"]
+}
+path "secret/metadata/converge-dash/*" {
   capabilities = ["read", "list"]
 }
 path "secret/metadata/monitoring" {
