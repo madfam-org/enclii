@@ -823,6 +823,95 @@ targets:
     keys:
       - redis_url
 
+  # tulana (2026-10-05) — keys tulana generates for itself and verifies or signs
+  # with, at its own Vault path secret/tulana. The ExternalSecret tulana-secrets
+  # (tulana repo, infra/k8s/production/external-secret.yaml) projects them; the
+  # api and web Deployments carry Reloader annotations for that Secret.
+  #
+  # ONE KEY PER TARGET, the karafiel/admin-session shape: the CLI prompts for
+  # every key of a target that is not in --generate, so one key per target is
+  # what lets `--generate <key>` run with no prompt at all. Intake writes are
+  # merges, so each key lands beside the other secret/tulana properties.
+  #
+  # LOWERCASE keys, as Vault stores them (normalizeVaultSecretKey) and as
+  # tulana-secrets maps them (`property: django_secret_key`, ...). ESO is
+  # all-or-nothing per ExternalSecret: a case mismatch syncs ZERO keys.
+  #
+  # Only values tulana itself verifies or signs with are here. A credential
+  # that another system verifies is minted where it is verified, not by
+  # --generate at this path. Two of these targets have a second holder: a
+  # sender that presents the value to tulana from its own Secret, outside this
+  # path. Their descriptions name that copy. It changes in the same window,
+  # following the private operator runbook.
+  tulana/django-secret-key:
+    label: Tulana Django secret key
+    description: SECRET_KEY of tulana-api (Django's own signing; API sign-in is Janua JWT). Mint server-side with --generate django_secret_key. 48 bytes, so the generated value is 64 characters and clears Django's 50-character deploy check.
+    vault_path: secret/tulana
+    namespace: tulana
+    external_secret: tulana-secrets  # pragma: allowlist secret
+    generate:
+      bytes: 48
+    keys:
+      - django_secret_key
+
+  tulana/product-offer-ga-evidence-token:
+    label: Tulana product-offer GA evidence bearer
+    description: Bearer that tulana checks on its product-offer GA evidence write-back endpoint. No other system holds a copy. Mint server-side with --generate tulana_product_offer_ga_evidence_token.
+    vault_path: secret/tulana
+    namespace: tulana
+    external_secret: tulana-secrets  # pragma: allowlist secret
+    keys:
+      - tulana_product_offer_ga_evidence_token
+
+  tulana/commercial-ga-evidence-token:
+    label: Tulana commercial GA evidence bearer
+    description: Bearer that tulana checks on its commercial GA evidence write-back endpoint. phynd-crm presents it from its own Secret phynd-crm-commercial-ga-secrets (namespace phynd-crm), so that copy changes in the same window. --generate tulana_commercial_ga_evidence_token mints the tulana side.
+    vault_path: secret/tulana
+    namespace: tulana
+    external_secret: tulana-secrets  # pragma: allowlist secret
+    keys:
+      - tulana_commercial_ga_evidence_token
+
+  tulana/selva-webhook-secret:
+    label: Tulana callback secret for Selva
+    description: Header secret (X-Tulana-Selva-Secret) that Selva's nexus-api sends on its tulana callbacks; tulana verifies it. Selva presents it from its own Secret selva-secrets (namespace selva), so that copy changes in the same window. --generate tulana_selva_webhook_secret mints the tulana side.
+    vault_path: secret/tulana
+    namespace: tulana
+    external_secret: tulana-secrets  # pragma: allowlist secret
+    keys:
+      - tulana_selva_webhook_secret
+
+  # converge-dash (2026-10-05) — the two values converge-dash both mints and
+  # verifies, at secret/converge-dash, projected by the ExternalSecret
+  # converge-dash-secrets (converge-dash repo,
+  # infra/k8s/production/external-secret.yaml). One key per target and
+  # lowercase keys, for the same reasons as tulana above.
+  #
+  # Six of the properties converge-dash-secrets maps had no write route
+  # through intake. These two targets cover the two that converge-dash
+  # generates and checks itself. The other four are deliberately not here: the
+  # two metrics-ingest HMAC keys are also held by the senders that sign with
+  # them, and the web OIDC client pair waits on its Janua client registration.
+  # ESO is all-or-nothing, so converge-dash-secrets syncs only once all six
+  # exist in Vault.
+  converge-dash/session:
+    label: converge-dash web session signing secret
+    description: DASH_SESSION_SECRET, which signs the converge-dash web session cookie (at least 32 characters); never the Janua client secret. Mint server-side with --generate dash_session_secret (32 bytes of crypto/rand, never returned). Rotating it signs every user out.
+    vault_path: secret/converge-dash
+    namespace: converge-dash
+    external_secret: converge-dash-secrets  # pragma: allowlist secret
+    keys:
+      - dash_session_secret
+
+  converge-dash/internal-read:
+    label: converge-dash internal read token
+    description: DASH_INTERNAL_READ_TOKEN. converge-dash's server-side web presents it to converge-dash's own API over the in-cluster URL; minted and checked inside converge-dash, held by no other system. Mint server-side with --generate dash_internal_read_token.
+    vault_path: secret/converge-dash
+    namespace: converge-dash
+    external_secret: converge-dash-secrets  # pragma: allowlist secret
+    keys:
+      - dash_internal_read_token
+
   # monitoring (2026-10-05) — Alertmanager's SMTP password, the credential
   # behind every `email_configs` block in infra/k8s/production/monitoring/
   # alertmanager.yaml (`smtp_auth_password_file`). Owner decision 2026-10-05:

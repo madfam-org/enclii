@@ -1,6 +1,7 @@
 package secretsintake
 
 import (
+	"encoding/base64"
 	"strings"
 	"testing"
 
@@ -11,7 +12,7 @@ import (
 func TestLoadRegistry(t *testing.T) {
 	reg, err := LoadRegistry()
 	require.NoError(t, err)
-	assert.Len(t, reg, 57)
+	assert.Len(t, reg, 63)
 	assert.Contains(t, reg, "ceq/vast-api-key")
 	assert.Contains(t, reg, "karafiel/web-oidc-janua")
 	adminSession := reg["karafiel/admin-session"]
@@ -36,7 +37,7 @@ func TestGetTarget(t *testing.T) {
 func TestListTargetsSorted(t *testing.T) {
 	list, err := ListTargets()
 	require.NoError(t, err)
-	require.Len(t, list, 57)
+	require.Len(t, list, 63)
 	for i := 1; i < len(list); i++ {
 		assert.Less(t, list[i-1].ID, list[i].ID, "targets should be sorted by id")
 	}
@@ -52,6 +53,8 @@ func TestListTargetsSorted(t *testing.T) {
 		"angelia/courier-webhook-signing-keys",
 		"ceq/janua-client-secret",
 		"ceq/vast-api-key",
+		"converge-dash/internal-read",
+		"converge-dash/session",
 		"coupler/janua-service-token",
 		"crea-map/internal-api-key",
 		"crea-map/janua-mail-client",
@@ -95,6 +98,10 @@ func TestListTargetsSorted(t *testing.T) {
 		"symbiosis-hcm/map-absence-feed",
 		"telesia/oidc-janua",
 		"telesia/runtime",
+		"tulana/commercial-ga-evidence-token",
+		"tulana/django-secret-key",
+		"tulana/product-offer-ga-evidence-token",
+		"tulana/selva-webhook-secret",
 		"voxa-staging/api-runtime",
 		"voxa-staging/web-session",
 		"voxa/api-runtime",
@@ -501,6 +508,82 @@ func TestVoxaWebSessionAndAPIRuntimeTargets(t *testing.T) {
 			assert.NotEmpty(t, tgt.Description)
 			// AUTH_SECRET must carry at least 32 bytes when minted with --generate.
 			assert.GreaterOrEqual(t, tgt.GenerateBytes(), 32)
+		})
+	}
+}
+
+// tulana (2026-10-05): four keys tulana generates for itself at secret/tulana,
+// each projected by the ExternalSecret tulana-secrets. One key per target, so
+// `--generate <key>` mints it without prompting for any other key. Pinned so a
+// rename is a test failure and not a silent write to a property tulana-secrets
+// does not map: the ExternalSecret maps these exact lowercase properties, and
+// ESO syncs all of an ExternalSecret's keys or none.
+func TestTulanaTargets(t *testing.T) {
+	cases := []struct {
+		id  string
+		key string
+	}{
+		{"tulana/commercial-ga-evidence-token", "tulana_commercial_ga_evidence_token"},
+		{"tulana/django-secret-key", "django_secret_key"},
+		{"tulana/product-offer-ga-evidence-token", "tulana_product_offer_ga_evidence_token"},
+		{"tulana/selva-webhook-secret", "tulana_selva_webhook_secret"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.id, func(t *testing.T) {
+			tgt, err := GetTarget(tc.id)
+			require.NoError(t, err)
+			assert.Equal(t, "secret/tulana", tgt.VaultPath)
+			assert.Equal(t, "tulana", tgt.Namespace)
+			assert.Equal(t, "tulana-secrets", tgt.ExternalSecret)
+			assert.Equal(t, []string{tc.key}, tgt.Keys,
+				"one key per target: a second key would be prompted for during --generate")
+			assert.Equal(t, strings.ToLower(tc.key), tc.key,
+				"Vault stores lowercase; an upper-case key would never match the ExternalSecret property")
+			assert.NotEmpty(t, tgt.Label)
+			assert.NotEmpty(t, tgt.Description)
+			assert.GreaterOrEqual(t, tgt.GenerateBytes(), DefaultGenerateBytes)
+		})
+	}
+}
+
+// Django's deploy check (security.W009) flags a SECRET_KEY shorter than 50
+// characters. Intake mints unpadded base64url, so the default 32 bytes would
+// give 43 characters; the target asks for 48 bytes, which encode to 64.
+func TestTulanaDjangoSecretKeyLength(t *testing.T) {
+	tgt, err := GetTarget("tulana/django-secret-key")
+	require.NoError(t, err)
+	require.NotNil(t, tgt.Generate)
+	assert.Equal(t, 48, tgt.GenerateBytes())
+	assert.GreaterOrEqual(t, base64.RawURLEncoding.EncodedLen(tgt.GenerateBytes()), 50)
+}
+
+// converge-dash (2026-10-05): the two values converge-dash generates and checks
+// itself, at secret/converge-dash, projected by converge-dash-secrets. One key
+// per target, lowercase, as converge-dash-secrets maps them. The web requires a
+// session secret of at least 32 characters and the API a read token of at
+// least 24; the default 32 bytes encode to 43 characters.
+func TestConvergeDashTargets(t *testing.T) {
+	cases := []struct {
+		id  string
+		key string
+	}{
+		{"converge-dash/internal-read", "dash_internal_read_token"},
+		{"converge-dash/session", "dash_session_secret"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.id, func(t *testing.T) {
+			tgt, err := GetTarget(tc.id)
+			require.NoError(t, err)
+			assert.Equal(t, "secret/converge-dash", tgt.VaultPath)
+			assert.Equal(t, "converge-dash", tgt.Namespace)
+			assert.Equal(t, "converge-dash-secrets", tgt.ExternalSecret)
+			assert.Equal(t, []string{tc.key}, tgt.Keys,
+				"one key per target: a second key would be prompted for during --generate")
+			assert.Equal(t, strings.ToLower(tc.key), tc.key,
+				"Vault stores lowercase; an upper-case key would never match the ExternalSecret property")
+			assert.NotEmpty(t, tgt.Label)
+			assert.NotEmpty(t, tgt.Description)
+			assert.GreaterOrEqual(t, base64.RawURLEncoding.EncodedLen(tgt.GenerateBytes()), 32)
 		})
 	}
 }
