@@ -1,12 +1,13 @@
 ---
 # Monthly logical restore drill for the daily pg_dumpall (CronJob).
 #
-# Non-destructive: downloads the newest pg_dumpall from R2, restores it into
-# an EPHEMERAL Postgres inside this pod and checks the result. It never
-# connects to the production server.
+# Non-destructive: downloads the newest DATED pg_dumpall from R2 (the rolling
+# latest.sql.gz copy is never chosen), restores it into an EPHEMERAL Postgres
+# inside this pod and checks the result. It never connects to the production
+# server.
 #
 # The drill FAILS unless ALL of these hold:
-#   1. The newest dump is no older than MAX_DUMP_AGE_HOURS (a drill of a
+#   1. The newest dated dump is no older than MAX_DUMP_AGE_HOURS (a drill of a
 #      stale dump proves nothing about today's backups).
 #   2. The dump declares at least MIN_DATABASES databases.
 #   3. The restore raises no SQL error other than the allowlisted, expected
@@ -108,10 +109,21 @@ spec:
                 - -c
                 - |
                   R2_ENDPOINT="https://${R2_ACCOUNT_ID}.r2.cloudflarestorage.com"
-                  echo "[1/5] Finding latest backup in R2..."
-                  LATEST=$(aws s3 ls "s3://${R2_BUCKET}/postgres/" --endpoint-url "${R2_ENDPOINT}" | sort | tail -1 | awk '{print $4}')
+                  echo "[1/5] Finding the newest dated backup in R2..."
+                  # postgres-backup uploads every dump twice: as
+                  # <YYYYMMDD_HHMMSS>.sql.gz and, straight after it, as the
+                  # rolling latest.sql.gz. Each listing line starts with the
+                  # upload time and `sort` orders by it, so the rolling copy
+                  # always came out newest, and its name carries no timestamp
+                  # for the restore-drill container to age the dump by. Only
+                  # dated keys are candidates (scripts/dr-drill.sh skips it
+                  # for the same reason). `|| true`: grep exits 1 when
+                  # nothing matches, which under pipefail would abort before
+                  # the FAIL below.
+                  LATEST=$(aws s3 ls "s3://${R2_BUCKET}/postgres/" --endpoint-url "${R2_ENDPOINT}" \
+                    | { grep -E ' [0-9]{8}_[0-9]{6}\.sql\.gz$' || true; } | sort | tail -1 | awk '{print $4}')
                   if [ -z "$LATEST" ]; then
-                    echo "FAIL: No backups found in s3://${R2_BUCKET}/postgres/"
+                    echo "FAIL: No backups found in s3://${R2_BUCKET}/postgres/ (only <YYYYMMDD_HHMMSS>.sql.gz keys count; latest.sql.gz is skipped)"
                     exit 1
                   fi
                   echo "  Found: ${LATEST}"
