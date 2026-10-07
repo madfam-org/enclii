@@ -87,9 +87,14 @@ Its signal is the CronJob's last successful run
 The pgBackRest point-in-time drill
 ([`postgres-pgbackrest-restore-drill.yaml`](../../infra/k8s/platform-infra/postgres-pgbackrest-restore-drill.yaml))
 is stricter still: it restores the latest backup plus all archived WAL,
-starts the restored cluster with archiving off, and fails unless it holds at
-least 5 databases and 500 user tables and its last replayed transaction is at
-most 6 hours older than the drill start.
+starts the restored cluster with archiving off, waits for it to finish the
+replay and promote, and fails unless no WAL fetch failed on the way, it holds
+at least 5 databases and 500 user tables, and its last replayed transaction is
+at most 30 minutes older than the drill start. It reaches R2 through its own
+egress policy (`pgbackrest-restore-drill-egress` in
+[`data-network-policies.yaml`](../../infra/k8s/policies/data-network-policies.yaml)),
+which allows DNS, 80 and 443 only. Run it on demand with
+`enclii ops jobs trigger pgbackrest-restore-drill -n data --api-endpoint https://api.enclii.dev --apply --reason "<why>"`.
 
 ---
 
@@ -98,6 +103,7 @@ most 6 hours older than the drill start.
 | Date | Backup Source | Tables Restored | Duration | Pass/Fail | Operator | Notes |
 |------|---------------|-----------------|----------|-----------|----------|-------|
 | 2026-05-30 | R2 latest pg_dumpall (`backup-verify-ga-0529-2046`) | 1135 | ~64s | **PASS** | platform-ops | Ephemeral postgres restore; 59 projects in `enclii` DB. `postgres-restore-drill` CronJob fixed (initContainer + ephemeral cluster; prior single-DB restore incompatible with pg_dumpall). |
+| 2026-10-01 | pgBackRest `main`: newest backup + archived WAL (`pgbackrest-restore-drill`) | none | ~20m (exit 1) | **FAIL** | cron | First scheduled run after #627. The container log was gone before anyone read it, so the exact line is unknown. Two defects, each enough to fail every run: no egress policy (DNS and R2 refused under `default-deny-egress`), and `pg_ctl -w` returning when the replay starts (`hot_standby=off`), so the next query was refused. Both fixed in #705, with a test; next: an on-demand run. |
 | _template_ | `YYYYMMDD_HHMMSS.sql.gz` | _N_ | _Xm Ys_ | PASS/FAIL | _initials_ | _any observations_ |
 
 > **Instructions:** After each drill (automated or manual), add a row to the table above with the results from the job log output. The job prints the backup filename, table count, and timestamps.
@@ -133,6 +139,22 @@ Common failure modes:
 | Restore error | `FAIL: restore raised SQL errors outside the allowlist` | The log lists the first 40 errors. A corrupt or partial dump fails here. Widen `RESTORE_ERROR_ALLOWLIST` only with evidence that an error is benign. |
 | Missing databases or tables | `FAIL: N declared databases are missing` / `FAIL: only N user tables restored` | The dump is incomplete. Check the daily backup job logs for dump errors. |
 | Pod killed before a verdict | Job `DeadlineExceeded`, or pod evicted for ephemeral storage | The instance outgrew the drill. Raise `activeDeadlineSeconds` or the `temp-data` sizeLimit, using the sizes the last passing run printed. |
+
+#### pgBackRest drill (`pgbackrest-restore-drill`)
+
+Every failure prints the restored server's log tail and then, as its last
+line, `RESTORE DRILL FAILED: <why>`. That tail is also the pod's termination
+message, so it is still readable after the container log is gone:
+`enclii ops pods diagnose -n data --json --api-endpoint https://api.enclii.dev`,
+field `containers[].state.message` of the `drill` container.
+
+| Failure | Log Message | Action |
+|---------|-------------|--------|
+| R2 unreachable | `restored cluster did not start`, with `could not locate required checkpoint record` and a pgBackRest `ERROR` (for example `unable to get address`) above it; or `pgbackrest info failed` / `pgbackrest restore failed` | Check that `pgbackrest-restore-drill-egress` is synced (Argo app `network-policies`) and that `pgbackrest-r2-credentials` is ready. |
+| WAL fetch failed during the replay | `archive-get failed N time(s) during WAL replay` | PostgreSQL treats a failed fetch as the end of the archive and promotes early, so the data may be old. Read the `ERROR` lines in the log tail (network, TLS, decrypt). |
+| Replay stopped short | `restored data is Ns old (> 1800s): WAL chain incomplete` | WAL archiving is behind or broken. Check the `PostgresWALArchive*` alerts and `enclii db wal-status`. |
+| Server died during the replay | `restored cluster stopped during WAL replay` | The PostgreSQL `FATAL`/`PANIC` is in the log tail above the FAIL line. |
+| Too slow | `WAL replay still running after 6600s` | More WAL than the drill's budget. Raise `DRILL_DEADLINE_SECONDS` together with `activeDeadlineSeconds`, keeping the first below the second. |
 
 ---
 

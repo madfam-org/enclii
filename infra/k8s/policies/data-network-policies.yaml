@@ -395,6 +395,48 @@ spec:
         - protocol: TCP
           port: 443
 
+# Allow the pgBackRest restore drill egress (DNS + HTTPS to R2 + the apt
+# mirrors its init container installs pgBackRest from). Nothing else: no rule
+# reaches the live Postgres (5432), and the restored server it starts listens
+# on a local socket only.
+#
+# Without this policy default-deny-egress selected the drill pod, so its DNS
+# and HTTPS to R2 were refused once kube-router programmed the pod. The drill
+# fetches every WAL segment with a NEW archive-get process, so it could never
+# replay (2026-10-01 failure; see
+# infra/k8s/platform-infra/postgres-pgbackrest-restore-drill.yaml).
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: pgbackrest-restore-drill-egress
+  namespace: data
+  labels:
+    app.kubernetes.io/managed-by: enclii
+    app.kubernetes.io/component: network-policy
+spec:
+  podSelector:
+    matchLabels:
+      app: pgbackrest-restore-drill
+  policyTypes:
+    - Egress
+  egress:
+    # DNS
+    - to: []
+      ports:
+        - protocol: UDP
+          port: 53
+        - protocol: TCP
+          port: 53
+    # HTTPS: R2 (restore, and one archive-get per WAL segment). HTTP: the
+    # PGDG and Debian apt mirrors, which the postgres image lists as http://.
+    - to: []
+      ports:
+        - protocol: TCP
+          port: 443
+        - protocol: TCP
+          port: 80
+
 # Allow k3s datastore backup egress (DNS + HTTPS for R2)
 ---
 apiVersion: networking.k8s.io/v1

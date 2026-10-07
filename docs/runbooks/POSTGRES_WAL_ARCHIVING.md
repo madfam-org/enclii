@@ -14,7 +14,7 @@
 > missing Enclii adapter gap.
 
 
-> **Last Updated:** 2026-06-03
+> **Last Updated:** 2026-10-07
 > **Owner:** Platform oncall
 > **Scope:** In-cluster Postgres (`data/postgres`), single-node today
 > **P1.1 deliverable** — moves Postgres RPO from 24h (daily `pg_dump`) to ~1min.
@@ -435,16 +435,23 @@ Each fix landed as a separate enclii PR (193, 195, 196, 197, 198, 199,
 - **Monthly DR drill** (`pgbackrest-restore-drill` CronJob in
   `infra/k8s/platform-infra/postgres-pgbackrest-restore-drill.yaml`):
   restores the latest backup plus all archived WAL to an 8 GiB Longhorn
-  PVC, starts the restored cluster with archiving off, and fails unless
-  it holds at least 5 databases and 500 user tables and its last replayed
-  transaction is at most 6 h older than the drill start. (Until
+  PVC, starts the restored cluster with archiving off, waits for the replay
+  to finish and the cluster to promote, and fails unless no WAL fetch
+  failed, it holds at least 5 databases and 500 user tables, and its last
+  replayed transaction is at most 30 min older than the drill start. (Until
   2026-09-24 it had never passed: it restored into the PVC root, and the
   `pgbackrest_restore_drill_*` textfile metric it wrote was never
-  collected.) Its signal is the CronJob's last successful time from
-  kube-state-metrics, alerted by `RestoreDrillNeverSucceeded` /
-  `RestoreDrillOverdue`. Trigger on demand with `kubectl
-  create job --from=cronjob/pgbackrest-restore-drill <suffix>`,
-  otherwise it runs on the 1st of each month.
+  collected. Its 2026-10-01 run then failed on two more defects: no egress
+  policy, so `default-deny-egress` cut it off from R2, and `pg_ctl -w`
+  returning as soon as the replay started. Its egress is now
+  `pgbackrest-restore-drill-egress`: DNS, 80 and 443 only.) Its signal is
+  the CronJob's last successful time from kube-state-metrics, alerted by
+  `RestoreDrillNeverSucceeded` / `RestoreDrillOverdue`; a failed run keeps
+  its reason in the pod's termination message. Trigger on demand with
+  `enclii ops jobs trigger pgbackrest-restore-drill -n data --api-endpoint
+  https://api.enclii.dev --apply --reason "<why>"`, otherwise it runs on
+  the 1st of each month. Log each run in
+  [`RESTORE_DRILL_LOG.md`](RESTORE_DRILL_LOG.md).
 - **Postgres init container** is now `postgres:15-bookworm` with apt-
   installed pgbackrest + bundled libs + CA — keeps the binary glibc-
   matched against the running postgres image even after upstream tag
@@ -463,3 +470,6 @@ _Amendments_
 - 2026-05-04 / ai (post-mortem) / added §9 documenting the 11-step
   failure chain caught in the silent-outage window plus the protective
   changes (DR drill, init container glibc bundle, alerting gap noted).
+- 2026-10-07 / ai / §9.3: why the 2026-10-01 drill failed (no egress policy;
+  `pg_ctl -w` does not wait for the replay with `hot_standby=off`) and the
+  stricter pass criteria; on-demand trigger through `enclii ops jobs trigger`.
