@@ -135,13 +135,13 @@ def test_rewrite_drops_every_credential_form_and_keeps_the_rest():
         f"{NERFED}:username=someone",
         f"{NERFED}:_password=c2VjcmV0",
         f"{NERFED}:always-auth=true",
-        "//registry.npmjs.org/:_authToken=npm_other",
+        "//registry.npmjs.org/:_authToken=${OTHER_REGISTRY_TOKEN}",
         "save-exact=true",
     ]
     kept, removed = rl.rewrite(lines, NERFED, "bmV3")
     assert kept == [
         "@madfam:registry=https://npm.example/",
-        "//registry.npmjs.org/:_authToken=npm_other",
+        "//registry.npmjs.org/:_authToken=${OTHER_REGISTRY_TOKEN}",
         "save-exact=true",
         f"{NERFED}:_auth=bmV3",
     ]
