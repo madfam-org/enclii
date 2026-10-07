@@ -384,6 +384,13 @@ jobs:
       - name: Run ARC watchdog + pool-health tests
         run: pytest tests/scripts/test_stuck_runner_watchdog.py tests/scripts/test_arc_pool_health.py -v
 
+      # Runs the download step of the monthly logical restore drill straight
+      # out of its manifest against a stub `aws`. It must pick the newest DATED
+      # dump and never the rolling latest.sql.gz, which the restore step
+      # rejects (a drill that cannot pass proves nothing).
+      - name: Run restore-drill backup selection tests
+        run: pytest tests/scripts/test_restore_drill_backup_selection.py -v
+
   alertmanager-config-lint:
     name: Alertmanager config loadability
     runs-on: ubuntu-24.04

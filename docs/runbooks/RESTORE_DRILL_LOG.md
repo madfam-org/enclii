@@ -10,7 +10,7 @@
 
 **Owner:** Platform Team
 **Cadence:** Monthly (1st of each month, 5 AM UTC)
-**Last Updated:** 2026-09-24
+**Last Updated:** 2026-10-07
 
 > **Boundary checkpoint (2026-09-24, platform on-call):** Public-safe runbook:
 > drill procedure and pass/fail semantics only, no node identity, secrets or
@@ -73,7 +73,7 @@ non-zero.
 
 | Step | Action | Validation (fails the drill) |
 |------|--------|------------------------------|
-| 1/5 | Find the latest backup in R2 (`s3://enclii-backups/postgres/`) | A backup exists and is at most `MAX_DUMP_AGE_HOURS` (48) old |
+| 1/5 | Find the newest dated backup in R2 (`s3://enclii-backups/postgres/<YYYYMMDD_HHMMSS>.sql.gz`; the rolling `latest.sql.gz` copy is never chosen, it carries no timestamp to age the dump by) | A dated backup exists and is at most `MAX_DUMP_AGE_HOURS` (48) old |
 | 2/5 | Download it to the pod | Download completes |
 | 3/5 | `initdb` an ephemeral cluster and restore the pg_dumpall | The dump declares at least `MIN_DATABASES` (5) databases; no SQL `ERROR` outside `RESTORE_ERROR_ALLOWLIST` |
 | 4/5 | Validate | Every declared database exists; at least `MIN_USER_TABLES` (500) user tables in any schema |
@@ -129,6 +129,7 @@ Common failure modes:
 | No backups in R2 | `FAIL: No backups found in s3://enclii-backups/postgres/` | Check daily backup CronJob (`postgres-backup`). Verify R2 credentials in `r2-backup-credentials` secret. |
 | Download error | AWS CLI errors | Verify `r2-backup-credentials` secret has valid keys. Check R2 bucket exists. |
 | Stale dump | `FAIL: newest dump is Nh old` | The daily `postgres-backup` CronJob has stopped producing dumps. Fix that first. |
+| Unexpected key name | `FAIL: unexpected backup name '<key>'` | The download step only selects `<YYYYMMDD_HHMMSS>.sql.gz` keys, so this means `postgres-backup` changed its key format. Change the key filter in the download step and the name check in the restore step together; `tests/scripts/test_restore_drill_backup_selection.py` pins the pairing. |
 | Restore error | `FAIL: restore raised SQL errors outside the allowlist` | The log lists the first 40 errors. A corrupt or partial dump fails here. Widen `RESTORE_ERROR_ALLOWLIST` only with evidence that an error is benign. |
 | Missing databases or tables | `FAIL: N declared databases are missing` / `FAIL: only N user tables restored` | The dump is incomplete. Check the daily backup job logs for dump errors. |
 | Pod killed before a verdict | Job `DeadlineExceeded`, or pod evicted for ephemeral storage | The instance outgrew the drill. Raise `activeDeadlineSeconds` or the `temp-data` sizeLimit, using the sizes the last passing run printed. |
