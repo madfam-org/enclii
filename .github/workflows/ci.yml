@@ -391,6 +391,14 @@ jobs:
       - name: Run restore-drill backup selection tests
         run: pytest tests/scripts/test_restore_drill_backup_selection.py -v
 
+      # Runs the monthly pgBackRest restore drill's bash straight out of its
+      # manifest against stubs of a server that refuses connections until it
+      # has replayed and promoted (hot_standby=off). It must wait for the
+      # replay, fail on any archive-get error, and keep its safety invariants
+      # (no live volume, archiving off, egress only to DNS/80/443).
+      - name: Run pgBackRest restore drill tests
+        run: pytest tests/scripts/test_pgbackrest_restore_drill.py -v
+
   alertmanager-config-lint:
     name: Alertmanager config loadability
     runs-on: ubuntu-24.04
