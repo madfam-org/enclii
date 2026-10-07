@@ -560,6 +560,39 @@ npm config set //npm.madfam.io/:_auth "$(printf 'janua:%s' "$JANUA_API_KEY" | ba
 npm config set //npm.madfam.io/:always-auth true
 ```
 
+### Automated (workstations and agents)
+
+`infra/scripts/npm/registry-login.py` does the four steps above from a Janua
+session that is already open, so there is nothing to type and no key to copy:
+
+```bash
+python3 infra/scripts/npm/registry-login.py           # mint if missing or expiring
+python3 infra/scripts/npm/registry-login.py --check   # verify only
+```
+
+- **Session:** `$JANUA_ACCESS_TOKEN`, otherwise the enclii CLI's own session
+  (`enclii login` once; the script runs `enclii whoami` to refresh it).
+- **Key:** scoped to the registry only (`npm:install`; `--scope publish` adds
+  `npm:publish`), expiring after 90 days (`--days`). It is written to
+  `~/.npmrc` as `_auth`, the registry's other credential lines for the host
+  are removed (a stale `_authToken` would hide it), and `/-/whoami` must
+  answer before the run counts as done. If the registry refuses the fresh
+  key, the npmrc is put back and the key is revoked.
+- **Rotation:** a run with more than 14 days left (`--renew-days`) does
+  nothing, so it is safe at every login or in an agent's bootstrap; a run
+  that mints revokes the key it minted before, and `--prune` revokes every
+  other registry key the same host left behind.
+- **Secrecy:** the key is never printed or logged. The npmrc and the state
+  file (`~/.config/madfam/npm-registry-key.json`: id, prefix, scopes, expiry)
+  are mode 600.
+
+> [!NOTE]
+> A repository whose `.npmrc` reads `_authToken=${NPM_MADFAM_TOKEN}` needs that
+> variable **empty, not unset**, on a workstation: npm sends an unset
+> `${VAR}` as its literal text, and that `_authToken` hides the `_auth` key
+> (npm 10 has no `${VAR?}` form). `export NPM_MADFAM_TOKEN=` before `npm`
+> does it; CI sets the variable and is unaffected.
+
 ### Do NOT use `_authToken`, and do NOT `npm login`
 
 > [!IMPORTANT]

@@ -230,6 +230,11 @@ jobs:
       - name: Run ConfigMap sync self-tests
         run: pytest tests/scripts/test_sync_verdaccio_janua_plugin.py -v
 
+      # The client side of the same contract: minting a Janua key for the
+      # registry and writing it where the plugin can see it (`_auth`).
+      - name: Run registry-login self-tests (fake Janua and registry, no network)
+        run: pytest tests/scripts/test_registry_login.py -v
+
   networkpolicy-port-lint:
     name: NetworkPolicy port consistency
     runs-on: ubuntu-24.04
