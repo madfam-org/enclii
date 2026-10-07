@@ -171,13 +171,14 @@ data:
       title: MADFAM Package Registry
       primary_color: "#6366f1"
 
-    # Order matters: the Janua plugin claims only jnk_* passwords and falls
-    # through for everything else, so htpasswd keeps working for CI users.
+    # Order matters: the Janua plugin claims only passwords with a Janua key
+    # prefix (sk_live_, legacy jnk_) and falls through for everything else, so
+    # htpasswd keeps working for CI users.
     auth:
       auth-janua:
         janua_url: https://auth.madfam.io
         cache_ttl_ms: 300000
-        key_prefix: jnk_
+        key_prefixes: [jnk_, sk_live_]
         timeout_ms: 5000
       htpasswd:
         file: /verdaccio/conf/htpasswd
@@ -533,12 +534,16 @@ The registry has two auth backends, tried in this order (see `auth:` in
 
 | Order | Backend | Who it is for | Credential |
 |-------|---------|---------------|------------|
-| 1 | `auth-janua` (`verdaccio-auth-janua` plugin) | People | A Janua API key (`jnk_…`) in `_auth` |
+| 1 | `auth-janua` (`verdaccio-auth-janua` plugin) | People | A Janua API key (`sk_live_…`, or a legacy `jnk_…`) in `_auth` |
 | 2 | `htpasswd` | CI service users | The `NPM_MADFAM_TOKEN` JWT in `_authToken`, or a bcrypt username/password |
 
-The plugin claims **only** passwords that start with `jnk_`. Anything else
-returns `callback(null, false)`, so htpasswd sees it unchanged. Existing CI
-credentials are unaffected.
+The plugin claims **only** passwords that start with a prefix in
+`key_prefixes` — `sk_live_` (the only format Janua mints today) and `jnk_`
+(legacy keys, still verified until revoked). Anything else returns
+`callback(null, false)`, so htpasswd sees it unchanged. Existing CI
+credentials are unaffected. A prefix list that names only `jnk_` refuses every
+current-format key without asking Janua, which is what the list fixed on
+2026-10-07.
 
 ### Getting a registry token (people)
 
@@ -547,7 +552,7 @@ credentials are unaffected.
 2. Give it the scopes you need:
    - `npm:install` — required to install from private scopes.
    - `npm:publish` — additionally required to publish. Publishers need **both**.
-3. Copy the key (`jnk_…`); Janua shows it exactly once.
+3. Copy the key (`sk_live_…`); Janua shows it exactly once.
 4. Configure npm with the key as **Basic** credentials:
 
 ```bash
@@ -561,7 +566,7 @@ npm config set //npm.madfam.io/:always-auth true
 > A Janua API key in `_authToken` **silently does nothing**. `security.api.jwt`
 > is configured on this registry, so Verdaccio treats an
 > `Authorization: Bearer <token>` header as a **Verdaccio-signed JWT** and
-> verifies its signature *before* any auth plugin runs. A `jnk_…` key fails
+> verifies its signature *before* any auth plugin runs. A Janua key fails
 > that check, and Verdaccio's error handling converts the failure into an
 > **anonymous** user rather than a 401 — so the request proceeds
 > unauthenticated and you get a confusing "authorization required" on a private
@@ -582,7 +587,7 @@ you run — there is no combination that works both ways:
 
 | You hold | Put it in | Command |
 |---|---|---|
-| A Janua API key (`jnk_…`) | `_auth` (HTTP Basic) | `npm config set //npm.madfam.io/:_auth "$(printf 'janua:%s' "$JANUA_API_KEY" \| base64)"` — never `npm login`, never `_authToken` |
+| A Janua API key (`sk_live_…`, or a legacy `jnk_…`) | `_auth` (HTTP Basic) | `npm config set //npm.madfam.io/:_auth "$(printf 'janua:%s' "$JANUA_API_KEY" \| base64)"` — never `npm login`, never `_authToken` |
 | An htpasswd password (e.g. the rotated `admin@madfam.io`) | interactive login | `npm login --registry https://npm.madfam.io --auth-type=legacy` |
 | The CI service token (a Verdaccio-issued JWT) | `_authToken` | set in CI; rotated by the `npm-token-rotation` CronJob |
 
