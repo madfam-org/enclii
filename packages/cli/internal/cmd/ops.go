@@ -162,6 +162,7 @@ func newOpsPodsLogsCommand(cfg *config.Config) *cobra.Command {
 func newOpsJobsCommand(cfg *config.Config) *cobra.Command {
 	cmd := &cobra.Command{Use: "jobs", Short: "CronJob inspection and audited triggers"}
 	cmd.AddCommand(newOpsReadCommand(cfg, "jobs", "list", "List Kubernetes CronJobs through Enclii"))
+	cmd.AddCommand(newOpsJobsSuspendCommand(cfg))
 	cmd.AddCommand(newOpsActionCommand(cfg, "jobs", "trigger", "Trigger an existing CronJob once from its live template"))
 	return cmd
 }

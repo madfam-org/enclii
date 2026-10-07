@@ -24,6 +24,7 @@ exists in the tree.
 
 | Test | Skips when | Runs in CI |
 |---|---|---|
+| `internal/jobholds/store_integration_test.go` (`-tags integration`) | `JOB_HOLD_TEST_DATABASE_URL` is unset; execution also requires `LOCAL_DB=yes` and a loopback host | Yes: the `smoke` job runs migration/serialization checks against its disposable Postgres |
 | `internal/db/*_integration_test.go` (`-tags integration`) | `TEST_DATABASE_URL` is unset | Yes: the `smoke` job of `ci.yml` runs `go test -tags integration ./internal/db/...` against its Postgres |
 | `internal/provisioning/generated_roles_integration_test.go` (`-tags integration`) | `TEST_POSTGRES_ADMIN_URL` is unset | No. Gap: no workflow runs it; run it locally against a disposable Postgres (superuser URL, TCP) |
 | `internal/api/handlers_integration_test.go`, `internal/services/auth_integration_test.go` (`-tags integration`) | `TEST_DATABASE_URL` is unset | No. Gap: no workflow runs them; run them locally against a disposable Postgres |

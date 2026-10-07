@@ -83,7 +83,7 @@ func NewController(database *sql.DB, repositories *db.Repositories, k8sClient *k
 	return &Controller{
 		db:                database,
 		repositories:      repositories,
-		serviceReconciler: NewServiceReconciler(k8sClient, logger),
+		serviceReconciler: NewServiceReconciler(k8sClient, logger, database),
 		k8sClient:         k8sClient,
 		logger:            logger,
 		stopCh:            make(chan struct{}),

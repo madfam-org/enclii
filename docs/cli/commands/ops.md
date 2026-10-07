@@ -27,7 +27,7 @@ encouraging direct `kubectl`.
 | `enclii ops capabilities` | List server-supported operator capabilities |
 | `enclii ops apps status|sync|sync-sweep|diff|retire|rollback` | Argo app inspection and remediation |
 | `enclii ops pods diagnose|logs|restart` | Pod diagnosis and logs. `restart` is **not implemented yet** — see [Remaining Adapter Work](#remaining-adapter-work) |
-| `enclii ops jobs list|trigger` | CronJob inspection and audited one-off execution from an existing template |
+| `enclii ops jobs list|trigger|suspend` | CronJob inspection, audited triggers and durable service-job holds |
 | `enclii ops storage volumes|pvc|longhorn|repair-plan|settings-apply|prune-detached|storageclass-apply|r2-audit` | PVC/PV/Longhorn inspection, repair planning, CPU settings (O-5), orphan prune (O-4), StorageClass reconcile, R2 credential audit (incomplete, shared, or mismatched buckets) |
 | `enclii ops secrets external|vault|refresh|sync|sync-sweep|rotate|vault-backfill` | ExternalSecrets and Vault readiness workflows |
 | `enclii ops secrets provision-kalya-feed` | Server-side kalya standing-feed credential provisioning ([below](#ops-secrets-provision-kalya-feed)) |
@@ -68,6 +68,49 @@ enclii secrets vault-backfill enclii-secrets --namespace enclii --vault-path sec
 ./scripts/post-deploy-ga-adapters.sh
 ./scripts/wave1-ga-ops.sh --apply --backup-drill --reason "GA Wave 1"
 ```
+
+## Service-job suspension
+
+`ops jobs suspend` requires the server-resolved platform-admin rank, an exact
+namespace, a project slug and a service UUID. It accepts only CronJobs carrying
+matching Switchyard ownership labels. It does not suspend Timetable records.
+
+First review a read-only plan:
+
+```bash
+enclii ops jobs suspend <cronjob> --namespace <namespace> \
+  --project <project-slug> --service <service-uuid> --json
+```
+
+After reviewing its binding, active-job count, UID and resourceVersion, apply:
+
+```bash
+enclii ops jobs suspend <cronjob> --namespace <namespace> \
+  --project <project-slug> --service <service-uuid> \
+  --expect-uid <reviewed-uid> --expect-resource-version <reviewed-version> \
+  --apply --reason "reviewed operational containment" --json
+```
+
+Migration **042_service_job_holds** must be applied before the new API and service
+reconcilers start. Missing hold storage fails closed. The hold records its service,
+project, environment, actor, reason and reviewed Kubernetes identity in PostgreSQL.
+Transaction-scoped locks serialize hold writes, reconciliation and manual triggers;
+they also support transaction-pooled database connections. The hold commits before
+Kubernetes is updated. A failed Kubernetes step returns `hold_pending`: inspect the
+CronJob and obtain a fresh plan before retrying. A confirmed exact retry does not
+write another hold.
+
+Reconciliation enforces the hold after workload recreation and never transfers it
+to another environment or service. Manual triggers are refused while held. Existing
+Jobs continue: suspension prevents future scheduling and is not proof that all
+writers have stopped. There is deliberately no resume command or automatic expiry.
+Removing a hold requires a separate reviewed implementation; migration rollback
+refuses to drop a nonempty hold table.
+
+All Switchyard replicas must run the hold-aware reconciler before an operator
+applies the first hold; an old replica does not participate in this protocol.
+Do not roll back to an unaware build while holds exist. GitOps-managed workloads
+are outside this adapter's scope; change their desired manifests instead.
 
 ## Pod Log Controls
 

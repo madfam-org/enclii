@@ -4,11 +4,14 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/google/uuid"
 	appsv1 "k8s.io/api/apps/v1"
 	batchv1 "k8s.io/api/batch/v1"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+
+	"github.com/madfam-org/enclii/apps/switchyard-api/internal/jobholds"
 )
 
 func (r *ServiceReconciler) applyDeployment(ctx context.Context, deployment *appsv1.Deployment) error {
@@ -90,7 +93,7 @@ func (r *ServiceReconciler) applyService(ctx context.Context, service *corev1.Se
 }
 
 func (r *ServiceReconciler) applyCronJob(ctx context.Context, cronJob *batchv1.CronJob) error {
-	cjClient := r.k8sClient.Clientset.BatchV1().CronJobs(cronJob.Namespace)
+	cjClient := r.k8sClient.Kube().BatchV1().CronJobs(cronJob.Namespace)
 
 	// Try to get existing cronjob
 	existing, err := cjClient.Get(ctx, cronJob.Name, metav1.GetOptions{})
@@ -105,6 +108,20 @@ func (r *ServiceReconciler) applyCronJob(ctx context.Context, cronJob *batchv1.C
 			return nil
 		}
 		return fmt.Errorf("failed to get existing cronjob: %w", err)
+	}
+
+	project, err := uuid.Parse(cronJob.Labels["enclii.dev/project"])
+	if err != nil {
+		return fmt.Errorf("desired CronJob has no valid project binding")
+	}
+	binding := jobholds.Binding{ProjectID: project, ServiceName: cronJob.Labels["enclii.dev/service"]}
+	if err := jobholds.Validate(existing, binding, cronJob.Namespace); err != nil {
+		return fmt.Errorf("refusing to overwrite foreign CronJob: %w", err)
+	}
+
+	// Preserve an existing containment marker even if its durable write had an unknown outcome.
+	if existing.Annotations[jobholds.Annotation] == "true" {
+		jobholds.Apply(cronJob)
 	}
 
 	// Update existing cronjob

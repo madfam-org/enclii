@@ -100,7 +100,7 @@ func (r *CronJobRepository) ListByProject(ctx context.Context, projectID uuid.UU
 	return r.scanCronJobs(rows)
 }
 
-// ListActive retrieves all non-suspended cron jobs (for reconciler)
+// ListActive retrieves all non-suspended cron jobs.
 func (r *CronJobRepository) ListActive(ctx context.Context) ([]*types.CronJob, error) {
 	query := `
 		SELECT id, project_id, service_id, name, schedule, command, image,
@@ -111,6 +111,25 @@ func (r *CronJobRepository) ListActive(ctx context.Context) ([]*types.CronJob, e
 		ORDER BY created_at ASC
 	`
 
+	rows, err := r.db.QueryContext(ctx, query)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = rows.Close() }()
+
+	return r.scanCronJobs(rows)
+}
+
+// ListForReconciliation includes suspended jobs so their live Kubernetes
+// schedules can be stopped. Filtering them out leaves existing CronJobs active.
+func (r *CronJobRepository) ListForReconciliation(ctx context.Context) ([]*types.CronJob, error) {
+	query := `
+		SELECT id, project_id, service_id, name, schedule, command, image,
+		       timeout, retries, suspended, concurrency,
+		       created_at, updated_at, last_run_at, next_run_at
+		FROM cron_jobs
+		ORDER BY created_at ASC
+	`
 	rows, err := r.db.QueryContext(ctx, query)
 	if err != nil {
 		return nil, err
@@ -216,5 +235,5 @@ func (r *CronJobRepository) scanCronJobs(rows *sql.Rows) ([]*types.CronJob, erro
 		jobs = append(jobs, job)
 	}
 
-	return jobs, nil
+	return jobs, rows.Err()
 }
