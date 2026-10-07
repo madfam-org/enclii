@@ -10,7 +10,8 @@
 #   1. `pgbackrest info` succeeds and the stanza lists at least one backup.
 #   2. `pgbackrest restore` succeeds.
 #   3. The restored cluster starts, finishes WAL replay and is promoted
-#      (`pg_is_in_recovery()` = false).
+#      (`pg_is_in_recovery()` = false), and no archive-get failed on the way
+#      (no pgBackRest ERROR line in the restored server's log).
 #   4. It holds at least MIN_DATABASES non-template databases and at least
 #      MIN_USER_TABLES user tables across them.
 #   5. Replay reached a transaction no older than MAX_REPLAY_AGE_SECONDS
@@ -27,6 +28,30 @@
 #   no `--no-archive-check`) completed in 25 minutes on 2026-05-06. That fix
 #   never reached this CronJob.
 #
+# Why the 2026-10-01 run, the first after that fix, still failed (about 20
+# minutes in, exit 1; its container log was gone before anyone read it). Two
+# more defects, either one enough to fail every run:
+#   - No NetworkPolicy let this pod out. `default-deny-egress` selects every
+#     pod in `data` and no allow rule matched app=pgbackrest-restore-drill, so
+#     DNS and HTTPS to R2 are refused once kube-router programs the pod (a new
+#     pod gets a short unfiltered window first, which is why the apt init step
+#     and the start of the restore worked). Every WAL segment is fetched by a
+#     NEW archive-get process (new DNS lookup, new TLS connection), so the
+#     replay cannot work. Fixed by `pgbackrest-restore-drill-egress` in
+#     infra/k8s/policies/data-network-policies.yaml.
+#   - `pg_ctl -w` does not wait for the replay. With hot_standby=off the
+#     postmaster reports itself started as soon as redo BEGINS, and refuses
+#     every connection ("Hot standby mode is disabled") until it promotes, so
+#     the `pg_is_in_recovery()` check ran against a server still replaying
+#     and failed with "restored cluster is still in recovery". Reproduced with
+#     this script and these images; the drill now waits for promotion.
+#   Also hardened, because both defects could have produced a false PASS:
+#     PostgreSQL treats a FAILED restore_command exactly like "no more WAL in
+#     the archive" and promotes early, so the drill fails on any pgBackRest
+#     ERROR in the restored server's log; and MAX_REPLAY_AGE_SECONDS is 30 min,
+#     not 6 h (the newest backup, 00:00 UTC, is only 4-5 h older than the
+#     scheduled run, so a replay that stopped at the base backup passed 6 h).
+#
 # Why a side-channel restore (not "restore in place"):
 #   - In-place would destroy the live DB.
 #   - Side-channel exercises the full restore path, including the R2 round trip.
@@ -37,14 +62,23 @@
 # restore passes `--archive-mode=off` (pgBackRest writes archive_mode=off
 # into postgresql.auto.conf) and the server is also started with
 # `-c archive_mode=off`, so the new timeline it creates on promotion is never
-# pushed to R2.
+# pushed to R2. Nor can the drill touch the live database: it mounts no
+# Postgres data or spool volume (only its own scratch PVC below), gets no
+# service-account token, its server listens on a local socket only, and its
+# egress policy allows DNS, 80 and 443 and nothing else (no 5432). The
+# pgBackRest commands it runs (info, restore, archive-get) only read the repo.
+# tests/scripts/test_pgbackrest_restore_drill.py pins all of this.
 #
 # PASS/FAIL SIGNAL: the Job's exit code. kube-state-metrics publishes
 # kube_cronjob_status_last_successful_time for this CronJob, and the
 # pgbackrest-health-rules in monitoring/prometheus.yaml alert when it is
 # missing (never succeeded) or older than 35 days. The old textfile metric
 # (pgbackrest_restore_drill_*) was never emitted: this pod mounts no
-# node-exporter textfile directory.
+# node-exporter textfile directory. The reason is kept too: every failure
+# path prints the restored server's log tail and then, as its LAST line,
+# `RESTORE DRILL FAILED: <why>`; terminationMessagePolicy
+# FallbackToLogsOnError stores that tail as the pod's termination message,
+# which outlives the container log (`enclii ops pods diagnose -n data`).
 #
 # pgBackRest VERSION: pinned to PGBACKREST_DEB_VERSION below. It must equal
 # the version that writes the repository (the postgres pod's archive-push,
@@ -105,6 +139,9 @@ spec:
         spec:
           restartPolicy: Never
           serviceAccountName: pgbackrest-runner
+          # The drill never calls the Kubernetes API. Without a token, the
+          # runner account's pods/exec grant in `data` is out of its reach.
+          automountServiceAccountToken: false
           # No fsGroup on purpose: a recursive group chown at mount time
           # would give group write on any leftover data directory, which
           # Postgres refuses to start on. The init container creates the
@@ -119,6 +156,7 @@ spec:
             # before the drill container starts.
             - name: install-pgbackrest
               image: docker.io/postgres:15-bookworm@sha256:3436058afb51dbc169c96cdf6c91d1d235eef176b427e6bded8b0c76dda0d1c3
+              terminationMessagePolicy: FallbackToLogsOnError
               securityContext:
                 privileged: false
                 runAsUser: 0
@@ -194,6 +232,9 @@ spec:
               # so the restored cluster starts on the binaries (and pgvector)
               # it would really be restored onto.
               image: docker.io/pgvector/pgvector:pg15@sha256:bd12d6788a617f4147d5a2ae0b56d07921398adabfe5a033bd3f50c245df55a1
+              # A failed run's last log lines (ending with the RESTORE DRILL
+              # FAILED line) become the pod's termination message.
+              terminationMessagePolicy: FallbackToLogsOnError
               securityContext:
                 privileged: false
                 runAsNonRoot: true
@@ -228,12 +269,22 @@ spec:
                   value: "5"
                 - name: MIN_USER_TABLES
                   value: "500"
-                # archive_timeout=60 plus a pgbackrest check every 15 min
-                # means the archive's newest transaction is minutes old;
-                # 6h leaves room for a long restore without accepting a
-                # stale base backup as "proof".
+                # The archive trails real time by a minute or two
+                # (archive_timeout=60, and the sidecar's `pgbackrest check`
+                # forces a WAL switch every 30 s), and the replay keeps
+                # chasing it while the drill runs, so a complete replay ends
+                # at or after the drill start. 30 min allows for an archiver
+                # hiccup. The old 6 h proved nothing: the newest backup
+                # (00:00 UTC) is only 4-5 h older than the scheduled run, so
+                # a replay that stopped at the base backup passed.
                 - name: MAX_REPLAY_AGE_SECONDS
-                  value: "21600"
+                  value: "1800"
+                # The script's own budget for restore + replay. It runs out
+                # before the Job's activeDeadlineSeconds (7200), so a run
+                # that is too slow still prints its FAIL line instead of
+                # being killed without one (DeadlineExceeded).
+                - name: DRILL_DEADLINE_SECONDS
+                  value: "6600"
               envFrom:
                 - secretRef:
                     name: pgbackrest-r2-credentials
@@ -249,7 +300,18 @@ spec:
                   PGBR=/opt/pgbackrest/bin/pgbackrest
                   mkdir -p /tmp/pgbackrest/log /tmp/pgbackrest/lock /tmp/pgbackrest/spool
 
-                  fail() { echo "[$(date -Iseconds)] RESTORE DRILL FAILED: $*" >&2; exit 1; }
+                  # Every failure prints the restored server's log tail (minus
+                  # pgBackRest's long "command begin" option dumps) and then
+                  # the FAIL line LAST, so the termination message names it.
+                  fail() {
+                    if [ -s "${PGLOG}" ]; then
+                      echo "--- restored server log, last 40 lines ---" >&2
+                      grep -v 'command begin' "${PGLOG}" | tail -n 40 >&2 || true
+                    fi
+                    echo "[$(date -Iseconds)] RESTORE DRILL FAILED: $*" >&2
+                    exit 1
+                  }
+                  remaining() { echo $(( START_EPOCH + DRILL_DEADLINE_SECONDS - $(date +%s) )); }
                   cleanup() {
                     pg_ctl -D "${PGDATA_DIR}" stop -m immediate >/dev/null 2>&1 || true
                     # Never leave restored tenant data at rest on the PVC.
@@ -280,16 +342,36 @@ spec:
                   # pg_hba.conf; the server listens on no TCP address.
                   echo "local all all trust" > /tmp/drill-pg_hba.conf
                   echo "  restored size: $(du -sh "${PGDATA_DIR}" | cut -f1)"
+                  [ "$(remaining)" -gt 0 ] || fail "the restore used up the ${DRILL_DEADLINE_SECONDS}s budget"
 
                   echo "[3/5] Start the restored cluster (archive OFF, local socket only) and replay WAL"
-                  # hot_standby=off: no connections until replay ends and the
-                  # server promotes, so pg_ctl -w returns only then, and the
-                  # recovery-parameter checks against the primary do not apply.
-                  pg_ctl -D "${PGDATA_DIR}" -l "${PGLOG}" -w -t 5400 \
-                    -o "-c archive_mode=off -c hot_standby=off -c port=5433 -c listen_addresses='' -c unix_socket_directories=/tmp -c hba_file=/tmp/drill-pg_hba.conf -c shared_buffers=128MB -c shared_preload_libraries='' -c log_timezone=UTC" \
-                    start || { tail -n 60 "${PGLOG}" >&2 || true; fail "restored cluster did not start"; }
+                  # hot_standby=off: the server accepts no connection until
+                  # replay ends and it promotes, and the recovery-parameter
+                  # checks against the primary do not apply. It does NOT make
+                  # `pg_ctl -w` wait for that: the postmaster reports itself
+                  # started as soon as redo BEGINS (this is what failed the
+                  # 2026-10-01 run), so wait for promotion below.
+                  # timezone=UTC fixes the format of the replay time step 5 parses.
+                  pg_ctl -D "${PGDATA_DIR}" -l "${PGLOG}" -w -t "$(remaining)" \
+                    -o "-c archive_mode=off -c hot_standby=off -c port=5433 -c listen_addresses='' -c unix_socket_directories=/tmp -c hba_file=/tmp/drill-pg_hba.conf -c shared_buffers=128MB -c shared_preload_libraries='' -c log_timezone=UTC -c timezone=UTC" \
+                    start || fail "restored cluster did not start"
+                  echo "  replaying archived WAL, waiting for promotion"
+                  until pg_isready -q -h /tmp -p 5433; do
+                    pg_ctl -D "${PGDATA_DIR}" status >/dev/null 2>&1 || fail "restored cluster stopped during WAL replay"
+                    [ "$(remaining)" -gt 0 ] || fail "WAL replay still running after ${DRILL_DEADLINE_SECONDS}s"
+                    sleep 10
+                  done
                   PSQL="psql -h /tmp -p 5433 -U postgres -X -v ON_ERROR_STOP=1 -tA"
                   [ "$(${PSQL} -d postgres -c 'SELECT pg_is_in_recovery()')" = "f" ] || fail "restored cluster is still in recovery"
+                  # PostgreSQL treats a FAILED restore_command exactly like "no
+                  # more WAL" and promotes early. pgBackRest logs a segment
+                  # that is simply not in the archive (the normal end of the
+                  # replay) as INFO; any other failure (DNS, TLS, R2, decrypt)
+                  # is an ERROR line in this log.
+                  ARCHIVE_ERRORS=$(grep -cE 'P[0-9]{2} +(ERROR|ASSERT): ' "${PGLOG}" || true)
+                  [ "${ARCHIVE_ERRORS}" -eq 0 ] || fail "archive-get failed ${ARCHIVE_ERRORS} time(s) during WAL replay, so the replay may have stopped early"
+                  WAL_SEGMENTS=$(grep -c 'restored log file .* from archive' "${PGLOG}" || true)
+                  echo "  promoted after replaying ${WAL_SEGMENTS} WAL segments from the archive"
 
                   echo "[4/5] Validate restored contents"
                   DBS=$(${PSQL} -d postgres -c "SELECT datname FROM pg_database WHERE NOT datistemplate AND datallowconn ORDER BY 1")
@@ -306,14 +388,14 @@ spec:
 
                   echo "[5/5] Prove the point-in-time chain reached recent WAL"
                   LAST_TX=$(sed -n 's/.*last completed transaction was at log time \(.*\)$/\1/p' "${PGLOG}" | tail -n 1)
-                  [ -n "${LAST_TX}" ] || { tail -n 40 "${PGLOG}" >&2 || true; fail "no 'last completed transaction' line: WAL replay evidence missing"; }
-                  # log_timezone=UTC: strip the fraction and the +00 offset.
+                  [ -n "${LAST_TX}" ] || fail "no 'last completed transaction' line: WAL replay evidence missing"
+                  # timezone=UTC: strip the fraction and the +00 offset.
                   LAST_TX_EPOCH=$(date -u -d "${LAST_TX%%[.+]*}" +%s) || fail "cannot parse replay time '${LAST_TX}'"
                   REPLAY_AGE=$((START_EPOCH - LAST_TX_EPOCH))
                   echo "  last replayed transaction: ${LAST_TX} (${REPLAY_AGE}s before drill start)"
                   [ "${REPLAY_AGE}" -le "${MAX_REPLAY_AGE_SECONDS}" ] || fail "restored data is ${REPLAY_AGE}s old (> ${MAX_REPLAY_AGE_SECONDS}s): WAL chain incomplete"
 
-                  echo "[$(date -Iseconds)] RESTORE DRILL PASSED in $(( $(date +%s) - START_EPOCH ))s: databases=${DB_COUNT} user_tables=${TABLES} replay_age=${REPLAY_AGE}s"
+                  echo "[$(date -Iseconds)] RESTORE DRILL PASSED in $(( $(date +%s) - START_EPOCH ))s: databases=${DB_COUNT} user_tables=${TABLES} wal_segments=${WAL_SEGMENTS} replay_age=${REPLAY_AGE}s"
               volumeMounts:
                 - name: pgbackrest-binary
                   mountPath: /opt/pgbackrest
