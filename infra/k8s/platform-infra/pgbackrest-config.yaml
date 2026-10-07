@@ -113,7 +113,10 @@ data:
 
     # ----- logging -----
     log-level-console=info
-    log-level-file=detail
+    # info, not detail (2026-09-24): at detail the file log filled the
+    # 256Mi pgbackrest-logs emptyDir in 43 days and got the Postgres pod
+    # evicted on 2026-09-18. Raise it temporarily when debugging only.
+    log-level-file=info
     log-path=/var/log/pgbackrest
 
     # ----- lock path (allowed in [global]) -----
