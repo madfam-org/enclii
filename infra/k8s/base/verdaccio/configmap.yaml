@@ -27,9 +27,11 @@ data:
     # Authentication - Janua API keys first, htpasswd as fallback.
     #
     # Verdaccio tries auth plugins IN ORDER. `auth-janua` claims only passwords
-    # that carry the Janua key prefix (jnk_) and calls callback(null, false) for
-    # everything else, so CI service users continue to authenticate against
-    # htpasswd unchanged.
+    # that carry a Janua key prefix (`key_prefixes`) and calls
+    # callback(null, false) for everything else, so CI service users continue
+    # to authenticate against htpasswd unchanged. Janua mints `sk_live_` keys
+    # today and still verifies legacy `jnk_` keys; the list must name both, or
+    # every newly minted key is refused without Janua ever being asked.
     #
     # Plugin resolution: the loader resolves a non-scoped id against
     # <plugins_dir>/<id> and then <plugins_dir>/verdaccio-<id>. With
@@ -50,7 +52,7 @@ data:
       auth-janua:
         janua_url: https://auth.madfam.io
         cache_ttl_ms: 300000
-        key_prefix: jnk_
+        key_prefixes: [jnk_, sk_live_]
         timeout_ms: 5000
       htpasswd:
         file: /verdaccio/conf/htpasswd

@@ -19,9 +19,22 @@ const KEY_PUBLISH = 'jnk_publisher_key';
 const KEY_INSTALL = 'jnk_installer_key';
 const KEY_NOSCOPE = 'jnk_no_scope_key';
 const KEY_INVALID = 'jnk_revoked_key';
+// The format POST /api/v1/api-keys mints today: sk_live_ + 64 hex characters.
+const KEY_SKLIVE_INSTALL = `sk_live_${'a1'.repeat(32)}`;
+const KEY_SKLIVE_PUBLISH = `sk_live_${'b2'.repeat(32)}`;
 
 // Mirrors Janua's real records: key -> {org_id, scopes, key_id}
 const KEYS = {
+  [KEY_SKLIVE_INSTALL]: {
+    org_id: 'org-madfam',
+    scopes: ['npm:install'],
+    key_id: 'key-sklive-install-1',
+  },
+  [KEY_SKLIVE_PUBLISH]: {
+    org_id: 'org-madfam',
+    scopes: ['npm:install', 'npm:publish'],
+    key_id: 'key-sklive-publish-1',
+  },
   [KEY_PUBLISH]: {
     org_id: 'org-madfam',
     scopes: ['npm:install', 'npm:publish'],
@@ -44,6 +57,7 @@ const silentLogger = {
 };
 
 let verifyCallCount = 0;
+let mockJanuaUrl = null; // set once the mock server listens
 
 function startMockJanua() {
   return new Promise((resolve) => {
@@ -154,6 +168,58 @@ test('non-key password falls through WITHOUT calling Janua', async (p) => {
 test('no password falls through (false)', async (p) => {
   const groups = await authenticate(p, 'anyuser', '');
   assert.strictEqual(groups, false);
+});
+
+test('current-format sk_live_ key authenticates (what Janua mints today)', async (p) => {
+  const groups = await authenticate(p, 'janua', KEY_SKLIVE_INSTALL);
+  assert.deepStrictEqual(groups, ['npm:install', '$authenticated']);
+});
+
+test('current-format sk_live_ key with npm:publish yields both scopes', async (p) => {
+  const groups = await authenticate(p, 'janua', KEY_SKLIVE_PUBLISH);
+  assert.ok(groups.includes('npm:install'));
+  assert.ok(groups.includes('npm:publish'));
+});
+
+test('a password with an unknown prefix falls through WITHOUT calling Janua', async (p) => {
+  const before = verifyCallCount;
+  const groups = await authenticate(p, 'ci-service', `pk_test_${'c3'.repeat(32)}`);
+  assert.strictEqual(groups, false);
+  assert.strictEqual(verifyCallCount, before, 'Janua must not be called');
+});
+
+test('no prefix setting: both formats are claimed (the default)', async () => {
+  const plugin = createPlugin(
+    { janua_url: mockJanuaUrl, cache_ttl_ms: 1000 },
+    { logger: silentLogger }
+  );
+  assert.deepStrictEqual(plugin.keyPrefixes, ['jnk_', 'sk_live_']);
+  assert.deepStrictEqual(
+    await authenticate(plugin, 'janua', KEY_SKLIVE_INSTALL),
+    ['npm:install', '$authenticated']
+  );
+  assert.ok((await authenticate(plugin, 'janua', KEY_INSTALL)).includes('npm:install'));
+});
+
+test('the older key_prefix setting is still honoured exactly', async () => {
+  const plugin = createPlugin(
+    { janua_url: mockJanuaUrl, cache_ttl_ms: 1000, key_prefix: 'jnk_' },
+    { logger: silentLogger }
+  );
+  const before = verifyCallCount;
+  assert.strictEqual(await authenticate(plugin, 'janua', KEY_SKLIVE_INSTALL), false);
+  assert.strictEqual(verifyCallCount, before, 'an unclaimed prefix never reaches Janua');
+});
+
+test('an empty prefix is ignored, so a plain password never reaches Janua', async () => {
+  const plugin = createPlugin(
+    { janua_url: mockJanuaUrl, cache_ttl_ms: 1000, key_prefixes: ['', 'sk_live_'] },
+    { logger: silentLogger }
+  );
+  assert.deepStrictEqual(plugin.keyPrefixes, ['sk_live_']);
+  const before = verifyCallCount;
+  assert.strictEqual(await authenticate(plugin, 'ci-service', 'a-plain-htpasswd-password'), false);
+  assert.strictEqual(verifyCallCount, before, 'Janua must not be called');
 });
 
 test('repeated auth with the same key is served from cache', async (p) => {
@@ -268,12 +334,14 @@ test('Janua unreachable falls through instead of 500ing', async () => {
 (async () => {
   const server = await startMockJanua();
   const { port } = server.address();
+  mockJanuaUrl = `http://127.0.0.1:${port}`;
 
+  // The same prefix list as configmap.yaml.
   const plugin = createPlugin(
     {
-      janua_url: `http://127.0.0.1:${port}`,
+      janua_url: mockJanuaUrl,
       cache_ttl_ms: 300000,
-      key_prefix: 'jnk_',
+      key_prefixes: ['jnk_', 'sk_live_'],
     },
     { logger: silentLogger }
   );
