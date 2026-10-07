@@ -256,6 +256,7 @@ func TestHandleOpsJobsTriggerApplyUsesCronJobTemplate(t *testing.T) {
 	}
 	clientset := k8sfake.NewSimpleClientset(cronJob)
 	handler := &Handler{k8sClient: &k8sclient.Client{KubeClient: clientset}}
+	installEmptyTriggerHoldStore(t, handler, "forgesight", "forgesight-mexico-wave-seed")
 	router := gin.New()
 	router.POST("/v1/ops/:domain/:action", handler.HandleOpsOperation)
 

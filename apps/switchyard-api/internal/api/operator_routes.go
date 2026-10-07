@@ -34,7 +34,7 @@ func registerOperatorRoutes(protected *gin.RouterGroup, h *Handler) {
 	ops := protected.Group("/ops")
 	ops.GET("/capabilities", legacyAdmin, h.GetOpsCapabilities)
 	ops.POST("/:domain/:action", func(c *gin.Context) {
-		if c.Param("domain") == "inventory" {
+		if c.Param("domain") == "inventory" || (c.Param("domain") == "jobs" && c.Param("action") == "suspend") {
 			platformOperator(c)
 			return
 		}

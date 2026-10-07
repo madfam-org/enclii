@@ -1036,11 +1036,13 @@ jobs:
       # The DB-backed regression tests. These are build-tagged `integration`, so
       # the unit-tests job does not run them; this is the job that has a real
       # server to run them against.
-      - name: Cross-tenant hostname regressions against real Postgres
+      - name: Cross-tenant hostname and job-hold regressions against real Postgres
         run: |
-          cd apps/switchyard-api && go test -tags integration -count=1 ./internal/db/...
+          cd apps/switchyard-api && go test -tags integration -count=1 ./internal/db/... ./internal/jobholds/...
         env:
           TEST_DATABASE_URL: ${{ steps.dsn.outputs.value }}
+          JOB_HOLD_TEST_DATABASE_URL: ${{ steps.dsn.outputs.value }}
+          LOCAL_DB: "yes"
 
   ui-tests:
     name: UI Tests

@@ -17,7 +17,6 @@ import (
 
 	"github.com/madfam-org/enclii/apps/switchyard-api/internal/addons"
 	"github.com/madfam-org/enclii/apps/switchyard-api/internal/api"
-	"github.com/madfam-org/enclii/apps/switchyard-api/internal/audit"
 	"github.com/madfam-org/enclii/apps/switchyard-api/internal/auth"
 	"github.com/madfam-org/enclii/apps/switchyard-api/internal/builder"
 	"github.com/madfam-org/enclii/apps/switchyard-api/internal/clients"
@@ -27,13 +26,11 @@ import (
 	"github.com/madfam-org/enclii/apps/switchyard-api/internal/db"
 	"github.com/madfam-org/enclii/apps/switchyard-api/internal/k8s"
 	"github.com/madfam-org/enclii/apps/switchyard-api/internal/logging"
-	logstream "github.com/madfam-org/enclii/apps/switchyard-api/internal/logstream"
 	"github.com/madfam-org/enclii/apps/switchyard-api/internal/middleware"
 	"github.com/madfam-org/enclii/apps/switchyard-api/internal/monitoring"
 	"github.com/madfam-org/enclii/apps/switchyard-api/internal/notifications"
 	"github.com/madfam-org/enclii/apps/switchyard-api/internal/provenance"
 	"github.com/madfam-org/enclii/apps/switchyard-api/internal/provisioning"
-	"github.com/madfam-org/enclii/apps/switchyard-api/internal/realtime"
 	"github.com/madfam-org/enclii/apps/switchyard-api/internal/reconciler"
 	"github.com/madfam-org/enclii/apps/switchyard-api/internal/services"
 	"github.com/madfam-org/enclii/apps/switchyard-api/internal/topology"
@@ -69,25 +66,10 @@ func main() {
 		logrus.Fatal("Failed to initialize logger:", err)
 	}
 
-	// -------------------------------------------------------------------
-	// P2.5: OpenTelemetry distributed tracing.
-	//
-	// Wired via packages/otel-go so every MADFAM Go service shares one
-	// SDK bootstrap path. The shared package:
-	//   - Exports spans to Tempo (tempo.observability.svc.cluster.local:4317)
-	//   - Applies parent-based sampling (default 0.1 prod / 1.0 elsewhere)
-	//   - Drops attributes whose keys look like credentials (password,
-	//     token, authorization, etc.) before they leave the process
-	//   - Installs a logrus hook so every log line with an active span
-	//     context carries trace_id + span_id (for Loki<->Tempo pivots)
-	//
-	// The returned shutdown is bounded to 5s — don't let a stuck exporter
-	// hold SIGTERM past the pod termination grace period.
-	//
-	// This replaces the earlier half-wired OTel in internal/logging, which
-	// never received an OTLP endpoint at boot and so silently dropped
-	// every span.
-	// -------------------------------------------------------------------
+	// Shared packages/otel-go bootstrap exports to Tempo, applies parent-based
+	// sampling (0.1 prod / 1.0 elsewhere), filters credential attributes and
+	// installs the trace-correlated logrus hook. Bound shutdown to 5 seconds
+	// so an unavailable exporter cannot hold SIGTERM past the grace period.
 	otelShutdown := logging.Setup(context.Background(), cfg.Environment)
 	defer func() {
 		shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
@@ -244,7 +226,7 @@ func main() {
 	logrus.Info("✓ Reconciliation controller started (processing pending deployments)")
 
 	// Initialize service reconciler (also used directly by API handlers)
-	serviceReconciler := reconciler.NewServiceReconciler(k8sClient, logrus.StandardLogger())
+	serviceReconciler := reconciler.NewServiceReconciler(k8sClient, logrus.StandardLogger(), database)
 
 	// Initialize metrics collector
 	metricsCollector := monitoring.NewMetricsCollector()
@@ -672,83 +654,8 @@ func main() {
 		logrus.Info("✓ Domain background sync started (every 5 minutes)")
 	}
 
-	// Wire P1.5 consolidated audit surface. The aggregator is enabled if
-	// the local DB is reachable (always true here); Janua and Nexus
-	// sources self-disable when their tokens/URLs are empty, letting
-	// dev deployments run without external wiring.
-	{
-		auditSources := []audit.Source{
-			audit.NewSwitchyardSource(database), // direct-DB to this service's own audit tables
-		}
-		if cfg.JanuaAPIURL != "" && cfg.JanuaAdminToken != "" {
-			auditSources = append(auditSources, audit.NewJanuaClient(cfg.JanuaAPIURL, cfg.JanuaAdminToken))
-			logrus.Info("✓ Audit aggregator: Janua session source enabled")
-		} else {
-			logrus.Warn("⚠ Audit aggregator: Janua session source DISABLED (JANUA_ADMIN_TOKEN not set)")
-		}
-		if cfg.NexusAPIURL != "" && cfg.NexusAPIToken != "" {
-			auditSources = append(auditSources, audit.NewNexusClient(cfg.NexusAPIURL, cfg.NexusAPIToken))
-			logrus.Info("✓ Audit aggregator: Nexus (Selva RFCs 0005-0008) source enabled")
-		} else {
-			logrus.Warn("⚠ Audit aggregator: Nexus source DISABLED (NEXUS_API_URL/TOKEN not set)")
-		}
-		// XC-2 Round 6: aggregator gets a TeamResolver so non-team-aware
-		// sources (Janua, Nexus today) can be post-filtered when a master
-		// admin is acting-as a tenant. Switchyard source still pushes the
-		// filter to SQL — this is just the safety net for the others.
-		auditAgg := audit.NewAggregator(logrus.StandardLogger(), auditSources...).
-			WithTeamResolver(repos.Projects)
-		auditH := audit.NewHandler(auditAgg, audit.NewGinAuthz(), logrus.StandardLogger())
-		auditH.SetActingReader(audit.GinActingTeamReader{})
-		apiHandler.SetAuditHandler(auditH)
-		logrus.Infof("✓ Consolidated audit surface wired at /v1/audit (sources=%d)", len(auditSources))
-	}
-
-	// Wire P2.1 in-UI log tail. The feature self-disables cleanly when
-	// LOKI_URL is empty (endpoints 503 rather than 500). In production
-	// LOKI_URL defaults to the in-cluster DNS name, which works out of
-	// the box with the existing Fluent Bit → Loki deployment.
-	{
-		if cfg.LokiURL != "" {
-			lokiClient := logstream.NewLokiClient(cfg.LokiURL)
-			lokiLimiter := logstream.NewLimiter(
-				cfg.LokiQueryBudgetPerMinute,
-				cfg.LokiQueryBudgetBurst,
-			)
-			lokiResolver := logstream.NewRepoResolver(repos)
-			lokiAuthz := logstream.NewGinAuthz()
-			logsH := logstream.NewHandler(
-				lokiClient,
-				lokiResolver,
-				lokiAuthz,
-				lokiLimiter,
-				cfg.WebSocketAllowedOrigins,
-				logrus.StandardLogger(),
-			)
-			apiHandler.SetLogsHandler(logsH)
-			logrus.Infof("✓ Loki log tail wired at /v1/services/:id/logs (loki=%s, budget=%d/min)",
-				cfg.LokiURL, cfg.LokiQueryBudgetPerMinute)
-		} else {
-			logrus.Warn("⚠ Loki log tail DISABLED (ENCLII_LOKI_URL not set); /v1/services/:id/logs returns 503")
-		}
-	}
-
-	// Wire the C2 realtime DB-change subscriptions (Supabase Realtime
-	// equivalent). The hub holds one LISTEN connection per addon and fans row
-	// changes out to WS subscribers; the manager installs the opt-in NOTIFY
-	// triggers on tenant tables. Both dial the addon's own database on demand
-	// via the addon service, so there is no global dependency to gate on — the
-	// feature is always wired when the addon service is present. WebSocket
-	// origins reuse the same allow-list as the Loki tail. See
-	// docs/architecture/ADR_002_REALTIME_DB_SUBSCRIPTIONS.md.
-	{
-		realtimeHub := realtime.NewHub(realtime.NewPQDialer(logrus.StandardLogger()), logrus.StandardLogger())
-		realtimeManager := realtime.NewManager(realtime.NewPQConnector(), logrus.StandardLogger())
-		apiHandler.SetRealtime(realtimeHub, realtimeManager, cfg.WebSocketAllowedOrigins, logrus.StandardLogger())
-		// Ensure listeners are torn down on shutdown alongside other resources.
-		defer realtimeHub.Shutdown()
-		logrus.Info("✓ Realtime DB subscriptions wired at /v1/projects/:slug/addons/:id/realtime (LISTEN/NOTIFY)")
-	}
+	// Audit, log streaming and realtime subscriptions share the API lifecycle.
+	defer wireLiveSurfaces(cfg, repos, database, apiHandler)()
 
 	// -------------------------------------------------------------------
 	// P2.3: Outbound lifecycle webhooks — dispatcher + worker

@@ -2,6 +2,7 @@ package reconciler
 
 import (
 	"context"
+	"database/sql"
 	"fmt"
 	"strings"
 	"time"
@@ -12,12 +13,14 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 
+	"github.com/madfam-org/enclii/apps/switchyard-api/internal/jobholds"
 	"github.com/madfam-org/enclii/apps/switchyard-api/internal/k8s"
 	"github.com/madfam-org/enclii/packages/sdk-go/pkg/types"
 )
 
 // ServiceReconciler manages the lifecycle of services in Kubernetes
 type ServiceReconciler struct {
+	jobHolds  *jobholds.Store
 	k8sClient *k8s.Client
 	logger    *logrus.Logger
 }
@@ -61,9 +64,14 @@ type ReconcileResult struct {
 	Error      error
 }
 
-func NewServiceReconciler(k8sClient *k8s.Client, logger *logrus.Logger) *ServiceReconciler {
+func NewServiceReconciler(k8sClient *k8s.Client, logger *logrus.Logger, databases ...*sql.DB) *ServiceReconciler {
+	var database *sql.DB
+	if len(databases) > 0 {
+		database = databases[0]
+	}
 	return &ServiceReconciler{
 		k8sClient: k8sClient,
+		jobHolds:  &jobholds.Store{DB: database},
 		logger:    logger,
 	}
 }
@@ -174,7 +182,7 @@ func (r *ServiceReconciler) Reconcile(ctx context.Context, req *ReconcileRequest
 
 	// Apply CronJobs
 	for _, cj := range cronJobs {
-		if err := r.applyCronJob(ctx, cj); err != nil {
+		if err := r.applyHeldCronJob(ctx, req, cj); err != nil {
 			return &ReconcileResult{
 				Success: false,
 				Message: fmt.Sprintf("Failed to apply cron job %s", cj.Name),

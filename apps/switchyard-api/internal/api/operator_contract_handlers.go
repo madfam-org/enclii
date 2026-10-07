@@ -95,6 +95,11 @@ func (h *Handler) handleOperatorOperation(c *gin.Context, prefix, domain, action
 		return
 	}
 
+	if prefix == "ops" && domain == "jobs" && action == "suspend" {
+		resp, status := h.handleOpsJobsSuspend(c.Request.Context(), req, c.GetString("user_id"))
+		c.JSON(status, resp)
+		return
+	}
 	if req.DryRun {
 		if resp, handled := h.handleReadOnlyOperatorOperation(c, prefix, domain, action, operation, req); handled {
 			c.JSON(http.StatusOK, resp)
@@ -473,7 +478,7 @@ func (h *Handler) handleOpsAppsRetireApply(ctx context.Context, operation string
 	}, http.StatusAccepted
 }
 
-func (h *Handler) handleOpsJobsTriggerApply(ctx context.Context, operation string, req operatorOperationRequest) (operatorOperationResponse, int) {
+func (h *Handler) handleOpsJobsTriggerUnlocked(ctx context.Context, operation string, req operatorOperationRequest) (operatorOperationResponse, int) {
 	operationID := fmt.Sprintf("op_%d", time.Now().UTC().UnixNano())
 	namespace := operationNamespace(req, "default")
 	target := operationTarget(req)
