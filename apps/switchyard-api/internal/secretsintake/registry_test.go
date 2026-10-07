@@ -12,7 +12,7 @@ import (
 func TestLoadRegistry(t *testing.T) {
 	reg, err := LoadRegistry()
 	require.NoError(t, err)
-	assert.Len(t, reg, 63)
+	assert.Len(t, reg, 64)
 	assert.Contains(t, reg, "ceq/vast-api-key")
 	assert.Contains(t, reg, "karafiel/web-oidc-janua")
 	adminSession := reg["karafiel/admin-session"]
@@ -37,7 +37,7 @@ func TestGetTarget(t *testing.T) {
 func TestListTargetsSorted(t *testing.T) {
 	list, err := ListTargets()
 	require.NoError(t, err)
-	require.Len(t, list, 63)
+	require.Len(t, list, 64)
 	for i := 1; i < len(list); i++ {
 		assert.Less(t, list[i-1].ID, list[i].ID, "targets should be sorted by id")
 	}
@@ -59,6 +59,7 @@ func TestListTargetsSorted(t *testing.T) {
 		"crea-map/internal-api-key",
 		"crea-map/janua-mail-client",
 		"crea-map/kalya-feeds",
+		"crea-map/mcp-pseudonym-key",
 		"crea-map/rls-por-caso",
 		"crea-map/selva-api-key",
 		"crea/porkbun-registrar",
@@ -227,6 +228,30 @@ func TestCreaMap303Targets(t *testing.T) {
 			assert.Nil(t, tgt.Generate)
 		})
 	}
+}
+
+// The MAP MCP pseudonym key (crea-map #866, 2026-10-07): the HMAC key behind
+// the MCP's U-/I- pseudonyms. Value-intake, NEVER generated: crea-map-secrets
+// is hand-maintained (no active ExternalSecret), so the operator provisions the
+// SAME value into the pod Secret, and a server-minted value would never leave
+// Vault. It shares secret/crea-map and the crea-map-secrets name with the other
+// crea-map targets; the intake write is a merge. Lowercase property for the
+// future ExternalSecret (ESO is all-or-nothing per ExternalSecret). Pinned so a
+// rename is a test failure, not a silent write to a path nothing reads.
+func TestCreaMapMcpPseudonymKeyTarget(t *testing.T) {
+	tgt, err := GetTarget("crea-map/mcp-pseudonym-key")
+	require.NoError(t, err)
+	assert.Equal(t, "secret/crea-map", tgt.VaultPath)
+	assert.Equal(t, "crea-map", tgt.Namespace)
+	assert.Equal(t, "crea-map-secrets", tgt.ExternalSecret)
+	assert.Equal(t, []string{"map_mcp_pseudonym_key"}, tgt.Keys)
+	assert.NotEmpty(t, tgt.Label)
+	for _, k := range tgt.Keys {
+		assert.Equal(t, strings.ToLower(k), k,
+			"key %q must be lowercase to match crea-map's ExternalSecret property", k)
+	}
+	// Value-intake, not generatable: no generate policy declared.
+	assert.Nil(t, tgt.Generate)
 }
 
 // The 2026-09-05 Courier batch (+ the 2026-09-23 ledger URL). Angelia OWNS these targets: it verifies

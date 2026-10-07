@@ -935,3 +935,30 @@ targets:
     external_secret: alertmanager-smtp  # pragma: allowlist secret
     keys:
       - alertmanager_smtp_password
+
+  # crea-map (2026-10-07) — the MAP MCP pseudonym key (crea-map #866, §11.100).
+  # The HMAC key behind the MCP's U-/I- pseudonyms. crea-map reads it as
+  # MAP_MCP_PSEUDONYM_KEY (32 bytes or more); without it /api/mcp answers 503.
+  #
+  # Value-intake, NEVER --generate. crea-map-secrets is hand-maintained: no
+  # ExternalSecret is active for it (crea-map AGENTS.md, «Secrets»), so the pod
+  # gets the value from `enclii admin provision secrets`, and that must be the
+  # SAME value. A key minted here would exist only in Vault and could never
+  # reach the pod. The operator generates it once into a 0600 file and feeds
+  # both commands from that file (crea-map docs/MCP_DEL_MAP.md, step 2b). This
+  # Vault copy is the record and the future source for crea-map's Owner
+  # ExternalSecret (#303).
+  #
+  # Same path and ExternalSecret name as the other crea-map targets; the write
+  # is a merge. Until crea-map-secrets has an ExternalSecret, intake reports
+  # external_secret_refreshed=false, which is expected. LOWERCASE property for
+  # that future ExternalSecret. Rotating the key changes every pseudonym and
+  # retires every /mcp/ir link, which is the point after a leak.
+  crea-map/mcp-pseudonym-key:
+    label: crea-map llave de seudónimos del MCP (#866)
+    description: Llave HMAC de las claves seudónimas del MCP del MAP (U-…, I-…), 32 bytes o más. La genera el operador en un archivo 0600 y el MISMO valor va al Secret del pod con enclii admin provision secrets (crea-map-secrets se mantiene a mano). Nunca --generate. Rotarla cambia todas las claves.
+    vault_path: secret/crea-map
+    namespace: crea-map
+    external_secret: crea-map-secrets
+    keys:
+      - map_mcp_pseudonym_key
