@@ -33,11 +33,12 @@
 # more defects, either one enough to fail every run:
 #   - No NetworkPolicy let this pod out. `default-deny-egress` selects every
 #     pod in `data` and no allow rule matched app=pgbackrest-restore-drill, so
-#     DNS and HTTPS to R2 are refused once kube-router programs the pod (a new
-#     pod gets a short unfiltered window first, which is why the apt init step
-#     and the start of the restore worked). Every WAL segment is fetched by a
-#     NEW archive-get process (new DNS lookup, new TLS connection), so the
-#     replay cannot work. Fixed by `pgbackrest-restore-drill-egress` in
+#     DNS and HTTPS to R2 are refused once kube-router programs the pod.
+#     (Enforcement for a new pod lands after a lag, and connections opened
+#     before it survive: likely why the apt init step worked and the restore
+#     got going.) Every WAL segment is fetched by a NEW archive-get process
+#     (new DNS lookup, new TLS connection), so the replay cannot work. Fixed by
+#     `pgbackrest-restore-drill-egress` in
 #     infra/k8s/policies/data-network-policies.yaml.
 #   - `pg_ctl -w` does not wait for the replay. With hot_standby=off the
 #     postmaster reports itself started as soon as redo BEGINS, and refuses
