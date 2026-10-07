@@ -90,6 +90,7 @@ pick it up) or *owner decision* (needs the maintainer before work starts).
 | Item | Why it matters | Priority | Kind | Link |
 |---|---|---|---|---|
 | Rebuild the dispatch, switchyard-ui and status images | They were last built before the base-image package updates that #669 brought to docs-site; a rebuild picks them up | P1 | engineering | [#669](https://github.com/madfam-org/enclii/pull/669) |
+| `enclii registry login`: the CLI form of `infra/scripts/npm/registry-login.py` | The CLI already holds and refreshes the Janua session the script borrows from `~/.enclii/credentials.json`; a native command makes registry credentials an Enclii operation like the rest | P2 | engineering | [npm registry doc](docs/infrastructure/npm-registry.md#automated-workstations-and-agents) |
 | Retry the switchyard-api startup database connect | `cmd/api/main.go` exits on the first failed `Ping`, so the API restarts 1–2 times per rollout (the fleet-wide item above) | P2 | engineering | — |
 | Authenticate ECR Public pulls in CI, or pull through `mirror.gcr.io` | Anonymous pulls from GitHub-hosted runners hit HTTP 429 and fail image builds that use `public.ecr.aws` bases | P2 | engineering | [base-image mirror policy](docs/runbooks/ENCLII_BASE_IMAGE_MIRROR_POLICY_2026-05-14.md) |
 | Run the database integration suites in CI | `internal/api/handlers_integration_test.go` and `internal/services/auth_integration_test.go` only run by hand | P2 | engineering | [SKIPPED_TESTS.md](docs/testing/SKIPPED_TESTS.md) |
