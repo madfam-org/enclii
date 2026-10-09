@@ -521,6 +521,38 @@ func TestLoadRegistry_voxaSelvaMachineEdge(t *testing.T) {
 		buildIntakeValues(reg.Issuer, "jnc_fixture", "fixture-secret", p))
 }
 
+// selva-pravara-mes-madfam-ecosystem: Selva's phygital tools reading Pravara
+// MES order status and inventory. Pravara refuses tokens without tenant_id, and
+// Janua emits it only for organization-bound clients, so unlike selva-yantra4d
+// this edge is org-bound (madfam-ecosystem, where Cotiza's and Forj's Pravara
+// intakes are bound). Scope pravara-mes:read only; audience pravara-api.
+func TestLoadRegistry_selvaPravaraMesMachineEdge(t *testing.T) {
+	reg, err := LoadRegistry("")
+	require.NoError(t, err)
+
+	p, ok := reg.Platforms["selva-pravara-mes-madfam-ecosystem"]
+	require.True(t, ok, "platform selva-pravara-mes-madfam-ecosystem missing")
+	assert.Equal(t, "selva/pravara-mes-client", p.IntakeTarget)
+	assert.Empty(t, p.SessionIntakeTarget, "a machine edge has no session secret")
+	require.Equal(t, map[string]string{
+		"pravara_mes_client_id":     "client_id",
+		"pravara_mes_client_secret": "client_secret",
+	}, p.IntakeKeyMap)
+
+	jc := p.JanuaClient
+	assert.Equal(t, "selva-pravara-mes.madfam-ecosystem", jc.Name)
+	assert.Equal(t, "selva-pravara-mes.madfam-ecosystem", jc.ClientKey)
+	assert.Equal(t, "pravara-api", jc.Audience)
+	assert.Equal(t, "1a6233ef-185f-43ee-9181-e2591fbb2643", jc.OrganizationID, "Pravara needs tenant_id; Janua sets it only for org-bound clients")
+	assert.Equal(t, []string{"pravara-mes:read"}, jc.AllowedScopes)
+	assert.Equal(t, []string{"client_credentials"}, jc.GrantTypes)
+	assert.Empty(t, jc.RedirectURIs, "a client_credentials client has no browser leg")
+	require.NotNil(t, jc.IsConfidential)
+	assert.True(t, jc.confidential())
+	assert.False(t, p.publicLogin())
+	assert.NotEmpty(t, jc.Description)
+}
+
 // selva-yantra4d: Selva's phygital tools calling Yantra4D render, analysis and
 // quote requests. A confidential client_credentials edge with no browser leg,
 // audience yantra4d-api (what Yantra4D's decode_token checks `aud` against),

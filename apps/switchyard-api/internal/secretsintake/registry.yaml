@@ -984,3 +984,20 @@ targets:
     keys:
       - yantra4d_client_id
       - yantra4d_client_secret
+
+  # selva (2026-10-09) — Selva's phygital tools → Pravara-MES read edge
+  # (ecosystem-oidc platform selva-pravara-mes-madfam-ecosystem, org-bound to
+  # madfam-ecosystem, scope pravara-mes:read). Same mechanics as
+  # selva/yantra4d-client: written only by the OIDC provisioner into secret/selva
+  # as a merge, delivered by the selva-service-clients ExternalSecret, which maps
+  # these LOWERCASE properties to SELVA_PRAVARA_CLIENT_ID /
+  # SELVA_PRAVARA_CLIENT_SECRET for the workers.
+  selva/pravara-mes-client:
+    label: Selva → Pravara-MES read client
+    description: Janua client_credentials pair (selva-pravara-mes.madfam-ecosystem, scope pravara-mes:read, org-bound to madfam-ecosystem) Selva's phygital tools use for Pravara order-status and inventory reads. Filed by `enclii secrets provision oidc --platform selva-pravara-mes-madfam-ecosystem`.
+    vault_path: secret/selva
+    namespace: selva
+    external_secret: selva-service-clients  # pragma: allowlist secret
+    keys:
+      - pravara_mes_client_id
+      - pravara_mes_client_secret
