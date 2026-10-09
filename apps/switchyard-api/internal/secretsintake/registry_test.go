@@ -12,7 +12,7 @@ import (
 func TestLoadRegistry(t *testing.T) {
 	reg, err := LoadRegistry()
 	require.NoError(t, err)
-	assert.Len(t, reg, 64)
+	assert.Len(t, reg, 65)
 	assert.Contains(t, reg, "ceq/vast-api-key")
 	assert.Contains(t, reg, "karafiel/web-oidc-janua")
 	adminSession := reg["karafiel/admin-session"]
@@ -37,7 +37,7 @@ func TestGetTarget(t *testing.T) {
 func TestListTargetsSorted(t *testing.T) {
 	list, err := ListTargets()
 	require.NoError(t, err)
-	require.Len(t, list, 64)
+	require.Len(t, list, 65)
 	for i := 1; i < len(list); i++ {
 		assert.Less(t, list[i-1].ID, list[i].ID, "targets should be sorted by id")
 	}
@@ -96,6 +96,7 @@ func TestListTargetsSorted(t *testing.T) {
 		"pravara-mes/fabrication-prep-client",
 		"pravara-mes/yantra4d-step-reader",
 		"routecraft/billing-relay",
+		"selva/yantra4d-client",
 		"symbiosis-hcm/map-absence-feed",
 		"telesia/oidc-janua",
 		"telesia/runtime",
@@ -495,6 +496,26 @@ func TestVoxaSelvaClientTarget(t *testing.T) {
 	assert.Equal(t, []string{"selva_client_id", "selva_client_secret"}, tgt.Keys)
 	assert.NotEmpty(t, tgt.Label)
 	assert.NotEmpty(t, tgt.Description)
+}
+
+// Selva's phygital tools → Yantra4D edge (ecosystem-oidc platform
+// selva-yantra4d). Same shape as the other machine edges: written only by the
+// OIDC provisioner into Selva's own path, delivered by the dedicated
+// selva-service-clients ExternalSecret (never a hand-maintained Secret), and a
+// lowercase id/secret pair that the ExternalSecret maps byte for byte.
+func TestSelvaYantra4dClientTarget(t *testing.T) {
+	tgt, err := GetTarget("selva/yantra4d-client")
+	require.NoError(t, err)
+	assert.Equal(t, "secret/selva", tgt.VaultPath)
+	assert.Equal(t, "selva", tgt.Namespace)
+	assert.Equal(t, "selva-service-clients", tgt.ExternalSecret)
+	assert.Equal(t, []string{"yantra4d_client_id", "yantra4d_client_secret"}, tgt.Keys)
+	for _, k := range tgt.Keys {
+		assert.Equal(t, strings.ToLower(k), k, "Vault stores lowercase; the ExternalSecret maps these properties verbatim")
+	}
+	assert.NotEmpty(t, tgt.Label)
+	assert.NotEmpty(t, tgt.Description)
+	assert.Nil(t, tgt.Generate, "the provisioner writes Janua's pair; nothing is generated here")
 }
 
 // Voxa web session and API runtime (2026-10-04), production and staging.

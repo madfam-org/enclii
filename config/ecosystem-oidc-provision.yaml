@@ -1,6 +1,6 @@
 # MADFAM ecosystem OIDC auto-provision registry
 # Consumed by: enclii secrets provision oidc
-# Last Updated: 2026-10-04
+# Last Updated: 2026-10-08
 #
 # TWO COPIES, ONE CONTENT. The CLI embeds
 # packages/cli/internal/ecosystemoidc/data/ecosystem-oidc-provision.yaml (go:embed
@@ -740,5 +740,46 @@ platforms:
       organization_id: 1a6233ef-185f-43ee-9181-e2591fbb2643
       allowed_scopes:
         - selva:infer
+      grant_types:
+        - client_credentials
+
+  # ---------------------------------------------------------------------------
+  # selva-yantra4d — Selva's phygital tools calling Yantra4D: POST /api/render,
+  # the project analysis routes and the project quote request. One edge, one
+  # client, one scope: client_credentials only, scope yantra4d:render, no
+  # browser leg.
+  #
+  # audience `yantra4d-api` is what Yantra4D's decode_token checks `aud`
+  # against (JANUA_AUDIENCE), the audience pravara-yantra4d-step-reader already
+  # holds. Yantra4D requires yantra4d:render on machine tokens at its render
+  # routes (apps/api/middleware/auth.py, RENDER_SCOPE) and reads no tenant from
+  # them, so this client is platform-admin like pravara-yantra4d-step-reader:
+  # no organization_id. Registering it needs a Janua platform-admin session,
+  # since yantra4d-api and yantra4d:render are reserved.
+  #
+  # Selva mints from the pair at run time as SELVA_YANTRA4D_CLIENT_ID /
+  # SELVA_YANTRA4D_CLIENT_SECRET (selva-office
+  # packages/tools/src/selva_tools/builtins/service_auth.py), delivered by its
+  # dedicated selva-service-clients ExternalSecret, whose `property:` names are
+  # the intake_key_map keys below. The pair lands at secret/selva through
+  # selva/yantra4d-client.
+  #
+  # NOT pinned yet: the first provision run prints the client id; pin it here
+  # (both copies) so later runs reconcile this client instead of creating a
+  # twin.
+  # ---------------------------------------------------------------------------
+  selva-yantra4d:
+    intake_target: selva/yantra4d-client
+    intake_key_map:
+      yantra4d_client_id: client_id
+      yantra4d_client_secret: client_secret  # pragma: allowlist secret
+    janua_client:
+      name: selva-yantra4d
+      client_key: selva-yantra4d  # pragma: allowlist secret
+      audience: yantra4d-api
+      description: Machine edge (client_credentials) from Selva's phygital tools to Yantra4D render, analysis and quote requests. Platform-admin, scope yantra4d:render only.
+      is_confidential: true
+      allowed_scopes:
+        - yantra4d:render
       grant_types:
         - client_credentials

@@ -520,3 +520,48 @@ func TestLoadRegistry_voxaSelvaMachineEdge(t *testing.T) {
 	assert.Equal(t, map[string]string{"selva_client_id": "jnc_fixture", "selva_client_secret": "fixture-secret"},
 		buildIntakeValues(reg.Issuer, "jnc_fixture", "fixture-secret", p))
 }
+
+// selva-yantra4d: Selva's phygital tools calling Yantra4D render, analysis and
+// quote requests. A confidential client_credentials edge with no browser leg,
+// audience yantra4d-api (what Yantra4D's decode_token checks `aud` against),
+// scope yantra4d:render only (what its render routes require of machine
+// tokens). Platform-admin like pravara-yantra4d-step-reader: Yantra4D reads no
+// tenant from machine tokens. The pair lands at selva/yantra4d-client as the
+// two lowercase properties selva-office's selva-service-clients ExternalSecret
+// maps. client_id is deliberately NOT asserted: it is pinned after the first
+// provision run.
+func TestLoadRegistry_selvaYantra4dMachineEdge(t *testing.T) {
+	reg, err := LoadRegistry("")
+	require.NoError(t, err)
+
+	p, ok := reg.Platforms["selva-yantra4d"]
+	require.True(t, ok, "platform selva-yantra4d missing")
+	assert.Equal(t, "selva/yantra4d-client", p.IntakeTarget)
+	assert.Empty(t, p.SessionIntakeTarget, "a machine edge has no session secret")
+	require.Equal(t, map[string]string{
+		"yantra4d_client_id":     "client_id",
+		"yantra4d_client_secret": "client_secret",
+	}, p.IntakeKeyMap)
+	for k := range p.IntakeKeyMap {
+		assert.Equal(t, strings.ToLower(k), k,
+			"intake key %q must be lowercase to match selva-office's ExternalSecret property", k)
+	}
+
+	jc := p.JanuaClient
+	assert.Equal(t, "selva-yantra4d", jc.Name)
+	assert.Equal(t, "selva-yantra4d", jc.ClientKey)
+	assert.Equal(t, "yantra4d-api", jc.Audience)
+	assert.Empty(t, jc.OrganizationID, "Yantra4D reads no tenant from machine tokens; the edge is platform-admin")
+	assert.Equal(t, []string{"yantra4d:render"}, jc.AllowedScopes)
+	assert.Equal(t, []string{"client_credentials"}, jc.GrantTypes)
+	assert.Empty(t, jc.RedirectURIs, "a client_credentials client has no browser leg")
+	require.NotNil(t, jc.IsConfidential)
+	assert.True(t, jc.confidential())
+	assert.False(t, p.publicLogin())
+	assert.NotEmpty(t, jc.Description)
+
+	assert.Equal(t, map[string]string{
+		"yantra4d_client_id":     "jnc_fixture",
+		"yantra4d_client_secret": "fixture-secret",
+	}, buildIntakeValues(reg.Issuer, "jnc_fixture", "fixture-secret", p))
+}
