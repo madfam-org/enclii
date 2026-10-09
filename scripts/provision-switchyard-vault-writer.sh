@@ -11,7 +11,7 @@
 # Policy-only (add paths without rotating writer token):
 #   POLICY_ONLY=1 VAULT_TOKEN_FILE=... ./scripts/provision-switchyard-vault-writer.sh
 #
-# Last Updated: 2026-10-05 (tulana and converge-dash server-generated intake targets; monitoring: Alertmanager SMTP password, intake target monitoring/alertmanager-smtp)
+# Last Updated: 2026-10-08 (selva: intake target selva/yantra4d-client for the selva-yantra4d machine edge)
 set -euo pipefail
 
 VAULT_NS="${VAULT_NS:-vault}"
@@ -336,6 +336,19 @@ path "secret/data/monitoring" {
 path "secret/data/monitoring/*" {
   capabilities = ["create", "update", "patch", "read"]
 }
+# selva — added 2026-10-08 with the selva/yantra4d-client intake target
+# (Selva's phygital tools → Yantra4D edge), written only by
+# `enclii secrets provision oidc --platform selva-yantra4d`. The write is a
+# read-merge-write, so READ is required too. Merged in git is not applied in
+# Vault: re-apply this policy (ASSERT_PATH=selva
+# scripts/apply-switchyard-vault-policy-remote.sh) before the first run, or
+# the run rotates the Janua secret and then 403s on the Vault merge.
+path "secret/data/selva" {
+  capabilities = ["create", "update", "patch", "read"]
+}
+path "secret/data/selva/*" {
+  capabilities = ["create", "update", "patch", "read"]
+}
 path "secret/metadata/ceq" {
   capabilities = ["read", "list"]
 }
@@ -520,6 +533,12 @@ path "secret/metadata/monitoring" {
   capabilities = ["read", "list"]
 }
 path "secret/metadata/monitoring/*" {
+  capabilities = ["read", "list"]
+}
+path "secret/metadata/selva" {
+  capabilities = ["read", "list"]
+}
+path "secret/metadata/selva/*" {
   capabilities = ["read", "list"]
 }
 EOF

@@ -962,3 +962,25 @@ targets:
     external_secret: crea-map-secrets
     keys:
       - map_mcp_pseudonym_key
+
+  # selva (2026-10-08) — Selva's phygital tools → Yantra4D machine edge
+  # (ecosystem-oidc platform selva-yantra4d, scope yantra4d:render). Written
+  # only by `enclii secrets provision oidc --platform selva-yantra4d`; no human
+  # types either value. It lands at Selva's own Vault path, secret/selva. The
+  # write is a merge (read, overlay, write), so the two properties land beside
+  # whatever the path already holds, and a path that does not exist yet is
+  # created.
+  #
+  # Delivered by the DEDICATED selva-service-clients ExternalSecret in the selva
+  # namespace (selva-office infra/k8s/production/service-clients-external-secret.yaml),
+  # which maps these LOWERCASE properties byte for byte to
+  # SELVA_YANTRA4D_CLIENT_ID / SELVA_YANTRA4D_CLIENT_SECRET for the workers.
+  selva/yantra4d-client:
+    label: Selva → Yantra4D render client
+    description: Janua client_credentials pair (selva-yantra4d, scope yantra4d:render) Selva's phygital tools use for Yantra4D render, analysis and quote requests. Filed by `enclii secrets provision oidc --platform selva-yantra4d`.
+    vault_path: secret/selva
+    namespace: selva
+    external_secret: selva-service-clients  # pragma: allowlist secret
+    keys:
+      - yantra4d_client_id
+      - yantra4d_client_secret

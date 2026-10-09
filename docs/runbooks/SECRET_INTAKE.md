@@ -119,6 +119,7 @@ ESO sources: `enclii-secrets`, `janua-secrets`, `madfam-site-secrets`, `phynd-cr
 | `voxa/api-runtime` | `secret/voxa` | `redis_url` |
 | `voxa-staging/api-runtime` | `secret/voxa-staging` | `redis_url` |
 | `monitoring/alertmanager-smtp` | `secret/monitoring` | `alertmanager_smtp_password` |
+| `selva/yantra4d-client` | `secret/selva` | `yantra4d_client_id`, `yantra4d_client_secret` |
 
 **Angelia OWNS all five Courier targets** (verifier-owns): Angelia verifies every
 one of these credentials, so `secret/angelia` is their single writable home, and
@@ -449,6 +450,41 @@ runs nothing.
 
 Rotation is the same `intake submit` with a new app password. Never recreate
 `alertmanager-smtp-secret`.
+
+### Selva → Yantra4D edge (2026-10-08)
+
+One more Janua `client_credentials` client, same mechanics as the digital-twins
+edges above: `selva-yantra4d` (Janua client `selva-yantra4d`, audience
+`yantra4d-api`, scope `yantra4d:render`, platform-admin: no organization, since
+Yantra4D reads no tenant from machine tokens), filed at `selva/yantra4d-client`
+→ `secret/selva` and delivered by the dedicated `selva-service-clients`
+ExternalSecret in the `selva` namespace (selva-office
+`infra/k8s/production/service-clients-external-secret.yaml`), which maps
+`yantra4d_client_id` / `yantra4d_client_secret` to `SELVA_YANTRA4D_CLIENT_ID` /
+`SELVA_YANTRA4D_CLIENT_SECRET` for the workers. The workers mint one-hour tokens
+from the pair at `JANUA_ISSUER_URL` + `/api/v1/oauth/token` and reuse each until
+60 seconds before it expires; with no pair they fall back to a static token and
+fail closed without one. The staging overlay deletes the ExternalSecret, so the
+production pair never reaches `selva-staging`.
+
+Owner sequence, after the registry change is deployed (switchyard-api digest
+bump) and from an up-to-date checkout:
+
+```bash
+cd ~/labspace/enclii && git pull --ff-only
+cd ~/labspace/enclii && ASSERT_PATH=selva bash scripts/apply-switchyard-vault-policy-remote.sh < ~/.config/madfam/vault-admin.token
+# expect: APPLIED_OK_asserted_path_present
+make -C ~/labspace/enclii install-cli CLI_INSTALL_DIR=$HOME/.local/bin
+enclii login --profile admin   # only if the admin session expired
+enclii secrets provision oidc --profile admin --platform selva-yantra4d --dry-run --json --reason "selva phygital tools to yantra4d (yantra4d:render)"
+enclii secrets provision oidc --profile admin --platform selva-yantra4d --json --reason "selva phygital tools to yantra4d (yantra4d:render)"
+```
+
+Then pin the printed `jnc_…` id as `janua_client.client_id` for `selva-yantra4d`
+in both registry copies. Until selva-office ships `selva-service-clients`,
+intake reports `external_secret_refreshed: false`, which is expected. Re-running
+the provision command rotates the secret; the workers' Reloader annotation rolls
+them onto the new value.
 
 
 Add targets via PR to the registry — do not hardcode paths in runbooks. A new
