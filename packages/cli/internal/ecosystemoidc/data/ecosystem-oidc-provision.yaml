@@ -783,3 +783,42 @@ platforms:
         - yantra4d:render
       grant_types:
         - client_credentials
+
+  # ---------------------------------------------------------------------------
+  # Selva's phygital tools → Pravara-MES (read). Pravara answers 403 to any
+  # token without a tenant_id claim (apps/pravara-api/internal/middleware/
+  # auth.go), and Janua sets tenant_id only on organization-bound clients, so
+  # this edge is org-bound. Organization madfam-ecosystem, chosen 2026-10-09 on
+  # the owner's instruction: Cotiza's and Forj's Pravara intake clients are
+  # bound there, so the production orders Selva may read are the ones those
+  # intakes create. Selva's two Pravara tools (production-order status and
+  # inventory) are platform-only, so tenant swarms cannot read through it.
+  #
+  # audience pravara-api, like the intake clients above. Scope pravara-mes:read
+  # only: GET /v1/orders/:id, /v1/inventory and /v1/inventory/:id
+  # (apps/pravara-api/internal/api/route_scopes.go); writes stay refused.
+  # Selva mints from the pair as SELVA_PRAVARA_CLIENT_ID /
+  # SELVA_PRAVARA_CLIENT_SECRET, delivered by the same selva-service-clients
+  # ExternalSecret as the Yantra4D pair; the pair lands at secret/selva through
+  # selva/pravara-mes-client.
+  #
+  # NOT pinned yet: the first provision run prints the client id; pin it here
+  # (both copies) so later runs reconcile this client instead of creating a
+  # twin.
+  # ---------------------------------------------------------------------------
+  selva-pravara-mes-madfam-ecosystem:
+    intake_target: selva/pravara-mes-client
+    intake_key_map:
+      pravara_mes_client_id: client_id
+      pravara_mes_client_secret: client_secret  # pragma: allowlist secret
+    janua_client:
+      name: selva-pravara-mes.madfam-ecosystem
+      client_key: selva-pravara-mes.madfam-ecosystem  # pragma: allowlist secret
+      audience: pravara-api
+      description: Machine edge (client_credentials) from Selva's phygital tools to Pravara MES order-status and inventory reads. Org-bound to madfam-ecosystem, scope pravara-mes:read only.
+      is_confidential: true
+      organization_id: 1a6233ef-185f-43ee-9181-e2591fbb2643
+      allowed_scopes:
+        - pravara-mes:read
+      grant_types:
+        - client_credentials

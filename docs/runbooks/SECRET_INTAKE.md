@@ -120,6 +120,7 @@ ESO sources: `enclii-secrets`, `janua-secrets`, `madfam-site-secrets`, `phynd-cr
 | `voxa-staging/api-runtime` | `secret/voxa-staging` | `redis_url` |
 | `monitoring/alertmanager-smtp` | `secret/monitoring` | `alertmanager_smtp_password` |
 | `selva/yantra4d-client` | `secret/selva` | `yantra4d_client_id`, `yantra4d_client_secret` |
+| `selva/pravara-mes-client` | `secret/selva` | `pravara_mes_client_id`, `pravara_mes_client_secret` |
 
 **Angelia OWNS all five Courier targets** (verifier-owns): Angelia verifies every
 one of these credentials, so `secret/angelia` is their single writable home, and
