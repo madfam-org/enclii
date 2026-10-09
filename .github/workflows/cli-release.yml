@@ -12,7 +12,7 @@ on:
         type: string
 
 env:
-  GO_VERSION: "1.26.6"
+  GO_VERSION: "1.26.9"
 
 jobs:
   metadata:
