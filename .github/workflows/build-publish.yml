@@ -62,6 +62,8 @@ name: Reusable — Build, sign, publish, pin
 #   ci_user_name / ci_user_email: identity on the digest-pin commit
 #   rebuild_all_paths:   regex; files matching this trigger "build all"
 #                         (workflow-file, manifests, etc.)
+#   checkout_submodules: default "false"; "true" or "recursive" populates git
+#                         submodules in the BUILD job's checkout only
 #
 # Secrets it reads (all declared under `on.workflow_call.secrets`, all
 # optional). Callers may keep `secrets: inherit` or pass just the ones they
@@ -197,6 +199,19 @@ on:
         required: false
         type: string
         default: ''
+      checkout_submodules:
+        description: |
+          Optional `submodules` value for the BUILD job's checkout
+          (actions/checkout accepts false, true or recursive). The default
+          "false" keeps the historical behaviour. Set "true" when the image
+          COPYs content mounted as a git submodule, such as a commons of
+          cartridges; without it the build context holds an empty directory.
+          Change detection and the pin job never need submodule content (a
+          submodule bump is a path change on the gitlink itself), so their
+          checkouts are unchanged.
+        required: false
+        type: string
+        default: 'false'
     # Every secret this workflow reads, declared so callers MAY pass them by
     # name instead of `secrets: inherit` (a named secret that is not declared
     # here is a caller-side error). All optional: each use below already
@@ -380,6 +395,8 @@ jobs:
         service: ${{ fromJson(needs.detect-changes.outputs.matrix) }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          submodules: ${{ inputs.checkout_submodules }}
 
       # Docker Hub login BEFORE buildx, so buildx picks up creds when
       # its container starts. Conditional + soft-fail so missing creds
