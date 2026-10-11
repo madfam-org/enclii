@@ -53,7 +53,7 @@ jobs:
           token: ${{ secrets.GHCR_PAT }}
 
       - name: Install kubectl
-        uses: azure/setup-kubectl@v5
+        uses: azure/setup-kubectl@bda439f5f36b99b262ebdcd3613869bddb064c8e # v5.2.0
         with:
           version: v1.31.0
 
@@ -72,7 +72,7 @@ jobs:
           echo "Using API image digest ${DIGEST}"
 
       - name: Install cosign
-        uses: sigstore/cosign-installer@v3.7.0
+        uses: sigstore/cosign-installer@dc72c7d5c4d10cd6bcb8cf6e3fd625a9e5e537da # v3.7.0
 
       - name: Sign API digest (Kyverno)
         env:

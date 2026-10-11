@@ -33,7 +33,7 @@ jobs:
             exit 1
           fi
 
-      - uses: azure/setup-kubectl@v5
+      - uses: azure/setup-kubectl@bda439f5f36b99b262ebdcd3613869bddb064c8e # v5.2.0
 
       - name: Rotate GHCR pull secret
         env:
