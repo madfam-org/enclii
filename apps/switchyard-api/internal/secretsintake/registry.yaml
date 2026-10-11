@@ -725,6 +725,24 @@ targets:
       - pravara_intake_client_id
       - pravara_intake_client_secret
 
+  # Cotiza web NextAuth secret (2026-10-11, money-machine M2 F1):
+  # /api/auth/session answered 500 NO_SECRET because nothing gave the web pod
+  # one. digifab-quoting-secrets is projected by enclii's kubernetes-store
+  # ExternalSecret from ecosystem-service-auth, so the intake cannot reach it;
+  # the value gets its own ExternalSecret, digifab-quoting-web-session, in
+  # digifab-quoting's infra/k8s/production (property nextauth_secret →
+  # NEXTAUTH_SECRET). Written only by
+  # `enclii secrets intake submit digifab-quoting/web-session --generate nextauth_secret`
+  # (32 bytes crypto/rand, never returned). Rotating it signs every user out.
+  digifab-quoting/web-session:
+    label: Cotiza web NextAuth secret
+    description: NEXTAUTH_SECRET for the Cotiza web app (cotiza.studio; signs and encrypts the NextAuth session cookie); never the Janua client secret. Mint server-side with --generate nextauth_secret (32 bytes crypto/rand, never returned); rotating it signs every user out.
+    vault_path: secret/digifab-quoting
+    namespace: digifab-quoting
+    external_secret: digifab-quoting-web-session  # pragma: allowlist secret
+    keys:
+      - nextauth_secret
+
   # zavlo has no cluster deployment yet (no k8s manifests in its repo), so the
   # namespace is the repo name, the onboarding default. The pair waits in Vault.
   # zavlo-backend reads ZAVLO_CFDI_EMITTER_CLIENT_ID / _SECRET.

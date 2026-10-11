@@ -1,6 +1,6 @@
 # Secret Intake (chat-safe credential handoff)
 
-**Last Updated:** 2026-10-05
+**Last Updated:** 2026-10-11
 
 > **Boundary checkpoint (2026-09-05, platform on-call):** Public-safe runbook —
 > target ids, Vault paths and key NAMES are routing contracts, never values. No
@@ -33,6 +33,10 @@
 > section adds a target id, a key NAME, a Vault path, Kubernetes object names
 > and file paths only. The SMTP password is typed at the masked prompt and
 > appears nowhere here.
+>
+> **Boundary checkpoint (2026-10-11, platform on-call):** The Cotiza web
+> session section adds a target id, a key NAME, a Vault path and Kubernetes
+> object names only. The value is minted inside Switchyard and appears nowhere.
 
 Operators supply production credentials through Enclii without pasting values into
 agent chat or git. Switchyard merges keys into Vault once; agents poll `intake_id`
@@ -111,6 +115,7 @@ ESO sources: `enclii-secrets`, `janua-secrets`, `madfam-site-secrets`, `phynd-cr
 | `fashion-cabinet/asset-shells-publisher` | `secret/fashion-cabinet` | `asset_shells_publisher_client_id`, `asset_shells_publisher_client_secret` |
 | `forj/pravara-intake` | `secret/forj` | `pravara_intake_client_id`, `pravara_intake_client_secret` |
 | `digifab-quoting/pravara-intake` | `secret/digifab-quoting` | `pravara_intake_client_id`, `pravara_intake_client_secret` |
+| `digifab-quoting/web-session` | `secret/digifab-quoting` | `nextauth_secret` |
 | `zavlo/cfdi-emitter` | `secret/zavlo` | `zavlo_cfdi_emitter_client_id`, `zavlo_cfdi_emitter_client_secret` |
 | `routecraft/billing-relay` | `secret/routecraft` | `billing_relay_client_id`, `billing_relay_client_secret` |
 | `voxa/selva-client` | `secret/voxa` | `selva_client_id`, `selva_client_secret` |
@@ -381,6 +386,38 @@ enclii secrets intake submit voxa/api-runtime --reason "voxa co-editing redis (o
 enclii secrets intake submit voxa-staging/api-runtime --reason "voxa staging co-editing redis (own DB index)"
 enclii secrets intake status int_<id>
 ```
+
+### Cotiza web NextAuth secret (2026-10-11)
+
+`cotiza.studio/api/auth/session` answered 500 `NO_SECRET`: the web pod had no
+NextAuth secret. `digifab-quoting-secrets` is projected by this repo's
+kubernetes-store ExternalSecret from `ecosystem-service-auth`, so intake cannot
+reach it, and the value gets a dedicated ExternalSecret in the digifab-quoting
+repo with one write route.
+
+| Property in `secret/digifab-quoting` | Target | Written by | ExternalSecret | Env var |
+|---|---|---|---|---|
+| `nextauth_secret` | `digifab-quoting/web-session` | `enclii secrets intake submit digifab-quoting/web-session --generate nextauth_secret` | `digifab-quoting-web-session` | `NEXTAUTH_SECRET` |
+
+It is minted server-side (32 bytes, never returned), never typed and never the
+Janua client secret; rotating it signs every user out. The digifab-quoting
+ExternalSecret has sync-wave -1, so ArgoCD waits for it before the Deployments
+roll: merge it only after the intake has run, or it holds the whole
+digifab-quoting sync.
+
+Owner sequence, after the registry change is deployed (switchyard-api digest
+bump) and from an up-to-date checkout:
+
+```bash
+cd ~/labspace/enclii && ASSERT_PATH=digifab-quoting bash scripts/apply-switchyard-vault-policy-remote.sh < ~/.config/madfam/vault-admin.token
+# expect: APPLIED_OK_asserted_path_present
+enclii secrets intake submit digifab-quoting/web-session --generate nextauth_secret --reason "cotiza web NextAuth secret"
+enclii secrets intake status int_<id>
+```
+
+Until the digifab-quoting ExternalSecret exists, intake reports
+`external_secret_refreshed: false`, which is expected: ESO reads the property on
+its first sync.
 
 ### Alertmanager SMTP credential (2026-10-05)
 
