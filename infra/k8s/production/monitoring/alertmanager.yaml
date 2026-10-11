@@ -274,6 +274,48 @@ data:
           severity: 'warning'
         equal: ['alertname', 'service']
 
+      # COURIER BACKSTOP: A NON-EMAIL PATH FOR CourierReceiverDown
+      # (money-machine audit 2026-10-11, M2 F7). CourierReceiverDown is routed
+      # to email only (first route above), and email has been dead before
+      # for weeks (Gmail 535/454, 2026-09-24). With both down, a dead pager
+      # reported nothing to anyone.
+      #
+      # While CourierReceiverDown fires, this mutes the always-firing
+      # Watchdog. Watchdog is the outside heartbeat's input (enclii#649 puts
+      # the heartbeat webhook on watchdog-sink), so the beats to
+      # heartbeat.madfam.io stop, and the heartbeat Worker, which runs on
+      # Cloudflare and holds its own Telegram path (the 2026-09-27 amendment
+      # of internal-devops decisions/2026-09-05-third-party-messaging-via-
+      # angelia-courier.md), pages the pager group directly once the beat is
+      # stale. No new messaging credential and no new egress here: it reuses
+      # the one sanctioned exception.
+      #
+      # Timing: CourierReceiverDown fires 5m after the first failed webhook
+      # (its `for`), the Worker calls the heartbeat stale after 10m and its
+      # cron runs every 2m, so the Telegram page lands about 15-17 minutes
+      # after Courier starts failing. It recovers by itself: when the webhook
+      # delivers again, the 15m increase() window empties, CourierReceiverDown
+      # resolves, Watchdog is unmuted, beats resume and the Worker sends its
+      # recovery message.
+      #
+      # The page reads "alerting heartbeat stale", not "Courier down". So on a
+      # stale-heartbeat page, look first at the Alertmanager UI: a firing
+      # CourierReceiverDown there means this backstop sent it. (The heartbeat
+      # runbook, internal-devops runbooks/alerting-heartbeat.md, does not say
+      # that yet; it needs that one line.) Alertmanager v0.26 counts every webhook in one
+      # `integration="webhook"` failure counter, so a failing heartbeat
+      # webhook also fires CourierReceiverDown and mutes the beat: that pages
+      # through the same stale-heartbeat path, which is the right outcome for
+      # a broken heartbeat.
+      #
+      # INERT UNTIL enclii#649 IS LIVE: watchdog-sink has no integration
+      # before that, so muting Watchdog changes nothing. Pinned by
+      # tests/scripts/test_check_alertmanager_config.py.
+      - source_matchers:
+          - alertname="CourierReceiverDown"
+        target_matchers:
+          - alertname="Watchdog"
+
     templates: []
 ---
 # AlertManager SMTP password — from Vault since 2026-10-05; never by hand.
