@@ -41,8 +41,11 @@ spec:
 ---
 # PrometheusRule — alerts driven by the metrics above.
 #
-# Five rules:
-#   - CNPGClusterDegraded:          fewer than 3 ready instances
+# Six rules:
+#   - CNPGClusterDegraded:          fewer ready instances than cluster.yaml's
+#                                   `instances` (2 today)
+#   - CNPGMetricsAbsent:            no instance metrics at all (the rule
+#                                   above cannot see a cluster it cannot scrape)
 #   - CNPGSyncReplicaLost:          synchronous standby missing
 #   - CNPGFailoverInProgress:       primary changed (informational)
 #   - CNPGBackupArchiveBehind:      WAL archiver behind ≥5 min
@@ -66,25 +69,70 @@ spec:
     - name: postgres-ha.rules
       interval: 30s
       rules:
+        # FIXED 2026-10-11 (money-machine audit M2 F6). The rule read
+        # `cnpg_collector_instances_ready < 3`. Two faults:
+        #   - The threshold was 3 while cluster.yaml runs `instances: 2`
+        #     (the third replica could not be scheduled), so a fully healthy
+        #     cluster would read as degraded.
+        #   - CNPG exports no `cnpg_collector_instances_ready` metric at all
+        #     (the collector's metrics are listed in CNPG's monitoring docs;
+        #     `cnpg_collector_up` is the per-instance one). So the rule never
+        #     fired, healthy or not.
+        # Now: the sum of the per-instance `cnpg_collector_up` (1 when that
+        # instance's PostgreSQL is up) against the configured instance count.
+        # An instance that is down reports 0; an instance whose pod is gone
+        # reports nothing; both lower the sum. KEEP THE 2 EQUAL TO
+        # cluster.yaml `spec.instances`:
+        # tests/scripts/test_alert_noise_rules.py fails if they differ.
         - alert: CNPGClusterDegraded
           expr: |
-            cnpg_collector_instances_ready < 3
+            sum by (cluster) (cnpg_collector_up{cluster="postgres-ha"}) < 2
           for: 2m
           labels:
             severity: critical
             component: postgres-ha
           annotations:
-            summary: "Postgres HA cluster has {{ $value }} of 3 instances ready"
+            summary: "Postgres HA cluster has {{ $value }} of 2 instances up"
             description: |
               The CNPG Cluster `postgres-ha` in `data` namespace has fewer
-              than 3 ready instances for over 2 minutes. Capacity for a
-              second failure is reduced or zero. Investigate via
-              `kubectl -n data get cluster postgres-ha`.
+              than its 2 configured instances up for over 2 minutes. With two
+              instances that means no standby: the next failure is an outage,
+              and synchronous commits (minSyncReplicas: 1) may block.
+              Investigate via `kubectl -n data get cluster postgres-ha`.
             runbook_url: "https://github.com/madfam-org/internal-devops/blob/main/runbooks/postgres-failover-drill.md"
 
+        # No instance reports at all: the PodMonitor is not scraped, every
+        # pod is gone, or the metrics port is refused. The rule above sums
+        # nothing and stays silent, so this says so. Warning: by itself it
+        # is a monitoring gap; a real outage of the cluster's consumers pages
+        # through their own rules.
+        - alert: CNPGMetricsAbsent
+          expr: |
+            absent(cnpg_collector_up{cluster="postgres-ha"})
+          for: 15m
+          labels:
+            severity: warning
+            component: postgres-ha
+          annotations:
+            summary: "No metrics from the postgres-ha instances"
+            description: |
+              No `cnpg_collector_up` series for `postgres-ha` for 15 minutes,
+              so CNPGClusterDegraded cannot fire. Check the instance pods
+              (`kubectl -n data get pods -l cnpg.io/cluster=postgres-ha`),
+              the PodMonitor in this file, and the `postgres-ha`
+              NetworkPolicy's monitoring rule on 9187.
+
+        # FIXED 2026-10-11. `cnpg_collector_sync_replicas` has one series per
+        # `value` label (min, max, expected, observed) on EVERY instance, so
+        # `== 0` matched any of them on any instance, e.g. a standby's
+        # observed=0, which is normal (standbys have no replicas of their
+        # own). Now: the cluster's highest observed count below its highest
+        # expected count.
         - alert: CNPGSyncReplicaLost
           expr: |
-            cnpg_collector_sync_replicas == 0
+            max by (cluster) (cnpg_collector_sync_replicas{cluster="postgres-ha", value="observed"})
+            <
+            max by (cluster) (cnpg_collector_sync_replicas{cluster="postgres-ha", value="expected"})
           for: 5m
           labels:
             severity: warning

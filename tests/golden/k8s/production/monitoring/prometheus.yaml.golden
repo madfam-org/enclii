@@ -777,8 +777,73 @@ data:
               summary: "ArgoCD application out of sync"
               description: "Application {{ $labels.name }} has been out of sync for more than 15 minutes."
 
+          # SIGNAL-TO-NOISE (money-machine audit 2026-10-11, M2 F6/F12/F13).
+          # These two rules paged critical every 4h on standing conditions
+          # nobody acts on, so a real revenue page landed in that noise:
+          #   - staging apps (karafiel-staging, selva-office-staging, ...);
+          #   - apps whose only Degraded cause is a Job that failed long ago
+          #     (forgesight read Degraded from 2026-08-01 while every CronJob
+          #     run since had succeeded; rondelio from one failed baseline Job).
+          # Both now page only for production apps whose Degraded is NOT
+          # explained by stale failed Jobs alone. Nothing goes dark: each
+          # excluded case has a warning twin below, in the warning digest.
+          #
+          # "Explained by stale failed Jobs alone" is the recording rule
+          # below, per destination namespace:
+          #   at least one Job in it ended Failed more than 6h ago (by
+          #   creation time), AND
+          #   no Job in it ended Failed within the last 6h, AND
+          #   no workload in it is unhealthy: no Deployment, StatefulSet or
+          #   DaemonSet short of replicas, and no Deployment whose rollout
+          #   is stuck (Progressing=False, e.g. a new ReplicaSet in
+          #   ImagePullBackOff while the old pod still serves: replicas look
+          #   full, Argo reads Degraded, and that must keep paging).
+          # So a FRESH failed Job (a migration, a backup) still pages, for 6h
+          # (one page and one 4h repeat), and then drops to the digest. An
+          # unhealthy workload always pages. Apps with an empty
+          # dest_namespace never match the recording rule, so they keep
+          # paging: the exclusion fails toward paging, not toward silence.
+          # Known blind spot, accepted: an app with stale failed Jobs AND a
+          # second Degraded cause that is not a workload shortfall (a
+          # Degraded ExternalSecret, say) is demoted with them; the warning
+          # twin still lists it. The lasting fix for stale Jobs is
+          # `ttlSecondsAfterFinished` / `failedJobsHistoryLimit` in each
+          # product repo's manifests.
+          - record: argocd:namespace_degraded_only_by_stale_failed_jobs
+            expr: |
+              label_replace(
+                count by (namespace) (
+                  (kube_job_status_condition{condition="Failed", status="true"} == 1)
+                  and on (namespace, job_name)
+                  ((time() - kube_job_created) > 21600)
+                ),
+                "dest_namespace", "$1", "namespace", "(.+)"
+              )
+              unless on (dest_namespace)
+              label_replace(
+                (
+                  count by (namespace) (kube_deployment_status_replicas_available < kube_deployment_spec_replicas)
+                  or
+                  count by (namespace) (kube_deployment_status_condition{condition="Progressing", status="false"} == 1)
+                  or
+                  count by (namespace) (kube_statefulset_status_replicas_ready < kube_statefulset_status_replicas)
+                  or
+                  count by (namespace) (kube_daemonset_status_number_unavailable > 0)
+                  or
+                  count by (namespace) (
+                    (kube_job_status_condition{condition="Failed", status="true"} == 1)
+                    and on (namespace, job_name)
+                    ((time() - kube_job_created) <= 21600)
+                  )
+                ),
+                "dest_namespace", "$1", "namespace", "(.+)"
+              )
+
           - alert: ArgoCDAppDegraded
-            expr: argocd_app_info{health_status="Degraded"} == 1
+            expr: |
+              (argocd_app_info{health_status="Degraded", name!~".+-staging(-.+)?"} == 1)
+              unless on (dest_namespace)
+              argocd:namespace_degraded_only_by_stale_failed_jobs
             for: 5m
             labels:
               severity: critical
@@ -787,8 +852,31 @@ data:
               summary: "ArgoCD application degraded"
               description: "Application {{ $labels.name }} health status is Degraded."
 
+          - alert: ArgoCDAppDegradedByStaleFailedJobs
+            expr: |
+              (argocd_app_info{health_status="Degraded", name!~".+-staging(-.+)?"} == 1)
+              and on (dest_namespace)
+              argocd:namespace_degraded_only_by_stale_failed_jobs
+            for: 5m
+            labels:
+              severity: warning
+              service: argocd
+            annotations:
+              summary: "ArgoCD application degraded only by Jobs that failed over 6h ago"
+              description: "Application {{ $labels.name }} is Degraded, and the only cause found in {{ $labels.dest_namespace }} is Jobs that ended Failed more than 6h ago; every Deployment, StatefulSet and DaemonSet there has its replicas and no rollout is stuck. Delete the stale failed Jobs once read (enclii ops pods diagnose -n {{ $labels.dest_namespace }}), and set ttlSecondsAfterFinished in the product repo."
+
+          - alert: ArgoCDStagingAppDegraded
+            expr: argocd_app_info{health_status="Degraded", name=~".+-staging(-.+)?"} == 1
+            for: 30m
+            labels:
+              severity: warning
+              service: argocd
+            annotations:
+              summary: "ArgoCD staging application degraded"
+              description: "Staging application {{ $labels.name }} health status is Degraded. Staging never pages; fix it or retire it."
+
           - alert: ArgoCDAppMissing
-            expr: argocd_app_info{health_status="Missing"} == 1
+            expr: argocd_app_info{health_status="Missing", name!~".+-staging(-.+)?"} == 1
             for: 5m
             labels:
               severity: critical
@@ -796,6 +884,16 @@ data:
             annotations:
               summary: "ArgoCD application missing"
               description: "Application {{ $labels.name }} health status is Missing."
+
+          - alert: ArgoCDStagingAppMissing
+            expr: argocd_app_info{health_status="Missing", name=~".+-staging(-.+)?"} == 1
+            for: 30m
+            labels:
+              severity: warning
+              service: argocd
+            annotations:
+              summary: "ArgoCD staging application missing"
+              description: "Staging application {{ $labels.name }} health status is Missing. Staging never pages; fix it or retire it."
 
           # Sync Failures
           - alert: ArgoCDSyncFailed
@@ -1127,10 +1225,16 @@ data:
 
           # 7-day window — explicit catch for the long-tail crash-loops
           # the audit found rotting in the cluster.
+          #
+          # Staging namespaces are excluded from this critical rule
+          # (money-machine audit 2026-10-11, M2 F6/F13): karafiel-staging's
+          # admin at 1,104 restarts paged every 4h. PodChronicRestart24h above
+          # (warning, every namespace) still reports a staging crash loop in
+          # the digest.
           - alert: PodChronicRestart7d
             expr: |
               sum by (namespace, pod) (
-                increase(kube_pod_container_status_restarts_total[7d])
+                increase(kube_pod_container_status_restarts_total{namespace!~".+-staging"}[7d])
               ) > 200
             for: 30m
             labels:
