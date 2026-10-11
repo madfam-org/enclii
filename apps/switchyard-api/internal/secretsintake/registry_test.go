@@ -12,7 +12,7 @@ import (
 func TestLoadRegistry(t *testing.T) {
 	reg, err := LoadRegistry()
 	require.NoError(t, err)
-	assert.Len(t, reg, 66)
+	assert.Len(t, reg, 67)
 	assert.Contains(t, reg, "ceq/vast-api-key")
 	assert.Contains(t, reg, "karafiel/web-oidc-janua")
 	adminSession := reg["karafiel/admin-session"]
@@ -37,7 +37,7 @@ func TestGetTarget(t *testing.T) {
 func TestListTargetsSorted(t *testing.T) {
 	list, err := ListTargets()
 	require.NoError(t, err)
-	require.Len(t, list, 66)
+	require.Len(t, list, 67)
 	for i := 1; i < len(list); i++ {
 		assert.Less(t, list[i-1].ID, list[i].ID, "targets should be sorted by id")
 	}
@@ -71,6 +71,7 @@ func TestListTargetsSorted(t *testing.T) {
 		"dhanam/session-auth",
 		"dhanam/stripe-mx-live",
 		"digifab-quoting/pravara-intake",
+		"digifab-quoting/web-session",
 		"enclii/internal-api-key",
 		"family-history/api-access",
 		"family-history/web-oidc",
@@ -683,4 +684,29 @@ func TestMonitoringAlertmanagerSMTPTarget(t *testing.T) {
 	// never to pass --generate (the API does not refuse it, see SECRET_INTAKE.md).
 	assert.Nil(t, tgt.Generate)
 	assert.Contains(t, tgt.Description, "never generated")
+}
+
+// Cotiza web NextAuth secret (2026-10-11). digifab-quoting-secrets is projected
+// by enclii's kubernetes-store ExternalSecret, so the intake cannot reach it:
+// the value gets a dedicated ExternalSecret and exactly one write route,
+// --generate nextauth_secret. Pinned so a rename is a test failure, not a write
+// to a property digifab-quoting-web-session does not map (ESO syncs all of an
+// ExternalSecret's keys or none).
+func TestDigifabQuotingWebSessionTarget(t *testing.T) {
+	tgt, err := GetTarget("digifab-quoting/web-session")
+	require.NoError(t, err)
+	assert.Equal(t, "secret/digifab-quoting", tgt.VaultPath)
+	assert.Equal(t, "digifab-quoting", tgt.Namespace)
+	assert.Equal(t, "digifab-quoting-web-session", tgt.ExternalSecret)
+	assert.NotEqual(t, "digifab-quoting-secrets", tgt.ExternalSecret,
+		"digifab-quoting-secrets is projected from ecosystem-service-auth; intake cannot reach it")
+	assert.Equal(t, []string{"nextauth_secret"}, tgt.Keys,
+		"one key, so --generate mints it without prompting for anything else")
+	for _, k := range tgt.Keys {
+		assert.Equal(t, strings.ToLower(k), k, "Vault stores lowercase; an upper-case key would never match the ExternalSecret property")
+	}
+	assert.NotEmpty(t, tgt.Label)
+	assert.NotEmpty(t, tgt.Description)
+	// NEXTAUTH_SECRET must carry at least 32 bytes when minted with --generate.
+	assert.GreaterOrEqual(t, tgt.GenerateBytes(), 32)
 }
