@@ -119,6 +119,21 @@ targets:
       - NEXT_PUBLIC_POSTHOG_KEY
       - SENTRY_DSN
 
+  # Banxico SIE token (2026-10-11, money-machine M2 F2): the pre-#816
+  # dhanam-api logged raw Axios errors, which printed ?token=<value> in the api
+  # pod logs, so the token is due for rotation. Production reads it through
+  # ExternalSecret dhanam-secrets-extended (secret/dhanam property
+  # banxico_api_token -> Secret dhanam-secrets key BANXICO_API_TOKEN). The
+  # value comes from Banxico's SIE portal, so it is submitted, not generated.
+  dhanam/banxico:
+    label: Dhanam Banxico SIE token
+    description: Banxico SIE API token for Dhanam's USD/MXN rates (secret/dhanam property banxico_api_token -> BANXICO_API_TOKEN on dhanam-api). Issued by Banxico's SIE portal; rotate after any log exposure.
+    vault_path: secret/dhanam
+    namespace: dhanam
+    external_secret: dhanam-secrets-extended  # pragma: allowlist secret
+    keys:
+      - banxico_api_token
+
   platform/comms-resend-api-key:
     label: MADFAM shared Resend API key
     description: Single org Resend account — canonical in secret/comms; fan-out via ESO to janua, phynd-crm, madfam-site
