@@ -22,8 +22,9 @@ Two layers, the same split as tests/scripts/test_check_alertmanager_config.py:
 
   1. STRUCTURAL (always runs). Reads the rules straight out of the ConfigMap,
      so what is tested is byte-for-byte what Prometheus loads. Pins that the
-     five selectors are identical, that `voxa` is covered, and that
-     `voxa-staging` is not.
+     five selectors are identical, that `voxa` and the seven revenue
+     namespaces added 2026-10-11 are covered, and that `voxa-staging` and the
+     `enclii-*-staging` namespaces are not.
 
   2. promtool (runs when `promtool` is on PATH or ENCLII_PROMTOOL is set).
      Evaluates the real rule with Prometheus's own engine: a voxa Deployment
@@ -59,6 +60,23 @@ EXPECTED_RULES = {
 }
 
 NAMESPACE_SELECTOR = re.compile(r'namespace=~"([^"]+)"')
+# The staging exclusion every selector carries next to the inclusion. PromQL
+# accepts two matchers on one label and a series must satisfy both.
+NAMESPACE_EXCLUSION = re.compile(r'namespace!~"([^"]+)"')
+STAGING_EXCLUSION = ".+-staging"
+
+# The seven revenue namespaces that were uncovered until 2026-10-11
+# (money-machine audit M2 F5). Names are the Argo applications' resource
+# namespaces, read from `enclii ops apps status --json`.
+REVENUE_NAMESPACES_ADDED_2026_10_11 = [
+    "digifab-quoting",
+    "yantra4d",
+    "kalya",
+    "madfam-site",
+    "avala",
+    "factlas",
+    "routecraft",
+]
 
 
 @lru_cache(maxsize=1)
@@ -85,10 +103,23 @@ def _selectors(expr: str) -> list[str]:
     return NAMESPACE_SELECTOR.findall(expr)
 
 
-def _covered(selector: str, namespace: str) -> bool:
-    # PromQL `=~` is fully anchored (RE2, implicit ^...$), which fullmatch
-    # reproduces for this plain alternation.
-    return re.fullmatch(selector, namespace) is not None
+def _exclusions(expr: str) -> list[str]:
+    return NAMESPACE_EXCLUSION.findall(expr)
+
+
+def _covered(selector: str, namespace: str, exclusion: str | None = None) -> bool:
+    # PromQL `=~` and `!~` are fully anchored (RE2, implicit ^...$), which
+    # fullmatch reproduces for these plain alternations.
+    if re.fullmatch(selector, namespace) is None:
+        return False
+    return exclusion is None or re.fullmatch(exclusion, namespace) is None
+
+
+def _deployment_unavailable_matchers() -> tuple[str, str]:
+    expr = _client_slo_rules()["ClientDeploymentUnavailable"]["expr"]
+    (selector,) = set(_selectors(expr))
+    (exclusion,) = set(_exclusions(expr))
+    return selector, exclusion
 
 
 # ---------------------------------------------------------------------------
@@ -113,6 +144,17 @@ def test_every_rule_uses_one_identical_namespace_selector():
     )
 
 
+def test_every_selector_carries_the_staging_exclusion():
+    """`enclii-.*` matches `enclii-<app>-staging`; each inclusion needs its pair."""
+    for name, rule in _client_slo_rules().items():
+        sels, excls = _selectors(rule["expr"]), _exclusions(rule["expr"])
+        assert len(excls) == len(sels), (
+            f"{name}: {len(sels)} namespace=~ selectors but {len(excls)} "
+            f'namespace!~"{STAGING_EXCLUSION}" exclusions'
+        )
+        assert set(excls) == {STAGING_EXCLUSION}, f"{name}: {excls}"
+
+
 def test_client_deployment_unavailable_pages():
     rule = _client_slo_rules()["ClientDeploymentUnavailable"]
     assert rule["labels"]["severity"] == "critical"
@@ -124,18 +166,32 @@ def test_client_deployment_unavailable_pages():
 
 @pytest.mark.parametrize(
     "namespace",
-    ["voxa", "nauta", "janua", "selva", "pravara-mes", "enclii-x", "project-x"],
+    ["voxa", "nauta", "janua", "selva", "pravara-mes", "enclii-x", "project-x"]
+    + REVENUE_NAMESPACES_ADDED_2026_10_11,
 )
 def test_production_client_namespaces_are_covered(namespace):
-    (selector,) = set(_selectors(_client_slo_rules()["ClientDeploymentUnavailable"]["expr"]))
-    assert _covered(selector, namespace)
+    selector, exclusion = _deployment_unavailable_matchers()
+    assert _covered(selector, namespace, exclusion)
 
 
-@pytest.mark.parametrize("namespace", ["voxa-staging", "voxa-preview", "xvoxa"])
-def test_voxa_staging_and_lookalikes_are_not_covered(namespace):
+@pytest.mark.parametrize(
+    "namespace",
+    [
+        "voxa-staging",
+        "voxa-preview",
+        "xvoxa",
+        # `enclii-.*` matched these two until the exclusion was added.
+        "enclii-dhanam-staging",
+        "enclii-karafiel-staging",
+        "project-x-staging",
+        "kalya-staging",
+        "digifab-quoting-staging",
+    ],
+)
+def test_staging_and_lookalikes_are_not_covered(namespace):
     """Staging can serve an old build for weeks; it must not page."""
-    (selector,) = set(_selectors(_client_slo_rules()["ClientDeploymentUnavailable"]["expr"]))
-    assert not _covered(selector, namespace)
+    selector, exclusion = _deployment_unavailable_matchers()
+    assert not _covered(selector, namespace, exclusion)
 
 
 # ---------------------------------------------------------------------------
@@ -165,15 +221,34 @@ PROMTOOL_TEST = textwrap.dedent(
             values: '2x10'
           - series: 'kube_deployment_status_replicas_available{namespace="voxa-staging",deployment="voxa-web"}'
             values: '1x10'
+          # Cotiza production (added 2026-10-11): web has 0 of 1 available.
+          - series: 'kube_deployment_spec_replicas{namespace="digifab-quoting",deployment="digifab-quoting-web"}'
+            values: '1x10'
+          - series: 'kube_deployment_status_replicas_available{namespace="digifab-quoting",deployment="digifab-quoting-web"}'
+            values: '0x10'
+          # A staging namespace that `enclii-.*` matches: must NOT fire.
+          - series: 'kube_deployment_spec_replicas{namespace="enclii-karafiel-staging",deployment="karafiel-admin"}'
+            values: '1x10'
+          - series: 'kube_deployment_status_replicas_available{namespace="enclii-karafiel-staging",deployment="karafiel-admin"}'
+            values: '0x10'
         alert_rule_test:
           # Pending, not firing, before `for: 5m` elapses.
           - eval_time: 4m
             alertname: ClientDeploymentUnavailable
             exp_alerts: []
-          # Exactly one alert: voxa/voxa-web. voxa-staging is absent.
+          # Exactly two alerts: digifab-quoting and voxa/voxa-web. Neither
+          # voxa-staging nor enclii-karafiel-staging fires.
           - eval_time: 6m
             alertname: ClientDeploymentUnavailable
             exp_alerts:
+              - exp_labels:
+                  severity: critical
+                  category: client-slo
+                  namespace: digifab-quoting
+                  deployment: digifab-quoting-web
+                exp_annotations:
+                  summary: "Deployment digifab-quoting-web unavailable in digifab-quoting"
+                  description: "Available replicas (0) < desired for 5m."
               - exp_labels:
                   severity: critical
                   category: client-slo
@@ -188,7 +263,7 @@ PROMTOOL_TEST = textwrap.dedent(
 PROMTOOL_TIMEOUT_SECONDS = int(os.environ.get("ENCLII_PROMTOOL_TIMEOUT", "180"))
 
 
-def test_promtool_voxa_fires_and_voxa_staging_does_not():
+def test_promtool_production_fires_and_staging_does_not():
     template = os.environ.get("ENCLII_PROMTOOL")
     if not template and not shutil.which("promtool"):
         pytest.skip(
