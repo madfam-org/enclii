@@ -474,6 +474,30 @@ def test_informational_severities_go_to_a_sink():
     assert [k for k in recv if k.endswith("_configs")] == []
 
 
+def test_courier_receiver_down_mutes_watchdog_so_the_heartbeat_pages():
+    """CourierReceiverDown's non-email backstop (money-machine audit M2 F7).
+
+    CourierReceiverDown is delivered by email only. While it fires, the
+    always-firing Watchdog must be muted, so the beats to the outside
+    heartbeat Worker stop and the Worker pages Telegram directly. The rule
+    must name exactly those two alerts and carry no `equal`: Watchdog and
+    CourierReceiverDown share no label that would make `equal` match, so an
+    `equal` would silently disable the backstop.
+    """
+    cfg = _live_alertmanager_config()
+    rules = [
+        r for r in cfg.get("inhibit_rules") or []
+        if 'alertname="CourierReceiverDown"' in [str(m) for m in r.get("source_matchers") or []]
+    ]
+    assert len(rules) == 1, f"expected one CourierReceiverDown inhibit rule, got {rules!r}"
+    (rule,) = rules
+    assert [str(m) for m in rule.get("target_matchers") or []] == ['alertname="Watchdog"']
+    assert not rule.get("equal"), "an `equal` list would never match Watchdog"
+    # The backstop only reaches a person through the heartbeat; it must never
+    # mute anything that pages.
+    assert not rule.get("target_match") and not rule.get("target_match_re")
+
+
 def test_watchdog_is_routed_to_a_sink_above_the_severity_routes():
     """Watchdog always fires; it must be visible in Alertmanager, not delivered.
 
