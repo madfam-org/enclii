@@ -35,6 +35,11 @@ resources:
   # Deployment that was never created — which is exactly how the first
   # attempt (#388) shipped and looked like it had worked.
   - kube-state-metrics.yaml
+  # Synthetic HTTP probes of the revenue flows (money-machine audit
+  # 2026-10-11). Targets: the `blackbox-revenue` scrape job in prometheus.yaml;
+  # rules: its `revenue-probes` group. Same lesson as the line above: the file
+  # does nothing unless it is listed here.
+  - blackbox-exporter.yaml
   - network-policies.yaml
   # Per-addon managed-database alerts (backup age, WAL archive freshness).
   # A PrometheusRule, so it is evaluated by the `rules-eval` Prometheus in

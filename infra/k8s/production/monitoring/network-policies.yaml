@@ -476,3 +476,62 @@ spec:
     ports:
     - protocol: TCP
       port: 3000
+---
+# Blackbox exporter ingress: the main Prometheus only, on the probe port. It
+# is the exporter's one client (the `blackbox-revenue` scrape job); nothing
+# else needs to ask it to probe anything.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: blackbox-exporter-ingress
+  namespace: monitoring
+  labels:
+    app.kubernetes.io/name: blackbox-exporter
+    app.kubernetes.io/component: monitoring
+    app.kubernetes.io/part-of: enclii
+spec:
+  podSelector:
+    matchLabels:
+      app: blackbox-exporter
+  policyTypes:
+  - Ingress
+  ingress:
+  - from:
+    - podSelector:
+        matchLabels:
+          app: prometheus
+    ports:
+    - protocol: TCP
+      port: 9115
+---
+# Blackbox exporter egress: DNS, and HTTPS to the public revenue hostnames.
+# The probes deliberately leave through the public edge (Cloudflare, then back
+# in through the tunnel) so they see what a customer sees; that needs 443 to
+# any address, like grafana-egress's OIDC rule. Only 443: every module sets
+# fail_if_not_ssl, so a plain-HTTP target fails rather than needing port 80.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: blackbox-exporter-egress
+  namespace: monitoring
+  labels:
+    app.kubernetes.io/name: blackbox-exporter
+    app.kubernetes.io/component: monitoring
+    app.kubernetes.io/part-of: enclii
+spec:
+  podSelector:
+    matchLabels:
+      app: blackbox-exporter
+  policyTypes:
+  - Egress
+  egress:
+  # DNS
+  - to: []
+    ports:
+    - protocol: UDP
+      port: 53
+  # Public HTTPS (the probe targets)
+  - to: []
+    ports:
+    - protocol: TCP
+      port: 443

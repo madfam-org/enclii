@@ -1,0 +1,220 @@
+---
+# Blackbox exporter: synthetic HTTP probes of the revenue flows.
+# ----------------------------------------------------------------------------
+# WHY (money-machine audit 2026-10-11, M2 F1/F2/F5). Until this file, nothing
+# in this Prometheus probed an application over HTTP. Every revenue alert was
+# replica-based (ClientDeploymentUnavailable) or app-supplied, so an app that
+# answered 500 behind Ready pods paged nobody:
+#   - cotiza.studio served its front page while every /api/* path returned 500
+#     (the web proxy pointed at localhost:4000) and the quote flow was down;
+#   - api.dhan.am priced USD/MXN off its hardcoded emergency table
+#     (`"source":"emergency_fallback"`) while /health answered 200.
+# Argo read both apps Healthy. The status page polls but does not page.
+#
+# WHAT. One stateless exporter. Prometheus calls it with ?target=<url>&module=
+# from the `blackbox-revenue` scrape job in prometheus.yaml (prometheus-config
+# ConfigMap), and the `revenue-probes` rule group in the same file pages on
+# the result, `severity: critical`, so it reaches critical-receiver (Courier +
+# email). The probes go out through the PUBLIC hostnames, through Cloudflare
+# and the tunnel, the same path a customer's browser takes. That is the point:
+# the cotiza failure was invisible from inside the cluster's Service network.
+#
+# Probe targets are NOT listed here; they live with the scrape job, next to
+# the rules that read them. This file only defines HOW to probe (modules).
+#
+# COST. requests 10m CPU / 32Mi, limits 100m CPU / 128Mi; ~20 GETs a minute
+# out to the public edge; ~20 x 15 series in Prometheus (probe_* per target).
+# monitoring-quota headroom (namespace.yaml): limits.cpu peak 5.5 -> 5.6 of 6,
+# limits.memory ~15.0Gi -> ~15.1Gi of 16Gi, requests well inside 2 CPU / 8Gi.
+#
+# Image: the upstream release, pinned by digest (multi-arch index), like every
+# other third-party image in this namespace. monitoring-policy-exception.yaml
+# already admits quay.io Deployments here.
+# ----------------------------------------------------------------------------
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: blackbox-exporter-config
+  namespace: monitoring
+  labels:
+    app.kubernetes.io/name: blackbox-exporter
+    app.kubernetes.io/component: monitoring
+    app.kubernetes.io/part-of: enclii
+data:
+  config.yml: |
+    # Every module:
+    #   - GET over IPv4, TLS required (fail_if_not_ssl);
+    #   - redirects are NOT followed: a health URL that starts redirecting
+    #     (to a login page, to a locale) is a broken health URL, and following
+    #     it would score the login page's 200 as healthy;
+    #   - a fixed User-Agent so the probe is recognisable in edge and app logs;
+    #   - 10s timeout, inside the scrape job's 15s scrape_timeout.
+    modules:
+      # 2xx and a JSON-ish status field. The body check exists because some
+      # SPAs answer 200 with index.html for ANY path, /api/health included
+      # (factl.as and yantra4d.com do today), and that would read as healthy.
+      http_2xx_json:
+        prober: http
+        timeout: 10s
+        http:
+          method: GET
+          preferred_ip_protocol: ip4
+          follow_redirects: false
+          fail_if_not_ssl: true
+          headers:
+            User-Agent: "madfam-revenue-probe/1.0 (+https://github.com/madfam-org/enclii)"
+          fail_if_body_not_matches_regexp:
+            - '"(status|ok)"\s*:'
+
+      # An authenticated API route answering 401 to an anonymous GET: the
+      # route exists, the app is up, and auth is enforced. A 5xx, a timeout,
+      # a 404 (route gone) or a 200 (auth gone) all fail.
+      http_401:
+        prober: http
+        timeout: 10s
+        http:
+          method: GET
+          preferred_ip_protocol: ip4
+          follow_redirects: false
+          fail_if_not_ssl: true
+          valid_status_codes: [401]
+          headers:
+            User-Agent: "madfam-revenue-probe/1.0 (+https://github.com/madfam-org/enclii)"
+
+      # Dhanam's public billing catalog: 2xx and at least one product.
+      http_dhanam_catalog:
+        prober: http
+        timeout: 10s
+        http:
+          method: GET
+          preferred_ip_protocol: ip4
+          follow_redirects: false
+          fail_if_not_ssl: true
+          headers:
+            User-Agent: "madfam-revenue-probe/1.0 (+https://github.com/madfam-org/enclii)"
+          fail_if_body_not_matches_regexp:
+            - '"products"\s*:\s*\[\s*\{'
+
+      # Dhanam FX health: 2xx, and the test rate must NOT come from the
+      # hardcoded emergency table. A body match sets
+      # probe_failed_due_to_regex=1, which the DhanamFXEmergencyFallback rule
+      # reads, so "FX is on the emergency table" pages as itself and not as
+      # "endpoint down". Only this one regex is configured, on purpose: a
+      # second one would make probe_failed_due_to_regex ambiguous.
+      http_dhanam_fx:
+        prober: http
+        timeout: 10s
+        http:
+          method: GET
+          preferred_ip_protocol: ip4
+          follow_redirects: false
+          fail_if_not_ssl: true
+          headers:
+            User-Agent: "madfam-revenue-probe/1.0 (+https://github.com/madfam-org/enclii)"
+          fail_if_body_matches_regexp:
+            - '"source"\s*:\s*"emergency_fallback"'
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: blackbox-exporter
+  namespace: monitoring
+  labels:
+    app.kubernetes.io/name: blackbox-exporter
+    app.kubernetes.io/component: monitoring
+    app.kubernetes.io/part-of: enclii
+  annotations:
+    # Roll the pod when the module ConfigMap changes.
+    reloader.stakater.com/auto: "true"
+spec:
+  # One replica: the exporter is stateless and Prometheus is its only client.
+  # While it is down every probe series goes absent, which is exactly what
+  # RevenueProbesNotRunning pages on, so the gap is never silent.
+  replicas: 1
+  revisionHistoryLimit: 3
+  selector:
+    matchLabels:
+      app: blackbox-exporter
+  template:
+    metadata:
+      labels:
+        app: blackbox-exporter
+        app.kubernetes.io/name: blackbox-exporter
+        app.kubernetes.io/component: monitoring
+        app.kubernetes.io/part-of: enclii
+    spec:
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 65534
+        runAsGroup: 65534
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: blackbox-exporter
+          image: quay.io/prometheus/blackbox-exporter:v0.28.0@sha256:e753ff9f3fc458d02cca5eddab5a77e1c175eee484a8925ac7d524f04366c2fc
+          imagePullPolicy: IfNotPresent
+          args:
+            - --config.file=/etc/blackbox_exporter/config.yml
+            - --web.listen-address=:9115
+          ports:
+            - containerPort: 9115
+              name: http
+              protocol: TCP
+          readinessProbe:
+            httpGet:
+              path: /-/healthy
+              port: http
+            initialDelaySeconds: 5
+            periodSeconds: 10
+            timeoutSeconds: 3
+            failureThreshold: 3
+          livenessProbe:
+            httpGet:
+              path: /-/healthy
+              port: http
+            initialDelaySeconds: 15
+            periodSeconds: 30
+            timeoutSeconds: 3
+            failureThreshold: 3
+          resources:
+            requests:
+              cpu: 10m
+              memory: 32Mi
+            limits:
+              cpu: 100m
+              memory: 128Mi
+          securityContext:
+            privileged: false
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop:
+                - ALL
+          volumeMounts:
+            - name: config
+              mountPath: /etc/blackbox_exporter
+              readOnly: true
+      volumes:
+        - name: config
+          configMap:
+            name: blackbox-exporter-config
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: blackbox-exporter
+  namespace: monitoring
+  labels:
+    app.kubernetes.io/name: blackbox-exporter
+    app.kubernetes.io/component: monitoring
+    app.kubernetes.io/part-of: enclii
+spec:
+  type: ClusterIP
+  ports:
+    - port: 9115
+      targetPort: http
+      protocol: TCP
+      name: http
+  selector:
+    app: blackbox-exporter
