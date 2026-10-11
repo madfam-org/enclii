@@ -464,7 +464,12 @@ data:
           # quote call failed (F1). /api/health crosses the proxy to the
           # API's /health. /quotes is the route the quote flow calls; an
           # anonymous GET must answer 401 (route present, auth enforced).
-          - targets: ['https://cotiza.studio/api/health']
+          # Until Cotiza's NextAuth secret is provisioned (digifab-quoting#81),
+          # /api/health answers 503 by design ("nextauth_secret_missing") and
+          # would page on arrival. The guest-quote list through the same web
+          # proxy answers 200 JSON today. Switch back to /api/health once #81
+          # has merged and /api/health returns 200.
+          - targets: ['https://cotiza.studio/api/v1/guest/quotes']
             labels: {product: cotiza, flow: web-api-proxy, target_namespace: digifab-quoting, check: availability, module: http_2xx_json}
           - targets: ['https://cotiza.studio/api/quotes']
             labels: {product: cotiza, flow: quote-via-web, target_namespace: digifab-quoting, check: availability, module: http_401}
