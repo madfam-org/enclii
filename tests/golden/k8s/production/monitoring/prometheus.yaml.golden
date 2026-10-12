@@ -432,6 +432,97 @@ data:
           - source_labels: [__meta_kubernetes_service_annotation_prometheus_io_scrape]
             action: keep
             regex: true
+
+      # Synthetic HTTP probes of the revenue flows (money-machine audit
+      # 2026-10-11, M2 F1/F2/F5), through blackbox-exporter.yaml. Each target
+      # is a PUBLIC URL, probed through Cloudflare and the tunnel like a
+      # customer's browser; `module` picks how it is judged (the modules are
+      # defined and explained in blackbox-exporter.yaml). The
+      # `revenue-probes` rule group (revenue-probe-rules.yml below) pages on
+      # the results.
+      #
+      # Labels on every target:
+      #   product           what pages ("cotiza", "dhanam", ...)
+      #   flow              which path of it: api, web, quote, fx, ...
+      #   target_namespace  where to look first (enclii ops pods diagnose -n)
+      #   check             availability, or fx-source for the one probe whose
+      #                     body regex has its own alert
+      #   module            the blackbox module (also sent as ?module=)
+      #
+      # Adding a target: use a URL that answers 2xx JSON with a "status" or
+      # "ok" field WITHOUT a redirect (curl -sS -o /dev/null -w '%{http_code}'
+      # must print 200 on the exact URL), and add it to
+      # tests/scripts/test_revenue_probe_rules.py's expectations. No client
+      # hostnames: this repo is public.
+      - job_name: 'blackbox-revenue'
+        metrics_path: /probe
+        scrape_interval: 60s
+        scrape_timeout: 15s
+        static_configs:
+          # Cotiza. The web app's /api/* is a proxy to the API; when it
+          # pointed at localhost:4000 the front page stayed 200 and every
+          # quote call failed (F1). /api/health crosses the proxy to the
+          # API's /health. /quotes is the route the quote flow calls; an
+          # anonymous GET must answer 401 (route present, auth enforced).
+          # Until Cotiza's NextAuth secret is provisioned (digifab-quoting#81),
+          # /api/health answers 503 by design ("nextauth_secret_missing") and
+          # would page on arrival. The guest-quote list through the same web
+          # proxy answers 200 JSON today. Switch back to /api/health once #81
+          # has merged and /api/health returns 200.
+          - targets: ['https://cotiza.studio/api/v1/guest/quotes']
+            labels: {product: cotiza, flow: web-api-proxy, target_namespace: digifab-quoting, check: availability, module: http_2xx_json}
+          - targets: ['https://cotiza.studio/api/quotes']
+            labels: {product: cotiza, flow: quote-via-web, target_namespace: digifab-quoting, check: availability, module: http_401}
+          - targets: ['https://api.cotiza.studio/quotes']
+            labels: {product: cotiza, flow: quote, target_namespace: digifab-quoting, check: availability, module: http_401}
+          - targets: ['https://api.cotiza.studio/health/ready']
+            labels: {product: cotiza, flow: api, target_namespace: digifab-quoting, check: availability, module: http_2xx_json}
+          # Dhanam: the API, the public billing catalog checkout reads, and
+          # the FX rail. The FX probe fails on `"source":"emergency_fallback"`
+          # (the hardcoded table, never authoritative), F2.
+          - targets: ['https://api.dhan.am/health']
+            labels: {product: dhanam, flow: api, target_namespace: dhanam, check: availability, module: http_2xx_json}
+          - targets: ['https://api.dhan.am/v1/billing/catalog']
+            labels: {product: dhanam, flow: billing-catalog, target_namespace: dhanam, check: availability, module: http_dhanam_catalog}
+          - targets: ['https://api.dhan.am/v1/fx-rates/health']
+            labels: {product: dhanam, flow: fx, target_namespace: dhanam, check: fx-source, module: http_dhanam_fx}
+          # The other revenue products' health endpoints. Where a product's
+          # apex serves an SPA that answers 200 index.html for any path
+          # (factl.as, yantra4d.com), the API host is probed instead.
+          - targets: ['https://api.yantra4d.com/api/health']
+            labels: {product: yantra4d, flow: api, target_namespace: yantra4d, check: availability, module: http_2xx_json}
+          - targets: ['https://kalya.app/api/health']
+            labels: {product: kalya, flow: web, target_namespace: kalya, check: availability, module: http_2xx_json}
+          - targets: ['https://madfam.io/api/health']
+            labels: {product: madfam-site, flow: web, target_namespace: madfam-site, check: availability, module: http_2xx_json}
+          - targets: ['https://api.avala.studio/v1/health']
+            labels: {product: avala, flow: api, target_namespace: avala, check: availability, module: http_2xx_json}
+          - targets: ['https://app.avala.studio/api/health']
+            labels: {product: avala, flow: web, target_namespace: avala, check: availability, module: http_2xx_json}
+          - targets: ['https://api.factl.as/health']
+            labels: {product: factlas, flow: api, target_namespace: factlas, check: availability, module: http_2xx_json}
+          - targets: ['https://routecraft.app/api/health']
+            labels: {product: routecraft, flow: web, target_namespace: routecraft, check: availability, module: http_2xx_json}
+          - targets: ['https://auth.madfam.io/health']
+            labels: {product: janua, flow: api, target_namespace: janua, check: availability, module: http_2xx_json}
+          # Trailing slash required: /api/v1/health answers 301.
+          - targets: ['https://api.karafiel.mx/api/v1/health/']
+            labels: {product: karafiel, flow: api, target_namespace: karafiel, check: availability, module: http_2xx_json}
+          - targets: ['https://api.selva.town/health']
+            labels: {product: selva, flow: api, target_namespace: selva, check: availability, module: http_2xx_json}
+          - targets: ['https://api.tezca.mx/health']
+            labels: {product: tezca, flow: api, target_namespace: tezca, check: availability, module: http_2xx_json}
+          - targets: ['https://app.nauta.quest/health']
+            labels: {product: nauta, flow: web, target_namespace: nauta, check: availability, module: http_2xx_json}
+        relabel_configs:
+          - source_labels: [__address__]
+            target_label: __param_target
+          - source_labels: [module]
+            target_label: __param_module
+          - source_labels: [__param_target]
+            target_label: instance
+          - target_label: __address__
+            replacement: blackbox-exporter.monitoring.svc:9115
 ---
 # Alert Rules ConfigMap
 apiVersion: v1
@@ -2103,6 +2194,116 @@ data:
                 may be broken. Check:
                   kubectl -n cloudflare-tunnel get pod -l app=synthetic-flow-probe
                   kubectl -n cloudflare-tunnel logs deploy/synthetic-flow-probe --tail=50
+
+  # =========================================================================
+  # Revenue probes (money-machine audit 2026-10-11, M2 F1/F2/F5). Reads the
+  # `blackbox-revenue` scrape job above (targets) and blackbox-exporter.yaml
+  # (modules). All three page: a revenue flow failing, Dhanam pricing off its
+  # hardcoded FX table, and the prober itself gone, which would otherwise
+  # look exactly like "everything is fine".
+  #
+  # Expected on arrival, from the 2026-10-11 state (both are real, live
+  # faults this group exists to catch, not noise):
+  #   RevenueEndpointDown  cotiza web-api-proxy and quote-via-web, until the
+  #                        Cotiza web build fix (F1) ships;
+  #   DhanamFXEmergencyFallback  until Dhanam's FX source is restored (F2).
+  #
+  # The one-alertname-per-condition shape keeps one page per condition:
+  # Alertmanager groups critical alerts by alertname, and Courier pages once
+  # per alertname per hour, so twenty endpoints failing together (the tunnel
+  # down, say; CloudflaredTunnelDown fires too) are one RevenueEndpointDown
+  # page listing them, not twenty.
+  #
+  # Annotations use $labels and $value only: no `query` template functions.
+  # =========================================================================
+  revenue-probe-rules.yml: |
+    groups:
+      - name: revenue-probes
+        interval: 30s
+        rules:
+          # Any revenue probe failing for 3 minutes (three 60s probes in a
+          # row): a 5xx, a timeout, a TLS failure, a redirect, a wrong status
+          # (e.g. 200 where 401 is expected) or a body that fails its check.
+          # The FX source probe's REGEX failure is excluded here because it
+          # has its own alert below; that probe's HTTP failure still counts.
+          - alert: RevenueEndpointDown
+            expr: |
+              probe_success{job="blackbox-revenue"} == 0
+              unless on (instance)
+              (probe_failed_due_to_regex{job="blackbox-revenue", check="fx-source"} == 1)
+            for: 3m
+            labels:
+              severity: critical
+              category: revenue-probe
+            annotations:
+              summary: "{{ $labels.product }} {{ $labels.flow }} is failing: {{ $labels.instance }}"
+              description: |
+                The synthetic probe of {{ $labels.instance }} (product
+                {{ $labels.product }}, flow {{ $labels.flow }}, blackbox module
+                {{ $labels.module }}) has failed for 3 minutes. It probes the
+                public URL, through Cloudflare and the tunnel, as a customer
+                would. Argo and the replica alerts can read healthy while this
+                fires: that is the failure it exists to catch.
+
+                Triage:
+                  1. Reproduce: curl -sS -o /dev/null -w '%{http_code}\n' '{{ $labels.instance }}'
+                     (the module's pass condition is in
+                     infra/k8s/production/monitoring/blackbox-exporter.yaml).
+                  2. Pods and logs: enclii ops pods diagnose -n {{ $labels.target_namespace }}
+                  3. If many products fail at once, check CloudflaredTunnelDown
+                     first: the probes share the public edge path.
+                In Grafana: probe_http_status_code{instance="{{ $labels.instance }}"}.
+
+          # Dhanam is pricing off its hardcoded emergency FX table. The
+          # endpoint is up (HTTP 2xx), so nothing else pages, but every
+          # USD/MXN conversion uses a fixed estimate. 15 minutes so a single
+          # provider blip between the 15-minute spot refreshes does not page.
+          - alert: DhanamFXEmergencyFallback
+            expr: |
+              probe_failed_due_to_regex{job="blackbox-revenue", check="fx-source"} == 1
+            for: 15m
+            labels:
+              severity: critical
+              category: revenue-probe
+              service: dhanam
+            annotations:
+              summary: "Dhanam FX is serving the hardcoded emergency rate table"
+              description: |
+                {{ $labels.instance }} reports `"source":"emergency_fallback"`
+                for 15 minutes: no provider rate and no recent stored rate is
+                reaching the rate path, so USD/MXN comes from a fixed estimate
+                that Dhanam's own fx-rates README calls never authoritative.
+
+                Triage:
+                  1. curl -sS '{{ $labels.instance }}' (read testRate.source and asOf).
+                  2. enclii ops pods logs <dhanam-api pod> -n dhanam (the provider error).
+                  3. enclii ops jobs list -n dhanam --json: is dhanam-fx-spot-refresh
+                     succeeding? Its rate must reach the stored-rate fallback.
+
+          # The prober is gone: blackbox-exporter down, unscheduled, refused by
+          # the network policy, or the scrape job missing. Every probe series
+          # disappears and RevenueEndpointDown can no longer fire, so this is
+          # critical: the revenue flows are unwatched while it lasts.
+          - alert: RevenueProbesNotRunning
+            expr: |
+              absent(up{job="blackbox-revenue"} == 1)
+            for: 10m
+            labels:
+              severity: critical
+              category: revenue-probe
+            annotations:
+              summary: "Revenue probes are not running: the revenue flows are unwatched"
+              description: |
+                No target of the blackbox-revenue scrape job has been scraped
+                successfully for 10 minutes, so RevenueEndpointDown and
+                DhanamFXEmergencyFallback cannot fire.
+
+                Triage:
+                  1. enclii ops pods diagnose -n monitoring (blackbox-exporter pod).
+                  2. Grafana: up{job="blackbox-revenue"}. Absent means the scrape
+                     job is not loaded (prometheus-config ConfigMap, reload);
+                     0 means Prometheus cannot reach blackbox-exporter:9115
+                     (blackbox-exporter-ingress NetworkPolicy, Service).
 
   # =========================================================================
   # Resurrected 2026-08-26 (availability remediation Tier 0.3): the 5 of 8
