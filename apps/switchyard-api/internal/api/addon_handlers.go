@@ -10,6 +10,7 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/madfam-org/enclii/apps/switchyard-api/internal/addons"
+	"github.com/madfam-org/enclii/apps/switchyard-api/internal/db"
 	"github.com/madfam-org/enclii/apps/switchyard-api/internal/logging"
 	"github.com/madfam-org/enclii/apps/switchyard-api/internal/middleware"
 	"github.com/madfam-org/enclii/packages/sdk-go/pkg/types"
@@ -336,6 +337,10 @@ func (h *Handler) RefreshAddonStatus(c *gin.Context) {
 
 	addon, err := h.addonService.RefreshStatus(ctx, addonUUID)
 	if err != nil {
+		if errors.Is(err, db.ErrAddonRefreshConflict) {
+			c.JSON(http.StatusConflict, gin.H{"error": "addon changed during readiness refresh; inspect its current state"})
+			return
+		}
 		h.logger.Error(ctx, "Failed to refresh addon status",
 			logging.String("addon_id", addonID),
 			logging.Error("error", err))

@@ -249,64 +249,14 @@ func (r *AddonReconciler) reconcilePostgresAddon(ctx context.Context, addon *typ
 
 // parseClusterStatus extracts status from a CloudNativePG Cluster
 func (r *AddonReconciler) parseClusterStatus(cluster *unstructured.Unstructured, addon *types.DatabaseAddon) (*AddonStatusResult, error) {
-	status, found, err := unstructured.NestedMap(cluster.Object, "status")
-	if err != nil || !found {
-		return &AddonStatusResult{
-			Status:        types.DatabaseAddonStatusProvisioning,
-			StatusMessage: "Cluster status not yet available",
-		}, nil
+	status, err := addons.ParsePostgresClusterStatus(cluster, addon)
+	if err != nil {
+		return nil, err
 	}
-
-	// Extract key metrics
-	readyInstances, _, _ := unstructured.NestedInt64(status, "readyInstances")
-	instances, _, _ := unstructured.NestedInt64(status, "instances")
-	phase, _, _ := unstructured.NestedString(status, "phase")
-	writeService, _, _ := unstructured.NestedString(status, "writeService")
-
-	result := &AddonStatusResult{
-		DatabaseName: "app",
-		Username:     "app",
-	}
-
-	// Set host from write service
-	if writeService != "" {
-		result.Host = fmt.Sprintf("%s.%s.svc.cluster.local", writeService, addon.K8sNamespace)
-		result.Port = 5432
-	}
-
-	// Determine status based on phase
-	switch phase {
-	case "Cluster in healthy state":
-		if readyInstances > 0 {
-			result.Status = types.DatabaseAddonStatusReady
-			result.StatusMessage = fmt.Sprintf("Cluster healthy with %d/%d instances", readyInstances, instances)
-			result.Ready = true
-		} else {
-			result.Status = types.DatabaseAddonStatusProvisioning
-			result.StatusMessage = "Cluster healthy but no ready instances"
-		}
-	case "Setting up primary":
-		result.Status = types.DatabaseAddonStatusProvisioning
-		result.StatusMessage = "Setting up primary instance"
-	case "Creating replica":
-		result.Status = types.DatabaseAddonStatusProvisioning
-		result.StatusMessage = "Creating replica instances"
-	case "Failed":
-		result.Status = types.DatabaseAddonStatusFailed
-		result.StatusMessage = "Cluster provisioning failed"
-	default:
-		// Check if ready based on instance count
-		if readyInstances > 0 && readyInstances == instances {
-			result.Status = types.DatabaseAddonStatusReady
-			result.StatusMessage = fmt.Sprintf("Cluster ready (%s)", phase)
-			result.Ready = true
-		} else {
-			result.Status = types.DatabaseAddonStatusProvisioning
-			result.StatusMessage = fmt.Sprintf("Provisioning (%s)", phase)
-		}
-	}
-
-	return result, nil
+	return &AddonStatusResult{
+		Status: status.Status, StatusMessage: status.StatusMessage, Ready: status.Ready,
+		Host: status.Host, Port: status.Port, DatabaseName: status.DatabaseName, Username: status.Username,
+	}, nil
 }
 
 // reconcileRedisAddon checks and updates a Redis addon's status
@@ -364,6 +314,8 @@ func (r *AddonReconciler) shouldUpdateAddon(addon *types.DatabaseAddon, status *
 	return addon.Status != status.Status ||
 		addon.Host != status.Host ||
 		addon.Port != status.Port ||
+		addon.DatabaseName != status.DatabaseName ||
+		addon.Username != status.Username ||
 		addon.StatusMessage != status.StatusMessage
 }
 
