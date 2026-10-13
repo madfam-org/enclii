@@ -26,6 +26,7 @@ encouraging direct `kubectl`.
 |---------|---------|
 | `enclii ops capabilities` | List server-supported operator capabilities |
 | `enclii ops apps status|sync|sync-sweep|diff|retire|rollback` | Argo app inspection and remediation |
+| `enclii ops apps tracking` | Declare Argo CD's annotation tracking default once in `argocd-cm` ([below](#argo-tracking-declaration)) |
 | `enclii ops pods diagnose|logs|restart` | Pod diagnosis and logs. `restart` is **not implemented yet** — see [Remaining Adapter Work](#remaining-adapter-work) |
 | `enclii ops jobs list|trigger|suspend` | CronJob inspection, audited triggers and durable service-job holds |
 | `enclii ops storage volumes|pvc|longhorn|repair-plan|settings-apply|prune-detached|storageclass-apply|r2-audit` | PVC/PV/Longhorn inspection, repair planning, CPU settings (O-5), orphan prune (O-4), StorageClass reconcile, R2 credential audit (incomplete, shared, or mismatched buckets) |
@@ -68,6 +69,37 @@ enclii secrets vault-backfill enclii-secrets --namespace enclii --vault-path sec
 ./scripts/post-deploy-ga-adapters.sh
 ./scripts/wave1-ga-ops.sh --apply --backup-drill --reason "GA Wave 1"
 ```
+
+## Argo tracking declaration
+
+Explicit workload targets (`ops apps bind-target`, and the scale path that
+depends on them) refuse ownership with `argo_tracking_unverified` until
+`argocd/argocd-cm` declares `application.resourceTrackingMethod`. An absent key
+is not evidence of the installation's default, so Enclii does not infer it.
+
+`ops apps tracking` requires the server-resolved platform-admin rank. Its plan
+reports the ConfigMap UID/resourceVersion, the current key, whether an
+`installationID` is declared and the running application controller release.
+It declares only `annotation`, only when the key is absent and only while every
+application controller runs the same Argo CD 3.x release, whose documented
+default is annotation tracking. The declaration restates current behaviour;
+it does not migrate tracking. A present `label`, `annotation+label` or other
+value is refused as a migration this command does not perform.
+
+```bash
+enclii ops apps tracking --json
+enclii ops apps tracking --expect-uid <reviewed-uid> \
+  --expect-resource-version <reviewed-version> \
+  --apply --reason "declare the reviewed annotation tracking default" --json
+```
+
+The apply writes one data key with the reviewed resourceVersion as an
+optimistic-concurrency precondition; labels, annotations and other data are
+unchanged. A concurrent change returns `refused` with nothing written. Any
+other write error returns `unknown`: run the plan again before another attempt.
+An exact repeat after success returns `already-declared` without writing.
+The `infra/argocd/resource-customizations.yaml` bootstrap patch predates this
+command and does not carry the key; do not re-apply it as a substitute.
 
 ## Service-job suspension
 

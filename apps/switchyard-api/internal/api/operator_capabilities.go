@@ -11,8 +11,8 @@ var opsCapabilities = []operatorCapability{
 	{
 		Name:        "apps",
 		Status:      "partial",
-		Description: "Argo application reads and lifecycle contracts; bind-target is an operator-only immutable target plan/apply with no Kubernetes effect",
-		Actions:     []string{"status", "sync", "diff", "retire", "rollback", "sync-sweep", "bind-target"},
+		Description: "Argo application reads and lifecycle contracts; bind-target is an operator-only immutable target plan/apply with no Kubernetes effect; tracking declares the Argo CD 3.x annotation tracking default once in argocd-cm",
+		Actions:     []string{"status", "sync", "diff", "retire", "rollback", "sync-sweep", "bind-target", "tracking"},
 		Scopes:      []string{"namespace", "project", "service", "environment", "target"},
 	},
 	{
