@@ -541,6 +541,39 @@ path "secret/metadata/selva" {
 path "secret/metadata/selva/*" {
   capabilities = ["read", "list"]
 }
+
+# Isolated training/staging intake: exact registry paths only. No child
+# wildcard, owner database credentials or permission to write Vault policy.
+path "secret/data/crea-sim-gateway" {
+  capabilities = ["create", "update", "patch", "read"]
+}
+path "secret/metadata/crea-sim-gateway" {
+  capabilities = ["read", "list"]
+}
+path "secret/data/crea-sim-captura" {
+  capabilities = ["create", "update", "patch", "read"]
+}
+path "secret/metadata/crea-sim-captura" {
+  capabilities = ["read", "list"]
+}
+path "secret/data/crea-sim-map01" {
+  capabilities = ["create", "update", "patch", "read"]
+}
+path "secret/metadata/crea-sim-map01" {
+  capabilities = ["read", "list"]
+}
+path "secret/data/crea-sim-selva" {
+  capabilities = ["create", "update", "patch", "read"]
+}
+path "secret/metadata/crea-sim-selva" {
+  capabilities = ["read", "list"]
+}
+path "secret/data/janua-staging" {
+  capabilities = ["create", "update", "patch", "read"]
+}
+path "secret/metadata/janua-staging" {
+  capabilities = ["read", "list"]
+}
 EOF
 
 log "Writing Vault policy ${POLICY_NAME}..."

@@ -1034,3 +1034,141 @@ targets:
     keys:
       - pravara_mes_client_id
       - pravara_mes_client_secret
+
+  # Isolated training/staging custody: values never stored in source.
+  crea-sim/ui-oidc:
+    label: Training UI human OAuth client
+    description: Governed isolated runtime custody; no owner, provider or production credential
+    vault_path: secret/crea-sim-gateway
+    namespace: crea-sim
+    external_secret: crea-sim-gateway # pragma: allowlist secret -- ExternalSecret resource name; not a credential
+    keys:
+      - crea_sim_janua_ui_id
+      - crea_sim_janua_ui_secret
+
+  crea-sim/mcp-oidc:
+    label: Training MCP human OAuth client
+    description: Governed isolated runtime custody; no owner, provider or production credential
+    vault_path: secret/crea-sim-gateway
+    namespace: crea-sim
+    external_secret: crea-sim-gateway # pragma: allowlist secret -- ExternalSecret resource name; not a credential
+    keys:
+      - crea_sim_janua_mcp_id
+      - crea_sim_janua_mcp_secret
+
+  crea-sim/selva-oidc:
+    label: Training organization-bound inference edge
+    description: Governed isolated runtime custody; no owner, provider or production credential
+    vault_path: secret/crea-sim-selva
+    namespace: crea-sim
+    external_secret: crea-sim-selva # pragma: allowlist secret -- ExternalSecret resource name; not a credential
+    keys:
+      - crea_sim_selva_id
+      - crea_sim_selva_secret
+
+  crea-sim/gateway-runtime:
+    label: Isolated training gateway runtime
+    description: Governed isolated runtime custody; no owner, provider or production credential
+    vault_path: secret/crea-sim-gateway
+    namespace: crea-sim
+    external_secret: crea-sim-gateway # pragma: allowlist secret -- ExternalSecret resource name; not a credential
+    keys:
+      - crea_sim_ctm_org_id
+      - crea_sim_database_namespace
+      - crea_sim_portal_database_url
+      - crea_sim_session_key
+      - sim01_context_key
+      - sim01_control_key
+
+  crea-sim/capture-runtime:
+    label: Private synthetic mail capture runtime
+    description: Governed isolated runtime custody; no owner, provider or production credential
+    vault_path: secret/crea-sim-captura
+    namespace: crea-sim
+    external_secret: crea-sim-captura # pragma: allowlist secret -- ExternalSecret resource name; not a credential
+    keys:
+      - crea_sim_database_namespace
+      - crea_sim_portal_database_url
+      - sim01_mail_key
+
+  crea-sim/kernel01-runtime:
+    label: Isolated synthetic kernel runtime
+    description: Governed isolated runtime custody; no owner, provider or production credential
+    vault_path: secret/crea-sim-map01
+    namespace: crea-sim
+    external_secret: crea-sim-map01 # pragma: allowlist secret -- ExternalSecret resource name; not a credential
+    keys:
+      - database_url
+      - map_simulation_context_key
+      - map_simulation_control_key
+      - map_simulation_mail_key
+      - map_simulation_mcp_client_id
+      - map_mcp_pseudonym_key
+
+  crea-sim/gateway-ca:
+    label: Verified public portal database CA
+    description: Governed isolated runtime custody; no owner, provider or production credential
+    vault_path: secret/crea-sim-gateway
+    namespace: crea-sim
+    external_secret: crea-sim-gateway-ca # pragma: allowlist secret -- ExternalSecret resource name; not a credential
+    keys:
+      - database_ca_pem
+
+  crea-sim/capture-ca:
+    label: Verified public capture database CA
+    description: Governed isolated runtime custody; no owner, provider or production credential
+    vault_path: secret/crea-sim-captura
+    namespace: crea-sim
+    external_secret: crea-sim-captura-ca # pragma: allowlist secret -- ExternalSecret resource name; not a credential
+    keys:
+      - database_ca_pem
+
+  crea-sim/kernel01-ca:
+    label: Verified public kernel database CA
+    description: Governed isolated runtime custody; no owner, provider or production credential
+    vault_path: secret/crea-sim-map01
+    namespace: crea-sim
+    external_secret: crea-sim-map01-ca # pragma: allowlist secret -- ExternalSecret resource name; not a credential
+    keys:
+      - database_ca_pem
+
+  janua-staging/runtime-crypto:
+    label: Fresh isolated staging identity crypto
+    description: Governed isolated runtime custody; no owner, provider or production credential
+    vault_path: secret/janua-staging
+    namespace: janua-staging
+    external_secret: janua-staging-secrets # pragma: allowlist secret -- ExternalSecret resource name; not a credential
+    keys:
+      - jwt_private_key
+      - jwt_public_key
+      - jwt_secret_key
+      - secret_key
+      - field_encryption_key
+
+  janua-staging/database:
+    label: Isolated staging nonowner database URI
+    description: Governed isolated runtime custody; no owner, provider or production credential
+    vault_path: secret/janua-staging
+    namespace: janua-staging
+    external_secret: janua-staging-secrets # pragma: allowlist secret -- ExternalSecret resource name; not a credential
+    keys:
+      - database_url
+
+  janua-staging/database-ca:
+    label: Verified public staging database CA
+    description: Governed isolated runtime custody; no owner, provider or production credential
+    vault_path: secret/janua-staging
+    namespace: janua-staging
+    external_secret: janua-staging-ca # pragma: allowlist secret -- ExternalSecret resource name; not a credential
+    keys:
+      - database_ca
+
+  janua-staging/redis:
+    label: Fresh private staging Redis authentication
+    description: Governed isolated runtime custody; no owner, provider or production credential
+    vault_path: secret/janua-staging
+    namespace: janua-staging
+    external_secret: janua-staging-redis # pragma: allowlist secret -- ExternalSecret resource name; not a credential
+    keys:
+      - redis_password
+      - redis_url

@@ -638,10 +638,9 @@ func SetupRoutes(router *gin.Engine, h *Handler) {
 			// GET /secrets/intake/:id returned the Vault path, namespace and
 			// written key names for an intake id belonging to anybody.
 			// Gated as one unit: a submit path a tenant admin can reach and a
-			// status path it cannot would be incoherent.
-			protected.GET("/secrets/intake/targets", h.auth.RequireRole(string(types.RoleAdmin)), h.RequirePlatformAdmin(), h.ListSecretIntakeTargets)
-			protected.POST("/secrets/intake", h.auth.RequireRole(string(types.RoleAdmin)), h.RequirePlatformAdmin(), h.SubmitSecretIntake)
-			protected.GET("/secrets/intake/:id", h.auth.RequireRole(string(types.RoleAdmin)), h.RequirePlatformAdmin(), h.GetSecretIntakeStatus)
+			// status path it cannot would be incoherent. The unconditional operator
+			// guard also protects custody during staged tenant-scope rollback.
+			h.registerSecretIntakeRoutes(protected)
 
 			// Deployment Lifecycle Timeline
 			protected.GET("/lifecycle/timeline/:owner/:repo", h.GetLifecycleTimeline)

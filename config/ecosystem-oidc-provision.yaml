@@ -822,3 +822,51 @@ platforms:
         - pravara-mes:read
       grant_types:
         - client_credentials
+
+  crea-sim:
+    intake_target: crea-sim/ui-oidc
+    intake_key_map:
+      crea_sim_janua_ui_id: client_id
+      crea_sim_janua_ui_secret: client_secret
+    janua_client:
+      name: crea-sim
+      client_key: crea-sim # pragma: allowlist secret -- logical registration key; not a credential
+      audience: crea-sim
+      description: Isolated training human authorization-code flow; no production role grant
+      is_confidential: true
+      website_url: https://sim.creatumundo.mx
+      redirect_uris:
+        - https://sim.creatumundo.mx/auth/callback
+      allowed_scopes:
+        - openid
+        - profile
+        - email
+        - offline_access
+      grant_types:
+        - authorization_code
+        - refresh_token
+
+  # UI pilot only: reconcile this same actual client after training resource promotion.
+  # No map.sim scopes until that runtime release closes; MCP stays disabled.
+  crea-sim-mcp:
+    intake_target: crea-sim/mcp-oidc
+    intake_key_map:
+      crea_sim_janua_mcp_id: client_id
+      crea_sim_janua_mcp_secret: client_secret
+    janua_client:
+      name: crea-sim-mcp
+      client_key: crea-sim-mcp # pragma: allowlist secret -- logical registration key; not a credential
+      audience: crea-sim-mcp
+      description: Isolated training human authorization-code flow; no production role grant
+      is_confidential: true
+      website_url: https://sim.creatumundo.mx
+      redirect_uris:
+        - https://sim.creatumundo.mx/auth/mcp/callback
+      allowed_scopes:
+        - openid
+        - profile
+        - email
+        - offline_access
+      grant_types:
+        - authorization_code
+        - refresh_token
