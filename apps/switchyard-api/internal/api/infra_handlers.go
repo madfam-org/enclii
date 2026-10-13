@@ -40,7 +40,7 @@ type RestartRequest struct {
 
 // ScaleRequest sets the replica count for a service.
 type ScaleRequest struct {
-	Replicas int32  `json:"replicas" binding:"required"`
+	Replicas *int32 `json:"replicas" binding:"required"`
 	Env      string `json:"env"` // default "production"
 }
 
@@ -304,13 +304,14 @@ func (h *Handler) ScaleService(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
+	replicas := *req.Replicas
 
 	// SecOps: cap replicas
-	if req.Replicas > 10 {
+	if replicas > 10 {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "replicas capped at 10"})
 		return
 	}
-	if req.Replicas < 0 {
+	if replicas < 0 {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "replicas must be >= 0"})
 		return
 	}
@@ -332,7 +333,7 @@ func (h *Handler) ScaleService(c *gin.Context) {
 		return
 	}
 
-	if err := h.k8sClient.ScaleDeployment(ctx, project.Slug, svc.Name, req.Replicas); err != nil {
+	if err := h.k8sClient.ScaleDeployment(ctx, project.Slug, svc.Name, replicas); err != nil {
 		h.logger.Error(ctx, "Scale failed",
 			logging.String("service", svc.Name),
 			logging.Error("error", err),
@@ -343,7 +344,7 @@ func (h *Handler) ScaleService(c *gin.Context) {
 
 	h.logger.Info(ctx, "Service scaled",
 		logging.String("service", svc.Name),
-		logging.Field{Key: "replicas", Value: req.Replicas},
+		logging.Field{Key: "replicas", Value: replicas},
 	)
 
 	// P2.3: fan out service.scaled to outbound webhook subscribers.
@@ -355,7 +356,7 @@ func (h *Handler) ScaleService(c *gin.Context) {
 			"service_id":   svc.ID.String(),
 			"service_name": svc.Name,
 			"env":          env,
-			"to_replicas":  req.Replicas,
+			"to_replicas":  replicas,
 			"actor":        c.GetString("user_email"),
 		}
 		projectID := svc.ProjectID
@@ -374,10 +375,10 @@ func (h *Handler) ScaleService(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, gin.H{
-		"message":      fmt.Sprintf("Scaled %s to %d replicas", svc.Name, req.Replicas),
+		"message":      fmt.Sprintf("Scaled %s to %d replicas", svc.Name, replicas),
 		"service_name": svc.Name,
 		"environment":  env,
-		"replicas":     req.Replicas,
+		"replicas":     replicas,
 	})
 }
 

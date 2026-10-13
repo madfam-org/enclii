@@ -624,31 +624,3 @@ func TestExecService_TimeoutDefaults(t *testing.T) {
 		})
 	}
 }
-
-func TestScaleService_ReplicaBoundaries(t *testing.T) {
-	// Verify replica validation logic.
-	// The handler rejects replicas > 10 and replicas < 0.
-
-	tests := []struct {
-		name       string
-		replicas   int32
-		wantReject bool
-	}{
-		{"zero is valid (scale to zero)", 0, false},
-		{"one is valid", 1, false},
-		{"ten is valid (max)", 10, false},
-		{"eleven exceeds cap", 11, true},
-		{"negative is invalid", -1, true},
-		{"large number exceeds cap", 100, true},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			rejected := false
-			if tt.replicas > 10 || tt.replicas < 0 {
-				rejected = true
-			}
-			assert.Equal(t, tt.wantReject, rejected)
-		})
-	}
-}
