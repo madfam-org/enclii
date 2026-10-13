@@ -140,3 +140,8 @@ live binding, scale, migration or cutover is established by local or hosted test
 The [Argo resource tracking specification](https://argo-cd.readthedocs.io/en/release-3.2/user-guide/resource_tracking/)
 defines self-referencing tracking and installation identity; neither annotation
 nor label alone supplies operator authority or immutable simulator provenance.
+
+**Boundary checkpoint — 2026-10-13; owner: platform maintainer.** This public
+runbook documents implementation and synthetic proof limits. Sensitive deployment
+identity, custody and operational evidence remain in the private internal-devops /
+labspace handoff lane. Policy: [public repository boundary](../PUBLIC_REPO_BOUNDARY.md).
