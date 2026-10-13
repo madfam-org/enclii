@@ -214,12 +214,28 @@ func iterContainers(kind string, obj map[string]interface{}) []map[string]interf
 	if podSpec == nil {
 		return nil
 	}
-	raw, _ := podSpec["containers"].([]interface{})
-	out := make([]map[string]interface{}, 0, len(raw))
-	for _, c := range raw {
-		if cm, ok := c.(map[string]interface{}); ok {
-			out = append(out, cm)
+	var out []map[string]interface{}
+	for _, field := range []string{"containers", "initContainers"} {
+		raw, _ := podSpec[field].([]interface{})
+		for _, c := range raw {
+			if cm, ok := c.(map[string]interface{}); ok {
+				out = append(out, cm)
+			}
 		}
 	}
 	return out
+}
+
+// ResolveObjectImages applies the same closed image transformer used by the
+// image gates to the object sent to server-side admission dry-run.
+func ResolveObjectImages(obj map[string]interface{}, resolver *KustomizeImageResolver) {
+	kind, _ := obj["kind"].(string)
+	if !workloadKinds[kind] {
+		return
+	}
+	for _, container := range iterContainers(kind, obj) {
+		if image, ok := container["image"].(string); ok {
+			container["image"] = resolver.Resolve(image).Image
+		}
+	}
 }

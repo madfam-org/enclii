@@ -2,8 +2,8 @@ package api
 
 import (
 	"bytes"
-	"database/sql"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -12,6 +12,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 
+	"github.com/madfam-org/enclii/apps/switchyard-api/internal/k8s"
 	"github.com/madfam-org/enclii/apps/switchyard-api/internal/logging"
 	"github.com/madfam-org/enclii/apps/switchyard-api/internal/manifest"
 	"github.com/madfam-org/enclii/apps/switchyard-api/internal/netpolicy"
@@ -161,23 +162,11 @@ func (h *Handler) EnsureOnboarding(c *gin.Context) {
 	}
 
 	project, err := h.repos.Projects.GetBySlug(req.ProjectName)
-	if err != nil {
-		if err == sql.ErrNoRows {
-			project = &types.Project{
-				Name: req.ProjectName,
-				Slug: req.ProjectName,
-			}
-			if createErr := h.repos.Projects.Create(project); createErr != nil {
-				h.recordStep(ctx, &steps, "project", true, createErr)
-			} else {
-				h.recordStep(ctx, &steps, "project", true, nil)
-			}
-		} else {
-			h.recordStep(ctx, &steps, "project", true, err)
-		}
-	} else {
-		h.recordStep(ctx, &steps, "project", true, nil)
+	if err != nil || !onboardingOwnsNamespace(existing, project, req.RepoFullName, namespace) {
+		c.JSON(http.StatusConflict, gin.H{"error": k8s.ErrNamespaceOwnership.Error()})
+		return
 	}
+	h.recordStep(ctx, &steps, "project", true, nil)
 
 	// One service record per Service document, so every surface the manifest
 	// declares has a service of its own to bind its hostnames to.
@@ -192,11 +181,19 @@ func (h *Handler) EnsureOnboarding(c *gin.Context) {
 
 	var nsErr error
 	if h.k8sClient != nil && h.k8sClient.IsValid() {
-		nsErr = h.k8sClient.EnsureNamespace(ctx, namespace)
+		nsErr = h.k8sClient.EnsureOnboardingNamespace(ctx, namespace, project.ID, true)
 	} else {
 		nsErr = fmt.Errorf("k8s client not available")
 	}
 	h.recordStep(ctx, &steps, "namespace", true, nsErr)
+	if nsErr != nil {
+		status := http.StatusServiceUnavailable
+		if errors.Is(nsErr, k8s.ErrNamespaceOwnership) {
+			status = http.StatusConflict
+		}
+		c.JSON(status, gin.H{"error": nsErr.Error(), "steps": serializeStepResults(steps)})
+		return
+	}
 
 	projectConfig := generateProjectConfig(req.ProjectName, repoURL, branch, manifestPath, namespace)
 	argocdYAML := generateArgocdApp(repoURL, manifestPath, namespace, appName, branch)

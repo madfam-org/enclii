@@ -74,6 +74,9 @@ type CreateAddonRequest struct {
 // plan row. Every lifecycle transition also writes a row to
 // managed_db_addon_events for audit and (Sprint 3) billing.
 func (s *AddonService) CreateAddon(ctx context.Context, req *CreateAddonRequest) (*types.DatabaseAddon, error) {
+	if err := ValidatePostgresRuntimeConfig(req.Type, req.Config); err != nil {
+		return nil, err
+	}
 	logger := s.logger.WithFields(logrus.Fields{
 		"project_id": req.ProjectID,
 		"type":       req.Type,
@@ -520,125 +523,6 @@ func (s *AddonService) GetCredentials(ctx context.Context, addonID uuid.UUID) (*
 	return provisioner.GetCredentials(ctx, addon)
 }
 
-// CreateBinding creates a binding between an addon and a service. Back-compat
-// wrapper; see CreateBindingBy for actor-aware variant.
-func (s *AddonService) CreateBinding(ctx context.Context, addonID, serviceID uuid.UUID, envVarName string) (*types.DatabaseAddonBinding, error) {
-	return s.CreateBindingBy(ctx, addonID, serviceID, envVarName, EventActor{})
-}
-
-// CreateBindingBy creates a binding and records the actor in the event
-// ledger.
-func (s *AddonService) CreateBindingBy(ctx context.Context, addonID, serviceID uuid.UUID, envVarName string, actor EventActor) (*types.DatabaseAddonBinding, error) {
-	logger := s.logger.WithFields(logrus.Fields{
-		"addon_id":   addonID,
-		"service_id": serviceID,
-	})
-
-	logger.Info("Creating addon binding")
-
-	// Validate addon exists and is ready
-	addon, err := s.repos.DatabaseAddons.GetByID(ctx, addonID)
-	if err != nil {
-		return nil, fmt.Errorf("addon not found: %w", err)
-	}
-
-	if addon.Status != types.DatabaseAddonStatusReady {
-		return nil, fmt.Errorf("addon is not ready for binding (status: %s)", addon.Status)
-	}
-
-	// Create binding
-	binding := &types.DatabaseAddonBinding{
-		ID:         uuid.New(),
-		AddonID:    addonID,
-		ServiceID:  serviceID,
-		EnvVarName: envVarName,
-		Status:     types.DatabaseAddonBindingStatusActive,
-		CreatedAt:  time.Now(),
-		UpdatedAt:  time.Now(),
-	}
-
-	if err := s.repos.DatabaseAddons.CreateBinding(ctx, binding); err != nil {
-		return nil, fmt.Errorf("failed to create binding: %w", err)
-	}
-
-	s.emitEventWithActor(ctx, addon, actor, db.EventAddonBindingCreated, map[string]interface{}{
-		"service_id":   serviceID.String(),
-		"env_var_name": envVarName,
-		"binding_id":   binding.ID.String(),
-	})
-
-	logger.Info("Addon binding created successfully")
-	return binding, nil
-}
-
-// DeleteBinding removes a binding between an addon and a service. Back-compat
-// wrapper; see DeleteBindingBy for actor-aware variant.
-func (s *AddonService) DeleteBinding(ctx context.Context, addonID, serviceID uuid.UUID) error {
-	return s.DeleteBindingBy(ctx, addonID, serviceID, EventActor{})
-}
-
-// DeleteBindingBy removes a binding and records the actor.
-func (s *AddonService) DeleteBindingBy(ctx context.Context, addonID, serviceID uuid.UUID, actor EventActor) error {
-	addon, getErr := s.repos.DatabaseAddons.GetByID(ctx, addonID)
-	if err := s.repos.DatabaseAddons.DeleteBindingByAddonAndService(ctx, addonID, serviceID); err != nil {
-		return err
-	}
-	// Only emit if we could resolve the addon; otherwise the event-write FK
-	// would fail anyway.
-	if getErr == nil && addon != nil {
-		s.emitEventWithActor(ctx, addon, actor, db.EventAddonBindingDeleted, map[string]interface{}{
-			"service_id": serviceID.String(),
-		})
-	}
-	return nil
-}
-
-// GetBindingsForService retrieves all addon bindings for a service
-func (s *AddonService) GetBindingsForService(ctx context.Context, serviceID uuid.UUID) ([]*types.DatabaseAddonBinding, error) {
-	return s.repos.DatabaseAddons.GetBindingsByService(ctx, serviceID)
-}
-
-// GetEnvVarsForService retrieves environment variables for a service from all bound addons
-func (s *AddonService) GetEnvVarsForService(ctx context.Context, serviceID uuid.UUID) (map[string]string, error) {
-	bindings, err := s.repos.DatabaseAddons.GetBindingsByService(ctx, serviceID)
-	if err != nil {
-		return nil, err
-	}
-
-	envVars := make(map[string]string)
-
-	for _, binding := range bindings {
-		if binding.Status != types.DatabaseAddonBindingStatusActive {
-			continue
-		}
-
-		addon, err := s.repos.DatabaseAddons.GetByID(ctx, binding.AddonID)
-		if err != nil {
-			s.logger.WithError(err).WithField("addon_id", binding.AddonID).Warn("Failed to get addon for binding")
-			continue
-		}
-
-		if addon.Status != types.DatabaseAddonStatusReady {
-			continue
-		}
-
-		provisioner, ok := s.provisioners[addon.Type]
-		if !ok {
-			continue
-		}
-
-		uri, err := provisioner.GetConnectionURI(ctx, addon)
-		if err != nil {
-			s.logger.WithError(err).WithField("addon_id", addon.ID).Warn("Failed to get connection URI")
-			continue
-		}
-
-		envVars[binding.EnvVarName] = uri
-	}
-
-	return envVars, nil
-}
-
 // RefreshStatus updates the status of a pending/provisioning addon
 func (s *AddonService) RefreshStatus(ctx context.Context, addonID uuid.UUID) (*types.DatabaseAddon, error) {
 	addon, err := s.repos.DatabaseAddons.GetByID(ctx, addonID)
@@ -711,12 +595,14 @@ func (s *AddonService) RefreshStatus(ctx context.Context, addonID uuid.UUID) (*t
 // version (e.g. pinning to 15 for a migration scenario).
 func hydrateConfigFromPlan(plan *db.ManagedDBPlan, override types.DatabaseAddonConfig) types.DatabaseAddonConfig {
 	cfg := types.DatabaseAddonConfig{
-		Version:   override.Version, // Plan doesn't pin engine version yet.
-		StorageGB: plan.StorageGB,
-		CPU:       plan.CPURequest,
-		Memory:    plan.MemoryRequest,
-		HAEnabled: plan.HAEnabled,
-		Replicas:  plan.ReplicaCount,
+		Version:      override.Version, // Plan doesn't pin engine version yet.
+		DatabaseName: override.DatabaseName,
+		RuntimeRole:  override.RuntimeRole,
+		StorageGB:    plan.StorageGB,
+		CPU:          plan.CPURequest,
+		Memory:       plan.MemoryRequest,
+		HAEnabled:    plan.HAEnabled,
+		Replicas:     plan.ReplicaCount,
 	}
 	if cfg.Version == "" {
 		switch plan.Engine {

@@ -2,6 +2,7 @@ package api
 
 import (
 	"database/sql"
+	"errors"
 	"net/http"
 	"strings"
 
@@ -143,6 +144,10 @@ func (h *Handler) CreateAddon(c *gin.Context) {
 	config := types.DatabaseAddonConfig{}
 	if req.Config != nil {
 		config = *req.Config
+	}
+	if err := addons.ValidatePostgresRuntimeConfig(req.Type, config); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid isolated database runtime configuration"})
+		return
 	}
 
 	// Get user sub (auth subject) — populated by auth middleware
@@ -514,6 +519,10 @@ func (h *Handler) CreateAddonBinding(c *gin.Context) {
 
 	binding, err := h.addonService.CreateBindingBy(ctx, addonUUID, serviceUUID, envVarName, addonActorFromContext(c))
 	if err != nil {
+		if errors.Is(err, addons.ErrCrossProjectBinding) {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "addon and service must belong to the same project"})
+			return
+		}
 		h.logger.Error(ctx, "Failed to create addon binding",
 			logging.String("addon_id", addonID),
 			logging.String("service_id", req.ServiceID),

@@ -63,6 +63,15 @@ redirect and should not become the source of truth again.
 - **Pending work** lives in one place: the «Engineering backlog (platform and
   fleet-wide)» section of [`ROADMAP.md`](ROADMAP.md#engineering-backlog-platform-and-fleet-wide).
   Remove an item in the PR that finishes it.
+- **Dedicated synthetic database runtime profiles** opt in with both
+  `database_name` (`*_sim`) and `runtime_role`; defaults remain the legacy
+  profile. Binding requires a Ready, dedicated, same-project addon and an
+  owned persisted service namespace. The runtime gets no owner credential;
+  migrations use the fixed separate migrator. Transport custody exports only
+  the verified public CA certificate, never its key. See
+  [`ONBOARDING_GUIDE.md`](docs/guides/ONBOARDING_GUIDE.md) and the native
+  PostgreSQL 16 proof job in `ci.yml`. Do not describe a source/CI proof as
+  live namespace, readiness, RLS or network validation.
 - **Skipped tests** are inventoried in
   [`docs/testing/SKIPPED_TESTS.md`](docs/testing/SKIPPED_TESTS.md). Add a
   line there when you add one.

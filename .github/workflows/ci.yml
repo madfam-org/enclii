@@ -28,6 +28,40 @@ env:
   NODE_VERSION: '22'
 
 jobs:
+  runtime-postgres-proof:
+    name: Dedicated runtime role on PostgreSQL 16
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: synthetic-proof # pragma: allowlist secret (disposable loopback fixture)
+          POSTGRES_DB: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache-dependency-path: apps/switchyard-api/go.sum
+      # Disposable CI-only credentials, accepted solely on loopback by the test.
+      - name: Prove owner separation, permissions and native RLS
+        working-directory: apps/switchyard-api
+        env:
+          PGPASSWORD: synthetic-proof # pragma: allowlist secret (disposable loopback fixture)
+          ENCLII_RUNTIME_POSTGRES_PROOF_URL: postgres://postgres@127.0.0.1:5432/postgres?sslmode=disable
+        run: go test -count=1 -run '^TestRuntimeBootstrapOnNativePostgres$' ./internal/addons
+
   blueprint-publisher-contract:
     name: Blueprint publisher gates
     runs-on: ubuntu-24.04

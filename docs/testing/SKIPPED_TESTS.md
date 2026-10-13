@@ -24,6 +24,7 @@ exists in the tree.
 
 | Test | Skips when | Runs in CI |
 |---|---|---|
+| `internal/addons/postgres_runtime_postgres_test.go` | `ENCLII_RUNTIME_POSTGRES_PROOF_URL` is unset; accepts only an explicitly owned loopback PostgreSQL fixture | Yes: `runtime-postgres-proof` in `ci.yml`, disposable PostgreSQL 16; no real cluster/database credentials |
 | `internal/jobholds/store_integration_test.go` (`-tags integration`) | `JOB_HOLD_TEST_DATABASE_URL` is unset; execution also requires `LOCAL_DB=yes` and a loopback host | Yes: the `smoke` job runs migration/serialization checks against its disposable Postgres |
 | `internal/db/*_integration_test.go` (`-tags integration`) | `TEST_DATABASE_URL` is unset | Yes: the `smoke` job of `ci.yml` runs `go test -tags integration ./internal/db/...` against its Postgres |
 | `internal/provisioning/generated_roles_integration_test.go` (`-tags integration`) | `TEST_POSTGRES_ADMIN_URL` is unset | No. Gap: no workflow runs it; run it locally against a disposable Postgres (superuser URL, TCP) |

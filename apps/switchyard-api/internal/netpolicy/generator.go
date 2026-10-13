@@ -24,7 +24,7 @@ type ServiceSpec struct {
 	Label   string   // label key (default "app")
 	Port    int      // container port for ingress
 	Ingress []string // e.g. ["cloudflare-tunnel"]
-	Egress  []string // e.g. ["dns","https","postgres","redis","http","janua","pgbouncer"]
+	Egress  []string // e.g. ["dns","https","postgres","redis","http","janua","selva","pgbouncer"]
 }
 
 // CustomRule declares a custom network policy rule.
@@ -161,6 +161,9 @@ func egressCategories(svc ServiceSpec) []string {
 	if svc.hasEgress("janua") {
 		cats = append(cats, "Janua SSO")
 	}
+	if svc.hasEgress("selva") {
+		cats = append(cats, "Selva inference")
+	}
 	if svc.hasEgress("pgbouncer") {
 		cats = append(cats, "PgBouncer")
 	}
@@ -270,6 +273,22 @@ func buildEgressRules(svc ServiceSpec) []egressRule {
       ports:
         - protocol: TCP
           port: 6432`,
+		})
+	}
+
+	if svc.hasEgress("selva") {
+		rules = append(rules, egressRule{
+			Comment: "Selva inference gateway in selva namespace",
+			YAML: `    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: selva
+          podSelector:
+            matchLabels:
+              app.kubernetes.io/name: inference-gateway
+      ports:
+        - protocol: TCP
+          port: 4306`,
 		})
 	}
 
