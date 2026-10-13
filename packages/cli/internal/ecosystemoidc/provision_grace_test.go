@@ -43,11 +43,28 @@ func (f *fakeJanua) client() *JanuaClient {
 		switch {
 		case r.Method == http.MethodGet && r.URL.Path == "/api/v1/oauth/clients/admin/all":
 			_ = json.NewEncoder(w).Encode(map[string]interface{}{"clients": f.inventory, "total": len(f.inventory)})
+		case r.Method == http.MethodGet && strings.HasPrefix(r.URL.Path, "/api/v1/oauth/clients/"):
+			for _, client := range f.inventory {
+				if r.URL.Path == "/api/v1/oauth/clients/"+client.ID {
+					_ = json.NewEncoder(w).Encode(client)
+					return
+				}
+			}
+			w.WriteHeader(http.StatusNotFound)
 		case r.Method == http.MethodPost && r.URL.Path == "/api/v1/oauth/clients":
 			w.WriteHeader(http.StatusCreated)
 			_ = json.NewEncoder(w).Encode(f.created)
 		case r.Method == http.MethodPost && strings.HasSuffix(r.URL.Path, "/rotate"):
-			_ = json.NewEncoder(w).Encode(f.rotateResp)
+			response := make(map[string]interface{}, len(f.rotateResp))
+			for key, value := range f.rotateResp {
+				response[key] = value
+			}
+			for _, client := range f.inventory {
+				if r.URL.Path == "/api/v1/oauth/clients/"+client.ID+"/rotate" {
+					response["client_id"] = client.ClientID
+				}
+			}
+			_ = json.NewEncoder(w).Encode(response)
 		default:
 			f.t.Errorf("unexpected request: %s %s", r.Method, r.URL.Path)
 			w.WriteHeader(http.StatusInternalServerError)
@@ -86,9 +103,9 @@ func remoteFor(spec JanuaClientSpec) remoteOAuthClient {
 		clientID = spec.ClientID
 	}
 	r := remoteOAuthClient{
-		ID: "uuid-fixture", ClientID: clientID, Name: spec.Name, ClientKey: pointer(spec.ClientKey),
+		ID: "dddddddd-dddd-4ddd-8ddd-dddddddddddd", ClientID: clientID, Name: spec.Name, ClientKey: pointer(spec.ClientKey),
 		Audience: pointer(spec.Audience), IsConfidential: spec.confidential(), IsActive: true,
-		RedirectURIs: spec.RedirectURIs, AllowedScopes: spec.AllowedScopes, GrantTypes: spec.GrantTypes,
+		RedirectURIs: append([]string{}, spec.RedirectURIs...), AllowedScopes: append([]string{}, spec.AllowedScopes...), GrantTypes: append([]string{}, spec.GrantTypes...),
 	}
 	if spec.OrganizationID != "" {
 		r.OrganizationID = pointer(spec.OrganizationID)

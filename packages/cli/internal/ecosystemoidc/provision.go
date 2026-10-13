@@ -7,6 +7,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"regexp"
 	"strings"
 )
 
@@ -55,6 +56,28 @@ type ProvisionResult struct {
 	PlannedGraceHours *int `json:"planned_grace_period_hours,omitempty"`
 }
 
+// ValidateProvision performs only local contract validation, including for dry runs.
+func ValidateProvision(reg *Registry, opts ProvisionOptions) (Platform, error) {
+	// Refused before anything else, so a bad value never reaches Janua.
+	if err := ValidateGraceHours(opts.GraceHours); err != nil {
+		return Platform{}, err
+	}
+	if reg == nil {
+		return Platform{}, fmt.Errorf("missing OIDC registry")
+	}
+	platform, ok := reg.Platforms[opts.PlatformID]
+	if !ok {
+		return Platform{}, fmt.Errorf("unknown platform %q", opts.PlatformID)
+	}
+	if err := validatePlatform(platform); err != nil {
+		return Platform{}, err
+	}
+	if !opts.DryRun && !boundedText(opts.Reason, 1000) {
+		return Platform{}, fmt.Errorf("audit reason is required before provisioning")
+	}
+	return platform, nil
+}
+
 // ProvisionPlatform registers/reconciles Janua OAuth client and intakes OIDC material.
 func ProvisionPlatform(
 	ctx context.Context,
@@ -63,13 +86,9 @@ func ProvisionPlatform(
 	submitter IntakeSubmitter,
 	opts ProvisionOptions,
 ) (ProvisionResult, error) {
-	// Refused before anything else, so a bad value never reaches Janua.
-	if err := ValidateGraceHours(opts.GraceHours); err != nil {
+	platform, err := ValidateProvision(reg, opts)
+	if err != nil {
 		return ProvisionResult{}, err
-	}
-	platform, ok := reg.Platforms[opts.PlatformID]
-	if !ok {
-		return ProvisionResult{}, fmt.Errorf("unknown platform %q", opts.PlatformID)
 	}
 	public := platform.publicLogin()
 	// A confidential client's credential has to land somewhere the consumer
@@ -137,10 +156,10 @@ func ProvisionPlatform(
 	}
 	values := buildIntakeValues(reg.Issuer, remote.ClientID, secret, platform)
 	intakeID, err := submitter.SubmitIntake(ctx, platform.IntakeTarget, opts.Reason, values)
-	if err != nil {
-		return ProvisionResult{}, fmt.Errorf("vault intake %s: %w", platform.IntakeTarget, err)
-	}
 	result.IntakeID = intakeID
+	if err != nil {
+		return result, fmt.Errorf("vault intake outcome held: %w", err)
+	}
 	result.KeysWritten = mapKeys(values)
 	// The new secret is filed first, so a grace Janua did not honour never
 	// costs the credential; the run still fails, because the previous secret
@@ -155,10 +174,10 @@ func ProvisionPlatform(
 			return result, fmt.Errorf("generate session secrets: %w", serr)
 		}
 		sessionID, serr := submitter.SubmitIntake(ctx, platform.SessionIntakeTarget, opts.Reason+" (session-auth auto)", sessionValues)
+		result.SessionIntakeID = sessionID
 		if serr != nil {
 			return result, fmt.Errorf("vault intake %s: %w", platform.SessionIntakeTarget, serr)
 		}
-		result.SessionIntakeID = sessionID
 		result.SessionKeys = mapKeys(sessionValues)
 	}
 
@@ -247,12 +266,75 @@ func mapKeys(m map[string]string) []string {
 	return out
 }
 
+var intakeIDShape = regexp.MustCompile(`^int_[A-Za-z0-9_-]{1,80}$`)
+
+// Keys in the native intake receipt are UPPERCASE trimmed names, whereas
+// Vault property names use the separate server normalization below.
+// Mirrors secret_intake_handlers.go:validateIntakeValues and
+// operator_secret_handlers.go:normalizeVaultSecretKey, never casefolds a report.
+func canonicalIntakeKeyNames(rawKeys []string) ([]string, error) {
+	if len(rawKeys) == 0 || len(rawKeys) > 128 {
+		return nil, fmt.Errorf("invalid intake key set")
+	}
+	seen, properties := map[string]bool{}, map[string]bool{}
+	keys := make([]string, 0, len(rawKeys))
+	for _, raw := range rawKeys {
+		key := strings.ToUpper(strings.TrimSpace(raw))
+		property := intakeVaultProperty(key)
+		if !boundedText(key, 255) || property == "" || seen[key] || properties[property] {
+			return nil, fmt.Errorf("duplicate, colliding or invalid intake keys")
+		}
+		seen[key] = true
+		properties[property] = true
+		keys = append(keys, key)
+	}
+	sortStrings(keys)
+	return keys, nil
+}
+func intakeVaultProperty(key string) string {
+	var b strings.Builder
+	lastUnderscore := true
+	for i := 0; i < len(key); i++ {
+		ch := key[i]
+		if ch >= 'A' && ch <= 'Z' {
+			ch += 'a' - 'A'
+		}
+		if (ch >= 'a' && ch <= 'z') || (ch >= '0' && ch <= '9') {
+			b.WriteByte(ch)
+			lastUnderscore = false
+			continue
+		}
+		if !lastUnderscore {
+			b.WriteByte('_')
+			lastUnderscore = true
+		}
+	}
+	return strings.Trim(b.String(), "_")
+}
+func exactIntakeReportKeys(reported, expected []string) bool {
+	canonical, err := canonicalIntakeKeyNames(reported)
+	if err != nil || !sameStrings(canonical, expected) {
+		return false
+	}
+	for _, key := range reported {
+		if key != strings.ToUpper(strings.TrimSpace(key)) {
+			return false
+		}
+	}
+	return true
+}
+
 // HTTPIntakeSubmitter posts to Switchyard secret intake API.
 type HTTPIntakeSubmitter struct {
 	Post func(ctx context.Context, path string, body []byte) ([]byte, error)
+	Get  func(ctx context.Context, path string) ([]byte, error)
 }
 
 func (s HTTPIntakeSubmitter) SubmitIntake(ctx context.Context, target, reason string, values map[string]string) (string, error) {
+	expectedKeys, err := canonicalIntakeKeyNames(mapKeys(values))
+	if err != nil {
+		return "", err
+	}
 	payload := map[string]interface{}{
 		"target": target,
 		"reason": reason,
@@ -269,13 +351,29 @@ func (s HTTPIntakeSubmitter) SubmitIntake(ctx context.Context, target, reason st
 	var resp struct {
 		IntakeID string `json:"intake_id"`
 	}
-	if err := json.Unmarshal(body, &resp); err != nil {
-		return "", err
+	if len(body) > 32768 || decodeProviderJSON(body, &resp) != nil || !intakeIDShape.MatchString(resp.IntakeID) {
+		return "", fmt.Errorf("intake submission outcome unknown; no automatic retry")
 	}
-	if strings.TrimSpace(resp.IntakeID) == "" {
-		return "", fmt.Errorf("intake response missing intake_id")
+	// This is a retained Vault-write receipt, not ESO Ready or an auth grant.
+	if s.Get == nil {
+		return resp.IntakeID, fmt.Errorf("intake retained; read-only custody verification unavailable")
+	}
+	data, err := s.Get(ctx, "/v1/secrets/intake/"+resp.IntakeID)
+	if err != nil {
+		return resp.IntakeID, fmt.Errorf("intake retained; read-only custody status unavailable")
+	}
+	var status struct {
+		IntakeID string   `json:"intake_id"`
+		TargetID string   `json:"target_id"`
+		Status   string   `json:"status"`
+		Keys     []string `json:"keys_written"`
+		Version  int      `json:"vault_version"`
+	}
+	if len(data) > 32768 || decodeProviderJSON(data, &status) != nil || status.IntakeID != resp.IntakeID || status.TargetID != target || status.Status != "ready" || status.Version < 1 || !exactIntakeReportKeys(status.Keys, expectedKeys) {
+		return resp.IntakeID, fmt.Errorf("intake retained; custody status differs from exact submitted target/keys")
 	}
 	return resp.IntakeID, nil
+
 }
 
 // FormatResultJSON returns pretty JSON without secrets.

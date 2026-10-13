@@ -1,10 +1,14 @@
 package cmd
 
 import (
+	"gopkg.in/yaml.v3"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"testing"
 
+	"github.com/spf13/cobra"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
@@ -53,4 +57,50 @@ func TestRotationSummary(t *testing.T) {
 		rotationSummary(ecosystemoidc.ProvisionResult{RotatedSecret: true, GracePeriodHours: &zero, OldSecretsExpireAt: "2026-10-03T00:00:00Z"}))
 	assert.Equal(t, " planned_grace_hours=0", rotationSummary(ecosystemoidc.ProvisionResult{DryRun: true, PlannedGraceHours: &zero}))
 	assert.Equal(t, "", rotationSummary(ecosystemoidc.ProvisionResult{Created: true}))
+}
+
+func TestOrganizationOnlyOverrideUsesEmbeddedSingleProfile(t *testing.T) {
+	for _, platform := range []string{"crea-sim", "crea-sim-mcp"} {
+		require.NoError(t, provisionOIDC(t, "--platform", platform, "--organization-id", "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa", "--reason", "synthetic tenant proof", "--dry-run", "--json"))
+	}
+	for _, args := range [][]string{
+		{"--all", "--organization-id", "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"},
+		{"--platform", "crea-sim", "--registry", "not-read.yaml", "--organization-id", "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"},
+		{"--platform", "crea-sim", "--organization-id", ""},
+		{"--platform", "crea-sim", "--organization-id", "not-a-uuid"},
+		{"--platform", "voxa-selva", "--organization-id", "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"},
+	} {
+		require.Error(t, provisionOIDC(t, append(args, "--reason", "synthetic refusal", "--dry-run")...))
+	}
+}
+func TestRotationRequiresExplicitFlag(t *testing.T) {
+	cfg := &config.Config{}
+	root := newSecretsProvisionCommand(cfg)
+	var provision *cobra.Command
+	for _, child := range root.Commands() {
+		if child.Name() == "oidc" {
+			provision = child
+		}
+	}
+	require.NotNil(t, provision)
+	value, err := provision.Flags().GetBool("rotate-secret")
+	require.NoError(t, err)
+	require.False(t, value)
+	require.NoError(t, provision.Flags().Set("rotate-secret", "true"))
+	value, err = provision.Flags().GetBool("rotate-secret")
+	require.NoError(t, err)
+	require.True(t, value)
+}
+
+func TestAllContractsAreValidatedBeforeFirstProviderEffect(t *testing.T) {
+	good := ecosystemoidc.Platform{IntakeTarget: "fixture/oidc", JanuaClient: ecosystemoidc.JanuaClientSpec{Name: "fixture-code", Audience: "fixture-code", ClientKey: "fixture-code", RedirectURIs: []string{"https://fixture.example.test/callback"}, AllowedScopes: []string{"openid"}, GrantTypes: []string{"authorization_code"}}}
+	bad := good
+	bad.JanuaClient.GrantTypes = []string{"authorization_code", "client_credentials"}
+	data, err := yaml.Marshal(ecosystemoidc.Registry{Issuer: "https://auth.example.test", Platforms: map[string]ecosystemoidc.Platform{"fixture-a-first": good, "fixture-b-bad": bad}})
+	require.NoError(t, err)
+	path := filepath.Join(t.TempDir(), "registry.yaml")
+	require.NoError(t, os.WriteFile(path, data, 0600))
+	err = provisionOIDC(t, "--all", "--registry", path, "--reason", "synthetic complete preflight")
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "grants")
 }

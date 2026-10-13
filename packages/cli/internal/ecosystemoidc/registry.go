@@ -28,17 +28,10 @@ type Platform struct {
 
 // JanuaClientSpec is sent to Janua register/create APIs.
 //
-// Three client shapes flow through here. A LOGIN client (authorization_code)
-// has redirect_uris and no OrganizationID. A machine client
-// (client_credentials) has an OrganizationID (org-bound service identity) and
-// NO redirect_uris — nauta-symbiosis-hcm is the first of these. Janua #595
-// (merged 2026-09-04) emits an org-bound client's app:role scopes verbatim
-// into the roles claim, which is what makes an org binding + a scope like
-// hcm:hr a working edge; a machine client that is NOT org-bound would not get
-// that treatment. The third shape is a PUBLIC login client
-// (`is_confidential: false`): a browser or device app that signs in with
-// authorization_code + PKCE and holds no secret — the Yantra4D Studio
-// (app.yantra4d.com, 2026-09-17) is the first. See Platform.publicLogin.
+// GrantTypes distinguish an ordinary authorization-code client from a machine
+// client. OrganizationID scopes either kind independently; it never converts
+// a human login into a service identity. Public ordinary clients use PKCE and
+// hold no secret, whether or not they are organization-bound.
 type JanuaClientSpec struct {
 	Name           string   `yaml:"name"`
 	ClientKey      string   `yaml:"client_key"`
@@ -68,7 +61,8 @@ func (s JanuaClientSpec) confidential() bool {
 // and a secret is never resolved, never rotated and never written to Vault.
 // An org-bound machine client is never public: it authenticates as itself.
 func (p Platform) publicLogin() bool {
-	return !p.JanuaClient.confidential() && strings.TrimSpace(p.JanuaClient.OrganizationID) == ""
+	kind, err := p.JanuaClient.kind()
+	return err == nil && kind == humanClient && !p.JanuaClient.confidential()
 }
 
 // LoadRegistry reads the embedded registry or an override file path.
