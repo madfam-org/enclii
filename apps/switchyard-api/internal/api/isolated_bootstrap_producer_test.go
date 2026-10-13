@@ -138,6 +138,7 @@ func TestBootstrapProducerProofRejectsFalseReleaseEvidence(t *testing.T) {
 				require.NoError(t, err)
 				require.True(t, proof.SignatureVerified)
 				require.Equal(t, int64(123), proof.RunID)
+				require.Equal(t, strings.TrimPrefix(bootstrapDigestOf("images:\n- name: "+profile.Image+"\n  digest: "+pinDigest+"\n"), "sha256:"), proof.PinPayloadSHA256)
 				require.Equal(t, 1, signatures)
 			} else {
 				require.Error(t, err)
