@@ -7,7 +7,6 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
-
 	"github.com/madfam-org/enclii/apps/switchyard-api/internal/auth"
 	"github.com/madfam-org/enclii/apps/switchyard-api/internal/k8s"
 	"github.com/madfam-org/enclii/apps/switchyard-api/internal/logging"
@@ -70,6 +69,13 @@ func (h *Handler) InstantRollback(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid target_deployment_id"})
 		return
 	}
+
+	lease, ok := h.targetLease(c, serviceID, false, true)
+	if !ok {
+		return
+	}
+	h = lease.handler
+	defer lease.finish(c)
 
 	// Look up the service.
 	service, err := h.repos.Services.GetByID(serviceID)

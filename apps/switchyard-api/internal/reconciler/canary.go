@@ -2,6 +2,7 @@ package reconciler
 
 import (
 	"context"
+	"database/sql"
 	"fmt"
 	"io"
 	"net/http"
@@ -10,15 +11,15 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/madfam-org/enclii/apps/switchyard-api/internal/db"
+	"github.com/madfam-org/enclii/apps/switchyard-api/internal/k8s"
+	"github.com/madfam-org/enclii/apps/switchyard-api/internal/workloadtargets"
+	"github.com/madfam-org/enclii/packages/sdk-go/pkg/types"
 	"github.com/sirupsen/logrus"
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-
-	"github.com/madfam-org/enclii/apps/switchyard-api/internal/db"
-	"github.com/madfam-org/enclii/apps/switchyard-api/internal/k8s"
-	"github.com/madfam-org/enclii/packages/sdk-go/pkg/types"
 )
 
 // CanaryReconciler drives canary rollout state machines.
@@ -186,6 +187,17 @@ type TickInput struct {
 //
 // Returns the new state (may be equal to current — means "still waiting").
 func (c *CanaryReconciler) Tick(ctx context.Context, in TickInput) (types.CanaryRolloutState, error) {
+	state := in.Rollout.State
+	err := (workloadtargets.Store{DB: c.repos.DB()}).WithUnbound(ctx, in.Service.ID, func(tx *sql.Tx) error {
+		scoped := *c
+		scoped.repos = c.repos.InTransaction(tx)
+		var err error
+		state, err = scoped.tickLocked(ctx, in)
+		return err
+	})
+	return state, err
+}
+func (c *CanaryReconciler) tickLocked(ctx context.Context, in TickInput) (types.CanaryRolloutState, error) {
 	ro := in.Rollout
 	logger := c.logger.WithFields(logrus.Fields{
 		"rollout":    ro.ID,
@@ -583,6 +595,13 @@ func (c *CanaryReconciler) scaleDownCanary(ctx context.Context, in TickInput) er
 
 // ManualRollback is called by the API handler when an operator clicks "Rollback".
 func (c *CanaryReconciler) ManualRollback(ctx context.Context, ro *types.CanaryRollout, svc *types.Service, env *types.Environment, reason string) error {
+	return (workloadtargets.Store{DB: c.repos.DB()}).WithUnbound(ctx, svc.ID, func(tx *sql.Tx) error {
+		scoped := *c
+		scoped.repos = c.repos.InTransaction(tx)
+		return scoped.manualRollbackLocked(ctx, ro, svc, env, reason)
+	})
+}
+func (c *CanaryReconciler) manualRollbackLocked(ctx context.Context, ro *types.CanaryRollout, svc *types.Service, env *types.Environment, reason string) error {
 	if ro.State.IsTerminal() {
 		return fmt.Errorf("rollout %s is already terminal (%s)", ro.ID, ro.State)
 	}
@@ -603,6 +622,13 @@ func (c *CanaryReconciler) ManualRollback(ctx context.Context, ro *types.CanaryR
 // ManualPromote short-circuits the validation window, forcing an immediate
 // promote. The rollout must currently be in `validating` (caller enforces).
 func (c *CanaryReconciler) ManualPromote(ctx context.Context, ro *types.CanaryRollout, svc *types.Service, env *types.Environment, stableRel, canaryRel *types.Release) error {
+	return (workloadtargets.Store{DB: c.repos.DB()}).WithUnbound(ctx, svc.ID, func(tx *sql.Tx) error {
+		scoped := *c
+		scoped.repos = c.repos.InTransaction(tx)
+		return scoped.manualPromoteLocked(ctx, ro, svc, env, stableRel, canaryRel)
+	})
+}
+func (c *CanaryReconciler) manualPromoteLocked(ctx context.Context, ro *types.CanaryRollout, svc *types.Service, env *types.Environment, stableRel, canaryRel *types.Release) error {
 	if ro.State != types.CanaryStateValidating && ro.State != types.CanaryStateRunning {
 		return fmt.Errorf("rollout %s: manual promote only allowed from validating/running (got %s)", ro.ID, ro.State)
 	}

@@ -940,6 +940,11 @@ jobs:
           JWT_SECRET: test-secret-key
           ENV: test
 
+      # Same required Unit Tests job: fixed PG18/TLS fixture has no skip or
+      # caller-provided URL/SQL selector. PG16 runtime proof remains unchanged.
+      - name: Native immutable workload target locks and apply on PostgreSQL18
+        run: python3 scripts/prove-workload-target-postgres.py
+
       # Per-module coverage FLOORS, not a single threshold.
       #
       # The flat 50% gate only ever saw packages/otel-go (97%), because the

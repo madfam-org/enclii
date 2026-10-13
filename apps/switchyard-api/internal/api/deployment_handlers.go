@@ -12,7 +12,6 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
-
 	"github.com/madfam-org/enclii/apps/switchyard-api/internal/compliance"
 	"github.com/madfam-org/enclii/apps/switchyard-api/internal/db"
 	apperrors "github.com/madfam-org/enclii/apps/switchyard-api/internal/errors"
@@ -34,6 +33,13 @@ func (h *Handler) DeployService(c *gin.Context) {
 	if !h.enforceServiceAccess(c, serviceID) {
 		return
 	}
+
+	lease, ok := h.targetLease(c, serviceID, false, true)
+	if !ok {
+		return
+	}
+	h = lease.handler
+	defer lease.finish(c)
 
 	var req struct {
 		ReleaseID       string            `json:"release_id" binding:"required"`
@@ -438,6 +444,13 @@ func (h *Handler) RollbackDeployment(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to get release"})
 		return
 	}
+
+	lease, ok := h.targetLease(c, release.ServiceID, false, true)
+	if !ok {
+		return
+	}
+	h = lease.handler
+	defer lease.finish(c)
 
 	// Get service
 	service, err := h.repos.Services.GetByID(release.ServiceID)

@@ -7,15 +7,15 @@ import (
 	"strings"
 	"time"
 
+	"github.com/madfam-org/enclii/apps/switchyard-api/internal/jobholds"
+	"github.com/madfam-org/enclii/apps/switchyard-api/internal/k8s"
+	"github.com/madfam-org/enclii/apps/switchyard-api/internal/workloadtargets"
+	"github.com/madfam-org/enclii/packages/sdk-go/pkg/types"
 	"github.com/sirupsen/logrus"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime/schema"
-
-	"github.com/madfam-org/enclii/apps/switchyard-api/internal/jobholds"
-	"github.com/madfam-org/enclii/apps/switchyard-api/internal/k8s"
-	"github.com/madfam-org/enclii/packages/sdk-go/pkg/types"
 )
 
 // ServiceReconciler manages the lifecycle of services in Kubernetes
@@ -33,6 +33,7 @@ type EnvVarWithMeta struct {
 }
 
 type ReconcileRequest struct {
+	targetSession   *workloadtargets.Session
 	Service         *types.Service
 	Release         *types.Release
 	Deployment      *types.Deployment
@@ -78,6 +79,19 @@ func NewServiceReconciler(k8sClient *k8s.Client, logger *logrus.Logger, database
 
 // Reconcile ensures the desired state matches the actual state in Kubernetes
 func (r *ServiceReconciler) Reconcile(ctx context.Context, req *ReconcileRequest) *ReconcileResult {
+	session := req.targetSession
+	if session == nil {
+		var err error
+		session, err = (workloadtargets.Store{DB: r.jobHolds.DB}).LockService(ctx, req.Service.ID)
+		if err != nil {
+			return &ReconcileResult{Success: false, Message: "explicit target store unavailable", Error: err}
+		}
+		defer session.Close()
+	}
+	if err := session.RefuseBound(ctx); err != nil {
+		return &ReconcileResult{Success: false, Message: "bound GitOps target refuses legacy reconciliation", Error: err}
+	}
+
 	logger := r.logger.WithFields(logrus.Fields{
 		"service":    req.Service.Name,
 		"release":    req.Release.Version,

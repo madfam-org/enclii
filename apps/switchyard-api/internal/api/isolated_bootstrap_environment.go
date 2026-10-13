@@ -2,8 +2,11 @@ package api
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"fmt"
 	"net/url"
+	"reflect"
 	"regexp"
 	"strings"
 
@@ -158,7 +161,12 @@ func (h *Handler) initialJobData(ctx context.Context, p isolatedBootstrapProfile
 		return nil, err
 	}
 	if p.Name == "portal-sim-initial" {
+		runtime, err := strictInitialURI(b.RuntimeURI, false)
+		if err != nil || !strictInitialPortalRuntime(string(appURI)) {
+			return nil, fmt.Errorf("initial portal runtime requires strict managed CA transport")
+		}
 		data["CREA_SIM_MIGRATOR_DATABASE_URL"] = []byte(owner)
+		data["CREA_SIM_PORTAL_DATABASE_URL"] = []byte(runtime)
 		data["CREA_SIM_DATABASE_NAMESPACE"] = []byte(namespace)
 		return data, nil
 	}
@@ -189,3 +197,43 @@ func (h *Handler) initialJobData(ctx context.Context, p isolatedBootstrapProfile
 	data["DATABASE_URL"], data["MAP_SIMULATION_RUNTIME_DATABASE_URL"], data["MAP_SIMULATION_SEED_ENABLED"] = []byte(owner), []byte(runtime), []byte("true")
 	return data, nil
 }
+
+func strictInitialPortalRuntime(raw string) bool {
+	u, err := url.Parse(raw)
+	if err != nil || u.User == nil || u.User.Username() != "crea_sim_portal" || u.Path != "/crea_sim_portal_sim" || u.Fragment != "" {
+		return false
+	}
+	q, queryErr := url.ParseQuery(u.RawQuery)
+	if queryErr != nil {
+		return false
+	}
+	for key, values := range q {
+		if len(values) != 1 || (key != "sslmode" && key != "sslrootcert") {
+			return false
+		}
+	}
+	return (q.Get("sslmode") == "require" || q.Get("sslmode") == "verify-full") && (!q.Has("sslrootcert") || q.Get("sslrootcert") == "/var/run/crea-sim/ca/ca.crt")
+}
+
+// Retain independently observed identities, not caller selectors or labels as
+// producer authority. The source proof was already fully verified above.
+func (h *Handler) initialBootstrapIdentity(ctx context.Context, p isolatedBootstrapProfile, project uuid.UUID, d *appsv1.Deployment, b *addons.InitialBootstrapCredentials, addonNamespace string, binding, onboarding uuid.UUID, proof *bootstrapProducerProof) (k8s.InitialBootstrapIdentity, error) {
+	fail := fmt.Errorf("initial namespace/workload identity unavailable")
+	if proof == nil || binding == uuid.Nil || onboarding == uuid.Nil || d == nil || d.UID == "" || d.ResourceVersion == "" {
+		return k8s.InitialBootstrapIdentity{}, fail
+	}
+	app, e := h.opsKubeClient().CoreV1().Namespaces().Get(ctx, p.Namespace, metav1.GetOptions{})
+	if e != nil || app.UID == "" || app.Labels[k8s.LabelProjectNamespace] != project.String() {
+		return k8s.InitialBootstrapIdentity{}, fail
+	}
+	ns, e := h.opsKubeClient().CoreV1().Namespaces().Get(ctx, addonNamespace, metav1.GetOptions{})
+	if e != nil || ns.UID == "" || ns.Labels[k8s.LabelProjectNamespace] != project.String() {
+		return k8s.InitialBootstrapIdentity{}, fail
+	}
+	svc, e := h.opsKubeClient().CoreV1().Services(p.Namespace).Get(ctx, p.Service, metav1.GetOptions{})
+	if e != nil || svc.UID == "" || d.Spec.Selector == nil || len(d.Spec.Selector.MatchExpressions) != 0 || len(d.Spec.Selector.MatchLabels) == 0 || !reflect.DeepEqual(svc.Spec.Selector, d.Spec.Selector.MatchLabels) {
+		return k8s.InitialBootstrapIdentity{}, fail
+	}
+	return k8s.InitialBootstrapIdentity{ApplicationNamespaceUID: string(app.UID), AddonNamespaceUID: string(ns.UID), DeploymentUID: string(d.UID), DeploymentResourceVersion: d.ResourceVersion, WorkloadServiceUID: string(svc.UID), ClusterUID: b.ClusterUID, BindingID: binding, OnboardingID: onboarding, Database: p.Database, OwnerRole: "enclii_migrator", RuntimeRole: p.RuntimeRole, PublicCASHA256: initialPayloadSHA([]byte(b.PublicCA)), Producer: proof.Producer, SourceRevision: proof.Revision, BuildRunID: proof.RunID, Checks: proof.Checks, SignatureVerified: proof.SignatureVerified, PinPayloadSHA256: proof.PinPayloadSHA256}, nil
+}
+func initialPayloadSHA(b []byte) string { sum := sha256.Sum256(b); return hex.EncodeToString(sum[:]) }

@@ -11,9 +11,9 @@ var opsCapabilities = []operatorCapability{
 	{
 		Name:        "apps",
 		Status:      "partial",
-		Description: "Argo application status/diff reads plus audited sync, retire, and rollback workflow contracts",
-		Actions:     []string{"status", "sync", "diff", "retire", "rollback", "sync-sweep"},
-		Scopes:      []string{"namespace", "project", "service", "target"},
+		Description: "Argo application reads and lifecycle contracts; bind-target is an operator-only immutable target plan/apply with no Kubernetes effect",
+		Actions:     []string{"status", "sync", "diff", "retire", "rollback", "sync-sweep", "bind-target"},
+		Scopes:      []string{"namespace", "project", "service", "environment", "target"},
 	},
 	{
 		Name:        "pods",

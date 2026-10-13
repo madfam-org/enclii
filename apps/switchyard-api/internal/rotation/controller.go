@@ -6,11 +6,11 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/sirupsen/logrus"
-
 	"github.com/madfam-org/enclii/apps/switchyard-api/internal/db"
 	"github.com/madfam-org/enclii/apps/switchyard-api/internal/k8s"
 	"github.com/madfam-org/enclii/apps/switchyard-api/internal/lockbox"
+	"github.com/madfam-org/enclii/apps/switchyard-api/internal/workloadtargets"
+	"github.com/sirupsen/logrus"
 )
 
 // Controller orchestrates zero-downtime secret rotation
@@ -185,8 +185,18 @@ func (c *Controller) performRotation(ctx context.Context, event *lockbox.SecretC
 		return fmt.Errorf("invalid service ID: %w", err)
 	}
 
+	session, err := (workloadtargets.Store{DB: c.repos.DB()}).LockService(ctx, serviceUUID)
+	if err != nil {
+		return err
+	}
+	defer session.Close()
+	if err = session.RefuseBound(ctx); err != nil {
+		return err
+	}
+	repositories := c.repos.InTransaction(session.Tx())
+
 	// Get service information
-	service, err := c.repos.Services.GetByID(serviceUUID)
+	service, err := repositories.Services.GetByID(serviceUUID)
 	if err != nil {
 		return fmt.Errorf("failed to get service: %w", err)
 	}
@@ -197,7 +207,7 @@ func (c *Controller) performRotation(ctx context.Context, event *lockbox.SecretC
 		event.SecretName, service.Name, event.Environment)
 
 	// Get the environment to determine the correct namespace
-	env, err := c.repos.Environments.GetByProjectAndName(service.ProjectID, event.Environment)
+	env, err := repositories.Environments.GetByProjectAndName(service.ProjectID, event.Environment)
 	if err != nil {
 		return fmt.Errorf("failed to get environment %s: %w", event.Environment, err)
 	}

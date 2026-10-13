@@ -4,8 +4,6 @@ import (
 	"context"
 
 	"github.com/gin-gonic/gin"
-	"github.com/sirupsen/logrus"
-
 	"github.com/madfam-org/enclii/apps/switchyard-api/internal/addons"
 	"github.com/madfam-org/enclii/apps/switchyard-api/internal/audit"
 	"github.com/madfam-org/enclii/apps/switchyard-api/internal/auth"
@@ -32,7 +30,9 @@ import (
 	"github.com/madfam-org/enclii/apps/switchyard-api/internal/topology"
 	"github.com/madfam-org/enclii/apps/switchyard-api/internal/validation"
 	"github.com/madfam-org/enclii/apps/switchyard-api/internal/webhooks"
+	"github.com/madfam-org/enclii/apps/switchyard-api/internal/workloadtargets"
 	"github.com/madfam-org/enclii/packages/sdk-go/pkg/types"
+	"github.com/sirupsen/logrus"
 )
 
 // Handler contains all dependencies for HTTP handlers
@@ -63,15 +63,19 @@ type Handler struct {
 
 	// kalyaFeedMinter overrides the live kalya internal feed-token client.
 	// Nil uses the real HTTP client; tests substitute a fake endpoint.
-	kalyaFeedMinter    kalyaFeedTokenMinter
-	reconciler         *reconciler.Controller
-	serviceReconciler  *reconciler.ServiceReconciler
-	metrics            *monitoring.MetricsCollector
-	logger             logging.Logger
-	validator          *validation.Validator
-	provenanceChecker  *provenance.Checker
-	complianceExporter *compliance.Exporter
-	topologyBuilder    *topology.GraphBuilder
+	kalyaFeedMinter   kalyaFeedTokenMinter
+	reconciler        *reconciler.Controller
+	serviceReconciler *reconciler.ServiceReconciler
+	metrics           *monitoring.MetricsCollector
+	logger            logging.Logger
+	// Tests may substitute metadata readers; nil uses exact supported native
+	// reads. Locked request copies alone receive the mutation session.
+	workloadTargetSession        *workloadtargets.Session
+	workloadTargetSnapshotReader func(context.Context, workloadtargets.Request) (workloadtargets.Snapshot, error)
+	validator                    *validation.Validator
+	provenanceChecker            *provenance.Checker
+	complianceExporter           *compliance.Exporter
+	topologyBuilder              *topology.GraphBuilder
 
 	// Build concurrency control - semaphore to limit concurrent builds (prevents OOM)
 	buildSemaphore chan struct{}

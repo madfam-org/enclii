@@ -479,11 +479,8 @@ func TestScaleRequest_JSONBinding(t *testing.T) {
 		wantErr bool
 	}{
 		{"valid", `{"replicas":3}`, false},
-		// NOTE: gin's "required" tag on int32 treats 0 as missing because
-		// 0 is the zero-value for the type. This is a known gin behavior.
-		// The handler's replica cap logic (replicas < 0) provides the
-		// secondary validation for scale-to-zero requests.
-		{"zero replicas fails binding", `{"replicas":0}`, true},
+		// Presence is checked independently of the numeric zero value.
+		{"zero replicas binds", `{"replicas":0}`, false},
 		{"with env", `{"replicas":2,"env":"staging"}`, false},
 		{"missing replicas", `{"env":"staging"}`, true},
 		{"invalid json", `{bad`, true},
@@ -621,34 +618,6 @@ func TestExecService_TimeoutDefaults(t *testing.T) {
 				timeout = 1800
 			}
 			assert.Equal(t, tt.expected, timeout)
-		})
-	}
-}
-
-func TestScaleService_ReplicaBoundaries(t *testing.T) {
-	// Verify replica validation logic.
-	// The handler rejects replicas > 10 and replicas < 0.
-
-	tests := []struct {
-		name       string
-		replicas   int32
-		wantReject bool
-	}{
-		{"zero is valid (scale to zero)", 0, false},
-		{"one is valid", 1, false},
-		{"ten is valid (max)", 10, false},
-		{"eleven exceeds cap", 11, true},
-		{"negative is invalid", -1, true},
-		{"large number exceeds cap", 100, true},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			rejected := false
-			if tt.replicas > 10 || tt.replicas < 0 {
-				rejected = true
-			}
-			assert.Equal(t, tt.wantReject, rejected)
 		})
 	}
 }

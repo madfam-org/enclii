@@ -7,11 +7,11 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/sirupsen/logrus"
-
 	"github.com/madfam-org/enclii/apps/switchyard-api/internal/db"
 	"github.com/madfam-org/enclii/apps/switchyard-api/internal/errors"
+	"github.com/madfam-org/enclii/apps/switchyard-api/internal/workloadtargets"
 	"github.com/madfam-org/enclii/packages/sdk-go/pkg/types"
+	"github.com/sirupsen/logrus"
 )
 
 // =============================================================================
@@ -37,6 +37,46 @@ type ExecuteGroupDeploymentResponse struct {
 func (s *DeploymentGroupService) ExecuteGroupDeployment(ctx context.Context, req *ExecuteGroupDeploymentRequest) (*ExecuteGroupDeploymentResponse, error) {
 	groupID, err := uuid.Parse(req.GroupID)
 	if err != nil {
+		return nil, err
+	}
+	group, err := s.repos.DeploymentGroups.GetByID(ctx, groupID)
+	if err != nil {
+		return nil, err
+	}
+	members, err := s.repos.Services.ListByProject(group.ProjectID)
+	if err != nil {
+		return nil, err
+	}
+	ids := make([]uuid.UUID, len(members))
+	for i, svc := range members {
+		ids[i] = svc.ID
+	}
+	var session *workloadtargets.Session
+	store := workloadtargets.Store{DB: s.repos.DB()}
+	if len(ids) == 0 {
+		// An empty unbound project still completes its legacy metadata-only
+		// group. Serialize and refuse a bound project before accepted status.
+		session, err = store.LockProject(ctx, group.ProjectID)
+	} else {
+		session, err = store.LockServices(ctx, ids)
+	}
+	if err != nil {
+		return nil, err
+	}
+	defer session.Close()
+	if session.ProjectID() != group.ProjectID {
+		return nil, workloadtargets.ErrIntent
+	}
+	if err = session.RefuseBound(ctx); err != nil {
+		return nil, err
+	}
+	scoped := *s
+	scoped.targetSession = session
+	return scoped.executeGroupLocked(ctx, req, ids)
+}
+func (s *DeploymentGroupService) executeGroupLocked(ctx context.Context, req *ExecuteGroupDeploymentRequest, serviceIDs []uuid.UUID) (*ExecuteGroupDeploymentResponse, error) {
+	groupID, err := uuid.Parse(req.GroupID)
+	if err != nil {
 		return nil, errors.Wrap(err, errors.ErrInvalidInput)
 	}
 
@@ -44,6 +84,10 @@ func (s *DeploymentGroupService) ExecuteGroupDeployment(ctx context.Context, req
 	group, err := s.repos.DeploymentGroups.GetByID(ctx, groupID)
 	if err != nil {
 		return nil, errors.Wrap(err, errors.ErrDeploymentNotFound)
+	}
+
+	if s.targetSession == nil || s.targetSession.ProjectID() != group.ProjectID {
+		return nil, workloadtargets.ErrIntent
 	}
 
 	// Validate group is in pending status
@@ -63,17 +107,6 @@ func (s *DeploymentGroupService) ExecuteGroupDeployment(ctx context.Context, req
 		"group_id": req.GroupID,
 		"strategy": group.Strategy,
 	}).Info("Executing deployment group")
-
-	// Get services for this project
-	services, err := s.repos.Services.ListByProject(group.ProjectID)
-	if err != nil {
-		return nil, errors.Wrap(err, errors.ErrDatabaseError)
-	}
-
-	serviceIDs := make([]uuid.UUID, len(services))
-	for i, svc := range services {
-		serviceIDs[i] = svc.ID
-	}
 
 	// Get deployment order
 	layers, err := s.TopologicalSort(ctx, serviceIDs)
@@ -270,6 +303,23 @@ func (s *DeploymentGroupService) deployService(
 	req *ExecuteGroupDeploymentRequest,
 	deployOrder int,
 ) (*types.Deployment, error) {
+	if s.targetSession == nil {
+		session, err := (workloadtargets.Store{DB: s.repos.DB()}).LockService(ctx, serviceID)
+		if err != nil {
+			return nil, err
+		}
+		defer session.Close()
+		if err = session.RefuseBound(ctx); err != nil {
+			return nil, err
+		}
+		scoped := *s
+		scoped.targetSession = session
+		return scoped.deployService(ctx, group, serviceID, req, deployOrder)
+	}
+	if !s.targetSession.OwnsService(serviceID) || s.targetSession.ProjectID() != group.ProjectID {
+		return nil, workloadtargets.ErrIntent
+	}
+
 	// Get latest release for the service
 	releases, err := s.repos.Releases.ListByService(serviceID)
 	if err != nil {
@@ -339,6 +389,60 @@ type RollbackGroupResponse struct {
 
 // RollbackGroup rolls back all deployments in a group
 func (s *DeploymentGroupService) RollbackGroup(ctx context.Context, req *RollbackGroupRequest) (*RollbackGroupResponse, error) {
+	id, err := uuid.Parse(req.GroupID)
+	if err != nil {
+		return nil, err
+	}
+	group, err := s.repos.DeploymentGroups.GetByID(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+	deployments, err := s.repos.Deployments.ListByGroup(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+	ids := []uuid.UUID{}
+	seen := map[uuid.UUID]bool{}
+	for _, deployment := range deployments {
+		release, err := s.repos.Releases.GetByID(deployment.ReleaseID)
+		if err != nil {
+			return nil, err
+		}
+		if deployment.ServiceID != nil && *deployment.ServiceID != release.ServiceID {
+			return nil, workloadtargets.ErrIntent
+		}
+		if !seen[release.ServiceID] {
+			ids = append(ids, release.ServiceID)
+			seen[release.ServiceID] = true
+		}
+	}
+	var session *workloadtargets.Session
+	store := workloadtargets.Store{DB: s.repos.DB()}
+	if len(ids) == 0 {
+		// ListByGroup currently returns an empty list. Preserve that legacy
+		// outcome, but fence its group-status effects against project binding.
+		session, err = store.LockProject(ctx, group.ProjectID)
+	} else {
+		session, err = store.LockServices(ctx, ids)
+	}
+	if err != nil {
+		return nil, err
+	}
+	defer session.Close()
+	if session.ProjectID() != group.ProjectID {
+		return nil, workloadtargets.ErrIntent
+	}
+	if err = session.RefuseBound(ctx); err != nil {
+		return nil, err
+	}
+	scoped := *s
+	scoped.targetSession = session
+	deploymentService := *s.deploymentService
+	deploymentService.targetSession = session
+	scoped.deploymentService = &deploymentService
+	return scoped.rollbackGroupLocked(ctx, req, deployments)
+}
+func (s *DeploymentGroupService) rollbackGroupLocked(ctx context.Context, req *RollbackGroupRequest, deployments []*types.Deployment) (*RollbackGroupResponse, error) {
 	groupID, err := uuid.Parse(req.GroupID)
 	if err != nil {
 		return nil, errors.Wrap(err, errors.ErrInvalidInput)
@@ -350,16 +454,14 @@ func (s *DeploymentGroupService) RollbackGroup(ctx context.Context, req *Rollbac
 		return nil, errors.Wrap(err, errors.ErrDeploymentNotFound)
 	}
 
+	if s.targetSession == nil || s.targetSession.ProjectID() != group.ProjectID {
+		return nil, workloadtargets.ErrIntent
+	}
+
 	s.logger.WithFields(logrus.Fields{
 		"group_id": req.GroupID,
 		"status":   group.Status,
 	}).Info("Rolling back deployment group")
-
-	// Get all deployments in this group
-	deployments, err := s.repos.Deployments.ListByGroup(ctx, groupID)
-	if err != nil {
-		return nil, errors.Wrap(err, errors.ErrDatabaseError)
-	}
 
 	var rolledBack int
 	var failedToRoll int

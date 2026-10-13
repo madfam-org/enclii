@@ -5,7 +5,6 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
-
 	"github.com/madfam-org/enclii/apps/switchyard-api/internal/errors"
 	"github.com/madfam-org/enclii/apps/switchyard-api/internal/logging"
 	"github.com/madfam-org/enclii/apps/switchyard-api/internal/middleware"
@@ -195,6 +194,13 @@ func (h *Handler) DeleteProject(c *gin.Context) {
 		}
 		return
 	}
+
+	lease, ok := h.targetLease(c, project.ID, true, true)
+	if !ok {
+		return
+	}
+	h = lease.handler
+	defer lease.finish(c)
 
 	// Delete the project (CASCADE will handle related records)
 	if err := h.repos.Projects.Delete(ctx, project.ID); err != nil {

@@ -6,11 +6,11 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/sirupsen/logrus"
-
 	"github.com/madfam-org/enclii/apps/switchyard-api/internal/db"
 	"github.com/madfam-org/enclii/apps/switchyard-api/internal/errors"
+	"github.com/madfam-org/enclii/apps/switchyard-api/internal/workloadtargets"
 	"github.com/madfam-org/enclii/packages/sdk-go/pkg/types"
+	"github.com/sirupsen/logrus"
 )
 
 // =============================================================================
@@ -23,6 +23,7 @@ type DeploymentGroupService struct {
 	repos             *db.Repositories
 	deploymentService *DeploymentService
 	logger            *logrus.Logger
+	targetSession     *workloadtargets.Session
 }
 
 // NewDeploymentGroupService creates a new deployment group service

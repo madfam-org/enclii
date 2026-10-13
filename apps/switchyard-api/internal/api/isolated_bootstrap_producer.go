@@ -22,6 +22,7 @@ type bootstrapProducerProof struct {
 	RunID             int64  `json:"run_id"`
 	Checks            int    `json:"checks"`
 	SignatureVerified bool   `json:"signature_verified"`
+	PinPayloadSHA256  string `json:"pin_payload_sha256"`
 }
 
 type bootstrapProducerIO struct {
@@ -260,7 +261,8 @@ func (a bootstrapProducerIO) verify(ctx context.Context, profile isolatedBootstr
 	if err = a.VerifySignature(ctx, profile, image, revision, event); err != nil {
 		return nil, fmt.Errorf("closed producer keyless signature verification failed")
 	}
-	return &bootstrapProducerProof{Image: image, Revision: revision, Producer: profile.Producer, RunID: runID, Checks: checks.TotalCount, SignatureVerified: true}, nil
+	sum := sha256.Sum256([]byte(pin))
+	return &bootstrapProducerProof{Image: image, Revision: revision, Producer: profile.Producer, RunID: runID, Checks: checks.TotalCount, SignatureVerified: true, PinPayloadSHA256: hex.EncodeToString(sum[:])}, nil
 }
 
 func (a bootstrapProducerIO) verifyRevisionTag(ctx context.Context, base, token, revision, digest string) error {

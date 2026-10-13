@@ -279,3 +279,7 @@ func NewRepositories(db *sql.DB) *Repositories {
 		AdminActingSessions: NewAdminActingSessionRepository(db),
 	}
 }
+
+// InTransaction binds repository effects to an already-owned lifecycle lock.
+// It does not start, commit or roll back another transaction.
+func (r *Repositories) InTransaction(tx *sql.Tx) *Repositories { return newTxRepositories(r.db, tx) }

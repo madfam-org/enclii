@@ -10,7 +10,6 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
-
 	"github.com/madfam-org/enclii/apps/switchyard-api/internal/auth"
 	"github.com/madfam-org/enclii/apps/switchyard-api/internal/logging"
 	"github.com/madfam-org/enclii/apps/switchyard-api/internal/reconciler"
@@ -64,6 +63,13 @@ func (h *Handler) StartCanary(c *gin.Context) {
 	if !ok {
 		return
 	}
+
+	lease, ok := h.targetLease(c, serviceID, false, true)
+	if !ok {
+		return
+	}
+	h = lease.handler
+	defer lease.finish(c)
 
 	var req StartCanaryRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
