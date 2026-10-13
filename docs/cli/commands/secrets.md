@@ -344,8 +344,9 @@ enclii secrets provision oidc --all --dry-run --reason "ecosystem sweep"
 | `--all` | Provision every platform in the registry |
 | `--dry-run` | Plan the Janua reconcile without the Vault intake |
 | `--reason` | Required audit reason (same as intake) |
-| `--registry` | Override registry YAML path |
-| `--rotate-secret` | Rotate the Janua client secret when an existing client has no retrievable secret (default `true`) |
+| `--registry` | Legacy mutable registry YAML input; preflight validated, not evidence of an approved training tenant |
+| `--organization-id` | Canonical UUID from supported organization creation/readback; one embedded `--platform` only, never `--all` or `--registry` |
+| `--rotate-secret` | Rotate the Janua client secret when an existing client has no retrievable secret (default `false`; deliberate rotation only) |
 | `--json` | JSON output (no secret values) |
 | `--grace-hours` | Grace period, `0`–`168` hours, for the previous secrets when a secret is rotated. Unset keeps Janua's default (24 h) |
 
@@ -353,8 +354,47 @@ For Dhanam, also auto-submits `dhanam/session-auth` (generated `SESSION_SECRET` 
 `NEXTAUTH_SECRET`) when configured in the registry. After provision, force-sync
 Dhanam ExternalSecrets — see [SECRET_INTAKE runbook](../../runbooks/SECRET_INTAKE.md).
 
-**Public login clients.** A registry entry with `is_confidential: false` and no
-`organization_id` is a browser/device app that signs in with authorization_code +
+**Ordinary organization-bound clients.** Grants determine the kind: an ordinary
+client uses `authorization_code` (optionally `refresh_token`); a machine uses only
+`client_credentials`. Organization scope is independent, never a human membership
+or application-role grant. All chosen declarations are preflight-validated before
+any registration. Mixed grants, invalid callbacks/scopes/identity or malformed tenant
+UUIDs are refused locally. No MADFAM simulator profile is introduced here.
+
+An operator may add only organization scope to one embedded reviewed ordinary
+profile, after supported organization creation/readback and approval. The name,
+audience, callbacks, grants, scopes and custody target remain the embedded contract:
+
+```bash
+enclii secrets provision oidc --platform crea-sim --organization-id <ORG_UUID> \
+  --dry-run --reason "review dedicated training organization"
+```
+
+The override refuses `--all`, mutable `--registry` input and machine profiles.
+Existing unbound or differently bound clients remain held: Janua717 register/PATCH
+cannot rebind them, and this command never adopts or replaces them. A separate
+reviewed lifecycle decision is required. The internal registration request omits
+legacy logical `client_key` because Janua aliases that field to audience; exact
+name/audience, registry keys and the admin wire remain intact.
+
+**Unknown outcomes.** A lost, malformed or ambiguous create is `HELD`. One exact
+read-only discovery may describe what exists; it cannot recover the one-time secret
+or prove custody. There is no automatic POST retry, rename, replacement, rotation,
+intake or adoption. A known fresh confidential create missing its secret is held
+as well. Existing credentials require deliberate rotation, never default recovery.
+A retained intake ID is read back through the supported status API and checked
+against exact target, the server’s **uppercase trimmed** reported key names and a
+positive Vault version. Vault property normalization is separate; duplicate keys,
+normalization collisions and foreign/noncanonical reports are refused. Both primary
+and session receipt IDs are retained on a later status refusal. Intake/refresh is not ESO
+Ready, hosted login, organization membership or a role grant. An unavailable or
+mismatched status preserves that ID and fails held; an unknown submit invents no ID.
+Keep operator receipts privately under the canonical
+[internal custody contract](https://github.com/madfam-org/internal-devops/blob/main/decisions/2026-06-15-secret-intake-protocol.md);
+public docs contain no tenant UUID or credential.
+
+**Public login clients.** An ordinary registry entry with `is_confidential: false`,
+with or without `organization_id`, is a browser/device app that signs in with authorization_code +
 PKCE and holds no secret (`yantra4d-studio` is the first). For these the provisioner
 registers or reconciles the Janua client and prints its `client_id`, and that is the
 whole job: no secret is resolved or rotated, and `intake_target` is optional (set one
@@ -364,10 +404,13 @@ pins the `jnc_…` id in its own `janua.client.yaml` and reads it at build time.
 **Reconcile on the admin path.** When the existing client is found by name (or by its
 pinned id), `redirect_uris`, `allowed_scopes`, `grant_types` and `audience` are
 PATCHed to match the registry and reported as `reconciled=…`. A confidentiality flip,
-a pinned-id mismatch or an inactive client is refused rather than reconciled.
+a pinned-id/name mismatch, different or missing organization, human/machine conversion
+or an inactive client is refused rather than reconciled. The native admin inventory
+does not contain organization scope: the exact selected internal UUID is detail-read
+before changes, and the persisted post-PATCH contract is verified before custody.
 
 **Rotation grace (`--grace-hours`).** An existing confidential client's secret is
-never retrievable, so the provisioner rotates it (`POST
+never retrievable; only an explicit `--rotate-secret` requests its rotation (`POST
 /api/v1/oauth/clients/{uuid}/rotate`) and files the new one. By default Janua keeps the
 previous secrets valid for its default grace (24 h), which lets live consumers pick up
 the new value first. `--grace-hours N` sends `{"grace_period_hours": N}` instead.
@@ -381,7 +424,7 @@ requested grace, the new secret is still filed and the command exits non-zero.
 
 ```bash
 enclii secrets provision oidc --profile admin --platform zavlo-cfdi-emitter \
-  --grace-hours 0 --json --reason "digital-twins machine edges"
+  --rotate-secret --grace-hours 0 --json --reason "digital-twins machine edges"
 ```
 
 Rebuild CLI after pulling: `cd packages/cli && go build -o ~/.local/bin/enclii ./cmd/enclii/`

@@ -36,3 +36,24 @@ func TestTrainingHumanClientsHaveSeparateClosedCallbacks(t *testing.T) {
 		})
 	}
 }
+
+func TestTrainingOrganizationOverrideKeepsBothDeclaredCallbacksAndPilotScopes(t *testing.T) {
+	reg, err := LoadRegistry("")
+	require.NoError(t, err)
+	for _, id := range []string{"crea-sim", "crea-sim-mcp"} {
+		before := reg.Platforms[id]
+		scoped, err := reg.WithOrganization(id, "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa")
+		require.NoError(t, err)
+		after := scoped.Platforms[id]
+		require.Equal(t, before.JanuaClient.RedirectURIs, after.JanuaClient.RedirectURIs)
+		require.Equal(t, before.JanuaClient.AllowedScopes, after.JanuaClient.AllowedScopes)
+		require.Equal(t, before.IntakeTarget, after.IntakeTarget)
+		require.Equal(t, before.IntakeKeyMap, after.IntakeKeyMap)
+		kind, err := after.JanuaClient.kind()
+		require.NoError(t, err)
+		require.Equal(t, humanClient, kind)
+		require.Empty(t, reg.Platforms[id].JanuaClient.OrganizationID)
+	}
+	_, exists := reg.Platforms["madfam-sim"]
+	require.False(t, exists, "generic client support must not invent an unreviewed profile")
+}
