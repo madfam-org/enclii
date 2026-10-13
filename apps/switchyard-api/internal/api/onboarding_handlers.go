@@ -3,6 +3,7 @@ package api
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"fmt"
 	"github.com/madfam-org/enclii/apps/switchyard-api/internal/manifest"
 	"net/http"
@@ -12,6 +13,7 @@ import (
 	k8scorev1 "k8s.io/api/core/v1"
 	k8smetav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
+	"github.com/madfam-org/enclii/apps/switchyard-api/internal/k8s"
 	"github.com/madfam-org/enclii/apps/switchyard-api/internal/logging"
 	"github.com/madfam-org/enclii/apps/switchyard-api/internal/netpolicy"
 	"github.com/madfam-org/enclii/packages/sdk-go/pkg/types"
@@ -224,11 +226,19 @@ func (h *Handler) OnboardRepo(c *gin.Context) {
 	// Step: Ensure namespace (critical)
 	var nsErr error
 	if h.k8sClient != nil && h.k8sClient.IsValid() {
-		nsErr = h.k8sClient.EnsureNamespace(ctx, namespace)
+		nsErr = h.k8sClient.EnsureOnboardingNamespace(ctx, namespace, project.ID, false)
 	} else {
 		nsErr = fmt.Errorf("k8s client not available")
 	}
 	h.recordStep(ctx, &steps, "namespace", true, nsErr)
+	if nsErr != nil {
+		status := http.StatusServiceUnavailable
+		if errors.Is(nsErr, k8s.ErrNamespaceOwnership) {
+			status = http.StatusConflict
+		}
+		c.JSON(status, gin.H{"error": nsErr.Error(), "steps": serializeStepResults(steps)})
+		return
+	}
 
 	// Step: ArgoCD registration (critical). Default mode preserves the legacy
 	// Enclii repo ApplicationSet config write; runtime mode reconciles the

@@ -49,6 +49,10 @@ type DatabaseAddonConfig struct {
 	Memory    string `json:"memory,omitempty"`     // Memory request/limit (e.g., "256Mi", "1Gi")
 	HAEnabled bool   `json:"ha_enabled,omitempty"` // High availability mode
 	Replicas  int    `json:"replicas,omitempty"`   // Number of replicas (for HA)
+	// Paired opt-in for isolated synthetic PostgreSQL databases. RuntimeRole is
+	// a non-owner login; migration credentials are never injected by bindings.
+	DatabaseName string `json:"database_name,omitempty"`
+	RuntimeRole  string `json:"runtime_role,omitempty"`
 }
 
 // DatabaseAddon represents a provisioned database instance
@@ -157,8 +161,9 @@ type DatabaseAddonCredentials struct {
 	Port          int    `json:"port"`
 	DatabaseName  string `json:"database_name"`
 	Username      string `json:"username"`
-	Password      string `json:"password"`       // Only exposed via secure API
-	ConnectionURI string `json:"connection_uri"` // Full connection string
+	Password      string `json:"password"`                 // Only exposed via secure API
+	ConnectionURI string `json:"connection_uri"`           // Full connection string
+	CACertificate string `json:"ca_certificate,omitempty"` // Public CNPG client trust only; never a private key
 }
 
 // DatabaseAddonCreateRequest is the API request for creating a database addon

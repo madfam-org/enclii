@@ -51,7 +51,7 @@ type EncliiYAMLNetworkService struct {
 	Label   string   `yaml:"label,omitempty"`   // label key, default "app"
 	Port    int      `yaml:"port"`              // container port for ingress
 	Ingress []string `yaml:"ingress,omitempty"` // ["cloudflare-tunnel"]
-	Egress  []string `yaml:"egress,omitempty"`  // ["dns","https","postgres","redis","http","janua","pgbouncer"]
+	Egress  []string `yaml:"egress,omitempty"`  // ["dns","https","postgres","redis","http","janua","selva","pgbouncer"]
 }
 
 // EncliiYAMLCustomRule declares a custom network policy rule (e.g., intra-namespace proxy).

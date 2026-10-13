@@ -80,6 +80,9 @@ func NewPostgresProvisioner(k8sClient *k8s.Client, logger *logrus.Logger) *Postg
 
 // Provision creates a new PostgreSQL cluster via CloudNativePG
 func (p *PostgresProvisioner) Provision(ctx context.Context, req *ProvisionRequest) (*ProvisionResult, error) {
+	if err := ValidatePostgresRuntimeConfig(req.Addon.Type, req.Addon.Config); err != nil {
+		return nil, err
+	}
 	logger := p.logger.WithFields(logrus.Fields{
 		"addon_id":  req.Addon.ID,
 		"namespace": req.Namespace,
@@ -109,9 +112,15 @@ func (p *PostgresProvisioner) Provision(ctx context.Context, req *ProvisionReque
 
 	// Generate resource name
 	resourceName := fmt.Sprintf("pg-%s-%s", req.Addon.Name, req.Addon.ID.String()[:8])
+	if err := p.ensureRuntimeSecret(ctx, req, resourceName); err != nil {
+		return nil, err
+	}
 
 	// Build CloudNativePG Cluster manifest
 	cluster := p.buildClusterManifest(req, resourceName)
+	if cluster == nil {
+		return nil, fmt.Errorf("invalid isolated PostgreSQL profile")
+	}
 
 	// Convert to unstructured
 	clusterJSON, err := json.Marshal(cluster)
@@ -142,6 +151,9 @@ func (p *PostgresProvisioner) Provision(ctx context.Context, req *ProvisionReque
 		Kind:       CloudNativePGKind,
 		Name:       resourceName,
 		UID:        created.GetUID(),
+	}
+	if err := p.ownRuntimeSecret(ctx, req, resourceName, created.GetUID()); err != nil {
+		return nil, err
 	}
 
 	// Open the addon namespace's default-deny to consuming services. Every addon
@@ -200,6 +212,9 @@ func (p *PostgresProvisioner) Provision(ctx context.Context, req *ProvisionReque
 
 	// Connection secret name follows CloudNativePG naming convention
 	connectionSecret := fmt.Sprintf("%s-app", resourceName)
+	if runtimeProfile(req.Addon.Config) {
+		connectionSecret = runtimeSecretName(resourceName)
+	}
 
 	logger.Info("PostgreSQL cluster created successfully")
 
@@ -278,6 +293,9 @@ func (p *PostgresProvisioner) buildClusterManifest(req *ProvisionRequest, resour
 
 	// Add resource limits if specified
 	spec := cluster["spec"].(map[string]interface{})
+	if err := applyRuntimeProfile(spec, req.Addon, resourceName); err != nil {
+		return nil
+	}
 	if config.CPU != "" || config.Memory != "" {
 		resources := map[string]interface{}{}
 		requests := map[string]interface{}{}
@@ -462,6 +480,12 @@ func (p *PostgresProvisioner) parseClusterStatus(cluster *unstructured.Unstructu
 		DatabaseName: DefaultDatabase,
 		Username:     DefaultUser,
 	}
+	if runtimeProfile(addon.Config) {
+		if err := ValidatePostgresRuntimeConfig(addon.Type, addon.Config); err != nil {
+			return nil, err
+		}
+		result.DatabaseName, result.Username = addon.Config.DatabaseName, addon.Config.RuntimeRole
+	}
 
 	// Determine status based on phase and ready instances
 	switch phase {
@@ -495,6 +519,11 @@ func (p *PostgresProvisioner) parseClusterStatus(cluster *unstructured.Unstructu
 	}
 
 	// Extract connection info
+	if runtimeProfile(addon.Config) && !runtimeReconciled(status, addon.Config.RuntimeRole) {
+		result.Ready = false
+		result.Status = types.DatabaseAddonStatusProvisioning
+		result.StatusMessage = "Isolated runtime role is not reconciled"
+	}
 	writeService, _, _ := unstructured.NestedString(status, "writeService")
 	if writeService != "" {
 		result.Host = fmt.Sprintf("%s.%s.svc.cluster.local", writeService, addon.K8sNamespace)
@@ -511,7 +540,13 @@ func (p *PostgresProvisioner) GetCredentials(ctx context.Context, addon *types.D
 	}
 
 	// Get the secret
-	secret, err := p.k8sClient.Clientset.CoreV1().Secrets(addon.K8sNamespace).Get(
+	if err := ValidatePostgresRuntimeConfig(addon.Type, addon.Config); err != nil {
+		return nil, err
+	}
+	if runtimeProfile(addon.Config) && addon.ConnectionSecret != runtimeSecretName(addon.K8sResourceName) {
+		return nil, fmt.Errorf("isolated binding cannot use migration credentials")
+	}
+	secret, err := p.k8sClient.Kube().CoreV1().Secrets(addon.K8sNamespace).Get(
 		ctx,
 		addon.ConnectionSecret,
 		metav1.GetOptions{},
@@ -528,6 +563,12 @@ func (p *PostgresProvisioner) GetCredentials(ctx context.Context, addon *types.D
 		Username:     string(secret.Data["username"]),
 		Password:     string(secret.Data["password"]),
 	}
+	if runtimeProfile(addon.Config) && (creds.Username != addon.Config.RuntimeRole || creds.DatabaseName != addon.Config.DatabaseName || !runtimePassword.MatchString(creds.Password)) {
+		return nil, fmt.Errorf("isolated runtime credentials do not match addon")
+	}
+	if runtimeProfile(addon.Config) && (secret.Labels[LabelAddonID] != addon.ID.String() || secret.Labels[LabelProjectID] != addon.ProjectID.String() || creds.Host != addon.K8sResourceName+"-rw."+addon.K8sNamespace+".svc.cluster.local" || string(secret.Data["port"]) != "5432") {
+		return nil, fmt.Errorf("isolated runtime Secret does not belong to addon")
+	}
 
 	// Parse port
 	if portStr := string(secret.Data["port"]); portStr != "" {
@@ -540,7 +581,15 @@ func (p *PostgresProvisioner) GetCredentials(ctx context.Context, addon *types.D
 	}
 
 	// Get connection URI if available, otherwise build it
-	if uri := string(secret.Data["uri"]); uri != "" {
+	if runtimeProfile(addon.Config) {
+		// Rebuild from validated fields. A URI field cannot substitute an owner
+		// login, another project's host, another DB or weaker connection options.
+		creds.ConnectionURI = runtimeConnectionURI(creds.Username, creds.Password, creds.Host, creds.DatabaseName)
+		creds.CACertificate, err = p.runtimeServerCA(ctx, addon, secret)
+		if err != nil {
+			return nil, err
+		}
+	} else if uri := string(secret.Data["uri"]); uri != "" {
 		creds.ConnectionURI = uri
 	} else {
 		creds.ConnectionURI = fmt.Sprintf(

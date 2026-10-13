@@ -33,6 +33,30 @@ Projects onboarded to Enclii **MUST** meet the following requirements:
 
 3. **Network and status declarations**: Projects SHOULD declare `network` and `status` sections in `enclii.yaml` for auto-provisioned NetworkPolicies and status page registration.
 
+4. **Owned namespace**: New onboarding creates a missing namespace with the
+   project's actual `enclii.dev/project` UUID and default-deny policy. It does
+   not adopt an existing namespace. Ensure may reconcile an existing namespace
+   only when the persisted registration matches the project, repository and
+   exact namespace; a conflicting ownership label is never overwritten.
+   Ambiguous namespaces require an explicit operator adoption plan. Namespace
+   or default-deny failure stops before ArgoCD, network and domain writes.
+
+5. **Admission proof**: Admission preflight resolves the same closed
+   `images:` transformer as the image gates, including init containers. Its
+   supported kustomization is a flat directory with local `resources`,
+   `images` and an optional matching `namespace`. Patches, generators, remote
+   resources and cross-directory overlays are refused rather than tested as
+   raw YAML. Fetch or parse failures produce no partial admission proof.
+
+Dedicated runtime addon bindings require a Ready addon and a persisted
+service namespace owned by the same project. If onboarding has not recorded
+that service namespace, the governed
+`POST /v1/admin/projects/:slug/reconcile-services` metadata reconciliation
+sets it from the project's declared deployments. A runtime binding opens
+only that workload's TCP 5432 connection to its dedicated own-project CNPG
+cluster; it does not permit shared data or arbitrary namespace targets.
+Network failure deactivates the binding before credential injection.
+
 ## Step 1: Create `enclii.yaml`
 
 Add an `enclii.yaml` to your repository root:
@@ -84,7 +108,22 @@ The `network.services` section auto-generates Kubernetes NetworkPolicies during 
 | `label` | No | `app` | Label key for pod selector |
 | `port` | Yes | - | Container port for ingress |
 | `ingress` | No | `[]` | Ingress sources: `cloudflare-tunnel` |
-| `egress` | No | `[]` | Egress types: `dns`, `https`, `http`, `postgres`, `redis`, `janua`, `pgbouncer` |
+| `egress` | No | `[]` | Egress types: `dns`, `https`, `http`, `postgres`, `redis`, `janua`, `selva`, `pgbouncer` |
+
+`selva` permits only the inference gateway pods
+(`app.kubernetes.io/name=inference-gateway`) in namespace `selva`, TCP 4306.
+The service transport is `http://inference-gateway.selva.svc.cluster.local:80`;
+NetworkPolicy uses its pod target port. Opt in only the gateway/worker that
+needs inference, not isolated application kernels. This network permission
+does not grant inference authority: use an independent organization-bound
+Janua machine edge with audience `selva-office` and scope `selva:infer`.
+Never forward a person's application/resource token to inference.
+
+`janua` similarly permits its internal API pods on TCP 8080; the service
+transport is `http://janua-api.janua.svc.cluster.local:80`. Browser authorization
+and token issuer remain the canonical public Janua origin. Generic `https`
+permits all TCP 443 destinations, so it cannot establish a restricted external
+API allowlist. `network.custom` remains same-namespace only.
 
 For intra-namespace communication (e.g., nginx proxy → backend), use `network.custom`:
 
