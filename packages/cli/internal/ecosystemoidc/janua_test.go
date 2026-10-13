@@ -10,10 +10,10 @@ import (
 
 func pointer(s string) *string { return &s }
 func machineSpec() JanuaClientSpec {
-	return JanuaClientSpec{Name: "fixture-consumer", ClientKey: "fixture-consumer", Audience: "dhanam-api", OrganizationID: "fixture-org", AllowedScopes: []string{"dhanam:merchant-read"}, GrantTypes: []string{"client_credentials"}}
+	return JanuaClientSpec{Name: "fixture-consumer", ClientKey: "fixture-consumer", Audience: "dhanam-api", OrganizationID: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa", AllowedScopes: []string{"dhanam:merchant-read"}, GrantTypes: []string{"client_credentials"}}
 }
 func machineRemote() remoteOAuthClient {
-	return remoteOAuthClient{ID: "fixture-id", ClientID: "fixture-client", Name: "fixture-consumer", ClientKey: pointer("fixture-consumer"), Audience: pointer("dhanam-api"), OrganizationID: pointer("fixture-org"), IsConfidential: true, IsActive: true, AllowedScopes: []string{"dhanam:merchant-read"}, GrantTypes: []string{"client_credentials"}}
+	return remoteOAuthClient{ID: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb", ClientID: "jnc_fixture_client", Name: "fixture-consumer", ClientKey: pointer("fixture-consumer"), Audience: pointer("dhanam-api"), OrganizationID: pointer("aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"), RedirectURIs: []string{}, IsConfidential: true, IsActive: true, AllowedScopes: []string{"dhanam:merchant-read"}, GrantTypes: []string{"client_credentials"}}
 }
 func inventoryClient(t *testing.T, clients []remoteOAuthClient) *JanuaClient {
 	t.Helper()
@@ -23,7 +23,17 @@ func inventoryClient(t *testing.T, clients []remoteOAuthClient) *JanuaClient {
 			w.WriteHeader(500)
 			return
 		}
-		_ = json.NewEncoder(w).Encode(map[string]interface{}{"clients": clients, "total": len(clients)})
+		if r.URL.Path == "/api/v1/oauth/clients/admin/all" {
+			_ = json.NewEncoder(w).Encode(map[string]interface{}{"clients": clients, "total": len(clients)})
+			return
+		}
+		for _, client := range clients {
+			if r.URL.Path == "/api/v1/oauth/clients/"+client.ID {
+				_ = json.NewEncoder(w).Encode(client)
+				return
+			}
+		}
+		w.WriteHeader(http.StatusNotFound)
 	}))
 	t.Cleanup(server.Close)
 	return &JanuaClient{BaseURL: server.URL, AdminToken: "fixture", HTTP: server.Client()}
@@ -73,7 +83,7 @@ func TestMachinePrivilegeDriftCannotMutate(t *testing.T) {
 }
 func TestMatchingMachineReusesOnlyReviewedIdentity(t *testing.T) {
 	got, created, err := inventoryClient(t, []remoteOAuthClient{machineRemote()}).registerOrReconcile(context.Background(), machineSpec())
-	if err != nil || created || got.ClientID != "fixture-client" {
+	if err != nil || created || got.ClientID != "jnc_fixture_client" {
 		t.Fatalf("unexpected: %v %v %v", got, created, err)
 	}
 }
@@ -83,7 +93,7 @@ func loginSpec() JanuaClientSpec {
 }
 
 func loginRemote() remoteOAuthClient {
-	return remoteOAuthClient{ID: "uuid-studio", ClientID: "jnc_studio", Name: "studio", ClientKey: pointer("studio-api"), Audience: pointer("studio-api"), IsConfidential: false, IsActive: true, RedirectURIs: []string{"https://studio.example.test", "http://localhost:5173"}, AllowedScopes: []string{"openid", "profile", "email"}, GrantTypes: []string{"authorization_code", "refresh_token"}}
+	return remoteOAuthClient{ID: "cccccccc-cccc-4ccc-8ccc-cccccccccccc", ClientID: "jnc_studio", Name: "studio", ClientKey: pointer("studio-api"), Audience: pointer("studio-api"), IsConfidential: false, IsActive: true, RedirectURIs: []string{"https://studio.example.test", "http://localhost:5173"}, AllowedScopes: []string{"openid", "profile", "email"}, GrantTypes: []string{"authorization_code", "refresh_token"}}
 }
 
 // adminServer serves the inventory and records PATCHes; any other mutation fails the test.
@@ -93,7 +103,9 @@ func adminServer(t *testing.T, clients []remoteOAuthClient, patches *[]map[strin
 		switch {
 		case r.Method == http.MethodGet && r.URL.Path == "/api/v1/oauth/clients/admin/all":
 			_ = json.NewEncoder(w).Encode(map[string]interface{}{"clients": clients, "total": len(clients)})
-		case r.Method == http.MethodPatch && r.URL.Path == "/api/v1/oauth/clients/uuid-studio":
+		case r.Method == http.MethodGet && r.URL.Path == "/api/v1/oauth/clients/cccccccc-cccc-4ccc-8ccc-cccccccccccc":
+			_ = json.NewEncoder(w).Encode(clients[0])
+		case r.Method == http.MethodPatch && r.URL.Path == "/api/v1/oauth/clients/cccccccc-cccc-4ccc-8ccc-cccccccccccc":
 			var body map[string]interface{}
 			_ = json.NewDecoder(r.Body).Decode(&body)
 			*patches = append(*patches, body)
@@ -104,6 +116,22 @@ func adminServer(t *testing.T, clients []remoteOAuthClient, patches *[]map[strin
 					updated.RedirectURIs = append(updated.RedirectURIs, u.(string))
 				}
 			}
+			if v, ok := body["allowed_scopes"].([]interface{}); ok {
+				updated.AllowedScopes = nil
+				for _, scope := range v {
+					updated.AllowedScopes = append(updated.AllowedScopes, scope.(string))
+				}
+			}
+			if v, ok := body["grant_types"].([]interface{}); ok {
+				updated.GrantTypes = nil
+				for _, grant := range v {
+					updated.GrantTypes = append(updated.GrantTypes, grant.(string))
+				}
+			}
+			if v, ok := body["audience"].(string); ok {
+				updated.Audience = pointer(v)
+			}
+			clients[0] = updated
 			_ = json.NewEncoder(w).Encode(updated)
 		default:
 			t.Errorf("unexpected request: %s %s", r.Method, r.URL.Path)
@@ -164,5 +192,45 @@ func TestAdminPathRefusesConfidentialityFlipAndInactiveClients(t *testing.T) {
 		if len(patches) != 0 {
 			t.Fatalf("refused client was patched: %v", patches)
 		}
+	}
+}
+
+// The JSON shape follows Janua717 OAuthClientDetailResponse; org-bound code
+// clients still have callbacks and are not machine clients.
+func TestOrganizationBoundHumanRegistrationUsesHumanContract(t *testing.T) {
+	spec := embedded(t).Platforms["crea-sim"].JanuaClient
+	spec.OrganizationID = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"
+	posts := 0
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodGet && r.URL.Path == "/api/v1/oauth/clients/admin/all" {
+			_ = json.NewEncoder(w).Encode(map[string]interface{}{"clients": []remoteOAuthClient{}, "total": 0})
+			return
+		}
+		if r.Method == http.MethodPost && r.URL.Path == "/api/v1/oauth/clients" {
+			posts++
+			actual := remoteFor(spec)
+			actual.ID = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb"
+			actual.ClientID = "jnc_fixture_human"
+			w.WriteHeader(http.StatusCreated)
+			_ = json.NewEncoder(w).Encode(actual)
+			return
+		}
+		t.Errorf("unexpected request: %s %s", r.Method, r.URL.Path)
+		w.WriteHeader(500)
+	}))
+	defer server.Close()
+	c := &JanuaClient{BaseURL: server.URL, AdminToken: "fixture", HTTP: server.Client()}
+	actual, created, err := c.registerOrReconcile(context.Background(), spec)
+	if err != nil || !created || posts != 1 || actual.ClientID != "jnc_fixture_human" {
+		t.Fatalf("human organization contract rejected: created=%t posts=%d err=%v", created, posts, err)
+	}
+}
+
+func TestOrganizationBoundPublicHumanHasNoMachineCredential(t *testing.T) {
+	p := embedded(t).Platforms["crea-sim"]
+	p.JanuaClient.OrganizationID = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"
+	p.JanuaClient.IsConfidential = falsePtr()
+	if !p.publicLogin() {
+		t.Fatal("ordinary organization binding changed a public human into a machine")
 	}
 }

@@ -54,7 +54,8 @@ type remoteOAuthClient struct {
 	IsActive       bool     `json:"is_active"`
 	// reconciled names the fields the admin path PATCHed to match the registry.
 	// Not part of Janua's wire shape.
-	reconciled []string
+	reconciled          []string
+	organizationPresent bool
 }
 
 type rotateSecretResponse struct {
@@ -91,101 +92,103 @@ type SecretRotation struct {
 	GracePeriodHours *int
 	// OldSecretsExpireAt is when Janua retires the previous secrets.
 	OldSecretsExpireAt string
+	clientID           string
+}
+
+// HeldRegistrationError records only a safe outcome class, never credentials.
+// Discovery is read-only evidence; it does not recover or accredit a secret.
+type HeldRegistrationError struct{ Discovery string }
+
+func (e *HeldRegistrationError) Error() string {
+	return "Janua registration HELD: " + e.Discovery + "; no automatic retry, adoption or credential recovery"
+}
+
+func (c *JanuaClient) heldCreate(ctx context.Context, spec JanuaClientSpec) error {
+	existing, err := c.findExisting(ctx, spec)
+	state := "create outcome unknown, read-only discovery unavailable"
+	if err == nil && existing == nil {
+		state = "create outcome unknown, read-only discovery absent"
+	}
+	if err == nil && existing != nil {
+		state = "create outcome unknown, read-only discovery found"
+		if validateRemoteClient(*existing, spec) != nil {
+			state = "create outcome unknown, read-only discovery contract mismatch"
+		}
+	}
+	return &HeldRegistrationError{Discovery: state}
 }
 
 func (c *JanuaClient) registerOrReconcile(ctx context.Context, spec JanuaClientSpec) (remoteOAuthClient, bool, error) {
-	// Org-bound machine clients are distinct consumers even when they share an
-	// API audience. Check identity and privileges before any registration/rotation.
-	if spec.OrganizationID != "" {
-		existing, err := c.findExisting(ctx, spec)
-		if err != nil {
+	if err := validateClientSpec(spec); err != nil {
+		return remoteOAuthClient{}, false, err
+	}
+	if c.InternalAPIKey == "" && c.AdminToken == "" {
+		return remoteOAuthClient{}, false, fmt.Errorf("Janua admin authentication required")
+	}
+	existing, err := c.findExisting(ctx, spec)
+	if err != nil {
+		return remoteOAuthClient{}, false, err
+	}
+	if existing != nil {
+		if err := validateRemoteIdentity(*existing, spec); err != nil {
 			return remoteOAuthClient{}, false, err
 		}
-		if existing != nil {
-			if err := validateMachineClient(*existing, spec); err != nil {
+		kind, _ := spec.kind()
+		if kind == machineClient || validateRemoteClient(*existing, spec) == nil {
+			if err := validateRemoteClient(*existing, spec); err != nil {
 				return remoteOAuthClient{}, false, err
 			}
 			return *existing, false, nil
 		}
+		if c.InternalAPIKey == "" {
+			updated, err := c.reconcileLoginClient(ctx, existing, spec)
+			if err != nil {
+				return remoteOAuthClient{}, false, err
+			}
+			return *updated, false, nil
+		}
 	}
-
 	body := map[string]interface{}{
-		"name":            spec.Name,
-		"description":     spec.Description,
-		"allowed_scopes":  spec.AllowedScopes,
-		"grant_types":     spec.GrantTypes,
-		"audience":        spec.Audience,
-		"client_key":      spec.ClientKey,
-		"website_url":     spec.WebsiteURL,
-		"is_confidential": spec.confidential(),
+		"name": spec.Name, "description": spec.Description, "allowed_scopes": spec.AllowedScopes,
+		"grant_types": spec.GrantTypes, "audience": spec.Audience, "website_url": spec.WebsiteURL, "is_confidential": spec.confidential(),
 	}
-	// A login client carries redirect_uris; a client_credentials machine client
-	// has none. Sending an empty/null redirect_uris on a machine client invites
-	// a validation error from Janua, so send the field only when it has values.
+	// Janua717 /register aliases client_key to audience, not to the logical
+	// consumer key. Keep the reviewed registry key and admin wire unchanged;
+	// internal registration has an exact audience/name and omits that alias.
+	internal := c.InternalAPIKey != ""
+	path := "/api/v1/oauth/clients"
+	if internal {
+		path += "/register"
+	} else {
+		body["client_key"] = spec.ClientKey
+	}
 	if len(spec.RedirectURIs) > 0 {
 		body["redirect_uris"] = spec.RedirectURIs
 	}
-	// Org-bound machine clients (nauta-symbiosis-hcm) pass their tenant so Janua
-	// scopes the service identity — and, per Janua #595, emits its app:role
-	// scopes verbatim into the roles claim. Omitted for unbound login clients.
 	if spec.OrganizationID != "" {
 		body["organization_id"] = spec.OrganizationID
 	}
 	if spec.ClientID != "" {
 		body["client_id"] = spec.ClientID
 	}
-
-	if c.InternalAPIKey != "" {
-		var out remoteOAuthClient
-		status, err := c.doJSON(ctx, http.MethodPost, "/api/v1/oauth/clients/register", body, &out, true)
-		if err != nil {
-			return remoteOAuthClient{}, false, err
-		}
-		if spec.OrganizationID != "" {
-			if err := validateMachineClient(out, spec); err != nil {
-				return remoteOAuthClient{}, false, err
-			}
-		}
-		return out, status == http.StatusCreated, nil
-	}
-	if c.AdminToken == "" {
-		return remoteOAuthClient{}, false, fmt.Errorf("auth required for Janua: run `enclii login` as admin@madfam.io or set JANUA_INTERNAL_API_KEY")
-	}
-
-	existing, err := c.findExisting(ctx, spec)
+	var actual remoteOAuthClient
+	status, err := c.doJSON(ctx, http.MethodPost, path, body, &actual, internal)
 	if err != nil {
+		if existing == nil && (status == 0 || status >= 500 || (status >= 200 && status < 300)) {
+			return remoteOAuthClient{}, false, c.heldCreate(ctx, spec)
+		}
 		return remoteOAuthClient{}, false, err
 	}
-	if existing != nil {
-		if spec.OrganizationID != "" {
-			if err := validateMachineClient(*existing, spec); err != nil {
-				return remoteOAuthClient{}, false, err
-			}
-			return *existing, false, nil
-		}
-		// The internal-key register path reconciles an existing client
-		// server-side; the admin path used to return it untouched, so a login
-		// client whose redirect URIs had gone stale stayed stale no matter how
-		// often the registry was applied (the yantra4d-studio client,
-		// 2026-09-17). Reconcile through the admin PATCH instead.
-		reconciled, err := c.reconcileLoginClient(ctx, existing, spec)
-		if err != nil {
-			return remoteOAuthClient{}, false, err
-		}
-		return *reconciled, false, nil
+	if (status != http.StatusCreated && !(internal && status == http.StatusOK)) || (existing != nil && status != http.StatusOK) {
+		return remoteOAuthClient{}, false, &HeldRegistrationError{Discovery: "unexpected registration status"}
 	}
-
-	var created remoteOAuthClient
-	status, err := c.doJSON(ctx, http.MethodPost, "/api/v1/oauth/clients", body, &created, false)
-	if err != nil {
-		return remoteOAuthClient{}, false, err
+	if err := validateRemoteClient(actual, spec); err != nil {
+		return remoteOAuthClient{}, false, &HeldRegistrationError{Discovery: "returned registration contract mismatch"}
 	}
-	if spec.OrganizationID != "" {
-		if err := validateMachineClient(created, spec); err != nil {
-			return remoteOAuthClient{}, false, err
-		}
+	if existing != nil && (actual.ID != existing.ID || actual.ClientID != existing.ClientID) {
+		return remoteOAuthClient{}, false, &HeldRegistrationError{Discovery: "registered identity changed"}
 	}
-	return created, status == http.StatusCreated, nil
+	return actual, status == http.StatusCreated, nil
 }
 
 func (c *JanuaClient) findExisting(ctx context.Context, spec JanuaClientSpec) (*remoteOAuthClient, error) {
@@ -202,8 +205,14 @@ func (c *JanuaClient) findExisting(ctx context.Context, spec JanuaClientSpec) (*
 			}
 			return nil, err
 		}
+		if status != http.StatusOK {
+			return nil, fmt.Errorf("unexpected Janua discovery status")
+		}
 		if spec.ClientID != "" && out.ClientID != spec.ClientID {
 			return nil, fmt.Errorf("Janua client name does not match pinned identity")
+		}
+		if out.ClientSecret != nil {
+			return nil, fmt.Errorf("unexpected credential in read-only client discovery")
 		}
 		return &out, nil
 	}
@@ -215,8 +224,12 @@ func (c *JanuaClient) findExisting(ctx context.Context, spec JanuaClientSpec) (*
 			Total   int                 `json:"total"`
 		}
 		path := fmt.Sprintf("/api/v1/oauth/clients/admin/all?page=%d&per_page=100", pageNum)
-		if _, err := c.doJSON(ctx, http.MethodGet, path, nil, &page, false); err != nil {
+		status, err := c.doJSON(ctx, http.MethodGet, path, nil, &page, false)
+		if err != nil {
 			return nil, err
+		}
+		if status != http.StatusOK {
+			return nil, fmt.Errorf("unexpected Janua inventory status")
 		}
 		for i := range page.Clients {
 			item := page.Clients[i]
@@ -227,7 +240,7 @@ func (c *JanuaClient) findExisting(ctx context.Context, spec JanuaClientSpec) (*
 				selected = item.Name == spec.Name
 			}
 			if selected {
-				if match != nil && match.ClientID != item.ClientID {
+				if match != nil && (match.ClientID != item.ClientID || match.ID != item.ID) {
 					return nil, fmt.Errorf("ambiguous Janua client identity; pin the reviewed client_id")
 				}
 				candidate := item
@@ -238,10 +251,29 @@ func (c *JanuaClient) findExisting(ctx context.Context, spec JanuaClientSpec) (*
 			if match == nil && spec.ClientID != "" {
 				return nil, fmt.Errorf("pinned Janua client was not found; refusing duplicate creation")
 			}
-			return match, nil
+			if match != nil {
+				return c.detailClient(ctx, *match)
+			}
+			return nil, nil
 		}
 	}
 	return nil, fmt.Errorf("Janua client inventory exceeded page limit; identity could not be established")
+}
+
+func (c *JanuaClient) detailClient(ctx context.Context, selected remoteOAuthClient) (*remoteOAuthClient, error) {
+	// Native GET expects the internal UUID, not the public jnc_ client id.
+	if !canonicalOrganization(selected.ID) {
+		return nil, fmt.Errorf("invalid selected Janua internal identity")
+	}
+	var actual remoteOAuthClient
+	status, err := c.doJSON(ctx, http.MethodGet, "/api/v1/oauth/clients/"+url.PathEscape(selected.ID), nil, &actual, false)
+	if err != nil {
+		return nil, err
+	}
+	if status != http.StatusOK || actual.ClientSecret != nil || actual.ID != selected.ID || actual.ClientID != selected.ClientID || actual.Name != selected.Name {
+		return nil, fmt.Errorf("Janua detail differs from selected identity")
+	}
+	return &actual, nil
 }
 
 func sameStrings(a, b []string) bool {
@@ -270,14 +302,12 @@ func sameStrings(a, b []string) bool {
 // schema cannot express the flip anyway). An inactive client is refused too —
 // re-enabling a disabled client is a decision, not drift.
 func (c *JanuaClient) reconcileLoginClient(ctx context.Context, existing *remoteOAuthClient, spec JanuaClientSpec) (*remoteOAuthClient, error) {
-	if spec.ClientID != "" && existing.ClientID != spec.ClientID {
-		return nil, fmt.Errorf("Janua client differs from pinned identity")
+	if err := validateRemoteIdentity(*existing, spec); err != nil {
+		return nil, err
 	}
-	if existing.IsConfidential != spec.confidential() {
-		return nil, fmt.Errorf("existing Janua client %s is confidential=%t but the registry declares confidential=%t; a confidentiality flip is a different client, not a reconcile", existing.ClientID, existing.IsConfidential, spec.confidential())
-	}
-	if !existing.IsActive {
-		return nil, fmt.Errorf("existing Janua client %s is inactive; refusing to reconcile a disabled client", existing.ClientID)
+	kind, _ := spec.kind()
+	if kind != humanClient {
+		return nil, fmt.Errorf("only an ordinary client can reconcile login fields")
 	}
 	patch := map[string]interface{}{}
 	var fields []string
@@ -303,31 +333,32 @@ func (c *JanuaClient) reconcileLoginClient(ctx context.Context, existing *remote
 	if strings.TrimSpace(existing.ID) == "" {
 		return nil, fmt.Errorf("cannot reconcile Janua client %s: missing internal client UUID", existing.ClientID)
 	}
-	var updated remoteOAuthClient
-	if _, err := c.doJSON(ctx, http.MethodPatch, "/api/v1/oauth/clients/"+url.PathEscape(existing.ID), patch, &updated, false); err != nil {
-		return nil, fmt.Errorf("reconcile Janua client %s: %w", existing.ClientID, err)
+	var response json.RawMessage
+	status, err := c.doJSON(ctx, http.MethodPatch, "/api/v1/oauth/clients/"+url.PathEscape(existing.ID), patch, &response, false)
+	if err != nil {
+		return nil, fmt.Errorf("Janua reconciliation outcome held: %w", err)
 	}
-	if strings.TrimSpace(updated.ClientID) == "" {
-		// A terse PATCH response; the identity is the one we looked up.
-		updated = *existing
+	if status != http.StatusOK {
+		return nil, fmt.Errorf("unexpected reconciliation status; outcome held")
+	}
+	updated, err := c.detailClient(ctx, *existing)
+	if err != nil {
+		return nil, err
+	}
+	if err := validateRemoteClient(*updated, spec); err != nil {
+		return nil, err
 	}
 	sortStrings(fields)
 	updated.reconciled = fields
-	return &updated, nil
+	return updated, nil
 }
 
 func validateMachineClient(remote remoteOAuthClient, spec JanuaClientSpec) error {
-	if !remote.IsActive || remote.ClientID == "" || remote.ID == "" || remote.Name != spec.Name || remote.OrganizationID == nil || *remote.OrganizationID != spec.OrganizationID ||
-		remote.Audience == nil || *remote.Audience != spec.Audience ||
-		remote.IsConfidential != spec.confidential() ||
-		!sameStrings(remote.AllowedScopes, spec.AllowedScopes) ||
-		!sameStrings(remote.GrantTypes, spec.GrantTypes) || len(remote.RedirectURIs) != 0 {
-		return fmt.Errorf("existing Janua machine client differs from reviewed organization, audience, scope or grant; refusing credential reuse or rotation")
+	kind, err := spec.kind()
+	if err != nil || kind != machineClient {
+		return fmt.Errorf("not a machine declaration")
 	}
-	if spec.ClientID != "" && remote.ClientID != spec.ClientID {
-		return fmt.Errorf("Janua client differs from pinned identity")
-	}
-	return nil
+	return validateRemoteClient(remote, spec)
 }
 
 // rotateSecret mints a new secret. The body is `{}` unless a grace period is
@@ -343,14 +374,17 @@ func (c *JanuaClient) rotateSecret(ctx context.Context, internalUUID string, gra
 	}
 	var out rotateSecretResponse
 	path := "/api/v1/oauth/clients/" + url.PathEscape(internalUUID) + "/rotate"
-	_, err := c.doJSON(ctx, http.MethodPost, path, body, &out, false)
+	status, err := c.doJSON(ctx, http.MethodPost, path, body, &out, false)
 	if err != nil {
 		return "", nil, err
 	}
-	if strings.TrimSpace(out.ClientSecret) == "" {
+	if status != http.StatusOK {
+		return "", nil, fmt.Errorf("unexpected rotation status; outcome held")
+	}
+	if !boundedText(out.ClientSecret, 8192) || !returnedClientShape.MatchString(out.ClientID) {
 		return "", nil, fmt.Errorf("rotate returned empty client_secret")
 	}
-	rotation := &SecretRotation{RequestedGraceHours: graceHours, GracePeriodHours: out.GracePeriodHours}
+	rotation := &SecretRotation{RequestedGraceHours: graceHours, GracePeriodHours: out.GracePeriodHours, clientID: out.ClientID}
 	if out.OldSecretsExpireAt != nil { // pragma: allowlist secret -- field name, not a value
 		rotation.OldSecretsExpireAt = strings.TrimSpace(*out.OldSecretsExpireAt)
 	}
@@ -386,22 +420,22 @@ func (c *JanuaClient) doJSON(ctx context.Context, method, path string, body inte
 	}
 	defer resp.Body.Close()
 
-	data, err := io.ReadAll(resp.Body)
+	data, err := io.ReadAll(io.LimitReader(resp.Body, 1_048_577))
 	if err != nil {
 		return resp.StatusCode, err
 	}
+	if len(data) > 1_048_576 {
+		return resp.StatusCode, fmt.Errorf("Janua response exceeds bound")
+	}
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		msg := strings.TrimSpace(string(data))
-		if msg == "" {
-			msg = resp.Status
-		}
-		return resp.StatusCode, fmt.Errorf("request to Janua failed: %s %s: %s", method, path, msg)
+		return resp.StatusCode, fmt.Errorf("Janua request refused with HTTP %d", resp.StatusCode)
 	}
-	if out != nil && len(data) > 0 {
-		if err := json.Unmarshal(data, out); err != nil {
-			return resp.StatusCode, fmt.Errorf("decode Janua response: %w", err)
+	if out != nil {
+		if err := decodeProviderJSON(data, out); err != nil {
+			return resp.StatusCode, err
 		}
 	}
+
 	return resp.StatusCode, nil
 }
 
@@ -409,8 +443,17 @@ func (c *JanuaClient) doJSON(ctx context.Context, method, path string, body inte
 // for an existing client, from a rotation. graceHours only shapes a rotation;
 // the returned SecretRotation is nil when none happened.
 func (c *JanuaClient) ResolveClientSecret(ctx context.Context, remote remoteOAuthClient, created bool, rotateIfMissing bool, graceHours *int) (string, *SecretRotation, error) {
+	if !created && remote.ClientSecret != nil {
+		return "", nil, fmt.Errorf("read-only discovery cannot recover a one-time credential")
+	}
 	if remote.ClientSecret != nil && strings.TrimSpace(*remote.ClientSecret) != "" {
-		return strings.TrimSpace(*remote.ClientSecret), nil, nil
+		if !boundedText(*remote.ClientSecret, 8192) {
+			return "", nil, fmt.Errorf("invalid created credential; outcome held")
+		}
+		return *remote.ClientSecret, nil, nil
+	}
+	if created {
+		return "", nil, &HeldRegistrationError{Discovery: "known create without its one-time credential"}
 	}
 	if !rotateIfMissing {
 		return "", nil, fmt.Errorf("client %s exists without retrievable secret — re-run with --rotate-secret", remote.ClientID)
@@ -418,5 +461,9 @@ func (c *JanuaClient) ResolveClientSecret(ctx context.Context, remote remoteOAut
 	if strings.TrimSpace(remote.ID) == "" {
 		return "", nil, fmt.Errorf("cannot rotate secret: missing internal client UUID")
 	}
-	return c.rotateSecret(ctx, remote.ID, graceHours)
+	secret, rotation, err := c.rotateSecret(ctx, remote.ID, graceHours)
+	if err == nil && rotation.clientID != remote.ClientID {
+		return "", nil, fmt.Errorf("rotation returned a different client; outcome held")
+	}
+	return secret, rotation, err
 }

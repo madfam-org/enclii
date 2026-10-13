@@ -597,3 +597,27 @@ func TestLoadRegistry_selvaYantra4dMachineEdge(t *testing.T) {
 		"yantra4d_client_secret": "fixture-secret",
 	}, buildIntakeValues(reg.Issuer, "jnc_fixture", "fixture-secret", p))
 }
+
+func TestReviewedRegistryGrantKindsDoNotDependOnTenant(t *testing.T) {
+	reg, err := LoadRegistry("")
+	require.NoError(t, err)
+	humans, machines := 0, 0
+	for name, p := range reg.Platforms {
+		kind, err := p.JanuaClient.kind()
+		if err != nil {
+			t.Fatalf("profile %s: %v", name, err)
+		}
+		if kind == humanClient {
+			humans++
+		} else {
+			machines++
+		}
+	}
+	require.Equal(t, 13, humans)
+	require.Equal(t, 14, machines)
+	p := reg.Platforms["selva-yantra4d"]
+	require.Empty(t, p.JanuaClient.OrganizationID)
+	kind, err := p.JanuaClient.kind()
+	require.NoError(t, err)
+	require.Equal(t, machineClient, kind)
+}

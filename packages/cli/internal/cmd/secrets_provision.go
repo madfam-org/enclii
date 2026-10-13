@@ -20,6 +20,7 @@ func newSecretsProvisionCommand(cfg *config.Config) *cobra.Command {
 		all             bool
 		reason          string
 		registryPath    string
+		organizationID  string
 		rotateIfMissing bool
 		dryRun          bool
 		jsonOut         bool
@@ -54,6 +55,9 @@ Examples:
 			if !all && strings.TrimSpace(platform) == "" {
 				return fmt.Errorf("specify --platform NAME or --all")
 			}
+			if cmd.Flags().Changed("organization-id") && (all || strings.TrimSpace(registryPath) != "" || strings.TrimSpace(platform) == "") {
+				return fmt.Errorf("--organization-id requires one --platform and the embedded registry; --all/--registry are refused")
+			}
 			// Unset keeps Janua's default grace (no body on the rotate call).
 			var grace *int
 			if cmd.Flags().Changed("grace-hours") {
@@ -72,6 +76,13 @@ Examples:
 				return err
 			}
 
+			if cmd.Flags().Changed("organization-id") {
+				reg, err = reg.WithOrganization(strings.TrimSpace(platform), organizationID)
+				if err != nil {
+					return err
+				}
+			}
+
 			januaToken := cfg.APIToken
 			if cfg.Credentials != nil && cfg.Credentials.AccessToken != "" {
 				januaToken = cfg.Credentials.AccessToken
@@ -83,6 +94,7 @@ Examples:
 				Post: func(ctx context.Context, path string, body []byte) ([]byte, error) {
 					return apiClient.PostRaw(ctx, path, bytes.NewReader(body))
 				},
+				Get: func(ctx context.Context, path string) ([]byte, error) { return apiClient.GetRaw(ctx, path) },
 			}
 
 			targets := []string{strings.TrimSpace(platform)}
@@ -90,6 +102,12 @@ Examples:
 				targets = reg.PlatformIDs()
 			}
 
+			// Validate the complete chosen set before the first provider effect.
+			for _, id := range targets {
+				if _, err := ecosystemoidc.ValidateProvision(reg, ecosystemoidc.ProvisionOptions{PlatformID: id, Reason: reason, DryRun: dryRun, GraceHours: grace}); err != nil {
+					return err
+				}
+			}
 			var results []ecosystemoidc.ProvisionResult
 			for _, id := range targets {
 				result, err := ecosystemoidc.ProvisionPlatform(cmd.Context(), reg, janua, submitter, ecosystemoidc.ProvisionOptions{
@@ -100,6 +118,12 @@ Examples:
 					GraceHours:      grace,
 				})
 				if err != nil {
+					if result.IntakeID != "" {
+						fmt.Fprintf(os.Stderr, "held intake_id=%s; no automatic retry\n", result.IntakeID)
+					}
+					if result.SessionIntakeID != "" {
+						fmt.Fprintf(os.Stderr, "held session_intake_id=%s; no automatic retry\n", result.SessionIntakeID)
+					}
 					return fmt.Errorf("%s: %w", id, err)
 				}
 				results = append(results, result)
@@ -144,10 +168,11 @@ Examples:
 	}
 
 	oidc.Flags().StringVar(&platform, "platform", "", "Platform id from ecosystem registry (e.g. dhanam)")
+	oidc.Flags().StringVar(&organizationID, "organization-id", "", "Bind one embedded ordinary code profile to an operator-approved organization UUID; no membership or rebind")
 	oidc.Flags().BoolVar(&all, "all", false, "Provision every platform in the registry")
 	oidc.Flags().StringVar(&reason, "reason", "", "Audit reason (required)")
 	oidc.Flags().StringVar(&registryPath, "registry", "", "Override ecosystem OIDC registry YAML")
-	oidc.Flags().BoolVar(&rotateIfMissing, "rotate-secret", true, "Rotate Janua client secret when an existing client has no retrievable secret")
+	oidc.Flags().BoolVar(&rotateIfMissing, "rotate-secret", false, "Rotate Janua client secret when an existing client has no retrievable secret")
 	oidc.Flags().BoolVar(&dryRun, "dry-run", false, "Plan Janua reconcile without Vault intake")
 	oidc.Flags().BoolVar(&jsonOut, "json", false, "JSON output (no secret values)")
 	oidc.Flags().IntVar(&graceHours, "grace-hours", 0, fmt.Sprintf("Grace period (0-%d hours) for previous secrets when a secret is rotated; 0 retires them immediately. Unset keeps Janua's default", ecosystemoidc.MaxGraceHours))
