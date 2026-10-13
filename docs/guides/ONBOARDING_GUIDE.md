@@ -57,6 +57,20 @@ only that workload's TCP 5432 connection to its dedicated own-project CNPG
 cluster; it does not permit shared data or arbitrary namespace targets.
 Network failure deactivates the binding before credential injection.
 
+For an isolated PostgreSQL runtime, healthy CNPG pods alone do not establish
+Ready: the exact configured runtime role must also appear as reconciled with
+no reconciliation error. The background controller, supported refresh and
+runtime credential export use the same status projection. An opted-in addon
+with stale cached Ready metadata can be repaired through
+`POST /v1/addons/:id/refresh`; legacy Ready and failed/deleted terminal addons
+retain their existing behavior. Repair preserves the original provisioning
+time and compares the loaded status and update timestamp before writing, so
+concurrent deletion, retention or configuration changes return HTTP 409
+without a retry or lifecycle event. Inspect current state before proceeding.
+Runtime credentials also recheck the already-read owned Cluster before
+exporting the public CA. These status/custody checks do not substitute for the
+application's actual login, privilege, TLS and RLS verification.
+
 ## Step 1: Create `enclii.yaml`
 
 Add an `enclii.yaml` to your repository root:

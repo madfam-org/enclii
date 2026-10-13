@@ -530,8 +530,10 @@ func (s *AddonService) RefreshStatus(ctx context.Context, addonID uuid.UUID) (*t
 		return nil, err
 	}
 
-	// Only refresh if not already in a terminal state
-	if addon.Status == types.DatabaseAddonStatusReady ||
+	// Isolated cached Ready rows must revalidate the actual Cluster/runtime role.
+	// Legacy Ready and failed/deleted terminal behavior stays unchanged.
+	isolatedReady := addon.Type == types.DatabaseAddonTypePostgres && runtimeProfile(addon.Config)
+	if (addon.Status == types.DatabaseAddonStatusReady && !isolatedReady) ||
 		addon.Status == types.DatabaseAddonStatusDeleted ||
 		addon.Status == types.DatabaseAddonStatusFailed {
 		return addon, nil
@@ -547,7 +549,7 @@ func (s *AddonService) RefreshStatus(ctx context.Context, addonID uuid.UUID) (*t
 		return nil, fmt.Errorf("failed to get addon status: %w", err)
 	}
 
-	priorStatus := addon.Status
+	priorStatus, priorUpdatedAt := addon.Status, addon.UpdatedAt
 
 	// Update addon with new status
 	addon.Status = status.Status
@@ -558,13 +560,19 @@ func (s *AddonService) RefreshStatus(ctx context.Context, addonID uuid.UUID) (*t
 	addon.Username = status.Username
 	addon.UpdatedAt = time.Now()
 
-	if status.Ready {
+	if status.Ready && addon.ProvisionedAt == nil {
 		now := time.Now()
 		addon.ProvisionedAt = &now
 	}
 
-	if err := s.repos.DatabaseAddons.Update(ctx, addon); err != nil {
-		return nil, fmt.Errorf("failed to update addon: %w", err)
+	var updateErr error
+	if isolatedReady && priorStatus == types.DatabaseAddonStatusReady {
+		updateErr = s.repos.DatabaseAddons.UpdateReadinessIfUnchanged(ctx, addon, priorStatus, priorUpdatedAt)
+	} else {
+		updateErr = s.repos.DatabaseAddons.Update(ctx, addon)
+	}
+	if updateErr != nil {
+		return nil, fmt.Errorf("failed to update addon: %w", updateErr)
 	}
 
 	// Emit transition event if we crossed into a terminal state. System

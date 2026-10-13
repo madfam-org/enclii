@@ -46,7 +46,11 @@ func installRuntimeCAFixture(t *testing.T, p *PostgresProvisioner, r *ProvisionR
 	require.NoError(t, json.Unmarshal(encoded, &object)) // API-wire JSON numeric types
 	cluster := &unstructured.Unstructured{Object: object}
 	cluster.SetUID(uid)
-	object["status"] = map[string]interface{}{"certificates": map[string]interface{}{"serverCASecret": resource + "-ca"}}
+	object["status"] = map[string]interface{}{
+		"phase": "Cluster in healthy state", "instances": int64(1), "readyInstances": int64(1),
+		"certificates":       map[string]interface{}{"serverCASecret": resource + "-ca"},
+		"managedRolesStatus": map[string]interface{}{"byStatus": map[string]interface{}{"reconciled": []interface{}{r.Addon.Config.RuntimeRole}}},
+	}
 	p.k8sClient.DynamicClient = dynamicfake.NewSimpleDynamicClient(runtime.NewScheme(), cluster)
 	require.NoError(t, p.ownRuntimeSecret(context.Background(), r, resource, uid))
 	_, err = p.k8sClient.Kube().CoreV1().Secrets(r.Namespace).Create(context.Background(), &corev1.Secret{
@@ -97,4 +101,56 @@ func TestRuntimeCredentialsReturnOnlyOwnedPublicCAAndRejectForeignSelector(t *te
 	require.NoError(t, err)
 	_, err = p.GetCredentials(ctx, r.Addon)
 	require.Error(t, err)
+}
+
+func TestCachedReadyCannotIssueUnreconciledRuntimeCredentials(t *testing.T) {
+	for _, scenario := range []string{"missing role", "different role", "reconciliation error", "failed cluster", "no ready instance", "reconciled"} {
+		t.Run(scenario, func(t *testing.T) {
+			r := isolatedReq()
+			r.Addon.Status = "ready"
+			resource := "pg-training-fixture1"
+			r.Addon.ProjectID, r.Addon.K8sNamespace, r.Addon.K8sResourceName, r.Addon.ConnectionSecret = r.ProjectID, r.Namespace, resource, runtimeSecretName(resource)
+			kube := kubefake.NewSimpleClientset()
+			p := &PostgresProvisioner{k8sClient: &k8s.Client{KubeClient: kube}}
+			require.NoError(t, p.ensureRuntimeSecret(t.Context(), r, resource))
+			installRuntimeCAFixture(t, p, r, resource)
+			cluster, err := p.k8sClient.DynamicClient.Resource(cnpgGVR).Namespace(r.Namespace).Get(t.Context(), resource, metav1.GetOptions{})
+			require.NoError(t, err)
+			require.NoError(t, unstructured.SetNestedField(cluster.Object, "Cluster in healthy state", "status", "phase"))
+			require.NoError(t, unstructured.SetNestedField(cluster.Object, int64(1), "status", "instances"))
+			require.NoError(t, unstructured.SetNestedField(cluster.Object, int64(1), "status", "readyInstances"))
+			if scenario != "missing role" {
+				require.NoError(t, unstructured.SetNestedStringSlice(cluster.Object, []string{r.Addon.Config.RuntimeRole}, "status", "managedRolesStatus", "byStatus", "reconciled"))
+			} else {
+				unstructured.RemoveNestedField(cluster.Object, "status", "managedRolesStatus")
+			}
+			if scenario == "different role" {
+				require.NoError(t, unstructured.SetNestedStringSlice(cluster.Object, []string{"other_runtime"}, "status", "managedRolesStatus", "byStatus", "reconciled"))
+			} else if scenario == "reconciliation error" {
+				require.NoError(t, unstructured.SetNestedSlice(cluster.Object, []interface{}{"fixture failure"}, "status", "managedRolesStatus", "cannotReconcile", r.Addon.Config.RuntimeRole))
+			} else if scenario == "failed cluster" {
+				require.NoError(t, unstructured.SetNestedField(cluster.Object, "Failed", "status", "phase"))
+			} else if scenario == "no ready instance" {
+				require.NoError(t, unstructured.SetNestedField(cluster.Object, int64(0), "status", "readyInstances"))
+			}
+			_, err = p.k8sClient.DynamicClient.Resource(cnpgGVR).Namespace(r.Namespace).Update(t.Context(), cluster, metav1.UpdateOptions{})
+			require.NoError(t, err)
+			kube.ClearActions()
+			credentials, err := p.GetCredentials(t.Context(), r.Addon)
+			if scenario == "reconciled" {
+				require.NoError(t, err)
+				require.Equal(t, r.Addon.Config.DatabaseName, credentials.DatabaseName)
+				require.Equal(t, r.Addon.Config.RuntimeRole, credentials.Username)
+				require.Contains(t, credentials.CACertificate, "BEGIN CERTIFICATE")
+				require.NotContains(t, credentials.ConnectionURI, runtimeMigrator)
+				return
+			}
+			require.Error(t, err)
+			require.Nil(t, credentials)
+			require.Len(t, kube.Actions(), 1, "readiness refusal stops before CA Secret lookup")
+			require.Equal(t, resource+"-runtime", kube.Actions()[0].(interface{ GetName() string }).GetName())
+			_, err = p.GetConnectionURI(t.Context(), r.Addon)
+			require.Error(t, err, "binding credential URI must share the readiness guard")
+		})
+	}
 }

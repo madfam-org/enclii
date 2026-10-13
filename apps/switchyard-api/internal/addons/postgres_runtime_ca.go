@@ -68,6 +68,10 @@ func (p *PostgresProvisioner) runtimeServerCA(ctx context.Context, addon *sdktyp
 		!ownedByCNPG(runtime, addon.K8sResourceName, uid) {
 		return "", fmt.Errorf("isolated database credentials do not belong to the Cluster")
 	}
+	status, statusErr := ParsePostgresClusterStatus(cluster, addon)
+	if statusErr != nil || !status.Ready || status.Status != sdktypes.DatabaseAddonStatusReady {
+		return "", fmt.Errorf("isolated database Cluster/runtime role is not Ready")
+	}
 	name, _, _ := unstructured.NestedString(cluster.Object, "status", "certificates", "serverCASecret")
 	if name != addon.K8sResourceName+"-ca" {
 		return "", fmt.Errorf("isolated database server CA is not reconciled")
