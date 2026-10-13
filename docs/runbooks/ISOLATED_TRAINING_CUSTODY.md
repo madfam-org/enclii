@@ -91,6 +91,67 @@ or live activation in this change. A pin timestamp cannot prove a healthy soak.
 
 See [Secret intake](SECRET_INTAKE.md),
 [namespace and onboarding](../guides/ONBOARDING_GUIDE.md), and the managed
-database isolation contract. Fresh seed/migration needs a separately reviewed
-fixed-profile owner-only adapter; arbitrary one-off command or SQL execution
-does not satisfy that contract.
+database isolation contract.
+
+## Fixed initial database Jobs
+
+`POST /v1/admin/projects/:slug/addons/:id/initial-bootstrap` accepts only
+`profile`, `service_id`, `dry_run`, `reason` and `idempotency_key`. Unknown fields,
+arbitrary commands, SQL, images and namespace selectors are refused. The shared
+platform/project guard and durable owned source registration are required.
+The active bound addon must be the exact Ready isolated PostgreSQL profile;
+the owned application stays at zero replicas throughout initial preparation.
+
+| Profile | Workload | Fixed operation |
+| --- | --- | --- |
+| `map-sim-initial` | `crea-sim-map01` | Empty-database metadata guard, canonical Prisma migration, then compiled synthetic seed |
+| `portal-sim-initial` | `crea-sim-gateway` | Bundled `001-portal.sql` through the fixed owner-only initial migrator |
+
+No reset, DROP, arbitrary migration file or Janua staging migration profile is
+exposed. A partial MAP migration failure requires governed recovery review; it
+cannot be retried as a populated initial database. The portal accepts its exact
+existing immutable migration receipt and rejects a different/unknown schema.
+
+The image must match its canonical producer's current immutable pin, actual OCI
+source/revision labels, exact revision tag and successful main caller workflow
+and closed source CI. MAP requires all fifteen named CI checks to complete with
+`success`; skipped jobs cannot replace a required check. The portal requires
+its isolation and real PostgreSQL/Mailpit transport checks to succeed. Keyless verification binds the permitted workflow SAN,
+GitHub OIDC issuer, caller repository, revision and ref, preserving transparency
+and certificate verification. See the supported
+[Cosign verification options](https://github.com/sigstore/cosign/blob/v3.1.3/doc/cosign_verify.md).
+MAP's existing producer supplies this signed build/pin contract; it does not
+publish an image SBOM/scan attestation. That producer-library improvement is a
+separate follow-up and is not claimed by this receipt. No fictitious platform
+Release row substitutes for GitOps producer evidence.
+
+The server verifies actual namespace/project and CNPG Cluster/owner/runtime/CA
+UID custody and current runtime-role reconciliation. Owner credentials appear
+only in a transient Job-owned Secret; ordinary addon credentials remain
+runtime-only and the private owner bundle cannot serialize into an API response.
+Only `ca.crt` is mounted. Both Job and representative Pod pass actual server
+dry-run admission in a signature-enforcing namespace before persistence.
+
+The Job starts suspended, has zero automatic retries, and reaches only its own
+exact database cluster on TCP5432 plus the existing DNS rule. Foreign broad
+egress or conflicting objects are refused. Before activation the server rechecks
+the binding, held workload, private configuration, Cluster UID and credential/CA
+identity; changed authority leaves the Job suspended. Errors never trigger a
+new operation key or rerun automatically. The Job uses MAP UID/GID1001 or
+portal UID/GID1000, a read-only filesystem and a writable temporary volume.
+Registry custody is copied only from central `enclii/ghcr-credentials` to the
+verified project-addon namespace, selecting only the GHCR entry. Its namespace
+owner UID, source UID, project labels and credential bytes must remain exact;
+foreign/existing conflicts and rotation refuse activation without adoption.
+Dry run only submits server-side dry-run copies; ordinary credentials remain
+separate from application/migrator custody.
+
+Inspect the same operation with
+`GET /v1/admin/projects/:slug/addons/:id/initial-bootstrap/:job_name`. It returns
+only execution counts and suspension state, without credentials or raw logs.
+A completed Job is not proof of durable MAP accreditation. The kernel's signed
+private control/manifest must separately demonstrate `VACIO`, revision/epoch0,
+no owner/exercise and the matching seven-role seed receipt before application
+activation. Actual managed CA/TLS, runtime authority, storage/resource placement
+and readiness still require live receipts; source/unit tests alone do not
+establish them.

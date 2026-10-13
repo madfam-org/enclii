@@ -132,6 +132,8 @@ func (h *Handler) registerAdminRoutes(protected *gin.RouterGroup) {
 	platform.GET("/onboard", h.ListOnboardings)
 	platform.GET("/onboard/:owner/:repo", h.GetOnboarding)
 	platform.POST("/projects/:slug/environments/:env_name/bootstrap", h.BootstrapStagingNamespace)
+	platform.POST("/projects/:slug/addons/:id/initial-bootstrap", h.InitialBootstrapAddon)
+	platform.GET("/projects/:slug/addons/:id/initial-bootstrap/:job_name", h.InitialBootstrapAddonStatus)
 
 	// Database schema / migration status (GA migration verify)
 	platform.GET("/db/schema", h.GetAdminDBSchema)
