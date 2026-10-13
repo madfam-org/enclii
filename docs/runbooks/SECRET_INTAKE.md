@@ -1,6 +1,10 @@
 # Secret Intake (chat-safe credential handoff)
 
-**Last Updated:** 2026-10-11
+**Last Updated:** 2026-10-13
+
+Isolated training and API-only Janua staging targets are documented in
+[Isolated training custody](ISOLATED_TRAINING_CUSTODY.md). These declarations
+require separate live provisioning and readiness receipts.
 
 > **Boundary checkpoint (2026-09-05, platform on-call):** Public-safe runbook —
 > target ids, Vault paths and key NAMES are routing contracts, never values. No

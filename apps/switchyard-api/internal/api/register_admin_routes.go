@@ -131,6 +131,7 @@ func (h *Handler) registerAdminRoutes(protected *gin.RouterGroup) {
 	platform.GET("/preflight", h.PreflightImageGates) // image gates preflight, see onboarding_image_gates.go
 	platform.GET("/onboard", h.ListOnboardings)
 	platform.GET("/onboard/:owner/:repo", h.GetOnboarding)
+	platform.POST("/projects/:slug/environments/:env_name/bootstrap", h.BootstrapStagingNamespace)
 
 	// Database schema / migration status (GA migration verify)
 	platform.GET("/db/schema", h.GetAdminDBSchema)

@@ -12,7 +12,7 @@ import (
 func TestLoadRegistry(t *testing.T) {
 	reg, err := LoadRegistry()
 	require.NoError(t, err)
-	assert.Len(t, reg, 68)
+	assert.Len(t, reg, 81)
 	assert.Contains(t, reg, "ceq/vast-api-key")
 	assert.Contains(t, reg, "karafiel/web-oidc-janua")
 	adminSession := reg["karafiel/admin-session"]
@@ -37,7 +37,7 @@ func TestGetTarget(t *testing.T) {
 func TestListTargetsSorted(t *testing.T) {
 	list, err := ListTargets()
 	require.NoError(t, err)
-	require.Len(t, list, 68)
+	require.Len(t, list, 81)
 	for i := 1; i < len(list); i++ {
 		assert.Less(t, list[i-1].ID, list[i].ID, "targets should be sorted by id")
 	}
@@ -114,7 +114,7 @@ func TestListTargetsSorted(t *testing.T) {
 		"voxa/web-session",
 		"yantra4d/asset-shells-publisher",
 		"zavlo/cfdi-emitter",
-	}, ids)
+	}, legacyTargetIDs(ids))
 }
 
 // The 2026-09-03 batch: the operator had to break-glass `vault kv patch` for
@@ -710,4 +710,16 @@ func TestDigifabQuotingWebSessionTarget(t *testing.T) {
 	assert.NotEmpty(t, tgt.Description)
 	// NEXTAUTH_SECRET must carry at least 32 bytes when minted with --generate.
 	assert.GreaterOrEqual(t, tgt.GenerateBytes(), 32)
+}
+
+// Keep the historical inventory exact while the new isolated targets have their
+// own explicit routing assertions. No old target may be silently removed.
+func legacyTargetIDs(ids []string) []string {
+	var legacy []string
+	for _, id := range ids {
+		if !strings.HasPrefix(id, "crea-sim/") && !strings.HasPrefix(id, "janua-staging/") {
+			legacy = append(legacy, id)
+		}
+	}
+	return legacy
 }
