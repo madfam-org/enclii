@@ -12,6 +12,11 @@ type VaultSecretWriter interface {
 	GetSecretData(ctx context.Context, path string) (map[string]interface{}, error)
 }
 
+// Optional: existing writers/mocks do not gain an administrative requirement.
+type vaultTrainingCapabilityProbe interface {
+	ProbeTrainingCustodyCapabilities(ctx context.Context) (map[string][]string, error)
+}
+
 // SetVaultClient wires the optional Vault writer used by audited secret
 // backfill operations. Nil leaves Vault mutations disabled.
 func (h *Handler) SetVaultClient(client VaultSecretWriter) {
