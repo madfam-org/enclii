@@ -2,6 +2,7 @@ package api
 
 import (
 	"context"
+	"database/sql"
 	"fmt"
 	"net/http"
 	"strings"
@@ -9,15 +10,15 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
-	corev1 "k8s.io/api/core/v1"
-	"k8s.io/apimachinery/pkg/api/errors"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-
 	"github.com/madfam-org/enclii/apps/switchyard-api/internal/clients"
 	"github.com/madfam-org/enclii/apps/switchyard-api/internal/logging"
 	"github.com/madfam-org/enclii/apps/switchyard-api/internal/middleware"
 	"github.com/madfam-org/enclii/apps/switchyard-api/internal/monitoring"
+	"github.com/madfam-org/enclii/apps/switchyard-api/internal/workloadtargets"
 	"github.com/madfam-org/enclii/packages/sdk-go/pkg/types"
+	corev1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/api/errors"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
 // BuildService triggers a build for a service from a given git SHA
@@ -312,6 +313,24 @@ func (h *Handler) triggerBuild(service *types.Service, release *types.Release, g
 
 // triggerAutoDeploy creates a deployment for the successful build if auto-deploy is configured
 func (h *Handler) triggerAutoDeploy(ctx context.Context, service *types.Service, release *types.Release) {
+	err := (workloadtargets.Store{DB: h.repos.DB()}).WithUnbound(ctx, service.ID, func(tx *sql.Tx) error {
+		scoped := *h
+		_ = tx // lock only; original best-effort repositories preserve legacy outcomes
+		current, err := scoped.repos.Services.GetByID(service.ID)
+		if err != nil {
+			return err
+		}
+		if release.ServiceID != current.ID {
+			return workloadtargets.ErrIntent
+		}
+		scoped.triggerAutoDeployLocked(ctx, current, release)
+		return nil
+	})
+	if err != nil {
+		h.logger.Warn(ctx, "explicit target refused automatic deployment", logging.Error("error", err))
+	}
+}
+func (h *Handler) triggerAutoDeployLocked(ctx context.Context, service *types.Service, release *types.Release) {
 	h.logger.Info(ctx, "Auto-deploy triggered",
 		logging.String("service_id", service.ID.String()),
 		logging.String("service_name", service.Name),

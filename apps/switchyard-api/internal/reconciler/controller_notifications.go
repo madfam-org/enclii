@@ -2,16 +2,37 @@ package reconciler
 
 import (
 	"context"
+	"database/sql"
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/sirupsen/logrus"
-
+	"github.com/madfam-org/enclii/apps/switchyard-api/internal/workloadtargets"
 	"github.com/madfam-org/enclii/packages/sdk-go/pkg/types"
+	"github.com/sirupsen/logrus"
 )
 
 // sendDeploymentNotification sends webhook notifications for deployment status changes
 func (c *Controller) sendDeploymentNotification(ctx context.Context, deploymentID uuid.UUID, status types.DeploymentStatus, result *ReconcileResult) {
+	deployment, err := c.repositories.Deployments.GetByID(ctx, deploymentID.String())
+	if err != nil {
+		return
+	}
+	release, err := c.repositories.Releases.GetByID(deployment.ReleaseID)
+	if err != nil {
+		return
+	}
+	if deployment.ServiceID != nil && *deployment.ServiceID != release.ServiceID {
+		return
+	}
+	err = (workloadtargets.Store{DB: c.db}).WithUnbound(ctx, release.ServiceID, func(_ *sql.Tx) error {
+		c.sendDeploymentNotificationLocked(ctx, deploymentID, status, result)
+		return nil
+	})
+	if err != nil {
+		c.logger.WithError(err).Warn("explicit target refused delayed deployment notification")
+	}
+}
+func (c *Controller) sendDeploymentNotificationLocked(ctx context.Context, deploymentID uuid.UUID, status types.DeploymentStatus, result *ReconcileResult) {
 	logger := c.logger.WithFields(logrus.Fields{
 		"deployment_id": deploymentID,
 		"status":        status,

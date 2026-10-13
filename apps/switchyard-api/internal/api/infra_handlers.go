@@ -9,7 +9,6 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
-
 	"github.com/madfam-org/enclii/apps/switchyard-api/internal/logging"
 	"github.com/madfam-org/enclii/packages/sdk-go/pkg/types"
 )
@@ -40,7 +39,7 @@ type RestartRequest struct {
 
 // ScaleRequest sets the replica count for a service.
 type ScaleRequest struct {
-	Replicas int32  `json:"replicas" binding:"required"`
+	Replicas *int32 `json:"replicas" binding:"required"`
 	Env      string `json:"env"` // default "production"
 }
 
@@ -248,24 +247,32 @@ func (h *Handler) RestartService(c *gin.Context) {
 		reason = "manual-restart"
 	}
 
+	lease, ok := h.targetLease(c, serviceID, false, false)
+	if !ok {
+		return
+	}
+	h = lease.handler
+	defer lease.finish(c)
+	ctx = withTargetActor(ctx, c.GetString("user_id"))
+
 	svc, err := h.repos.Services.GetByID(serviceID)
 	if err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": "service not found"})
 		return
 	}
 
-	project, err := h.repos.Projects.GetByID(ctx, svc.ProjectID)
+	_, err = h.repos.Projects.GetByID(ctx, svc.ProjectID)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "project not found"})
 		return
 	}
 
-	if err := h.k8sClient.RollingRestart(ctx, project.Slug, svc.Name); err != nil {
+	if err := h.mutateVerifiedTarget(ctx, serviceID, env, nil); err != nil {
 		h.logger.Error(ctx, "Restart failed",
 			logging.String("service", svc.Name),
 			logging.Error("error", err),
 		)
-		c.JSON(http.StatusInternalServerError, gin.H{"error": fmt.Sprintf("restart failed: %v", err)})
+		c.JSON(targetMutationStatus(err), gin.H{"error": "restart refused or outcome unverified; inspect exact target before another attempt"})
 		return
 	}
 
@@ -305,12 +312,14 @@ func (h *Handler) ScaleService(c *gin.Context) {
 		return
 	}
 
+	replicas := *req.Replicas
+
 	// SecOps: cap replicas
-	if req.Replicas > 10 {
+	if replicas > 10 {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "replicas capped at 10"})
 		return
 	}
-	if req.Replicas < 0 {
+	if replicas < 0 {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "replicas must be >= 0"})
 		return
 	}
@@ -320,30 +329,38 @@ func (h *Handler) ScaleService(c *gin.Context) {
 		env = "production"
 	}
 
+	lease, ok := h.targetLease(c, serviceID, false, false)
+	if !ok {
+		return
+	}
+	h = lease.handler
+	defer lease.finish(c)
+	ctx = withTargetActor(ctx, c.GetString("user_id"))
+
 	svc, err := h.repos.Services.GetByID(serviceID)
 	if err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": "service not found"})
 		return
 	}
 
-	project, err := h.repos.Projects.GetByID(ctx, svc.ProjectID)
+	_, err = h.repos.Projects.GetByID(ctx, svc.ProjectID)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "project not found"})
 		return
 	}
 
-	if err := h.k8sClient.ScaleDeployment(ctx, project.Slug, svc.Name, req.Replicas); err != nil {
+	if err := h.mutateVerifiedTarget(ctx, serviceID, env, req.Replicas); err != nil {
 		h.logger.Error(ctx, "Scale failed",
 			logging.String("service", svc.Name),
 			logging.Error("error", err),
 		)
-		c.JSON(http.StatusInternalServerError, gin.H{"error": fmt.Sprintf("scale failed: %v", err)})
+		c.JSON(targetMutationStatus(err), gin.H{"error": "scale refused or outcome unverified; inspect exact target before another attempt"})
 		return
 	}
 
 	h.logger.Info(ctx, "Service scaled",
 		logging.String("service", svc.Name),
-		logging.Field{Key: "replicas", Value: req.Replicas},
+		logging.Field{Key: "replicas", Value: replicas},
 	)
 
 	// P2.3: fan out service.scaled to outbound webhook subscribers.
@@ -355,7 +372,7 @@ func (h *Handler) ScaleService(c *gin.Context) {
 			"service_id":   svc.ID.String(),
 			"service_name": svc.Name,
 			"env":          env,
-			"to_replicas":  req.Replicas,
+			"to_replicas":  replicas,
 			"actor":        c.GetString("user_email"),
 		}
 		projectID := svc.ProjectID
@@ -374,10 +391,10 @@ func (h *Handler) ScaleService(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, gin.H{
-		"message":      fmt.Sprintf("Scaled %s to %d replicas", svc.Name, req.Replicas),
+		"message":      fmt.Sprintf("Scaled %s to %d replicas", svc.Name, replicas),
 		"service_name": svc.Name,
 		"environment":  env,
-		"replicas":     req.Replicas,
+		"replicas":     replicas,
 	})
 }
 

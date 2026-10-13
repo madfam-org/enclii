@@ -8,17 +8,17 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/madfam-org/enclii/apps/switchyard-api/internal/db"
+	"github.com/madfam-org/enclii/apps/switchyard-api/internal/k8s"
+	"github.com/madfam-org/enclii/apps/switchyard-api/internal/monitoring"
+	"github.com/madfam-org/enclii/apps/switchyard-api/internal/notifications"
+	"github.com/madfam-org/enclii/apps/switchyard-api/internal/workloadtargets"
+	"github.com/madfam-org/enclii/packages/sdk-go/pkg/types"
 	"github.com/sirupsen/logrus"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/codes"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-
-	"github.com/madfam-org/enclii/apps/switchyard-api/internal/db"
-	"github.com/madfam-org/enclii/apps/switchyard-api/internal/k8s"
-	"github.com/madfam-org/enclii/apps/switchyard-api/internal/monitoring"
-	"github.com/madfam-org/enclii/apps/switchyard-api/internal/notifications"
-	"github.com/madfam-org/enclii/packages/sdk-go/pkg/types"
 )
 
 // tracer — reconciler package emits spans under this name so Tempo can
@@ -298,8 +298,22 @@ func (c *Controller) processWork(ctx context.Context, work *ReconcileWork, logge
 		}
 	}
 
+	session, err := (workloadtargets.Store{DB: c.db}).LockService(ctx, service.ID)
+	if err != nil {
+		return &ReconcileResult{Success: false, Message: "explicit target lock unavailable", Error: err}
+	}
+	defer session.Close()
+	if err = session.RefuseBound(ctx); err != nil {
+		return &ReconcileResult{Success: false, Message: "bound GitOps target refuses queued reconciliation", Error: err}
+	}
+	repositories := c.repositories.InTransaction(session.Tx())
+	service, err = repositories.Services.GetByID(service.ID)
+	if err != nil {
+		return &ReconcileResult{Success: false, Message: "locked service unavailable", Error: err}
+	}
+
 	// Get environment to determine the target Kubernetes namespace
-	environment, err := c.repositories.Environments.GetByID(ctx, deployment.EnvironmentID)
+	environment, err := repositories.Environments.GetByID(ctx, deployment.EnvironmentID)
 	if err != nil {
 		logger.WithError(err).Error("Failed to get environment")
 		return &ReconcileResult{
@@ -336,13 +350,13 @@ func (c *Controller) processWork(ctx context.Context, work *ReconcileWork, logge
 	// Use GetDecryptedWithMeta to properly separate secrets from regular env vars
 	var envVars map[string]string
 	var envVarsWithMeta []EnvVarWithMeta
-	if c.repositories.EnvVars != nil {
+	if repositories.EnvVars != nil {
 		// Try the new metadata-aware method first
-		dbEnvVars, err := c.repositories.EnvVars.GetDecryptedWithMeta(ctx, service.ID, deployment.EnvironmentID)
+		dbEnvVars, err := repositories.EnvVars.GetDecryptedWithMeta(ctx, service.ID, deployment.EnvironmentID)
 		if err != nil {
 			logger.WithError(err).Warn("Failed to get environment variables with metadata, falling back to legacy")
 			var legacyErr error
-			envVars, legacyErr = c.repositories.EnvVars.GetDecrypted(ctx, service.ID, deployment.EnvironmentID)
+			envVars, legacyErr = repositories.EnvVars.GetDecrypted(ctx, service.ID, deployment.EnvironmentID)
 			if legacyErr != nil {
 				logger.WithError(legacyErr).Warn("Failed to get environment variables via legacy method, continuing without env vars")
 				envVars = make(map[string]string)
@@ -366,14 +380,14 @@ func (c *Controller) processWork(ctx context.Context, work *ReconcileWork, logge
 
 	// Get database addon bindings for this service
 	var addonBindings []AddonBinding
-	if c.repositories.DatabaseAddons != nil {
-		bindings, err := c.repositories.DatabaseAddons.GetBindingsByService(ctx, service.ID)
+	if repositories.DatabaseAddons != nil {
+		bindings, err := repositories.DatabaseAddons.GetBindingsByService(ctx, service.ID)
 		if err != nil {
 			logger.WithError(err).Warn("Failed to get addon bindings, continuing without them")
 		} else {
 			for _, binding := range bindings {
 				// Get the addon details
-				addon, err := c.repositories.DatabaseAddons.GetByID(ctx, binding.AddonID)
+				addon, err := repositories.DatabaseAddons.GetByID(ctx, binding.AddonID)
 				if err != nil {
 					logger.WithError(err).WithField("addon_id", binding.AddonID).Warn("Failed to get addon for binding")
 					continue
@@ -399,8 +413,8 @@ func (c *Controller) processWork(ctx context.Context, work *ReconcileWork, logge
 
 	// Mount gitops-managed project secrets when present in the target namespace.
 	var optionalProjectSecret string
-	if c.repositories.Projects != nil && c.k8sClient != nil {
-		project, projErr := c.repositories.Projects.GetByID(ctx, service.ProjectID)
+	if repositories.Projects != nil && c.k8sClient != nil {
+		project, projErr := repositories.Projects.GetByID(ctx, service.ProjectID)
 		if projErr == nil && project.Slug != "" {
 			secretName := project.Slug + "-secrets"
 			if _, secErr := c.k8sClient.Clientset.CoreV1().Secrets(environment.KubeNamespace).Get(
@@ -413,6 +427,7 @@ func (c *Controller) processWork(ctx context.Context, work *ReconcileWork, logge
 
 	// Create reconcile request
 	req := &ReconcileRequest{
+		targetSession:         session,
 		Service:               service,
 		Release:               release,
 		Deployment:            deployment,

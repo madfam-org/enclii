@@ -76,6 +76,10 @@ func (h *Handler) HandleProviderOperation(c *gin.Context) {
 }
 
 func (h *Handler) handleOperatorOperation(c *gin.Context, prefix, domain, action string, capabilities []operatorCapability) {
+	if prefix == "ops" && domain == "apps" && action == "bind-target" {
+		h.PlanServiceDeploymentTarget(c)
+		return
+	}
 	var req operatorOperationRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": fmt.Sprintf("invalid operation request: %s", err.Error())})

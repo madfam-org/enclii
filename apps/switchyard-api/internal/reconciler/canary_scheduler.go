@@ -2,11 +2,13 @@ package reconciler
 
 import (
 	"context"
+	"database/sql"
 	"time"
 
-	"github.com/sirupsen/logrus"
-
+	"github.com/madfam-org/enclii/apps/switchyard-api/internal/db"
+	"github.com/madfam-org/enclii/apps/switchyard-api/internal/workloadtargets"
 	"github.com/madfam-org/enclii/packages/sdk-go/pkg/types"
+	"github.com/sirupsen/logrus"
 )
 
 // CanaryTickInterval controls how often the canary scheduler advances
@@ -68,42 +70,55 @@ func (c *Controller) runCanaryTick(ctx context.Context, rec *CanaryReconciler, l
 // tickOneCanary hydrates the refs a single rollout needs and advances it.
 // Errors are logged and persisted to LastError — they don't halt the loop.
 func (c *Controller) tickOneCanary(ctx context.Context, rec *CanaryReconciler, ro *types.CanaryRollout, logger *logrus.Entry) {
+	err := (workloadtargets.Store{DB: c.db}).WithUnbound(ctx, ro.ServiceID, func(tx *sql.Tx) error {
+		repositories := c.repositories.InTransaction(tx)
+		scoped := *rec
+		scoped.repos = repositories
+		c.tickOneCanaryLocked(ctx, &scoped, ro, logger, repositories)
+		return nil
+	})
+	if err != nil {
+		logger.WithError(err).Warn("explicit target refused queued canary tick")
+	}
+}
+
+func (c *Controller) tickOneCanaryLocked(ctx context.Context, rec *CanaryReconciler, ro *types.CanaryRollout, logger *logrus.Entry, repositories *db.Repositories) {
 	rLogger := logger.WithFields(logrus.Fields{
 		"rollout": ro.ID,
 		"state":   ro.State,
 	})
 
-	service, err := c.repositories.Services.GetByID(ro.ServiceID)
+	service, err := repositories.Services.GetByID(ro.ServiceID)
 	if err != nil {
 		rLogger.WithError(err).Error("service lookup")
-		_ = c.repositories.CanaryRollouts.UpdateState(ctx, ro.ID, types.CanaryStateFailed, "service lookup: "+err.Error())
+		_ = repositories.CanaryRollouts.UpdateState(ctx, ro.ID, types.CanaryStateFailed, "service lookup: "+err.Error())
 		return
 	}
-	env, err := c.repositories.Environments.GetByID(ctx, ro.EnvironmentID)
+	env, err := repositories.Environments.GetByID(ctx, ro.EnvironmentID)
 	if err != nil {
 		rLogger.WithError(err).Error("environment lookup")
-		_ = c.repositories.CanaryRollouts.UpdateState(ctx, ro.ID, types.CanaryStateFailed, "env lookup: "+err.Error())
+		_ = repositories.CanaryRollouts.UpdateState(ctx, ro.ID, types.CanaryStateFailed, "env lookup: "+err.Error())
 		return
 	}
 
 	// Stable + canary release refs are only needed during the ensure/promote
 	// phases; lookup is cheap, do it up front.
-	stableDepl, err := c.repositories.Deployments.GetByID(ctx, ro.StableDeploymentID.String())
+	stableDepl, err := repositories.Deployments.GetByID(ctx, ro.StableDeploymentID.String())
 	if err != nil {
 		rLogger.WithError(err).Error("stable deployment lookup")
 		return
 	}
-	stableRel, err := c.repositories.Releases.GetByID(stableDepl.ReleaseID)
+	stableRel, err := repositories.Releases.GetByID(stableDepl.ReleaseID)
 	if err != nil {
 		rLogger.WithError(err).Error("stable release lookup")
 		return
 	}
-	canaryDepl, err := c.repositories.Deployments.GetByID(ctx, ro.CanaryDeploymentID.String())
+	canaryDepl, err := repositories.Deployments.GetByID(ctx, ro.CanaryDeploymentID.String())
 	if err != nil {
 		rLogger.WithError(err).Error("canary deployment lookup")
 		return
 	}
-	canaryRel, err := c.repositories.Releases.GetByID(canaryDepl.ReleaseID)
+	canaryRel, err := repositories.Releases.GetByID(canaryDepl.ReleaseID)
 	if err != nil {
 		rLogger.WithError(err).Error("canary release lookup")
 		return
@@ -117,7 +132,7 @@ func (c *Controller) tickOneCanary(ctx context.Context, rec *CanaryReconciler, r
 		CanaryRel:   canaryRel,
 	}
 
-	newState, err := rec.Tick(ctx, in)
+	newState, err := rec.tickLocked(ctx, in)
 	if err != nil {
 		rLogger.WithError(err).Warn("canary tick errored")
 		return

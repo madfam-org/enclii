@@ -2,13 +2,16 @@ package reconciler
 
 import (
 	"context"
+	"database/sql"
+	"errors"
 	"fmt"
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/sirupsen/logrus"
-
+	"github.com/madfam-org/enclii/apps/switchyard-api/internal/db"
+	"github.com/madfam-org/enclii/apps/switchyard-api/internal/workloadtargets"
 	"github.com/madfam-org/enclii/packages/sdk-go/pkg/types"
+	"github.com/sirupsen/logrus"
 )
 
 // resultProcessor handles reconciliation results
@@ -33,7 +36,31 @@ func (c *Controller) resultProcessor(ctx context.Context) {
 }
 
 // handleResult processes a reconciliation result
-func (c *Controller) handleResult(ctx context.Context, workResult *ReconcileWorkResult, logger *logrus.Entry) {
+func (c *Controller) handleResult(ctx context.Context, result *ReconcileWorkResult, logger *logrus.Entry) {
+	if errors.Is(result.Result.Error, workloadtargets.ErrConflict) || errors.Is(result.Result.Error, workloadtargets.ErrUnavailable) {
+		return
+	}
+	deployment, err := c.repositories.Deployments.GetByID(ctx, result.Work.DeploymentID)
+	if err != nil {
+		return
+	}
+	release, err := c.repositories.Releases.GetByID(deployment.ReleaseID)
+	if err != nil {
+		return
+	}
+	if deployment.ServiceID != nil && *deployment.ServiceID != release.ServiceID {
+		return
+	}
+	err = (workloadtargets.Store{DB: c.db}).WithUnbound(ctx, release.ServiceID, func(tx *sql.Tx) error {
+		_ = tx
+		c.handleResultLocked(ctx, result, logger, c.repositories)
+		return nil
+	})
+	if err != nil {
+		logger.WithError(err).Warn("explicit target refused queued reconciliation result")
+	}
+}
+func (c *Controller) handleResultLocked(ctx context.Context, workResult *ReconcileWorkResult, logger *logrus.Entry, repositories *db.Repositories) {
 	work := workResult.Work
 	result := workResult.Result
 
@@ -119,7 +146,7 @@ func (c *Controller) handleResult(ctx context.Context, workResult *ReconcileWork
 		errStr := result.Error.Error()
 		errorMsg = &errStr
 	}
-	err = c.repositories.Deployments.UpdateStatusWithError(deploymentUUID, status, health, errorMsg)
+	err = repositories.Deployments.UpdateStatusWithError(deploymentUUID, status, health, errorMsg)
 	if err != nil {
 		logger.WithError(err).Error("Failed to update deployment status")
 	}
@@ -360,19 +387,23 @@ func (c *Controller) observePostDeployHealth(deploymentID string) {
 				if failCount >= consecutiveFailures {
 					logger.Error("Deployment unhealthy for consecutive checks, triggering auto-rollback")
 
-					rollbackErr := c.k8sClient.RollbackDeployment(ctx, serviceName, namespace)
+					rollbackErr := (workloadtargets.Store{DB: c.db}).WithUnbound(ctx, service.ID, func(tx *sql.Tx) error {
+						if err := c.k8sClient.RollbackDeployment(ctx, serviceName, namespace); err != nil {
+							return err
+						}
+						deploymentUUID, parseErr := uuid.Parse(deploymentID)
+						if parseErr != nil {
+							return parseErr
+						}
+						errMsg := fmt.Sprintf("auto-rollback triggered: %d unavailable replicas for %d consecutive health checks", statusInfo.UnavailableReplicas, failCount)
+						return c.repositories.InTransaction(tx).Deployments.UpdateStatusWithError(deploymentUUID, types.DeploymentStatusFailed, types.HealthStatusUnhealthy, &errMsg)
+					})
 					if rollbackErr != nil {
 						logger.WithError(rollbackErr).Error("Auto-rollback failed")
 					} else {
 						logger.Info("Auto-rollback completed successfully")
 					}
 
-					// Update deployment status to Failed in database
-					deploymentUUID, parseErr := uuid.Parse(deploymentID)
-					if parseErr == nil {
-						errMsg := fmt.Sprintf("auto-rollback triggered: %d unavailable replicas for %d consecutive health checks", statusInfo.UnavailableReplicas, failCount)
-						c.repositories.Deployments.UpdateStatusWithError(deploymentUUID, types.DeploymentStatusFailed, types.HealthStatusUnhealthy, &errMsg)
-					}
 					return
 				}
 			} else {

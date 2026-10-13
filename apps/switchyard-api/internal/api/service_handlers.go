@@ -7,7 +7,6 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
-
 	apperrors "github.com/madfam-org/enclii/apps/switchyard-api/internal/errors"
 	"github.com/madfam-org/enclii/apps/switchyard-api/internal/logging"
 	"github.com/madfam-org/enclii/packages/sdk-go/pkg/types"
@@ -150,6 +149,13 @@ func (h *Handler) DeleteService(c *gin.Context) {
 	if !h.enforceStagedServiceAccess(c, serviceUUID) {
 		return
 	}
+
+	lease, ok := h.targetLease(c, serviceUUID, false, true)
+	if !ok {
+		return
+	}
+	h = lease.handler
+	defer lease.finish(c)
 
 	// Verify service exists
 	service, err := h.repos.Services.GetByID(serviceUUID)

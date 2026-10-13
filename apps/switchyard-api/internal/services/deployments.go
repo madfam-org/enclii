@@ -6,19 +6,20 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/sirupsen/logrus"
-
 	"github.com/madfam-org/enclii/apps/switchyard-api/internal/db"
 	"github.com/madfam-org/enclii/apps/switchyard-api/internal/errors"
+	"github.com/madfam-org/enclii/apps/switchyard-api/internal/workloadtargets"
 	"github.com/madfam-org/enclii/packages/sdk-go/pkg/types"
+	"github.com/sirupsen/logrus"
 )
 
 // DeploymentService handles deployment business logic
 // Note: This is a simplified version focused on deployment orchestration.
 // Builder, SBOM, and signing functionality will be added in future iterations.
 type DeploymentService struct {
-	repos  *db.Repositories
-	logger *logrus.Logger
+	repos         *db.Repositories
+	logger        *logrus.Logger
+	targetSession *workloadtargets.Session
 }
 
 // NewDeploymentService creates a new deployment service
@@ -126,6 +127,33 @@ type DeployServiceResponse struct {
 
 // DeployService deploys a release to an environment
 func (s *DeploymentService) DeployService(ctx context.Context, req *DeployServiceRequest) (*DeployServiceResponse, error) {
+	id, err := uuid.Parse(req.ReleaseID)
+	if err != nil {
+		return nil, err
+	}
+	release, err := s.repos.Releases.GetByID(id)
+	if err != nil {
+		return nil, err
+	}
+	if s.targetSession != nil {
+		if !s.targetSession.OwnsService(release.ServiceID) {
+			return nil, workloadtargets.ErrIntent
+		}
+		return s.deployServiceLocked(ctx, req)
+	}
+	session, err := (workloadtargets.Store{DB: s.repos.DB()}).LockService(ctx, release.ServiceID)
+	if err != nil {
+		return nil, err
+	}
+	defer session.Close()
+	if err = session.RefuseBound(ctx); err != nil {
+		return nil, err
+	}
+	scoped := *s
+	scoped.targetSession = session
+	return scoped.deployServiceLocked(ctx, req)
+}
+func (s *DeploymentService) deployServiceLocked(ctx context.Context, req *DeployServiceRequest) (*DeployServiceResponse, error) {
 	// Parse UUIDs
 	releaseID, err := uuid.Parse(req.ReleaseID)
 	if err != nil {
@@ -223,6 +251,33 @@ type RollbackResponse struct {
 
 // Rollback rolls back to a previous deployment
 func (s *DeploymentService) Rollback(ctx context.Context, req *RollbackRequest) (*RollbackResponse, error) {
+	deployment, err := s.repos.Deployments.GetByID(ctx, req.DeploymentID)
+	if err != nil {
+		return nil, err
+	}
+	release, err := s.repos.Releases.GetByID(deployment.ReleaseID)
+	if err != nil {
+		return nil, err
+	}
+	if s.targetSession != nil {
+		if !s.targetSession.OwnsService(release.ServiceID) {
+			return nil, workloadtargets.ErrIntent
+		}
+		return s.rollbackLocked(ctx, req)
+	}
+	session, err := (workloadtargets.Store{DB: s.repos.DB()}).LockService(ctx, release.ServiceID)
+	if err != nil {
+		return nil, err
+	}
+	defer session.Close()
+	if err = session.RefuseBound(ctx); err != nil {
+		return nil, err
+	}
+	scoped := *s
+	scoped.targetSession = session
+	return scoped.rollbackLocked(ctx, req)
+}
+func (s *DeploymentService) rollbackLocked(ctx context.Context, req *RollbackRequest) (*RollbackResponse, error) {
 	// Get current deployment
 	deployment, err := s.repos.Deployments.GetByID(ctx, req.DeploymentID)
 	if err != nil {
