@@ -41,7 +41,7 @@ func TestInitialBootstrapRouteRejectsPrivilegeAndArbitraryInputs(t *testing.T) {
 				c.Set("is_platform_admin", tc.platform)
 				c.Next()
 			})
-			router.POST("/v1/admin/projects/:slug/addons/:id/initial-bootstrap", h.RequirePlatformAdmin(), h.InitialBootstrapAddon)
+			router.POST("/v1/admin/projects/:slug/addons/:id/initial-bootstrap", h.RequirePlatformAdmin(), h.RequirePlatformOperator(), h.InitialBootstrapAddon)
 			request := httptest.NewRequest(http.MethodPost, "/v1/admin/projects/crea-sim/addons/"+id+"/initial-bootstrap", bytes.NewBufferString(tc.body))
 			request.Header.Set("Content-Type", "application/json")
 			response := httptest.NewRecorder()

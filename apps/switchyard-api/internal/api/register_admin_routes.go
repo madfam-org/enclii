@@ -48,10 +48,12 @@ import (
 //
 // The per-route judgements are tabulated in the rollout runbook.
 //
-// The staged flag covers this exactly as it covers everything else:
+// Legacy platform routes retain staged rollback behavior:
 // RequirePlatformAdmin falls back to the tenant-admin rank while
 // ENCLII_TENANT_SCOPE_ENFORCE is off, so with the flag off this subtree gates
-// on `admin` — what it gated on before this change.
+// on `admin` — what it gated on before this change. New isolated preparation
+// routes additionally require the unconditional operator gate: rollback never
+// grants a tenant administrator central namespace or migrator authority.
 func (h *Handler) registerAdminRoutes(protected *gin.RouterGroup) {
 	admin := protected.Group("/admin")
 	admin.Use(h.auth.RequireRole(string(types.RoleAdmin)))
@@ -131,9 +133,9 @@ func (h *Handler) registerAdminRoutes(protected *gin.RouterGroup) {
 	platform.GET("/preflight", h.PreflightImageGates) // image gates preflight, see onboarding_image_gates.go
 	platform.GET("/onboard", h.ListOnboardings)
 	platform.GET("/onboard/:owner/:repo", h.GetOnboarding)
-	platform.POST("/projects/:slug/environments/:env_name/bootstrap", h.BootstrapStagingNamespace)
-	platform.POST("/projects/:slug/addons/:id/initial-bootstrap", h.InitialBootstrapAddon)
-	platform.GET("/projects/:slug/addons/:id/initial-bootstrap/:job_name", h.InitialBootstrapAddonStatus)
+	platform.POST("/projects/:slug/environments/:env_name/bootstrap", h.RequirePlatformOperator(), h.BootstrapStagingNamespace)
+	platform.POST("/projects/:slug/addons/:id/initial-bootstrap", h.RequirePlatformOperator(), h.InitialBootstrapAddon)
+	platform.GET("/projects/:slug/addons/:id/initial-bootstrap/:job_name", h.RequirePlatformOperator(), h.InitialBootstrapAddonStatus)
 
 	// Database schema / migration status (GA migration verify)
 	platform.GET("/db/schema", h.GetAdminDBSchema)

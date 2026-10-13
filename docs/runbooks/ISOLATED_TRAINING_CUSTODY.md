@@ -98,7 +98,12 @@ database isolation contract.
 `POST /v1/admin/projects/:slug/addons/:id/initial-bootstrap` accepts only
 `profile`, `service_id`, `dry_run`, `reason` and `idempotency_key`. Unknown fields,
 arbitrary commands, SQL, images and namespace selectors are refused. The shared
-platform/project guard and durable owned source registration are required.
+platform/project guard and durable owned source registration are required. Both
+initial execution and status routes, the staging namespace bootstrap and central
+intake targets/submit/status also require the unconditional server-resolved
+platform operator rank. `ENCLII_TENANT_SCOPE_ENFORCE=false` cannot grant these
+capabilities to a tenant administrator; unset retains the existing enforcement
+default. Other legacy route policies and the global rollout flag are unchanged.
 The active bound addon must be the exact Ready isolated PostgreSQL profile;
 the owned application stays at zero replicas throughout initial preparation.
 
