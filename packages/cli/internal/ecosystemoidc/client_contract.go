@@ -158,18 +158,18 @@ func (r *Registry) WithOrganization(platformID, organization string) (*Registry,
 func validateRemoteIdentity(r remoteOAuthClient, s JanuaClientSpec) error {
 	id, err := uuid.Parse(r.ID)
 	if err != nil || id == uuid.Nil || id.String() != r.ID || !returnedClientShape.MatchString(r.ClientID) || len(r.ClientID) > 64 || !r.IsActive || r.Name != s.Name || !r.organizationPresent || r.IsConfidential != s.confidential() {
-		return fmt.Errorf("Janua client identity, active state or confidentiality differs from declaration")
+		return fmt.Errorf("janua client identity, active state or confidentiality differs from declaration")
 	}
 	if s.ClientID != "" && r.ClientID != s.ClientID {
-		return fmt.Errorf("Janua client differs from pinned identity")
+		return fmt.Errorf("janua client differs from pinned identity")
 	}
 	if (s.OrganizationID == "" && r.OrganizationID != nil) || (s.OrganizationID != "" && (r.OrganizationID == nil || *r.OrganizationID != s.OrganizationID)) {
-		return fmt.Errorf("Janua client organization differs; refusing adoption or rebinding")
+		return fmt.Errorf("janua client organization differs; refusing adoption or rebinding")
 	}
 	actualKind, err := (JanuaClientSpec{GrantTypes: r.GrantTypes}).kind()
 	expectedKind, _ := s.kind()
 	if err != nil || actualKind != expectedKind {
-		return fmt.Errorf("Janua client grant kind differs; refusing human/machine conversion")
+		return fmt.Errorf("janua client grant kind differs; refusing human/machine conversion")
 	}
 	return nil
 }
@@ -181,7 +181,7 @@ func validateRemoteClient(r remoteOAuthClient, s JanuaClientSpec) error {
 		return err
 	}
 	if r.Audience == nil || *r.Audience != s.Audience || !sameStrings(r.RedirectURIs, s.RedirectURIs) || !sameStrings(r.AllowedScopes, s.AllowedScopes) || !sameStrings(r.GrantTypes, s.GrantTypes) {
-		return fmt.Errorf("Janua returned callback, audience, scope or grants differ from declaration")
+		return fmt.Errorf("janua returned callback, audience, scope or grants differ from declaration")
 	}
 	return nil
 }

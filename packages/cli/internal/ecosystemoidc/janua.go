@@ -211,7 +211,7 @@ func (c *JanuaClient) findExisting(ctx context.Context, spec JanuaClientSpec) (*
 		if spec.ClientID != "" && out.ClientID != spec.ClientID {
 			return nil, fmt.Errorf("Janua client name does not match pinned identity")
 		}
-		if out.ClientSecret != nil {
+		if out.ClientSecret != nil { // pragma: allowlist secret -- nil-only decoded response guard; no credential literal.
 			return nil, fmt.Errorf("unexpected credential in read-only client discovery")
 		}
 		return &out, nil
@@ -270,7 +270,7 @@ func (c *JanuaClient) detailClient(ctx context.Context, selected remoteOAuthClie
 	if err != nil {
 		return nil, err
 	}
-	if status != http.StatusOK || actual.ClientSecret != nil || actual.ID != selected.ID || actual.ClientID != selected.ClientID || actual.Name != selected.Name {
+	if status != http.StatusOK || actual.ClientSecret != nil || actual.ID != selected.ID || actual.ClientID != selected.ClientID || actual.Name != selected.Name { // pragma: allowlist secret -- nil-only decoded response guard; no credential literal.
 		return nil, fmt.Errorf("Janua detail differs from selected identity")
 	}
 	return &actual, nil
@@ -351,14 +351,6 @@ func (c *JanuaClient) reconcileLoginClient(ctx context.Context, existing *remote
 	sortStrings(fields)
 	updated.reconciled = fields
 	return updated, nil
-}
-
-func validateMachineClient(remote remoteOAuthClient, spec JanuaClientSpec) error {
-	kind, err := spec.kind()
-	if err != nil || kind != machineClient {
-		return fmt.Errorf("not a machine declaration")
-	}
-	return validateRemoteClient(remote, spec)
 }
 
 // rotateSecret mints a new secret. The body is `{}` unless a grace period is
@@ -443,7 +435,7 @@ func (c *JanuaClient) doJSON(ctx context.Context, method, path string, body inte
 // for an existing client, from a rotation. graceHours only shapes a rotation;
 // the returned SecretRotation is nil when none happened.
 func (c *JanuaClient) ResolveClientSecret(ctx context.Context, remote remoteOAuthClient, created bool, rotateIfMissing bool, graceHours *int) (string, *SecretRotation, error) {
-	if !created && remote.ClientSecret != nil {
+	if !created && remote.ClientSecret != nil { // pragma: allowlist secret -- nil-only decoded discovery guard; no credential literal.
 		return "", nil, fmt.Errorf("read-only discovery cannot recover a one-time credential")
 	}
 	if remote.ClientSecret != nil && strings.TrimSpace(*remote.ClientSecret) != "" {
