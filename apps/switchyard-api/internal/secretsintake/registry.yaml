@@ -1041,7 +1041,7 @@ targets:
     description: Governed isolated runtime custody; no owner, provider or production credential
     vault_path: secret/crea-sim-gateway
     namespace: crea-sim
-    external_secret: crea-sim-gateway
+    external_secret: crea-sim-gateway # pragma: allowlist secret -- ExternalSecret resource name; not a credential
     keys:
       - crea_sim_janua_ui_id
       - crea_sim_janua_ui_secret
@@ -1051,7 +1051,7 @@ targets:
     description: Governed isolated runtime custody; no owner, provider or production credential
     vault_path: secret/crea-sim-gateway
     namespace: crea-sim
-    external_secret: crea-sim-gateway
+    external_secret: crea-sim-gateway # pragma: allowlist secret -- ExternalSecret resource name; not a credential
     keys:
       - crea_sim_janua_mcp_id
       - crea_sim_janua_mcp_secret
@@ -1061,7 +1061,7 @@ targets:
     description: Governed isolated runtime custody; no owner, provider or production credential
     vault_path: secret/crea-sim-selva
     namespace: crea-sim
-    external_secret: crea-sim-selva
+    external_secret: crea-sim-selva # pragma: allowlist secret -- ExternalSecret resource name; not a credential
     keys:
       - crea_sim_selva_id
       - crea_sim_selva_secret
@@ -1071,7 +1071,7 @@ targets:
     description: Governed isolated runtime custody; no owner, provider or production credential
     vault_path: secret/crea-sim-gateway
     namespace: crea-sim
-    external_secret: crea-sim-gateway
+    external_secret: crea-sim-gateway # pragma: allowlist secret -- ExternalSecret resource name; not a credential
     keys:
       - crea_sim_ctm_org_id
       - crea_sim_database_namespace
@@ -1085,7 +1085,7 @@ targets:
     description: Governed isolated runtime custody; no owner, provider or production credential
     vault_path: secret/crea-sim-captura
     namespace: crea-sim
-    external_secret: crea-sim-captura
+    external_secret: crea-sim-captura # pragma: allowlist secret -- ExternalSecret resource name; not a credential
     keys:
       - crea_sim_database_namespace
       - crea_sim_portal_database_url
@@ -1096,7 +1096,7 @@ targets:
     description: Governed isolated runtime custody; no owner, provider or production credential
     vault_path: secret/crea-sim-map01
     namespace: crea-sim
-    external_secret: crea-sim-map01
+    external_secret: crea-sim-map01 # pragma: allowlist secret -- ExternalSecret resource name; not a credential
     keys:
       - database_url
       - map_simulation_context_key
@@ -1110,7 +1110,7 @@ targets:
     description: Governed isolated runtime custody; no owner, provider or production credential
     vault_path: secret/crea-sim-gateway
     namespace: crea-sim
-    external_secret: crea-sim-gateway-ca
+    external_secret: crea-sim-gateway-ca # pragma: allowlist secret -- ExternalSecret resource name; not a credential
     keys:
       - database_ca_pem
 
@@ -1119,7 +1119,7 @@ targets:
     description: Governed isolated runtime custody; no owner, provider or production credential
     vault_path: secret/crea-sim-captura
     namespace: crea-sim
-    external_secret: crea-sim-captura-ca
+    external_secret: crea-sim-captura-ca # pragma: allowlist secret -- ExternalSecret resource name; not a credential
     keys:
       - database_ca_pem
 
@@ -1128,7 +1128,7 @@ targets:
     description: Governed isolated runtime custody; no owner, provider or production credential
     vault_path: secret/crea-sim-map01
     namespace: crea-sim
-    external_secret: crea-sim-map01-ca
+    external_secret: crea-sim-map01-ca # pragma: allowlist secret -- ExternalSecret resource name; not a credential
     keys:
       - database_ca_pem
 
@@ -1137,7 +1137,7 @@ targets:
     description: Governed isolated runtime custody; no owner, provider or production credential
     vault_path: secret/janua-staging
     namespace: janua-staging
-    external_secret: janua-staging-secrets
+    external_secret: janua-staging-secrets # pragma: allowlist secret -- ExternalSecret resource name; not a credential
     keys:
       - jwt_private_key
       - jwt_public_key
@@ -1150,7 +1150,7 @@ targets:
     description: Governed isolated runtime custody; no owner, provider or production credential
     vault_path: secret/janua-staging
     namespace: janua-staging
-    external_secret: janua-staging-secrets
+    external_secret: janua-staging-secrets # pragma: allowlist secret -- ExternalSecret resource name; not a credential
     keys:
       - database_url
 
@@ -1159,7 +1159,7 @@ targets:
     description: Governed isolated runtime custody; no owner, provider or production credential
     vault_path: secret/janua-staging
     namespace: janua-staging
-    external_secret: janua-staging-ca
+    external_secret: janua-staging-ca # pragma: allowlist secret -- ExternalSecret resource name; not a credential
     keys:
       - database_ca
 
@@ -1168,7 +1168,7 @@ targets:
     description: Governed isolated runtime custody; no owner, provider or production credential
     vault_path: secret/janua-staging
     namespace: janua-staging
-    external_secret: janua-staging-redis
+    external_secret: janua-staging-redis # pragma: allowlist secret -- ExternalSecret resource name; not a credential
     keys:
       - redis_password
       - redis_url

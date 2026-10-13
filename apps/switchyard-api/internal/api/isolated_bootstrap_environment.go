@@ -71,7 +71,7 @@ func (h *Handler) initialWorkloadValue(ctx context.Context, p isolatedBootstrapP
 			entries, _, _ := unstructured.NestedSlice(es.Object, "spec", "data")
 			for _, entry := range entries {
 				item, ok := entry.(map[string]interface{})
-				if !ok || item["secretKey"] != ref.Key {
+				if !ok || item["secretKey"] != ref.Key { // pragma: allowlist secret -- schema key identifier; not a credential value
 					continue
 				}
 				path, _, _ := unstructured.NestedString(item, "remoteRef", "key")

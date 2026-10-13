@@ -830,7 +830,7 @@ platforms:
       crea_sim_janua_ui_secret: client_secret
     janua_client:
       name: crea-sim
-      client_key: crea-sim
+      client_key: crea-sim # pragma: allowlist secret -- logical registration key; not a credential
       audience: crea-sim
       description: Isolated training human authorization-code flow; no production role grant
       is_confidential: true
@@ -855,7 +855,7 @@ platforms:
       crea_sim_janua_mcp_secret: client_secret
     janua_client:
       name: crea-sim-mcp
-      client_key: crea-sim-mcp
+      client_key: crea-sim-mcp # pragma: allowlist secret -- logical registration key; not a credential
       audience: crea-sim-mcp
       description: Isolated training human authorization-code flow; no production role grant
       is_confidential: true

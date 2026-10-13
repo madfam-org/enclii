@@ -52,7 +52,7 @@ func (p isolatedBootstrapProfile) owns(project *types.Project, service *types.Se
 		addon != nil && addon.ID != uuid.Nil && addon.ProjectID == project.ID && addon.Status == types.DatabaseAddonStatusReady &&
 		addon.Type == types.DatabaseAddonTypePostgres && addon.Config.DatabaseName == p.Database && addon.Config.RuntimeRole == p.RuntimeRole &&
 		addon.K8sNamespace == "project-"+project.ID.String()[:8] && addon.K8sResourceName != "" &&
-		addon.ConnectionSecret == addon.K8sResourceName+"-runtime"
+		addon.ConnectionSecret == addon.K8sResourceName+"-runtime" // pragma: allowlist secret -- owned Kubernetes Secret name; not a credential
 }
 
 var bootstrapSHA = regexp.MustCompile(`^[a-f0-9]{40}$`)

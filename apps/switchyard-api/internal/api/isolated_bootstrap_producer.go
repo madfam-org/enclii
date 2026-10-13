@@ -37,7 +37,7 @@ func (h *Handler) verifyBootstrapProducer(ctx context.Context, profile isolatedB
 	}
 	adapter := bootstrapProducerIO{
 		Client:      &http.Client{Timeout: 25 * time.Second, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }},
-		GitHubToken: h.config.GitHubToken, User: h.config.RegistryUsername, Password: h.config.RegistryPassword,
+		GitHubToken: h.config.GitHubToken, User: h.config.RegistryUsername, Password: h.config.RegistryPassword, // pragma: allowlist secret -- runtime credential references; no literal credential
 		ReadPin: func(ctx context.Context, p isolatedBootstrapProfile) (string, error) {
 			parts := strings.Split(p.Producer, "/")
 			text, _, err := getGitHubFileContent(ctx, h.config.GitHubToken, parts[0], parts[1], p.PinPath, "main")

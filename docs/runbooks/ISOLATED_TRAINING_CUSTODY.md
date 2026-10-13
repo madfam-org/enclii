@@ -55,6 +55,15 @@ the inference service.
 
 The registry specifies each target's exact key allowlist and namespace. CA
 targets accept the verified public certificate bundle, never its private key.
+The canonical writer policy source includes these five exact Vault data paths
+and their metadata paths. No child wildcard or owner-credential destination is
+added. Source parity and an available intake catalog do not prove the running
+writer token has those permissions. Before minting one-time client secrets,
+verify governed live policy capacity. The legacy policy script contains raw
+bootstrap commands; routine policy activation must use a supported Enclii
+adapter. Record the missing adapter as a blocker rather than executing those
+raw commands or granting policy-write authority to the application writer.
+
 Runtime database targets carry only the managed nonowner URI for the dedicated
 synthetic database. Migrator credentials stay in the separately owned CNPG
 Secret and never enter an application intake target.
