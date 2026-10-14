@@ -187,6 +187,18 @@ spec:
         # Cost of the quarantine: index entries not yet flushed at the moment of
         # corruption. That data was already unreadable; the alternative was an
         # indefinite outage.
+        #
+        # RE-RUN 2026-10-13 (token bumped in git, as designed). loki-0 crash-
+        # looped from 2026-09-28 (4,688 restarts) on the same failure in a new
+        # WAL directory:
+        #   corruption in segment /loki/tsdb-index/wal/filesystem_2026-03-20/
+        #   1790594338/00000000 at 12403: unexpected checksum
+        # The Longhorn volume read actualSize ~5.02 GiB on 5 GiB nominal, so
+        # the likeliest cause is a torn WAL write as the disk filled. Nothing
+        # has been ingested since 2026-09-28, so once Loki starts the 48h
+        # retention compactor frees almost everything. Disk usage is now
+        # printed on EVERY start (before the marker check), so if a start fails
+        # on space instead, `enclii ops pods logs loki-0 -n logging` shows it.
         - name: wal-quarantine
           image: docker.io/grafana/loki:3.4.2@sha256:58a6c186ce78ba04d58bfe2a927eff296ba733a430df09645d56cdc158f3ba08
           imagePullPolicy: IfNotPresent
@@ -195,7 +207,11 @@ spec:
             - -eu
             - -c
             - |
-              QUARANTINE_TOKEN="2026-08-13-tsdb-wal-checksum"
+              echo "disk usage at start:"
+              df -h /loki 2>/dev/null || true
+              du -sh /loki/* /loki/tsdb-index/* 2>/dev/null || true
+
+              QUARANTINE_TOKEN="2026-10-13-tsdb-wal-checksum"
               MARKER="/loki/.wal-quarantine-${QUARANTINE_TOKEN}"
 
               if [ -e "${MARKER}" ]; then
@@ -339,6 +355,19 @@ spec:
               mountPath: /loki
             - name: tmp
               mountPath: /tmp
+          # Startup can legitimately take minutes: Loki rebuilds the TSDB head
+          # from WALs before it reports ready. Without a startupProbe the
+          # livenessProbe below restarts it after ~2 min, which can interrupt
+          # that rebuild while it is writing scratch files -- one way a WAL or
+          # index file gets torn. Liveness only begins once startup succeeds;
+          # 10 min is the ceiling before Kubernetes gives up and restarts.
+          startupProbe:
+            httpGet:
+              path: /ready
+              port: http
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 60
           readinessProbe:
             httpGet:
               path: /ready
