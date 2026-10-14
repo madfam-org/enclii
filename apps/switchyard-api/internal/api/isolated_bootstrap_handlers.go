@@ -63,7 +63,7 @@ func (h *Handler) InitialBootstrapAddon(c *gin.Context) {
 	bound := 0
 	bindingID := uuid.Nil
 	runtimeKey := "DATABASE_URL"
-	if profile.Name == "portal-sim-initial" {
+	if profile.portalDatabase() {
 		runtimeKey = "CREA_SIM_PORTAL_DATABASE_URL"
 	}
 	for _, binding := range bindings {
@@ -78,7 +78,7 @@ func (h *Handler) InitialBootstrapAddon(c *gin.Context) {
 	}
 	deployment, err := h.initialWorkload(c.Request.Context(), profile, project.ID)
 	if err != nil {
-		c.JSON(http.StatusConflict, gin.H{"error": "exact owned workload must remain held at zero replicas", "detail": err.Error()})
+		c.JSON(http.StatusConflict, gin.H{"error": "exact owned workload must remain held at zero replicas (initial) or converged on its pinned image (fixed step)", "detail": err.Error()})
 		return
 	}
 	image := deployment.Spec.Template.Spec.Containers[0].Image
@@ -134,7 +134,7 @@ func (h *Handler) InitialBootstrapAddon(c *gin.Context) {
 			return io.ErrUnexpectedEOF
 		}
 		currentDeployment, e := h.initialWorkload(ctx, profile, project.ID)
-		if e != nil || currentDeployment.UID != deployment.UID || currentDeployment.ResourceVersion != deployment.ResourceVersion || currentDeployment.Spec.Template.Spec.Containers[0].Image != image {
+		if e != nil || currentDeployment.UID != deployment.UID || !sameWorkloadRevision(profile, currentDeployment, deployment) || currentDeployment.Spec.Template.Spec.Containers[0].Image != image {
 			return io.ErrUnexpectedEOF
 		}
 		currentCredentials, e := h.addonService.InitialBootstrapCredentials(ctx, current)
@@ -168,7 +168,14 @@ func (h *Handler) InitialBootstrapAddon(c *gin.Context) {
 		c.JSON(http.StatusConflict, gin.H{"error": "initial Job refused or held suspended; inspect the same operation key", "detail": err.Error()})
 		return
 	}
-	c.JSON(http.StatusOK, gin.H{"job": receipt, "producer": proof, "scope": "fixed initial migration/seed only; no reset, delivery or inferred VACIO accreditation"})
+	c.JSON(http.StatusOK, gin.H{"job": receipt, "producer": proof, "scope": initialBootstrapScope(profile.Name)})
+}
+
+func initialBootstrapScope(profile string) string {
+	if k8s.IsFixedStepProfile(profile) {
+		return "fixed step 003 (portal turno vigente) only; no reset, delivery or other DDL; the database's own turno_vigente_recibos row remains the authority"
+	}
+	return "fixed initial migration/seed only; no reset, delivery or inferred VACIO accreditation"
 }
 
 func (h *Handler) InitialBootstrapAddonStatus(c *gin.Context) {
@@ -210,5 +217,9 @@ func (h *Handler) InitialBootstrapAddonStatus(c *gin.Context) {
 		c.JSON(http.StatusNotFound, gin.H{"error": "owned initial service unavailable"})
 		return
 	}
-	c.JSON(http.StatusOK, gin.H{"job": receipt, "scope": "INITIAL_ONLY retained history; current readiness, kernel control and reset accreditation remain separate"})
+	scope := "INITIAL_ONLY retained history; current readiness, kernel control and reset accreditation remain separate"
+	if k8s.IsFixedStepProfile(profile.Name) {
+		scope = "FIXED_STEP retained history of this operation key; the database's own turno_vigente_recibos row remains the authority"
+	}
+	c.JSON(http.StatusOK, gin.H{"job": receipt, "scope": scope})
 }
