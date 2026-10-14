@@ -1,8 +1,8 @@
 # Training custody capability proof
 
-Last Updated: 2026-10-13
+Last Updated: 2026-10-14
 
-> **Boundary checkpoint (2026-10-13, platform engineering):** Public-safe
+> **Boundary checkpoint (2026-10-14, platform engineering):** Public-safe
 > mechanism and capability contracts only. Private custody identities, values
 > and operational receipts remain in internal-devops. Policy:
 > [PUBLIC_REPO_BOUNDARY.md](../PUBLIC_REPO_BOUNDARY.md).
@@ -14,10 +14,11 @@ uses the existing scoped writer identity once, with a ten-second maximum and
 no redirect or automatic retry. Existing KV writer implementations remain
 compatible; an implementation without the probe returns unavailable.
 
-All thirteen reviewed intake IDs must retain their exact path and namespace;
+All seventeen reviewed intake IDs must retain their exact path and namespace;
 missing IDs, new training-prefix IDs and reroutes within the same destination
 set fail closed. The five registry destinations are `crea-sim-gateway`, `crea-sim-captura`,
-`crea-sim-map01`, `crea-sim-selva`, and `janua-staging`. The probe verifies the
+`crea-sim-map01`, `crea-sim-selva`, and `janua-staging`. The three MAP kernels
+all file into `crea-sim-map01` under their own keys. The probe verifies the
 reviewed registry paths/namespaces and queries only their five `secret/data/`
 and five `secret/metadata/` paths. Data requires create/update/patch/read;
 metadata requires read/list. Known additional authority, including root/sudo,
