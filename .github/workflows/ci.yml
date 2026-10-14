@@ -591,9 +591,8 @@ jobs:
     # synthetic-journeys rule group in prometheus.yaml. The structural tests
     # pin the wiring, kustomize renders the directory, promtool checks and
     # evaluates the rules (and proves the legacy synthetic-flow-probe rule no
-    # longer pages on the runner's series). While the journeys image digest
-    # is the all-zero placeholder, test_journeys_image_digest_is_published
-    # fails on purpose: that test is the merge gate.
+    # longer pages on the runner's series). test_journeys_image_digest_is_published
+    # keeps the all-zero placeholder from ever coming back.
     steps:
       - uses: actions/checkout@v7
 
