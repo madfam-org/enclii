@@ -528,6 +528,10 @@ func (h *Handler) CreateAddonBinding(c *gin.Context) {
 			c.JSON(http.StatusBadRequest, gin.H{"error": "addon and service must belong to the same project"})
 			return
 		}
+		if errors.Is(err, addons.ErrBindingExists) {
+			c.JSON(http.StatusConflict, gin.H{"error": "addon is already bound to this service"})
+			return
+		}
 		h.logger.Error(ctx, "Failed to create addon binding",
 			logging.String("addon_id", addonID),
 			logging.String("service_id", req.ServiceID),

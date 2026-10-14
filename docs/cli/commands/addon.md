@@ -51,6 +51,11 @@ enclii addon create <name> [flags]
 | `--environment-id` | string | | Environment UUID (optional) |
 | `--json` | bool | `false` | JSON output |
 
+An addon/service pair holds at most one live (active or suspended) binding;
+a second one is refused with `409`. A retired binding stays as history and
+does not block binding the pair again, including after a binding that was
+retired automatically because its isolated network policy could not be applied.
+
 ### `ls`
 
 List database addons.

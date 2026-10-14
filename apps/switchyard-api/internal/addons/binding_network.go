@@ -14,6 +14,10 @@ import (
 
 var ErrCrossProjectBinding = errors.New("addon and service must belong to the same project")
 
+// ErrBindingExists reports a live (active or suspended) binding for the same
+// addon and service. Retired bindings are history and never occupy the pair.
+var ErrBindingExists = errors.New("addon is already bound to this service")
+
 func validateBindingProject(addon *types.DatabaseAddon, service *types.Service) error {
 	if addon == nil || service == nil || addon.ProjectID == uuid.Nil || addon.ProjectID != service.ProjectID {
 		return ErrCrossProjectBinding
@@ -96,6 +100,9 @@ func (s *AddonService) CreateBindingBy(ctx context.Context, addonID, serviceID u
 	}
 
 	if err := s.repos.DatabaseAddons.CreateBinding(ctx, binding); err != nil {
+		if db.IsUniqueConstraintError(err) {
+			return nil, ErrBindingExists
+		}
 		return nil, fmt.Errorf("failed to create binding: %w", err)
 	}
 
