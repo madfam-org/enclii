@@ -18,7 +18,7 @@ var opsCapabilities = []operatorCapability{
 	{
 		Name:        "pods",
 		Status:      "partial",
-		Description: "Pod diagnosis and logs reads plus restart workflow contracts",
+		Description: "Pod diagnosis and logs reads; restart is an audited rollout restart of a Deployment, StatefulSet or DaemonSet, or the recreation of one controller-owned pod, in allowlisted namespaces only (platform rank)",
 		Actions:     []string{"diagnose", "logs", "restart"},
 		Scopes:      []string{"namespace", "service", "target"},
 	},
