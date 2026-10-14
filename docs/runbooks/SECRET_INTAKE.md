@@ -562,9 +562,11 @@ the identity's test subscription, called as that identity.
 - **Dhanam staging side.** The cancel endpoint answers 404 until Dhanam staging
   sets `SYNTHETIC_CANCEL_ENABLED=true` and lists this identity's Janua user id
   in `SYNTHETIC_ACCOUNT_IDS` (dhanam staging overlay; dhanam's own docs).
-- **Before the first submit** the ExternalSecret reports `SecretSyncedError`,
-  the CronJob's pods fail with `CreateContainerConfigError`, and
-  `SyntheticJourneysNotRunning` fires 45 minutes after the CronJob appears.
+- **Order.** This target ships on its own, before the CronJob (enclii#751),
+  so the identity is in Vault before the CronJob appears. Were the CronJob
+  first, the ExternalSecret would report `SecretSyncedError`, its pods would
+  fail with `CreateContainerConfigError`, and `SyntheticJourneysNotRunning`
+  would fire 45 minutes after the CronJob appears.
 
 Owner sequence, after the change is deployed (switchyard-api digest bump for
 the registry), from an up-to-date checkout:
@@ -576,7 +578,8 @@ cd ~/labspace/enclii && ASSERT_PATH=synthetics bash scripts/apply-switchyard-vau
 enclii secrets intake submit synthetics/dhanam-staging-checkout --reason "S-Gate 1 synthetic buyer identity (staging, Stripe test mode)"
 # prompts (masked): dhanam_staging_synth_email, dhanam_staging_synth_password
 enclii secrets intake status int_<id>
-# expect: external_secret_refreshed: true
+# expect: external_secret_refreshed: false until the CronJob change (and its
+# ExternalSecret) is deployed; ESO then syncs the stored values on its own
 ```
 
 Rotation is the same `intake submit` with the new values (both: the prompt

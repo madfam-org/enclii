@@ -124,8 +124,8 @@ func BuildIsolatedInitialJob(p IsolatedInitialJobPlan) (*batchv1.Job, error) {
 	}
 	var command, migration []string
 	allowed := map[string]bool{"ca.crt": true}
-	switch p.Profile {
-	case "map-sim-initial":
+	switch {
+	case IsMapSimProfile(p.Profile):
 		if !strings.HasPrefix(p.Image, "ghcr.io/madfam-org/crea-map/crea-map-web@sha256:") {
 			return nil, fmt.Errorf("initial MAP producer mismatch")
 		}
@@ -134,7 +134,7 @@ func BuildIsolatedInitialJob(p IsolatedInitialJobPlan) (*batchv1.Job, error) {
 		for _, name := range []string{"DATABASE_URL", "DIRECT_DATABASE_URL", "MAP_SIMULATION_RUNTIME_DATABASE_URL", "MAP_SIMULATION_SEED_ENABLED", "MAP_SIMULATION_ENABLED", "MAP_SIMULATION_KERNEL_ID", "APP_ORIGIN", "JANUA_AUDIENCE", "JANUA_ISSUER_URL", "JANUA_JWKS_URL", "RLS_POR_CASO", "MAP_SIMULATION_CONTEXT_KEY", "MAP_SIMULATION_CONTROL_KEY", "MAP_SIMULATION_MAIL_KEY", "MAP_SIMULATION_MCP_CLIENT_ID", "MAP_MCP_PSEUDONYM_KEY"} {
 			allowed[name] = true
 		}
-	case "portal-sim-initial":
+	case p.Profile == initialPortalProfile:
 		if !strings.HasPrefix(p.Image, "ghcr.io/madfam-org/crea-sim/gateway@sha256:") {
 			return nil, fmt.Errorf("initial portal producer mismatch")
 		}
@@ -171,7 +171,7 @@ func BuildIsolatedInitialJob(p IsolatedInitialJobPlan) (*batchv1.Job, error) {
 			{Key: corev1.TaintNodeNotReady, Operator: corev1.TolerationOpExists, Effect: corev1.TaintEffectNoExecute, TolerationSeconds: ptr.To[int64](300)},
 			{Key: corev1.TaintNodeUnreachable, Operator: corev1.TolerationOpExists, Effect: corev1.TaintEffectNoExecute, TolerationSeconds: ptr.To[int64](300)},
 		}, DNSPolicy: corev1.DNSClusterFirst, SchedulerName: corev1.DefaultSchedulerName, TerminationGracePeriodSeconds: ptr.To[int64](30), EnableServiceLinks: ptr.To(true), ServiceAccountName: "default", DeprecatedServiceAccount: "default", Priority: ptr.To[int32](0), PreemptionPolicy: ptr.To(corev1.PreemptLowerPriority), RestartPolicy: corev1.RestartPolicyNever, AutomountServiceAccountToken: ptr.To(false), ImagePullSecrets: []corev1.LocalObjectReference{{Name: "ghcr-credentials"}}, SecurityContext: &corev1.PodSecurityContext{RunAsNonRoot: ptr.To(true), RunAsUser: ptr.To[int64](1000), RunAsGroup: ptr.To[int64](1000), FSGroup: ptr.To[int64](1000), SeccompProfile: &corev1.SeccompProfile{Type: corev1.SeccompProfileTypeRuntimeDefault}}, Containers: []corev1.Container{container}, Volumes: []corev1.Volume{{Name: "ca", VolumeSource: corev1.VolumeSource{Secret: &corev1.SecretVolumeSource{SecretName: p.jobName() + "-credentials", DefaultMode: ptr.To(corev1.SecretVolumeSourceDefaultMode), Items: []corev1.KeyToPath{{Key: "ca.crt", Path: "ca.crt"}}}}}, {Name: "tmp", VolumeSource: corev1.VolumeSource{EmptyDir: &corev1.EmptyDirVolumeSource{}}}}}}}} // pragma: allowlist secret -- fixed Secret references; private values are resolved at runtime
-	if len(migration) > 0 && p.Profile == "map-sim-initial" {
+	if len(migration) > 0 && IsMapSimProfile(p.Profile) {
 		job.Spec.Template.Spec.SecurityContext.RunAsUser = ptr.To[int64](1001)
 		job.Spec.Template.Spec.SecurityContext.RunAsGroup = ptr.To[int64](1001)
 		job.Spec.Template.Spec.SecurityContext.FSGroup = ptr.To[int64](1001)
@@ -183,7 +183,7 @@ func BuildIsolatedInitialJob(p IsolatedInitialJobPlan) (*batchv1.Job, error) {
 		init.Command = migration
 		job.Spec.Template.Spec.InitContainers = []corev1.Container{initialNetworkReady(container, "DATABASE_URL"), *fresh, *init}
 	}
-	if p.Profile == "portal-sim-initial" {
+	if p.Profile == initialPortalProfile {
 		init := container.DeepCopy()
 		init.Name = "portal001"
 		init.Command = migration

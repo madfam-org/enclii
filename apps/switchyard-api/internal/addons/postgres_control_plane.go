@@ -16,9 +16,9 @@ import (
 // without this rule a pod reaches the API only when kube-proxy happens to pick
 // an API-server endpoint on its own node (node-local traffic skips pod egress
 // filtering). On a node that hosts no endpoint every attempt is refused at
-// once: observed 2026-10-14, a new instance on foundry-worker-01 crash-looped
-// on "dial tcp 10.43.0.1:443: connect: connection refused" while its initdb
-// retry on foundry-cp passed. Same ports the service namespaces already allow
+// once: a new instance scheduled there crash-looped on "connection refused"
+// to the cluster's API Service while the same initdb passed on a node that
+// does host one. Same ports the service namespaces already allow
 // (reconciler/networking.go); nothing else is opened.
 func buildControlPlaneEgressPolicy(namespace, resourceName string) *networkingv1.NetworkPolicy {
 	https, api := intstr.FromInt(443), intstr.FromInt(6443)
