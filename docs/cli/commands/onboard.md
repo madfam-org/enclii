@@ -82,6 +82,8 @@ Authentication provisioning is intentionally not hardcoded in Enclii. The produc
 
 If `--preflight` is set, manifest validation runs first via `POST /v1/admin/onboard/preflight`. Violations (Kyverno policy failures, YAML parse errors) are printed and the command exits without onboarding.
 
+Notes are printed under `Preflight note(s):` and do not stop onboarding. On a first onboarding the project namespace does not exist yet, so the admission dry run of namespaced objects is skipped and reported as a note; static checks and cluster-scoped objects are still validated. See [Preflight Validation](../../guides/ONBOARDING_GUIDE.md#preflight-validation) for how to run the full check after onboarding.
+
 ## Examples
 
 ### Basic onboarding (no database or secrets)
