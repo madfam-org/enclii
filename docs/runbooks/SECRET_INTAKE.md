@@ -130,6 +130,7 @@ ESO sources: `enclii-secrets`, `janua-secrets`, `madfam-site-secrets`, `phynd-cr
 | `voxa/api-runtime` | `secret/voxa` | `redis_url` |
 | `voxa-staging/api-runtime` | `secret/voxa-staging` | `redis_url` |
 | `monitoring/alertmanager-smtp` | `secret/monitoring` | `alertmanager_smtp_password` |
+| `monitoring/alertmanager-heartbeat` | `secret/monitoring` | `alertmanager_heartbeat_token` |
 | `selva/yantra4d-client` | `secret/selva` | `yantra4d_client_id`, `yantra4d_client_secret` |
 | `selva/pravara-mes-client` | `secret/selva` | `pravara_mes_client_id`, `pravara_mes_client_secret` |
 
@@ -486,6 +487,7 @@ the credential through intake.
 | Property in `secret/monitoring` | Target | Written by | ExternalSecret → Secret | File in the peers |
 |---|---|---|---|---|
 | `alertmanager_smtp_password` | `monitoring/alertmanager-smtp` | owner, masked prompt | `alertmanager-smtp` → `alertmanager-smtp` (key `smtp-password`) | `/etc/alertmanager/smtp/smtp-password` |
+| `alertmanager_heartbeat_token` | `monitoring/alertmanager-heartbeat` | owner, `--stdin` from the file the Worker was deployed with | `alertmanager-heartbeat-secret` → `alertmanager-heartbeat-secret` (key `alertmanager-heartbeat-token`) | `/etc/alertmanager/heartbeat/alertmanager-heartbeat-token` |
 
 - **One copy.** `alertmanager_smtp_password` is the property the git-only
   `monitoring-secrets` ExternalSecret has always read; the new
@@ -539,6 +541,29 @@ runs nothing.
 
 Rotation is the same `intake submit` with a new app password. Never recreate
 `alertmanager-smtp-secret`.
+
+### Outside heartbeat token (2026-10-14)
+
+`monitoring/alertmanager-heartbeat` holds the bearer token Alertmanager's
+`watchdog-sink` presents to the heartbeat Worker at `heartbeat.madfam.io`
+(internal-devops `ops/cloudflare/alerting-heartbeat`,
+`runbooks/alerting-heartbeat.md`). The **same** value is the Worker secret
+`HEARTBEAT_TOKEN`, and intake never returns a value, so never `--generate` it.
+Generate it once into the file the Worker's `deploy.sh` reads, deploy the
+Worker, then submit that same file:
+
+```bash
+F=~/.config/madfam/alerting-heartbeat/heartbeat-token
+( umask 077; mkdir -p "$(dirname "$F")"; [ -s "$F" ] || openssl rand -hex 32 > "$F" )
+# deploy the Worker from internal-devops ops/cloudflare/alerting-heartbeat: bash deploy.sh
+printf 'alertmanager_heartbeat_token=%s\n' "$(tr -d '[:space:]' < "$F")" \
+  | enclii secrets intake submit monitoring/alertmanager-heartbeat --stdin --reason "outside heartbeat token"
+enclii secrets intake status int_<id>
+# expect: external_secret_refreshed: true
+```
+
+Rotate both sides together: a mismatch shows as 401s at the Worker, then as a
+stale-heartbeat page.
 
 ### Selva → Yantra4D edge (2026-10-08)
 
