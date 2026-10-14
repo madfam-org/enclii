@@ -122,7 +122,7 @@ func newOpsPodsCommand(cfg *config.Config) *cobra.Command {
 	cmd := &cobra.Command{Use: "pods", Short: "Pod diagnosis, logs, and restarts"}
 	cmd.AddCommand(newOpsReadCommand(cfg, "pods", "diagnose", "Diagnose pod scheduling, probe, image, and event issues"))
 	cmd.AddCommand(newOpsPodsLogsCommand(cfg))
-	cmd.AddCommand(newOpsActionCommand(cfg, "pods", "restart", "Restart pods or workloads via a safe rollout path"))
+	cmd.AddCommand(newOpsPodsRestartCommand(cfg))
 	return cmd
 }
 

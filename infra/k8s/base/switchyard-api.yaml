@@ -94,6 +94,14 @@ spec:
               value: "enclii"
             - name: ENCLII_WAYBILL_BASE_URL
               value: "http://waybill"
+            # Namespaces `enclii ops pods restart` may act in (comma-separated,
+            # exact names). Unset or empty refuses every namespace; kube-* is
+            # refused even if listed. Workload namespaces only: the control
+            # plane and data plane (enclii, data, vault, argocd, storage,
+            # operators) stay out. Seeded with the namespaces of the recorded
+            # break-glass restarts; extend it here, by PR.
+            - name: ENCLII_OPS_RESTART_NAMESPACES
+              value: "logging,dhanam,digifab-quoting"
           ports:
             - containerPort: 4200
               name: http

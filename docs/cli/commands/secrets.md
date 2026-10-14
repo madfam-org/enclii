@@ -238,8 +238,8 @@ change under `infra/k8s/base/external-secrets/vault-secrets/` — those files ar
 not synced by ArgoCD. Adding a key there needs a live patch first; see
 [Procedure: changing a git-only ExternalSecret](../../infrastructure/EXTERNAL_SECRETS.md#procedure-changing-a-git-only-externalsecret-until-539).
 Pods that take the Secret as env vars pick up new values only after they
-restart; `enclii ops pods restart` is not implemented yet
-([ops.md](./ops.md#remaining-adapter-work)).
+restart: roll the consumer with `enclii ops pods restart deployment/<name>`
+([ops.md](./ops.md#ops-pods-restart)).
 
 `sync`, `rotate`, and `vault-backfill` share the operation-contract flags: `--apply`, `--reason`, `--idempotency-key` (retry key for safe repeats), `--json`, `--namespace`/`-n`, `--project`, and `--service`. `rotate` adds `--provider-version`; `vault-backfill` adds `--vault-path` and `--external-secret`.
 
