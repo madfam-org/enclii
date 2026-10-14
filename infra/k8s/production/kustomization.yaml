@@ -81,3 +81,9 @@ images:
 # Labels are already defined in base manifests.
 commonAnnotations:
   config.kubernetes.io/local-config: "false"
+# `namespace: enclii` above also rewrites the switchyard-api Roles/RoleBindings
+# that base declares in `argocd` and `data`. This transformer runs after the
+# namespace transformer and puts them back. Keep it under `transformers:`
+# (not `patches:`); see the file header.
+transformers:
+- cross-namespace-rbac.transformer.yaml

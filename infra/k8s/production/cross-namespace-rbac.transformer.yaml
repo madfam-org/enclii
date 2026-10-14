@@ -1,0 +1,46 @@
+# Puts the cross-namespace switchyard-api Roles/RoleBindings back into the
+# namespaces that infra/k8s/base/switchyard-rbac.yaml declares for them.
+#
+# Why this exists: `namespace: enclii` in this kustomization rewrites
+# metadata.namespace on EVERY namespaced resource it renders, including the
+# ones from ../base and from any included kustomization or Component. Before
+# this transformer the argocd and data Roles below rendered into `enclii`,
+# where they grant nothing on the objects they name (argocd Applications,
+# data/pgbouncer-config).
+#
+# Ordering is the whole trick: entries under `transformers:` run AFTER the
+# builtin field transformers (namespace, patches, images, ...), so these
+# patches have the last word. Do NOT move them into `patches:` (or let
+# `kustomize edit fix` rewrite them): `patches:` runs BEFORE the namespace
+# transformer and would be overwritten, silently re-breaking the grants.
+#
+# Keep the targets in sync with switchyard-rbac.yaml. A target that matches
+# nothing is a silent no-op, so after renaming a Role/RoleBinding re-check
+# `kustomize build infra/k8s/production`. The RoleBinding subjects already
+# point at ServiceAccount enclii/switchyard-api and are not touched here.
+---
+apiVersion: builtin
+kind: PatchTransformer
+metadata:
+  name: switchyard-rbac-argocd-namespace
+patch: |-
+  - op: replace
+    path: /metadata/namespace
+    value: argocd
+target:
+  group: rbac.authorization.k8s.io
+  kind: Role|RoleBinding
+  name: switchyard-argocd-application-manager
+---
+apiVersion: builtin
+kind: PatchTransformer
+metadata:
+  name: switchyard-rbac-data-namespace
+patch: |-
+  - op: replace
+    path: /metadata/namespace
+    value: data
+target:
+  group: rbac.authorization.k8s.io
+  kind: Role|RoleBinding
+  name: switchyard-pgbouncer-manager
