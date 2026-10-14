@@ -204,6 +204,10 @@ func TestInitialMAPJobUsesCanonicalEntrypointsAndFreshGuard(t *testing.T) {
 	for _, container := range append(spec.InitContainers, spec.Containers...) {
 		require.Equal(t, p.Image, container.Image)
 		require.True(t, *container.SecurityContext.ReadOnlyRootFilesystem)
+		// The cluster's disallow-privileged-containers policy requires the field
+		// to be present and false on every container, init containers included.
+		require.NotNil(t, container.SecurityContext.Privileged)
+		require.False(t, *container.SecurityContext.Privileged)
 		for _, env := range container.Env {
 			require.NotEqual(t, "synthetic-value", env.Value, "secret values live only in the owned transient Secret")
 		}
