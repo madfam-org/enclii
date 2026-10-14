@@ -9,6 +9,7 @@ import (
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
+	"k8s.io/apimachinery/pkg/util/validation"
 )
 
 type Snapshot struct {
@@ -107,12 +108,27 @@ func ValidateSnapshot(s Snapshot, namespace, deployment string) (Plan, error) {
 	i.TrackingMethod = config.Data["application.resourceTrackingMethod"]
 	i.InstallationID = config.Data["installationID"]
 	// A missing configured method is not evidence of this installation's default.
-	if i.TrackingMethod != "annotation" && i.TrackingMethod != "annotation+label" {
+	switch i.TrackingMethod {
+	case "annotation", "annotation+label":
+		tracking := i.Application + ":apps/Deployment:" + namespace + "/" + deployment
+		if d.Annotations["argocd.argoproj.io/tracking-id"] != tracking || d.Annotations["argocd.argoproj.io/installation-id"] != i.InstallationID {
+			return Plan{}, ErrOwnership
+		}
+	case "label":
+		// Declared label tracking: Argo stamps every resource it manages with the
+		// instance label set to the Application name. The label is a marker, not
+		// the authority -- Argo's own status.resources must still list exactly
+		// this Deployment (below), together with every source/selector check.
+		key := config.Data["application.instanceLabelKey"]
+		if key == "" {
+			key = "app.kubernetes.io/instance" // Argo's documented instance label key
+		}
+		if len(validation.IsQualifiedName(key)) != 0 || i.InstallationID != "" || d.Labels[key] != i.Application {
+			return Plan{}, ErrOwnership
+		}
+		i.InstanceLabelKey = key
+	default:
 		return Plan{}, ErrTrackingMethod
-	}
-	tracking := i.Application + ":apps/Deployment:" + namespace + "/" + deployment
-	if d.Annotations["argocd.argoproj.io/tracking-id"] != tracking || d.Annotations["argocd.argoproj.io/installation-id"] != i.InstallationID {
-		return Plan{}, ErrOwnership
 	}
 	resources, _, err := unstructured.NestedSlice(a.Object, "status", "resources")
 	if err != nil {

@@ -31,24 +31,27 @@ var (
 )
 
 type Identity struct {
-	ProjectID           uuid.UUID `json:"project_id"`
-	ServiceID           uuid.UUID `json:"service_id"`
-	EnvironmentID       uuid.UUID `json:"environment_id"`
-	RegistrationID      uuid.UUID `json:"registration_id"`
-	Namespace           string    `json:"namespace"`
-	NamespaceUID        string    `json:"namespace_uid"`
-	Deployment          string    `json:"deployment"`
-	DeploymentUID       string    `json:"deployment_uid"`
-	Application         string    `json:"application"`
-	ApplicationUID      string    `json:"application_uid"`
-	ArgoConfigUID       string    `json:"argo_config_uid"`
-	TrackingMethod      string    `json:"tracking_method"`
-	InstallationID      string    `json:"installation_id"`
-	Repo                string    `json:"repo"`
-	Path                string    `json:"path"`
-	Ref                 string    `json:"ref"`
-	Revision            string    `json:"revision"`
-	DeclaredIdentitySHA string    `json:"declared_identity_sha256"`
+	ProjectID      uuid.UUID `json:"project_id"`
+	ServiceID      uuid.UUID `json:"service_id"`
+	EnvironmentID  uuid.UUID `json:"environment_id"`
+	RegistrationID uuid.UUID `json:"registration_id"`
+	Namespace      string    `json:"namespace"`
+	NamespaceUID   string    `json:"namespace_uid"`
+	Deployment     string    `json:"deployment"`
+	DeploymentUID  string    `json:"deployment_uid"`
+	Application    string    `json:"application"`
+	ApplicationUID string    `json:"application_uid"`
+	ArgoConfigUID  string    `json:"argo_config_uid"`
+	TrackingMethod string    `json:"tracking_method"`
+	InstallationID string    `json:"installation_id"`
+	// Set only for declared label tracking; omitted for annotation modes so
+	// their persisted identities and fingerprints are unchanged.
+	InstanceLabelKey    string `json:"instance_label_key,omitempty"`
+	Repo                string `json:"repo"`
+	Path                string `json:"path"`
+	Ref                 string `json:"ref"`
+	Revision            string `json:"revision"`
+	DeclaredIdentitySHA string `json:"declared_identity_sha256"`
 }
 
 func CanonicalRepo(raw string) (string, string, error) {
@@ -65,7 +68,7 @@ func (i Identity) Validate() error {
 		len(validation.IsDNS1123Label(i.Namespace)) != 0 || len(validation.IsDNS1123Subdomain(i.Deployment)) != 0 ||
 		len(validation.IsDNS1123Subdomain(i.Application)) != 0 || !uid.MatchString(i.NamespaceUID) ||
 		!uid.MatchString(i.DeploymentUID) || !uid.MatchString(i.ApplicationUID) || !uid.MatchString(i.ArgoConfigUID) ||
-		(i.TrackingMethod != "annotation" && i.TrackingMethod != "annotation+label") || len(i.InstallationID) > 128 ||
+		!validTracking(i) || len(i.InstallationID) > 128 ||
 		(i.InstallationID != "" && !uid.MatchString(i.InstallationID)) || !sha40.MatchString(i.Revision) ||
 		!sha64.MatchString(i.DeclaredIdentitySHA) || !ValidPath(i.Path) || !refPattern.MatchString(i.Ref) {
 		return ErrIntent
@@ -75,6 +78,18 @@ func (i Identity) Validate() error {
 		return ErrIntent
 	}
 	return nil
+}
+
+// Annotation modes carry no instance-label key; declared label tracking needs
+// a valid key and no installation ID (Argo only stamps that with annotations).
+func validTracking(i Identity) bool {
+	switch i.TrackingMethod {
+	case "annotation", "annotation+label":
+		return i.InstanceLabelKey == ""
+	case "label":
+		return i.InstallationID == "" && len(validation.IsQualifiedName(i.InstanceLabelKey)) == 0
+	}
+	return false
 }
 
 func ValidPath(value string) bool {

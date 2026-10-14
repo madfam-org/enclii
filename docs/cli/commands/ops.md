@@ -76,6 +76,8 @@ Explicit workload targets (`ops apps bind-target`, and the scale path that
 depends on them) refuse ownership with `argo_tracking_unverified` until
 `argocd/argocd-cm` declares `application.resourceTrackingMethod`. An absent key
 is not evidence of the installation's default, so Enclii does not infer it.
+Declared `annotation`, `annotation+label` and `label` tracking are each accepted
+by the target verifier ([explicit targets](../../runbooks/ENCLII_EXPLICIT_DEPLOYMENT_TARGETS.md)).
 
 `ops apps tracking` requires the server-resolved platform-admin rank. Its plan
 reports the ConfigMap UID/resourceVersion, the current key, whether an

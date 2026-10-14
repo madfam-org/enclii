@@ -101,8 +101,28 @@ func TestActualOwnershipAndSourceDriftRefuse(t *testing.T) {
 		"nonself tracking": func(s *Snapshot) {
 			s.Deployment.Annotations["argocd.argoproj.io/tracking-id"] = "fixture-services:apps/Deployment:other/fixture-web"
 		},
-		"another installation": func(s *Snapshot) { s.ArgoConfig.Data["installationID"] = "different" },
-		"label-only tracking":  func(s *Snapshot) { s.ArgoConfig.Data["application.resourceTrackingMethod"] = "label" },
+		"another installation":                  func(s *Snapshot) { s.ArgoConfig.Data["installationID"] = "different" },
+		"label tracking without instance label": func(s *Snapshot) { s.ArgoConfig.Data["application.resourceTrackingMethod"] = "label" },
+		"label tracking of another application": func(s *Snapshot) {
+			s.ArgoConfig.Data["application.resourceTrackingMethod"] = "label"
+			s.Deployment.Labels = map[string]string{"app.kubernetes.io/instance": "other-services"}
+		},
+		"label tracking with installation ID": func(s *Snapshot) {
+			s.ArgoConfig.Data["application.resourceTrackingMethod"] = "label"
+			s.ArgoConfig.Data["installationID"] = "installation"
+			s.Deployment.Labels = map[string]string{"app.kubernetes.io/instance": "fixture-services"}
+		},
+		"label tracking ignores default key when a custom key is declared": func(s *Snapshot) {
+			s.ArgoConfig.Data["application.resourceTrackingMethod"] = "label"
+			s.ArgoConfig.Data["application.instanceLabelKey"] = "argocd.argoproj.io/instance"
+			s.Deployment.Labels = map[string]string{"app.kubernetes.io/instance": "fixture-services"}
+		},
+		"label tracking without Argo status": func(s *Snapshot) {
+			s.ArgoConfig.Data["application.resourceTrackingMethod"] = "label"
+			s.Deployment.Labels = map[string]string{"app.kubernetes.io/instance": "fixture-services"}
+			_ = unstructured.SetNestedSlice(s.Application.Object, []interface{}{}, "status", "resources")
+		},
+		"unknown tracking method": func(s *Snapshot) { s.ArgoConfig.Data["application.resourceTrackingMethod"] = "label+annotation" },
 		"foreign app source": func(s *Snapshot) {
 			_ = unstructured.SetNestedField(s.Application.Object, "https://github.com/other/repo", "spec", "source", "repoURL")
 		},
@@ -253,6 +273,61 @@ func TestArgoAuthorityIdentityAndReviewedVersionAreSeparate(t *testing.T) {
 		change(&s)
 		if _, err = ValidateSnapshot(s, "fixture", "fixture-web"); !errors.Is(err, ErrConflict) {
 			t.Fatal("changed configured authority silently adopted")
+		}
+	}
+}
+
+// Declared label tracking is accepted when the instance label names the
+// Application and Argo's own status lists exactly this Deployment.
+func TestDeclaredLabelTrackingProvesOwnership(t *testing.T) {
+	for name, key := range map[string]string{"default key": "", "custom key": "argocd.argoproj.io/instance"} {
+		t.Run(name, func(t *testing.T) {
+			s := targetFixture()
+			s.ArgoConfig.Data["application.resourceTrackingMethod"] = "label"
+			label := "app.kubernetes.io/instance"
+			if key != "" {
+				s.ArgoConfig.Data["application.instanceLabelKey"] = key
+				label = key
+			}
+			s.Deployment.Annotations = nil
+			s.Deployment.Labels = map[string]string{label: "fixture-services"}
+			plan, err := ValidateSnapshot(s, "fixture", "fixture-web")
+			if err != nil {
+				t.Fatalf("declared label tracking refused: %v", err)
+			}
+			if plan.Identity.TrackingMethod != "label" || plan.Identity.InstanceLabelKey != label || plan.Identity.Validate() != nil {
+				t.Fatalf("label identity not recorded: %+v", plan.Identity)
+			}
+			// A later key change is a different owner, never the same binding.
+			changed := plan.Identity
+			changed.InstanceLabelKey = "example.com/instance"
+			if SameOwner(plan.Identity, changed) {
+				t.Fatal("instance label key change kept ownership")
+			}
+		})
+	}
+}
+
+func TestTrackingIdentityShapes(t *testing.T) {
+	s := targetFixture()
+	plan, err := ValidateSnapshot(s, "fixture", "fixture-web")
+	if err != nil || plan.Identity.InstanceLabelKey != "" {
+		t.Fatalf("annotation identity changed shape: %v %+v", err, plan.Identity)
+	}
+	for _, bad := range []func(i *Identity){
+		func(i *Identity) { i.InstanceLabelKey = "app.kubernetes.io/instance" },
+		func(i *Identity) { i.TrackingMethod = "label"; i.InstanceLabelKey = "" },
+		func(i *Identity) { i.TrackingMethod = "label"; i.InstanceLabelKey = "bad key!" },
+		func(i *Identity) {
+			i.TrackingMethod = "label"
+			i.InstanceLabelKey = "app.kubernetes.io/instance"
+			i.InstallationID = "installation"
+		},
+	} {
+		i := plan.Identity
+		bad(&i)
+		if i.Validate() == nil {
+			t.Fatalf("invalid tracking identity accepted: %+v", i)
 		}
 	}
 }
