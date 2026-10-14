@@ -1,0 +1,7 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+# No `namespace:` here on purpose: every resource keeps the namespace it
+# declares (data, argocd, enclii-builds). See rbac.yaml.
+resources:
+  - rbac.yaml

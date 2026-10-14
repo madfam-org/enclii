@@ -18,42 +18,6 @@ metadata:
     app.kubernetes.io/name: roundhouse
     app.kubernetes.io/part-of: enclii
 ---
-# RBAC: Allow Roundhouse to create Jobs in the builds namespace
-apiVersion: rbac.authorization.k8s.io/v1
-kind: Role
-metadata:
-  name: roundhouse-builder
-  namespace: enclii-builds
-  labels:
-    app.kubernetes.io/name: roundhouse
-    app.kubernetes.io/part-of: enclii
-rules:
-  # Create and monitor build Jobs
-  - apiGroups: ["batch"]
-    resources: ["jobs"]
-    verbs: ["create", "get", "list", "watch", "delete"]
-  # Get logs from build pods
-  - apiGroups: [""]
-    resources: ["pods", "pods/log"]
-    verbs: ["get", "list", "watch"]
----
-apiVersion: rbac.authorization.k8s.io/v1
-kind: RoleBinding
-metadata:
-  name: roundhouse-builder
-  namespace: enclii-builds
-  labels:
-    app.kubernetes.io/name: roundhouse
-    app.kubernetes.io/part-of: enclii
-subjects:
-  - kind: ServiceAccount
-    name: roundhouse
-    namespace: enclii
-roleRef:
-  kind: Role
-  name: roundhouse-builder
-  apiGroup: rbac.authorization.k8s.io
----
 apiVersion: apps/v1
 kind: Deployment
 metadata:
