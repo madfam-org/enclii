@@ -28,15 +28,21 @@ const initialJobManager = "isolated-initial-bootstrap"
 
 // Fixed metadata-only proof before Prisma DDL. A second request key cannot
 // turn an initial profile into migration/reset of an already populated DB.
-const initialMAPFreshGuard = `let c;
+// A refusal names only its fixed stage (load, url, connect [+Prisma code/tls],
+// identity, privileged, not owner, memberships, not empty): never a value.
+const initialMAPFreshGuard = `let c,w='load';
 (async()=>{try{
  const {PrismaClient}=require('/app/node_modules/@prisma/client');c=new PrismaClient();
- const u=new URL(process.env.DATABASE_URL);
+ w='url';const u=new URL(process.env.DATABASE_URL);
  if(u.username!=='enclii_migrator'||!/^\/[a-z][a-z0-9_]*_sim$/.test(u.pathname))throw Error();
- const a=await c.$queryRawUnsafe("SELECT current_database() AS base,current_user AS cuenta,r.rolsuper OR r.rolbypassrls OR r.rolcreatedb OR r.rolcreaterole OR r.rolreplication AS privilegiada,d.datdba=r.oid AS propietaria,EXISTS(SELECT 1 FROM pg_auth_members WHERE member=r.oid) AS membresias,(SELECT count(*) FROM pg_tables WHERE schemaname='public') AS tablas FROM pg_roles r JOIN pg_database d ON d.datname=current_database() WHERE r.rolname=current_user");
- if(a.length!==1||a[0].cuenta!=='enclii_migrator'||a[0].base!==u.pathname.slice(1)||a[0].privilegiada||!a[0].propietaria||a[0].membresias||a[0].tablas!==0n)throw Error();
+ w='connect';const a=await c.$queryRawUnsafe("SELECT current_database() AS base,current_user AS cuenta,r.rolsuper OR r.rolbypassrls OR r.rolcreatedb OR r.rolcreaterole OR r.rolreplication AS privilegiada,d.datdba=r.oid AS propietaria,EXISTS(SELECT 1 FROM pg_auth_members WHERE member=r.oid) AS membresias,(SELECT count(*) FROM pg_tables WHERE schemaname='public') AS tablas FROM pg_roles r JOIN pg_database d ON d.datname=current_database() WHERE r.rolname=current_user");
+ w='identity';if(a.length!==1||a[0].cuenta!=='enclii_migrator'||a[0].base!==u.pathname.slice(1))throw Error();
+ w='privileged';if(a[0].privilegiada)throw Error();
+ w='not owner';if(!a[0].propietaria)throw Error();
+ w='memberships';if(a[0].membresias)throw Error();
+ w='not empty';if(a[0].tablas!==0n)throw Error();
  process.stdout.write('INITIAL_DATABASE_EMPTY\n');
-}catch{process.stderr.write('Initial database guard refused.\n');process.exitCode=1;}finally{if(c)await c.$disconnect().catch(()=>{});}})();`
+}catch(e){const k=e&&typeof e.errorCode==='string'&&/^P\d{4}$/.test(e.errorCode)?' '+e.errorCode:'';const t=w==='connect'&&e&&/TLS|certificate/i.test(String(e.message))?' tls':'';process.stderr.write('Initial database guard refused ('+w+k+t+').\n');process.exitCode=1;}finally{if(c)await c.$disconnect().catch(()=>{});}})();`
 
 // Fixed network readiness before any database step. The Job's own egress
 // policy is created moments before its Pod, and a new Pod IP must also reach
@@ -125,7 +131,7 @@ func BuildIsolatedInitialJob(p IsolatedInitialJobPlan) (*batchv1.Job, error) {
 		}
 		command = []string{"node", "/app/dist/semilla-simulacion.cjs", "--aplicar"}
 		migration = []string{"node", "/app/prisma-cli/node_modules/prisma/build/index.js", "migrate", "deploy", "--schema=/app/prisma/schema.prisma"}
-		for _, name := range []string{"DATABASE_URL", "MAP_SIMULATION_RUNTIME_DATABASE_URL", "MAP_SIMULATION_SEED_ENABLED", "MAP_SIMULATION_ENABLED", "MAP_SIMULATION_KERNEL_ID", "APP_ORIGIN", "JANUA_AUDIENCE", "JANUA_ISSUER_URL", "JANUA_JWKS_URL", "RLS_POR_CASO", "MAP_SIMULATION_CONTEXT_KEY", "MAP_SIMULATION_CONTROL_KEY", "MAP_SIMULATION_MAIL_KEY", "MAP_SIMULATION_MCP_CLIENT_ID", "MAP_MCP_PSEUDONYM_KEY"} {
+		for _, name := range []string{"DATABASE_URL", "DIRECT_DATABASE_URL", "MAP_SIMULATION_RUNTIME_DATABASE_URL", "MAP_SIMULATION_SEED_ENABLED", "MAP_SIMULATION_ENABLED", "MAP_SIMULATION_KERNEL_ID", "APP_ORIGIN", "JANUA_AUDIENCE", "JANUA_ISSUER_URL", "JANUA_JWKS_URL", "RLS_POR_CASO", "MAP_SIMULATION_CONTEXT_KEY", "MAP_SIMULATION_CONTROL_KEY", "MAP_SIMULATION_MAIL_KEY", "MAP_SIMULATION_MCP_CLIENT_ID", "MAP_MCP_PSEUDONYM_KEY"} {
 			allowed[name] = true
 		}
 	case "portal-sim-initial":
