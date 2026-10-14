@@ -291,9 +291,20 @@ spec:
             periodSeconds: 15
             timeoutSeconds: 5
             failureThreshold: 3
+          # LIVENESS ASKS "IS THE PROCESS ALIVE?", NOT "IS THE BACKEND HAPPY?".
+          # /api/v1/health fails once HC_Errors_Count (5) output errors land
+          # within HC_Period (60s), so with liveness on it, every Loki outage
+          # or rejection (e.g. HTTP 400 for a backlog entry older than
+          # reject_old_samples_max_age) got the shipper killed. A restart cannot
+          # fix a backend error; it only re-reads the backlog. That loop
+          # produced ~13k restarts per pod while Loki was down (2026-09-28 ->
+          # 10-14), and kept the control-plane pod crash-looping while it
+          # drained stale entries after Loki recovered. Readiness stays on
+          # /api/v1/health, so a delivery failure still shows up (DaemonSet
+          # not ready -> Argo Progressing) without restarts.
           livenessProbe:
             httpGet:
-              path: /api/v1/health
+              path: /api/v1/uptime
               port: http-metrics
             initialDelaySeconds: 30
             periodSeconds: 30
