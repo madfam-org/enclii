@@ -350,8 +350,8 @@ path "secret/data/selva/*" {
   capabilities = ["create", "update", "patch", "read"]
 }
 # synthetics — added 2026-10-14 with the synthetics/dhanam-staging-checkout
-# intake target (the S-Gate 1 synthetic buyer's staging identity and Stripe
-# TEST key, typed by the owner at the masked prompt). The write is a
+# intake target (the S-Gate 1 synthetic buyer's staging identity, typed by
+# the owner at the masked prompt). The write is a
 # read-merge-write, so READ is required too. Merged in git is not applied in
 # Vault: re-apply this policy (ASSERT_PATH=synthetics
 # scripts/apply-switchyard-vault-policy-remote.sh) before the first submit,

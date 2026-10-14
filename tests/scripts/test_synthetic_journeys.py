@@ -70,7 +70,6 @@ ZERO_DIGEST = "sha256:" + "0" * 64
 IDENTITY_ENV = {
     "DHANAM_STAGING_SYNTH_EMAIL": "dhanam_staging_synth_email",
     "DHANAM_STAGING_SYNTH_PASSWORD": "dhanam_staging_synth_password",
-    "DHANAM_STAGING_SYNTH_STRIPE_TEST_KEY": "dhanam_staging_synth_stripe_test_key",
 }
 
 
@@ -274,6 +273,22 @@ def test_external_secret_maps_exactly_the_intake_target_keys():
     assert mapping == {env: (target["vault_path"], prop) for env, prop in IDENTITY_ENV.items()}
     assert sorted(target["keys"]) == sorted(IDENTITY_ENV.values())
     assert "generate" not in target
+
+
+def test_the_runner_holds_no_stripe_key():
+    """Only Dhanam holds Stripe keys (2026-04-25 rule). Reset and cleanup go
+    through Dhanam staging's synthetic-cancel endpoint, called as the identity."""
+    target = yaml.safe_load(REGISTRY.read_text(encoding="utf-8"))["targets"][INTAKE_TARGET]
+    es = _one(SYNTHETICS / "journeys-identity.externalsecret.yaml", "ExternalSecret")
+    names = (
+        list(target["keys"])
+        + [d["secretKey"] for d in es["spec"]["data"]]
+        + [d["remoteRef"]["property"] for d in es["spec"]["data"]]
+        + list(_env())
+    )
+    assert not [n for n in names if "stripe" in n.lower()], names
+    for path in SYNTHETICS.glob("*.yaml"):
+        assert not re.search(r"\b(sk|rk)_(test|live)_[0-9A-Za-z]", path.read_text(encoding="utf-8")), path.name
 
 
 # ---------------------------------------------------------------------------

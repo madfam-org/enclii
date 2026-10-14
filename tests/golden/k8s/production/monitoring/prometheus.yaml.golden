@@ -2389,8 +2389,10 @@ data:
                      enclii ops jobs list -n synthetics --json, then
                      enclii ops pods logs <pod> -n synthetics
                   2. identity / reset: the synthetic identity (Janua sign-in,
-                     MFA, lockout) or its Stripe test key. Re-provision through
-                     the intake target synthetics/dhanam-staging-checkout.
+                     MFA, lockout; re-provision through the intake target
+                     synthetics/dhanam-staging-checkout) or Dhanam staging's
+                     synthetic cancel (404 = SYNTHETIC_CANCEL_ENABLED, sk_test_
+                     keys or SYNTHETIC_ACCOUNT_IDS not set on staging).
                   3. checkout_session / payment: Dhanam staging
                      (enclii ops pods diagnose -n enclii-dhanam-staging) or
                      Stripe test mode.

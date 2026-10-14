@@ -7,7 +7,8 @@
 # the Essentials checkout through the staging API, type Stripe's published
 # test card (4242 4242 4242 4242) on checkout.stripe.com, assert Stripe's
 # redirect back to staging, assert the staging API shows Essentials, then
-# cancel the test subscription. The runner refuses to run unless the session
+# have Dhanam staging cancel the test subscription (its synthetic-cancel
+# endpoint; the runner holds no Stripe key). The runner refuses to run unless the session
 # is cs_test_, every host is a staging host, and no live Stripe key appears.
 #
 # Outcome: synthetic_journey_* metrics pushed to the pushgateway; rules
@@ -96,11 +97,6 @@ spec:
                     secretKeyRef:
                       name: journeys-dhanam-staging-synthetic
                       key: DHANAM_STAGING_SYNTH_PASSWORD
-                - name: DHANAM_STAGING_SYNTH_STRIPE_TEST_KEY
-                  valueFrom:
-                    secretKeyRef:
-                      name: journeys-dhanam-staging-synthetic
-                      key: DHANAM_STAGING_SYNTH_STRIPE_TEST_KEY
               resources:
                 requests:
                   cpu: 500m

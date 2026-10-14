@@ -690,7 +690,7 @@ func TestMonitoringAlertmanagerSMTPTarget(t *testing.T) {
 }
 
 // S-Gate 1 synthetic buyer (2026-10-14). The journeys CronJob reads exactly
-// these three properties through journeys-dhanam-staging-synthetic
+// these two properties through journeys-dhanam-staging-synthetic
 // (infra/k8s/production/synthetics/journeys-identity.externalsecret.yaml); ESO syncs all of an
 // ExternalSecret's keys or none, so a rename here is a silent outage there.
 func TestSyntheticsDhanamStagingCheckoutTarget(t *testing.T) {
@@ -702,8 +702,7 @@ func TestSyntheticsDhanamStagingCheckoutTarget(t *testing.T) {
 	assert.Equal(t, []string{
 		"dhanam_staging_synth_email",
 		"dhanam_staging_synth_password",
-		"dhanam_staging_synth_stripe_test_key",
-	}, tgt.Keys)
+	}, tgt.Keys, "email and password only: the runner holds no Stripe key (only Dhanam does)")
 	for _, k := range tgt.Keys {
 		assert.Equal(t, strings.ToLower(k), k, "Vault stores lowercase; an upper-case key would never match the ExternalSecret property")
 	}
@@ -711,7 +710,9 @@ func TestSyntheticsDhanamStagingCheckoutTarget(t *testing.T) {
 	// Value-intake: the password is the account's and the key is minted by Stripe.
 	assert.Nil(t, tgt.Generate)
 	assert.Contains(t, tgt.Description, "never generated")
-	assert.Contains(t, tgt.Description, "never a live key")
+	for _, k := range tgt.Keys {
+		assert.NotContains(t, strings.ToLower(k), "stripe", "only Dhanam holds Stripe keys (2026-04-25 rule)")
+	}
 }
 
 // Cotiza web NextAuth secret (2026-10-11). digifab-quoting-secrets is projected
