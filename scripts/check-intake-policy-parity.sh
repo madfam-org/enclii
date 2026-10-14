@@ -21,6 +21,12 @@
 # lane the registry-only check could not see — a denied READ is as opaque as a
 # denied write. So switchyard-api Go sources are scanned as a second source of
 # truth alongside the registry.
+#
+# One producer stays out of reach: `enclii buckets create` mirrors R2
+# credentials to secret/<project>, a path built from the project slug at
+# runtime. A project's first bucket therefore needs its policy path added by
+# hand; switchyard-api's mirror warning names the file and the re-run that
+# repairs the copy.
 set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"

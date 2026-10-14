@@ -380,3 +380,142 @@ func TestEnsureProjectR2Bucket_RejectsInvalidBucketName(t *testing.T) {
 		t.Errorf("status = %d, want 400", got)
 	}
 }
+
+func newR2VaultTestHandler(t *testing.T, stub *cloudflareStub) (*Handler, *fake.Clientset, *fakeVault) {
+	t.Helper()
+	h, clientset := newR2TestHandler(t, stub)
+	vault := newFakeVault()
+	h.SetVaultClient(vault)
+	return h, clientset, vault
+}
+
+func TestR2VaultMirrorPath(t *testing.T) {
+	cases := []struct {
+		opts r2ProvisionOptions
+		want string
+	}{
+		// The canonical binding keeps the path ExternalSecrets already read.
+		{r2ProvisionOptions{Project: "fabrication-prep"}, "secret/fabrication-prep"},
+		{r2ProvisionOptions{Project: "karafiel", Namespace: "karafiel", SecretName: "karafiel-credentials"}, "secret/karafiel"},
+		// Any other binding gets its own sub-path.
+		{
+			r2ProvisionOptions{Project: "symbiosis-hcm", SecretName: "symbiosis-hcm-expediente-credentials"},
+			"secret/symbiosis-hcm/symbiosis-hcm/symbiosis-hcm-expediente-credentials",
+		},
+		{r2ProvisionOptions{Project: "dhanam", Namespace: "dhanam-staging"}, "secret/dhanam/dhanam-staging/dhanam-credentials"},
+	}
+	for _, c := range cases {
+		if got := r2VaultMirrorPath(c.opts); got != c.want {
+			t.Errorf("r2VaultMirrorPath(%+v) = %q, want %q", c.opts, got, c.want)
+		}
+	}
+}
+
+// TestEnsureProjectR2Bucket_SecondBindingKeepsTheFirstMirror is the
+// symbiosis-hcm shape: two buckets in one project. Both used to merge the same
+// five keys into secret/<project>, so the second overwrote the first, and the
+// backup job's ExternalSecret would have received the other bucket's token.
+func TestEnsureProjectR2Bucket_SecondBindingKeepsTheFirstMirror(t *testing.T) {
+	stub := newCloudflareStub(t)
+	h, _, vault := newR2VaultTestHandler(t, stub)
+	ctx := context.Background()
+
+	if _, err := h.ensureProjectR2Bucket(ctx, r2ProvisionOptions{Project: "symbiosis-hcm", Bucket: "hcm-backups"}); err != nil {
+		t.Fatalf("first binding: %v", err)
+	}
+	second, err := h.ensureProjectR2Bucket(ctx, r2ProvisionOptions{
+		Project: "symbiosis-hcm", Bucket: "hcm-expediente", SecretName: "symbiosis-hcm-expediente-credentials",
+	})
+	if err != nil {
+		t.Fatalf("second binding: %v", err)
+	}
+
+	if got := vault.data["secret/symbiosis-hcm"][provisioning.SecretKeyR2Bucket]; got != "hcm-backups" {
+		t.Errorf("secret/symbiosis-hcm holds bucket %v, want hcm-backups: the second binding overwrote the first", got)
+	}
+	wantPath := "secret/symbiosis-hcm/symbiosis-hcm/symbiosis-hcm-expediente-credentials"
+	if second.VaultPath != wantPath {
+		t.Errorf("second VaultPath = %q, want %q", second.VaultPath, wantPath)
+	}
+	if got := vault.data[wantPath][provisioning.SecretKeyR2Bucket]; got != "hcm-expediente" {
+		t.Errorf("%s holds bucket %v, want hcm-expediente", wantPath, got)
+	}
+}
+
+// TestEnsureProjectR2Bucket_AdoptionRepairsADeniedMirror is the
+// fabrication-prep case: the writer policy had no path for the project, so the
+// mirror was refused. The warning must name the remedy, and once the policy is
+// fixed, re-running must repair Vault without minting a new token.
+func TestEnsureProjectR2Bucket_AdoptionRepairsADeniedMirror(t *testing.T) {
+	stub := newCloudflareStub(t)
+	h, clientset, vault := newR2VaultTestHandler(t, stub)
+	ctx := context.Background()
+	opts := r2ProvisionOptions{Project: "fabrication-prep", Bucket: "fabrication-prep-artifacts"}
+
+	vault.writeErr["secret/fabrication-prep"] = errors.New("vault returned status 403: permission denied")
+	first, err := h.ensureProjectR2Bucket(ctx, opts)
+	if err != nil {
+		t.Fatalf("a refused mirror must not fail provisioning: %v", err)
+	}
+	if first.VaultPath != "" {
+		t.Errorf("VaultPath = %q after a refused mirror, want empty", first.VaultPath)
+	}
+	warning := strings.Join(first.Warnings, " ")
+	for _, want := range []string{"secret/data/fabrication-prep", "secret/metadata/fabrication-prep",
+		"provision-switchyard-vault-writer.sh", "re-run"} {
+		if !strings.Contains(warning, want) {
+			t.Errorf("warning does not mention %q: %s", want, warning)
+		}
+	}
+
+	delete(vault.writeErr, "secret/fabrication-prep") // the policy now has the path
+	second, err := h.ensureProjectR2Bucket(ctx, opts)
+	if err != nil {
+		t.Fatalf("re-run: %v", err)
+	}
+	if second.Action != r2ActionAdopted || stub.mintCount != 1 {
+		t.Errorf("re-run action = %q with %d tokens minted, want adopted with 1", second.Action, stub.mintCount)
+	}
+	if second.VaultPath != "secret/fabrication-prep" || len(second.Warnings) != 0 {
+		t.Errorf("re-run VaultPath = %q, warnings = %v; want the repaired path and no warnings", second.VaultPath, second.Warnings)
+	}
+	secret, err := clientset.CoreV1().Secrets("fabrication-prep").Get(ctx, "fabrication-prep-credentials", k8smetav1.GetOptions{})
+	if err != nil {
+		t.Fatalf("get secret: %v", err)
+	}
+	for _, key := range r2SecretKeyNames() {
+		if got := vault.data["secret/fabrication-prep"][key]; got != string(secret.Data[key]) {
+			t.Errorf("Vault %s does not match the Kubernetes Secret", key)
+		}
+	}
+	encoded, _ := json.Marshal(second)
+	if strings.Contains(string(encoded), string(secret.Data[provisioning.SecretKeyR2SecretAccessKey])) {
+		t.Errorf("the secret access key leaked into the API result: %s", encoded)
+	}
+}
+
+// TestEnsureProjectR2Bucket_AdoptionLeavesAHealthyMirrorAlone: re-running
+// against a mirror that already matches must not write a new Vault version.
+func TestEnsureProjectR2Bucket_AdoptionLeavesAHealthyMirrorAlone(t *testing.T) {
+	stub := newCloudflareStub(t)
+	h, _, vault := newR2VaultTestHandler(t, stub)
+	ctx := context.Background()
+	opts := r2ProvisionOptions{Project: "karafiel", Bucket: "karafiel-documents"}
+
+	if _, err := h.ensureProjectR2Bucket(ctx, opts); err != nil {
+		t.Fatalf("first provision: %v", err)
+	}
+	if vault.writes != 1 {
+		t.Fatalf("first provision wrote Vault %d times, want 1", vault.writes)
+	}
+	second, err := h.ensureProjectR2Bucket(ctx, opts)
+	if err != nil {
+		t.Fatalf("re-run: %v", err)
+	}
+	if vault.writes != 1 {
+		t.Errorf("re-run wrote Vault again (%d writes) although the mirror already matched", vault.writes)
+	}
+	if second.VaultPath != "secret/karafiel" {
+		t.Errorf("re-run VaultPath = %q, want secret/karafiel", second.VaultPath)
+	}
+}

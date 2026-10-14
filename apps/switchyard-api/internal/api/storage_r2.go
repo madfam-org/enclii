@@ -161,7 +161,7 @@ func (h *Handler) ensureProjectR2Bucket(ctx context.Context, opts r2ProvisionOpt
 			logging.String("project", opts.Project),
 			logging.String("namespace", namespace),
 			logging.String("bucket", opts.Bucket))
-		return &r2ProvisionResult{
+		result := &r2ProvisionResult{
 			Bucket:        opts.Bucket,
 			Namespace:     namespace,
 			SecretName:    secretName,
@@ -169,7 +169,13 @@ func (h *Handler) ensureProjectR2Bucket(ctx context.Context, opts r2ProvisionOpt
 			Action:        r2ActionAdopted,
 			BucketAdopted: true,
 			SecretKeys:    r2SecretKeyNames(),
-		}, nil
+		}
+		// A mirror that failed when the credentials were minted (the writer
+		// policy had no path for this project, say) is repaired here, so
+		// re-running the command once the cause is fixed is the whole remedy
+		// and needs no rotation.
+		h.repairR2VaultMirror(ctx, opts, result)
+		return result, nil
 	}
 
 	// Capture the outgoing access key ID before overwriting it. Rotation
@@ -225,16 +231,14 @@ func (h *Handler) ensureProjectR2Bucket(ctx context.Context, opts r2ProvisionOpt
 			previousAccessKeyID))
 	}
 
-	// Mirror into Vault when it is wired, matching the secret-intake
-	// convention of secret/<project>. Failure here is a warning, not a
-	// failure: the K8s Secret is already the source of truth for the running
-	// service.
-	if path, err := h.mirrorR2CredentialsToVault(ctx, opts.Project, creds); err != nil {
-		result.Warnings = append(result.Warnings,
-			fmt.Sprintf("credentials written to %s/%s but the Vault mirror failed: %v", namespace, secretName, err))
-	} else if path != "" {
-		result.VaultPath = path
+	// Mirror into Vault when it is wired (see r2VaultMirrorPath). Failure here
+	// is a warning, not a failure: the K8s Secret is already the source of
+	// truth for the running service.
+	updates := make(map[string]interface{}, 5)
+	for _, entry := range creds.Entries() {
+		updates[entry.Key] = entry.Value
 	}
+	h.mirrorR2CredentialsToVault(ctx, opts, updates, result)
 
 	// Deliberately logs the bucket and destination only. The access key ID is
 	// audit-relevant but is emitted by the provisioner itself; the secret half
@@ -296,23 +300,90 @@ func (h *Handler) checkR2BucketOwnership(
 	return existing, nil
 }
 
-// mirrorR2CredentialsToVault writes the credential set to Vault when Vault is
-// configured. Returns the path written, or "" when Vault is not wired.
-func (h *Handler) mirrorR2CredentialsToVault(
-	ctx context.Context, project string, creds *provisioning.R2Credentials,
-) (string, error) {
-	if h.vaultClient == nil || !h.vaultClient.IsEnabled() {
-		return "", nil
-	}
+// r2VaultMirrorPath is the Vault path a binding's credentials are mirrored to.
+//
+// A project's canonical binding (its own namespace and the default
+// <project>-credentials Secret) keeps secret/<project>, the secret-intake
+// convention: ExternalSecrets read R2 keys from there (symbiosis-hcm's backup
+// job does). Every other binding gets a sub-path of its own. The five key
+// names are the same for every bucket, so a second binding mirrored into
+// secret/<project> would overwrite the first one's credentials, and an
+// ExternalSecret reading them would hand a service a token scoped to the
+// wrong bucket.
+func r2VaultMirrorPath(opts r2ProvisionOptions) string {
+	project := strings.TrimSpace(opts.Project)
 	path := "secret/" + project
-	updates := make(map[string]interface{}, 5)
-	for _, entry := range creds.Entries() {
-		updates[entry.Key] = entry.Value
+	if opts.namespace() == project && opts.secretName() == project+"-credentials" {
+		return path
 	}
+	return path + "/" + opts.namespace() + "/" + opts.secretName()
+}
+
+// mirrorR2CredentialsToVault merges the credential set into Vault when Vault
+// is configured, recording the path on success and a warning on failure.
+func (h *Handler) mirrorR2CredentialsToVault(
+	ctx context.Context, opts r2ProvisionOptions, updates map[string]interface{}, result *r2ProvisionResult,
+) {
+	if h.vaultClient == nil || !h.vaultClient.IsEnabled() {
+		return
+	}
+	path := r2VaultMirrorPath(opts)
 	if _, err := h.vaultClient.MergeSecretData(ctx, path, updates); err != nil {
-		return "", err
+		result.Warnings = append(result.Warnings, r2VaultMirrorWarning(opts, result, path, err))
+		return
 	}
-	return path, nil
+	result.VaultPath = path
+}
+
+// repairR2VaultMirror brings the Vault copy of an adopted binding up to date
+// from its Kubernetes Secret. It writes only when the copy is missing or
+// differs, so re-running against a healthy binding leaves Vault untouched.
+// The values stay server-side, as with every Lookup caller.
+func (h *Handler) repairR2VaultMirror(ctx context.Context, opts r2ProvisionOptions, result *r2ProvisionResult) {
+	if h.vaultClient == nil || !h.vaultClient.IsEnabled() {
+		return
+	}
+	path := r2VaultMirrorPath(opts)
+	updates := make(map[string]interface{}, 5)
+	for _, key := range r2SecretKeyNames() {
+		value, ok, err := h.secretsProvisioner.Lookup(ctx, result.Namespace, result.SecretName, key)
+		if err != nil {
+			result.Warnings = append(result.Warnings, r2VaultMirrorWarning(opts, result, path, err))
+			return
+		}
+		if ok {
+			updates[key] = string(value)
+		}
+	}
+	current, err := h.vaultClient.GetSecretData(ctx, path)
+	if err != nil {
+		result.Warnings = append(result.Warnings, r2VaultMirrorWarning(opts, result, path, err))
+		return
+	}
+	upToDate := true
+	for key, value := range updates {
+		if got, ok := current[key].(string); !ok || got != value {
+			upToDate = false
+			break
+		}
+	}
+	if upToDate {
+		result.VaultPath = path
+		return
+	}
+	h.mirrorR2CredentialsToVault(ctx, opts, updates, result)
+}
+
+// r2VaultMirrorWarning names the usual cause and the remedy: the
+// switchyard-secret-writer policy is a per-project allowlist, so a project
+// that has never had a Vault path is refused until one is added.
+func r2VaultMirrorWarning(opts r2ProvisionOptions, result *r2ProvisionResult, path string, err error) string {
+	project := strings.TrimSpace(opts.Project)
+	return fmt.Sprintf("credentials are in %s/%s but the Vault mirror to %s failed: %v. "+
+		"If Vault denied it, add the secret/data/%s and secret/metadata/%s paths (each with /*) to "+
+		"scripts/provision-switchyard-vault-writer.sh, apply the policy, then re-run this command: "+
+		"adoption repairs the mirror without rotating the token",
+		result.Namespace, result.SecretName, path, err, project, project)
 }
 
 // r2SecretKeyNames lists the keys written into the service Secret. Names only.
