@@ -219,6 +219,13 @@ type initialHTTPFixture struct {
 	conflictUpdate     bool
 }
 
+// Literal per-kernel identities, independent of the closed table under test.
+var initialKernelFixtures = map[string]struct{ service, database, role string }{
+	"map-sim-initial":   {"crea-sim-map01", "crea_sim_kernel01_sim", "crea_sim_kernel01"},
+	"map02-sim-initial": {"crea-sim-map02", "crea_sim_kernel02_sim", "crea_sim_kernel02"},
+	"map03-sim-initial": {"crea-sim-map03", "crea_sim_kernel03_sim", "crea_sim_kernel03"},
+}
+
 func initialNativeHTTP(t *testing.T) (*Client, *initialHTTPFixture) {
 	t.Helper()
 	return initialNativeHTTPProfile(t, "portal-sim-initial")
@@ -227,12 +234,12 @@ func initialNativeHTTP(t *testing.T) (*Client, *initialHTTPFixture) {
 func initialNativeHTTPProfile(t *testing.T, profile string) (*Client, *initialHTTPFixture) {
 	t.Helper()
 	p := initialPortalPlan()
-	if profile == "map-sim-initial" {
+	if kernel, isMAP := initialKernelFixtures[profile]; isMAP {
 		p.Profile = profile
 		p.Image = "ghcr.io/madfam-org/crea-map/crea-map-web@sha256:" + strings.Repeat("a", 64)
 		p.Identity.Producer = "madfam-org/crea-map"
-		p.Identity.Database = "crea_sim_kernel01_sim"
-		p.Identity.RuntimeRole = "crea_sim_kernel01"
+		p.Identity.Database = kernel.database
+		p.Identity.RuntimeRole = kernel.role
 		p.Identity.Checks = 15
 		p.Data = map[string][]byte{"ca.crt": []byte("synthetic-public-ca")}
 		for _, key := range []string{"DATABASE_URL", "DIRECT_DATABASE_URL", "MAP_SIMULATION_RUNTIME_DATABASE_URL", "MAP_SIMULATION_SEED_ENABLED", "MAP_SIMULATION_ENABLED", "MAP_SIMULATION_KERNEL_ID", "APP_ORIGIN", "JANUA_AUDIENCE", "JANUA_ISSUER_URL", "JANUA_JWKS_URL", "RLS_POR_CASO", "MAP_SIMULATION_CONTEXT_KEY", "MAP_SIMULATION_CONTROL_KEY", "MAP_SIMULATION_MAIL_KEY", "MAP_SIMULATION_MCP_CLIENT_ID", "MAP_MCP_PSEUDONYM_KEY"} {
@@ -269,7 +276,7 @@ func initialNativeHTTPProfile(t *testing.T, profile string) (*Client, *initialHT
 	}
 	f := &initialHTTPFixture{p: p, expected: expected, job: job, pod: pod, intent: cm, stdout: `{"fuente":"portal-sim-reset-custody","version":"crea-sim-reset-custody-v1","estado":"PREPARADO","schemaSha256":"` + strings.Repeat("d", 64) + `","databaseIdentitySha256":"` + strings.Repeat("e", 64) + `"}` + "\n", initStdout: `{"perfil":"crea-sim-portal-inicial","version":"portal-inicial-v1","estado":"PREPARADO"}` + "\n"}
 
-	if profile == "map-sim-initial" {
+	if _, isMAP := initialKernelFixtures[profile]; isMAP {
 		f.stdout = `{"huella":"` + strings.Repeat("d", 64) + `","codigoSha256":"` + strings.Repeat("e", 64) + `","fixtureSha256":"` + strings.Repeat("f", 64) + `","roles":7,"casos":6}` + "\n"
 	}
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
