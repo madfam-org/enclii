@@ -78,7 +78,7 @@ func (h *Handler) InitialBootstrapAddon(c *gin.Context) {
 	}
 	deployment, err := h.initialWorkload(c.Request.Context(), profile, project.ID)
 	if err != nil {
-		c.JSON(http.StatusConflict, gin.H{"error": "exact owned workload must remain held at zero replicas"})
+		c.JSON(http.StatusConflict, gin.H{"error": "exact owned workload must remain held at zero replicas", "detail": err.Error()})
 		return
 	}
 	image := deployment.Spec.Template.Spec.Containers[0].Image
@@ -89,17 +89,17 @@ func (h *Handler) InitialBootstrapAddon(c *gin.Context) {
 	}
 	credentials, err := h.addonService.InitialBootstrapCredentials(c.Request.Context(), addon)
 	if err != nil {
-		c.JSON(http.StatusConflict, gin.H{"error": "owned Ready CNPG owner/runtime/public-CA custody unavailable"})
+		c.JSON(http.StatusConflict, gin.H{"error": "owned Ready CNPG owner/runtime/public-CA custody unavailable", "detail": err.Error()})
 		return
 	}
 	data, err := h.initialJobData(c.Request.Context(), profile, deployment, credentials, addon.K8sNamespace)
 	if err != nil {
-		c.JSON(http.StatusConflict, gin.H{"error": "owned workload configuration/runtime binding not accredited"})
+		c.JSON(http.StatusConflict, gin.H{"error": "owned workload configuration/runtime binding not accredited", "detail": err.Error()})
 		return
 	}
 	identity, err := h.initialBootstrapIdentity(c.Request.Context(), profile, project.ID, deployment, credentials, addon.K8sNamespace, bindingID, registration.ID, proof)
 	if err != nil {
-		c.JSON(http.StatusConflict, gin.H{"error": "initial retained workload identities unavailable"})
+		c.JSON(http.StatusConflict, gin.H{"error": "initial retained workload identities unavailable", "detail": err.Error()})
 		return
 	}
 	if dryRun {

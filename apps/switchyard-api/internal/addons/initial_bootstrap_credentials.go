@@ -59,11 +59,24 @@ func (p *PostgresProvisioner) initialBootstrapCredentials(ctx context.Context, a
 	owner, err := p.k8sClient.Kube().CoreV1().Secrets(addon.K8sNamespace).Get(ctx, addon.K8sResourceName+"-app", metav1.GetOptions{})
 	if err != nil || owner.Type != corev1.SecretTypeBasicAuth || owner.UID == "" || !ownedByCNPG(owner, addon.K8sResourceName, cluster.GetUID()) ||
 		string(owner.Data["username"]) != runtimeMigrator || string(owner.Data["dbname"]) != addon.Config.DatabaseName ||
-		string(owner.Data["host"]) != runtime.Host || string(owner.Data["port"]) != "5432" || len(owner.Data["password"]) < 16 || strings.ContainsAny(string(owner.Data["password"]), "\x00\r\n") {
+		!ownerHostMatches(string(owner.Data["host"]), runtime.Host, addon) || string(owner.Data["port"]) != "5432" || len(owner.Data["password"]) < 16 || strings.ContainsAny(string(owner.Data["password"]), "\x00\r\n") {
 		return nil, fmt.Errorf("initial bootstrap owner custody unavailable")
 	}
 	return &InitialBootstrapCredentials{
 		OwnerURI:   runtimeConnectionURI(runtimeMigrator, string(owner.Data["password"]), runtime.Host, runtime.DatabaseName),
 		RuntimeURI: runtime.ConnectionURI, PublicCA: runtime.CACertificate, ClusterUID: string(cluster.GetUID()),
 	}, nil
+}
+
+// CloudNativePG writes the read-write Service's short name ("<cluster>-rw")
+// into the generated owner Secret's host key and keeps the FQDN in fqdn-uri,
+// while the runtime Secret this adapter owns records the FQDN. Accept exactly
+// those two spellings of the same Service; the owner URI is still built on
+// the verified runtime FQDN, never on the stored value.
+func ownerHostMatches(ownerHost, runtimeHost string, addon *sdktypes.DatabaseAddon) bool {
+	service := addon.K8sResourceName + "-rw"
+	if runtimeHost != service+"."+addon.K8sNamespace+".svc.cluster.local" {
+		return false
+	}
+	return ownerHost == runtimeHost || ownerHost == service
 }
