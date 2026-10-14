@@ -542,6 +542,49 @@ runs nothing.
 Rotation is the same `intake submit` with a new app password. Never recreate
 `alertmanager-smtp-secret`.
 
+### Synthetic buyer identity (2026-10-14)
+
+The S-Gate 1 synthetic buyer (`infra/k8s/production/synthetics/`) buys Dhanam
+Essentials on **staging** with **Stripe test mode** every 15 minutes and pages
+when the staging money path breaks (`SyntheticCheckoutFailing`). It signs in as
+a dedicated staging identity. It holds **no Stripe key**: only Dhanam holds
+Stripe keys. Between runs, Dhanam staging's synthetic-cancel endpoint cancels
+the identity's test subscription, called as that identity.
+
+| Property in `secret/synthetics` | Target | Written by | ExternalSecret → Secret | Env in the runner |
+|---|---|---|---|---|
+| `dhanam_staging_synth_email` | `synthetics/dhanam-staging-checkout` | owner, masked prompt | `journeys-dhanam-staging-synthetic` → same name | `DHANAM_STAGING_SYNTH_EMAIL` |
+| `dhanam_staging_synth_password` | same | same | same | `DHANAM_STAGING_SYNTH_PASSWORD` |
+
+- **The identity.** A Janua account used for nothing else, with no MFA, that
+  Dhanam staging accepts (staging trusts the same issuer as production). Its
+  password is the one set on the account, so never `--generate` it.
+- **Dhanam staging side.** The cancel endpoint answers 404 until Dhanam staging
+  sets `SYNTHETIC_CANCEL_ENABLED=true` and lists this identity's Janua user id
+  in `SYNTHETIC_ACCOUNT_IDS` (dhanam staging overlay; dhanam's own docs).
+- **Order.** This target ships on its own, before the CronJob (enclii#751),
+  so the identity is in Vault before the CronJob appears. Were the CronJob
+  first, the ExternalSecret would report `SecretSyncedError`, its pods would
+  fail with `CreateContainerConfigError`, and `SyntheticJourneysNotRunning`
+  would fire 45 minutes after the CronJob appears.
+
+Owner sequence, after the change is deployed (switchyard-api digest bump for
+the registry), from an up-to-date checkout:
+
+```bash
+cd ~/labspace/enclii && git pull --ff-only
+cd ~/labspace/enclii && ASSERT_PATH=synthetics bash scripts/apply-switchyard-vault-policy-remote.sh < ~/.config/madfam/vault-admin.token
+# expect: APPLIED_OK_asserted_path_present
+enclii secrets intake submit synthetics/dhanam-staging-checkout --reason "S-Gate 1 synthetic buyer identity (staging, Stripe test mode)"
+# prompts (masked): dhanam_staging_synth_email, dhanam_staging_synth_password
+enclii secrets intake status int_<id>
+# expect: external_secret_refreshed: false until the CronJob change (and its
+# ExternalSecret) is deployed; ESO then syncs the stored values on its own
+```
+
+Rotation is the same `intake submit` with the new values (both: the prompt
+asks for every key of the target).
+
 ### Selva → Yantra4D edge (2026-10-08)
 
 One more Janua `client_credentials` client, same mechanics as the digital-twins

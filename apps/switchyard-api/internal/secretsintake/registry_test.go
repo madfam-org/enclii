@@ -12,7 +12,7 @@ import (
 func TestLoadRegistry(t *testing.T) {
 	reg, err := LoadRegistry()
 	require.NoError(t, err)
-	assert.Len(t, reg, 88)
+	assert.Len(t, reg, 89)
 	assert.Contains(t, reg, "ceq/vast-api-key")
 	assert.Contains(t, reg, "karafiel/web-oidc-janua")
 	adminSession := reg["karafiel/admin-session"]
@@ -37,7 +37,7 @@ func TestGetTarget(t *testing.T) {
 func TestListTargetsSorted(t *testing.T) {
 	list, err := ListTargets()
 	require.NoError(t, err)
-	require.Len(t, list, 88)
+	require.Len(t, list, 89)
 	for i := 1; i < len(list); i++ {
 		assert.Less(t, list[i-1].ID, list[i].ID, "targets should be sorted by id")
 	}
@@ -104,6 +104,7 @@ func TestListTargetsSorted(t *testing.T) {
 		"selva/pravara-mes-client",
 		"selva/yantra4d-client",
 		"symbiosis-hcm/map-absence-feed",
+		"synthetics/dhanam-staging-checkout",
 		"telesia/oidc-janua",
 		"telesia/runtime",
 		"tulana/commercial-ga-evidence-token",
@@ -688,6 +689,32 @@ func TestMonitoringAlertmanagerSMTPTarget(t *testing.T) {
 	// never to pass --generate (the API does not refuse it, see SECRET_INTAKE.md).
 	assert.Nil(t, tgt.Generate)
 	assert.Contains(t, tgt.Description, "never generated")
+}
+
+// S-Gate 1 synthetic buyer (2026-10-14). The journeys CronJob reads exactly
+// these two properties through journeys-dhanam-staging-synthetic
+// (infra/k8s/production/synthetics/journeys-identity.externalsecret.yaml); ESO syncs all of an
+// ExternalSecret's keys or none, so a rename here is a silent outage there.
+func TestSyntheticsDhanamStagingCheckoutTarget(t *testing.T) {
+	tgt, err := GetTarget("synthetics/dhanam-staging-checkout")
+	require.NoError(t, err)
+	assert.Equal(t, "secret/synthetics", tgt.VaultPath)
+	assert.Equal(t, "synthetics", tgt.Namespace)
+	assert.Equal(t, "journeys-dhanam-staging-synthetic", tgt.ExternalSecret)
+	assert.Equal(t, []string{
+		"dhanam_staging_synth_email",
+		"dhanam_staging_synth_password",
+	}, tgt.Keys, "email and password only: the runner holds no Stripe key (only Dhanam does)")
+	for _, k := range tgt.Keys {
+		assert.Equal(t, strings.ToLower(k), k, "Vault stores lowercase; an upper-case key would never match the ExternalSecret property")
+	}
+	assert.NotEmpty(t, tgt.Label)
+	// Value-intake: the password is the account's and the key is minted by Stripe.
+	assert.Nil(t, tgt.Generate)
+	assert.Contains(t, tgt.Description, "never generated")
+	for _, k := range tgt.Keys {
+		assert.NotContains(t, strings.ToLower(k), "stripe", "only Dhanam holds Stripe keys (2026-04-25 rule)")
+	}
 }
 
 // Cotiza web NextAuth secret (2026-10-11). digifab-quoting-secrets is projected
