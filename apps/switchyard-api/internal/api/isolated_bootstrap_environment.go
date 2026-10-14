@@ -72,13 +72,16 @@ func (h *Handler) initialWorkloadValue(ctx context.Context, p isolatedBootstrapP
 				continue
 			}
 			entries, _, _ := unstructured.NestedSlice(es.Object, "spec", "data")
+			if !p.projectsOnlyOwnProperties(es, entries) {
+				continue
+			}
 			for _, entry := range entries {
 				item, ok := entry.(map[string]interface{})
 				if !ok || item["secretKey"] != ref.Key { // pragma: allowlist secret -- schema key identifier; not a credential value
 					continue
 				}
 				path, _, _ := unstructured.NestedString(item, "remoteRef", "key")
-				if path == "secret/"+p.Service {
+				if path == p.VaultPath {
 					owned = true
 				}
 			}
@@ -92,6 +95,32 @@ func (h *Handler) initialWorkloadValue(ctx context.Context, p isolatedBootstrapP
 		return nil, fmt.Errorf("initial workload key missing or ambiguous")
 	}
 	return values[0], nil
+}
+
+// projectsOnlyOwnProperties holds a kernel that shares a Vault path to the
+// per-key isolation that sharing relies on: every entry of its ExternalSecret
+// reads one of its own closed properties from that path, and no dataFrom pulls
+// the whole path. A profile without VaultProperties is unaffected.
+func (p isolatedBootstrapProfile) projectsOnlyOwnProperties(es *unstructured.Unstructured, entries []interface{}) bool {
+	if p.VaultProperties == nil {
+		return true
+	}
+	if _, found, _ := unstructured.NestedFieldNoCopy(es.Object, "spec", "dataFrom"); found || len(entries) == 0 {
+		return false
+	}
+	for _, entry := range entries {
+		item, ok := entry.(map[string]interface{})
+		if !ok {
+			return false
+		}
+		key, _ := item["secretKey"].(string)
+		path, _, _ := unstructured.NestedString(item, "remoteRef", "key")
+		property, _, _ := unstructured.NestedString(item, "remoteRef", "property")
+		if want, closed := p.VaultProperties[key]; !closed || path != p.VaultPath || property != want {
+			return false
+		}
+	}
+	return true
 }
 
 func sameInitialDatabase(actual, expected string) bool {
@@ -153,10 +182,11 @@ func (h *Handler) initialJobData(ctx context.Context, p isolatedBootstrapProfile
 	if err != nil || !sameInitialDatabase(string(appURI), b.RuntimeURI) {
 		return nil, fmt.Errorf("workload runtime database differs from its own bound addon")
 	}
-	if p.Name == "map-sim-initial" && !strictInitialKernelRuntime(string(appURI)) {
+	mapKernel := k8s.IsMapSimProfile(p.Name)
+	if mapKernel && !strictInitialKernelRuntime(string(appURI)) {
 		return nil, fmt.Errorf("initial kernel runtime requires its strict managed CA transport")
 	}
-	owner, err := strictInitialURI(b.OwnerURI, p.Name == "map-sim-initial")
+	owner, err := strictInitialURI(b.OwnerURI, mapKernel)
 	if err != nil {
 		return nil, err
 	}
@@ -169,6 +199,9 @@ func (h *Handler) initialJobData(ctx context.Context, p isolatedBootstrapProfile
 		data["CREA_SIM_PORTAL_DATABASE_URL"] = []byte(runtime)
 		data["CREA_SIM_DATABASE_NAMESPACE"] = []byte(namespace)
 		return data, nil
+	}
+	if !mapKernel {
+		return nil, fmt.Errorf("unsupported initial bootstrap profile")
 	}
 	for _, key := range p.EnvironmentKeys {
 		value, err := h.initialWorkloadValue(ctx, p, d, key)
