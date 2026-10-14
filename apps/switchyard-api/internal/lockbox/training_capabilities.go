@@ -42,9 +42,13 @@ func trainingCapabilityPaths(registry map[string]secretsintake.Target) ([]string
 		"crea-sim/gateway-runtime":     {"secret/crea-sim-gateway", "crea-sim"},
 		"crea-sim/capture-runtime":     {"secret/crea-sim-captura", "crea-sim"},
 		"crea-sim/kernel01-runtime":    {"secret/crea-sim-map01", "crea-sim"},
+		"crea-sim/kernel02-runtime":    {"secret/crea-sim-map01", "crea-sim"}, // shares kernel 01's path, prefixed keys
+		"crea-sim/kernel03-runtime":    {"secret/crea-sim-map01", "crea-sim"}, // shares kernel 01's path, prefixed keys
 		"crea-sim/gateway-ca":          {"secret/crea-sim-gateway", "crea-sim"},
 		"crea-sim/capture-ca":          {"secret/crea-sim-captura", "crea-sim"},
 		"crea-sim/kernel01-ca":         {"secret/crea-sim-map01", "crea-sim"},
+		"crea-sim/kernel02-ca":         {"secret/crea-sim-map01", "crea-sim"},
+		"crea-sim/kernel03-ca":         {"secret/crea-sim-map01", "crea-sim"},
 		"janua-staging/runtime-crypto": {"secret/janua-staging", "janua-staging"},
 		"janua-staging/database":       {"secret/janua-staging", "janua-staging"},
 		"janua-staging/database-ca":    {"secret/janua-staging", "janua-staging"},

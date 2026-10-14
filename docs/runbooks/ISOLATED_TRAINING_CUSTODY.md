@@ -1,6 +1,6 @@
 # Isolated training and staging custody
 
-> Boundary checkpoint (2026-10-13, platform preparation): public-safe logical
+> Boundary checkpoint (2026-10-14, platform preparation): public-safe logical
 > target names, namespaces, key names and callbacks only. Actual credentials,
 > human/organization identifiers and operational receipts stay in the private
 > operator workspace and `internal-devops`. Policy:
@@ -48,6 +48,10 @@ the inference service.
 | `crea-sim/capture-ca` | `secret/crea-sim-captura` | `crea-sim-captura-ca` |
 | `crea-sim/kernel01-runtime` | `secret/crea-sim-map01` | `crea-sim-map01` |
 | `crea-sim/kernel01-ca` | `secret/crea-sim-map01` | `crea-sim-map01-ca` |
+| `crea-sim/kernel02-runtime` | `secret/crea-sim-map01` | `crea-sim-map02` |
+| `crea-sim/kernel02-ca` | `secret/crea-sim-map01` | `crea-sim-map02-ca` |
+| `crea-sim/kernel03-runtime` | `secret/crea-sim-map01` | `crea-sim-map03` |
+| `crea-sim/kernel03-ca` | `secret/crea-sim-map01` | `crea-sim-map03-ca` |
 | `crea-sim/selva-oidc` | `secret/crea-sim-selva` | `crea-sim-selva` |
 | `janua-staging/runtime-crypto`, `janua-staging/database` | `secret/janua-staging` | `janua-staging-secrets` |
 | `janua-staging/database-ca` | `secret/janua-staging` | `janua-staging-ca` |
@@ -63,6 +67,20 @@ verify governed live policy capacity. The legacy policy script contains raw
 bootstrap commands; routine policy activation must use a supported Enclii
 adapter. Record the missing adapter as a blocker rather than executing those
 raw commands or granting policy-write authority to the application writer.
+
+Kernels 02 and 03 file into kernel 01's Vault path under prefixed keys
+(`map02_*`, `map03_*`), so the writer policy keeps exactly five data paths. A
+separate path per kernel would need a Vault policy change, and routine policy
+activation has no supported adapter. Sharing the path does not share
+credentials. Each kernel has its own database URL, its own context, control,
+mail and pseudonym keys, and its own CA property. Each kernel's ExternalSecret
+projects only its own properties, and initial bootstrap refuses a kernel 02 or
+03 ExternalSecret that reads any other property or the whole path. Isolation
+between kernels is per CNPG cluster and per key, not per Vault path. The only
+shared property is the public MCP client identifier, filed once through
+`crea-sim/kernel01-runtime`. The gateway and capture targets carry one
+`simNN_*` key set per kernel. Intake merges into the existing path with a read
+and a write, so file the targets that share a path one at a time.
 
 Runtime database targets carry only the managed nonowner URI for the dedicated
 synthetic database. Migrator credentials stay in the separately owned CNPG
@@ -119,7 +137,15 @@ the owned application stays at zero replicas throughout initial preparation.
 | Profile | Workload | Fixed operation |
 | --- | --- | --- |
 | `map-sim-initial` | `crea-sim-map01` | Empty-database metadata guard, canonical Prisma migration, then compiled synthetic seed |
+| `map02-sim-initial` | `crea-sim-map02` | Same fixed MAP operation, on kernel 02's own database and runtime role |
+| `map03-sim-initial` | `crea-sim-map03` | Same fixed MAP operation, on kernel 03's own database and runtime role |
 | `portal-sim-initial` | `crea-sim-gateway` | Bundled `001-portal.sql` through the fixed owner-only initial migrator |
+
+The three MAP profiles share one definition. The profile name alone selects
+the kernel's service, database and runtime role from a closed list. Each
+kernel's Job name hashes its own project, addon, service and profile, so no
+kernel can adopt another kernel's Job, intent or receipt. Kernel 01 keeps the
+name `map-sim-initial` because its retained history carries it.
 
 No reset, DROP, arbitrary migration file or Janua staging migration profile is
 exposed. A partial MAP migration failure requires governed recovery review; it
