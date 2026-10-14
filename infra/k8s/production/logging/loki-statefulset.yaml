@@ -94,6 +94,15 @@ data:
             enabled: true
             max_size_mb: 100
 
+    # WAL replay must fit the container. The default replay_memory_ceiling is
+    # 4GB, eight times the old 512Mi limit, so replaying a large ingester WAL
+    # was killed by the kernel before it could flush. Past the ceiling Loki
+    # flushes to chunks and continues, so a large WAL replays without OOM.
+    # Keep it about half of the memory limit below.
+    ingester:
+      wal:
+        replay_memory_ceiling: 1GB
+
     analytics:
       reporting_enabled: false
 ---
@@ -327,6 +336,11 @@ spec:
           args:
             - -config.file=/etc/loki/loki.yaml
             - -target=all
+          # Go's GC aims to stay under GOMEMLIMIT, so Loki slows down instead of
+          # being SIGKILLed at the cgroup limit. About 80% of limits.memory.
+          env:
+            - name: GOMEMLIMIT
+              value: "1600MiB"
           ports:
             - name: http
               containerPort: 3100
@@ -339,13 +353,22 @@ spec:
             capabilities:
               drop:
                 - ALL
+          # MEMORY LIMIT 512Mi -> 2Gi (2026-10-14). After the #736 WAL
+          # quarantine, loki-0 reached Ready and was SIGKILLed (exit 137) within
+          # about 15s each time -- at 02:08:33Z and again at 02:15:01Z. That is
+          # the moment four fluent-bit pods start flushing two weeks of buffered
+          # logs into it. 512Mi cannot hold that burst plus a 1.2G ingester WAL
+          # replay; it crash-looped six times. The request stays 256Mi, so
+          # scheduling barely changes; the limit is headroom, not a reservation.
+          # GOMEMLIMIT and ingester.wal.replay_memory_ceiling (in the config
+          # above) are sized against this limit.
           resources:
             requests:
               cpu: 100m
               memory: 256Mi
             limits:
               cpu: 200m
-              memory: 512Mi
+              memory: 2Gi
           volumeMounts:
             - name: config
               mountPath: /etc/loki/loki.yaml
