@@ -569,6 +569,7 @@ platforms:
       janua_client_id: client_id
       janua_client_secret: client_secret  # pragma: allowlist secret
     janua_client:
+      client_id: jnc_OWFZ077SDkap055cmQAdNJePnh4tHnaq
       name: digifab-quoting-web
       client_key: digifab-quoting-web  # pragma: allowlist secret
       audience: digifab-api
