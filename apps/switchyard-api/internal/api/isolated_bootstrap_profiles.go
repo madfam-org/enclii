@@ -22,7 +22,23 @@ type isolatedBootstrapProfile struct {
 	// 01's Vault path under prefixed keys, so path equality alone cannot keep
 	// one kernel from projecting another's keys. Nil keeps the path-only check.
 	VaultProperties map[string]string
+	// SourceRequirements are files the verified producer revision must carry
+	// before a fixed step may run its image: the ordering guard that the
+	// deployed image already contains the step. Initial profiles have none.
+	SourceRequirements []bootstrapSourceRequirement
 }
+
+// bootstrapSourceRequirement names one file at the producer's exact verified
+// source revision. SHA256, when set, is the hex SHA-256 its bytes must have;
+// empty requires only that the file exists.
+type bootstrapSourceRequirement struct {
+	Path, SHA256 string
+}
+
+// turnoVigenteSQLSHA256 pins crea-sim's fixed step 003 byte for byte. The
+// step is a fixed file that never changes once released (a change would be a
+// new step), so a different file at the verified revision is refused, not run.
+const turnoVigenteSQLSHA256 = "b15f76f4097cae69847034406116343d87e8a7aaf25b5af88d0ddf912bef0594" // pragma: allowlist secret -- public SHA-256 of a source file; not a credential
 
 // The training kernels share one Vault path: the Vault writer policy grants
 // exactly five training data paths, and a sixth would need a policy change.
@@ -31,26 +47,47 @@ const initialMAPVaultPath = "secret/crea-sim-map01"
 // The reusable Enclii build-publish workflow, pinned by tag in each signer SAN.
 const bootstrapReusableWorkflow = `https://github\.com/madfam-org/enclii/\.github/workflows/build-publish\.yml@refs/tags/`
 
-// These profiles are product-owned initial operations. Neither the request
-// nor an environment variable supplies an image, command, SQL or namespace.
+// These profiles are product-owned initial operations and fixed steps.
+// Neither the request nor an environment variable supplies an image, command,
+// SQL or namespace.
 func isolatedBootstrapProfileFor(name string) (isolatedBootstrapProfile, error) {
 	if profile, ok := mapSimInitialProfile(name); ok {
 		return profile, nil
 	}
 	switch name {
 	case "portal-sim-initial":
-		return isolatedBootstrapProfile{
-			Name: name, Project: "crea-sim", Service: "crea-sim-gateway", Namespace: "crea-sim",
-			Database: "crea_sim_portal_sim", RuntimeRole: "crea_sim_portal",
-			Producer: "madfam-org/crea-sim", Workflow: "build-deploy.yml", PinPath: "infra/k8s/production/kustomization.yaml",
-			Image:          "ghcr.io/madfam-org/crea-sim/gateway",
-			SignerIdentity: `^(` + bootstrapReusableWorkflow + `v1\.0\.0-alpha\.14|https://github\.com/madfam-org/crea-sim/\.github/workflows/build-deploy\.yml@refs/heads/main)$`,
-			RequiredChecks: []string{"Guardas de aislamiento", "Portal HTTP con PostgreSQL y Mailpit"},
-			VaultPath:      "secret/crea-sim-gateway",
-		}, nil
+		return portalSimProfile(name), nil
+	case "portal-sim-turno-vigente":
+		// Fixed step 003 on the portal database portal-sim-initial prepared:
+		// the same producer, signer, checks, workload and four-key custody.
+		// Only the fixed command (in k8s) and this ordering guard differ.
+		profile := portalSimProfile(name)
+		profile.SourceRequirements = []bootstrapSourceRequirement{
+			{Path: "packages/entrenamiento/sql/003-turno-vigente-por-persona.sql", SHA256: turnoVigenteSQLSHA256},
+			{Path: "packages/entrenamiento/src/preparar-turno-vigente.ts"},
+		}
+		return profile, nil
 	default:
 		return isolatedBootstrapProfile{}, fmt.Errorf("unsupported initial bootstrap profile")
 	}
+}
+
+func portalSimProfile(name string) isolatedBootstrapProfile {
+	return isolatedBootstrapProfile{
+		Name: name, Project: "crea-sim", Service: "crea-sim-gateway", Namespace: "crea-sim",
+		Database: "crea_sim_portal_sim", RuntimeRole: "crea_sim_portal",
+		Producer: "madfam-org/crea-sim", Workflow: "build-deploy.yml", PinPath: "infra/k8s/production/kustomization.yaml",
+		Image:          "ghcr.io/madfam-org/crea-sim/gateway",
+		SignerIdentity: `^(` + bootstrapReusableWorkflow + `v1\.0\.0-alpha\.14|https://github\.com/madfam-org/crea-sim/\.github/workflows/build-deploy\.yml@refs/heads/main)$`,
+		RequiredChecks: []string{"Guardas de aislamiento", "Portal HTTP con PostgreSQL y Mailpit"},
+		VaultPath:      "secret/crea-sim-gateway",
+	}
+}
+
+// portalDatabase reports whether the profile works on the portal database
+// with its four-key migrator custody (CREA_SIM_*), rather than a MAP kernel's.
+func (p isolatedBootstrapProfile) portalDatabase() bool {
+	return p.Name == "portal-sim-initial" || p.Name == "portal-sim-turno-vigente"
 }
 
 // mapSimInitialProfile is the one constructor for the three MAP kernels. The

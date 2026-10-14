@@ -23,13 +23,18 @@ type bootstrapProducerProof struct {
 	Checks            int    `json:"checks"`
 	SignatureVerified bool   `json:"signature_verified"`
 	PinPayloadSHA256  string `json:"pin_payload_sha256"`
+	// VerifiedSources lists the profile's required files found (and, where
+	// pinned, byte-identical) at Revision. Empty for initial profiles.
+	VerifiedSources []string `json:"verified_sources,omitempty"`
 }
 
 type bootstrapProducerIO struct {
 	Client                      *http.Client
 	GitHubToken, User, Password string
 	ReadPin                     func(context.Context, isolatedBootstrapProfile) (string, error)
-	VerifySignature             func(context.Context, isolatedBootstrapProfile, string, string, string) error
+	// ReadSource reads one file of the producer at an exact revision.
+	ReadSource      func(ctx context.Context, p isolatedBootstrapProfile, path, revision string) (string, error)
+	VerifySignature func(context.Context, isolatedBootstrapProfile, string, string, string) error
 }
 
 func (h *Handler) verifyBootstrapProducer(ctx context.Context, profile isolatedBootstrapProfile, image string) (*bootstrapProducerProof, error) {
@@ -42,6 +47,11 @@ func (h *Handler) verifyBootstrapProducer(ctx context.Context, profile isolatedB
 		ReadPin: func(ctx context.Context, p isolatedBootstrapProfile) (string, error) {
 			parts := strings.Split(p.Producer, "/")
 			text, _, err := getGitHubFileContent(ctx, h.config.GitHubToken, parts[0], parts[1], p.PinPath, "main")
+			return text, err
+		},
+		ReadSource: func(ctx context.Context, p isolatedBootstrapProfile, path, revision string) (string, error) {
+			parts := strings.Split(p.Producer, "/")
+			text, _, err := getGitHubFileContent(ctx, h.config.GitHubToken, parts[0], parts[1], path, revision)
 			return text, err
 		},
 		VerifySignature: func(ctx context.Context, p isolatedBootstrapProfile, image, revision, event string) error {
@@ -292,11 +302,40 @@ func (a bootstrapProducerIO) verify(ctx context.Context, profile isolatedBootstr
 	if status.TotalCount > 0 && status.State != "success" {
 		return nil, fmt.Errorf("producer commit status is not successful")
 	}
+	verified, err := a.verifySources(ctx, profile, revision)
+	if err != nil {
+		return nil, err
+	}
 	if err = a.VerifySignature(ctx, profile, image, revision, event); err != nil {
 		return nil, fmt.Errorf("closed producer keyless signature verification failed")
 	}
 	sum := sha256.Sum256([]byte(pin))
-	return &bootstrapProducerProof{Image: image, Revision: revision, Producer: profile.Producer, RunID: runID, Checks: checks.TotalCount, SignatureVerified: true, PinPayloadSHA256: hex.EncodeToString(sum[:])}, nil
+	return &bootstrapProducerProof{Image: image, Revision: revision, Producer: profile.Producer, RunID: runID, Checks: checks.TotalCount, SignatureVerified: true, PinPayloadSHA256: hex.EncodeToString(sum[:]), VerifiedSources: verified}, nil
+}
+
+// verifySources is the fixed-step ordering guard. The revision is the image's
+// own OCI revision, already bound to the signed main build, so a file present
+// there is present in the image the Job and the deployed workload run. A
+// missing or different file refuses before any Job exists.
+func (a bootstrapProducerIO) verifySources(ctx context.Context, profile isolatedBootstrapProfile, revision string) ([]string, error) {
+	var verified []string
+	for _, want := range profile.SourceRequirements {
+		if a.ReadSource == nil {
+			return nil, fmt.Errorf("producer source reader unavailable")
+		}
+		content, err := a.ReadSource(ctx, profile, want.Path, revision)
+		if err != nil {
+			return nil, fmt.Errorf("producer revision lacks a required fixed-step source")
+		}
+		if want.SHA256 != "" {
+			sum := sha256.Sum256([]byte(content))
+			if hex.EncodeToString(sum[:]) != want.SHA256 {
+				return nil, fmt.Errorf("producer revision carries a different fixed-step source")
+			}
+		}
+		verified = append(verified, want.Path)
+	}
+	return verified, nil
 }
 
 func (a bootstrapProducerIO) verifyRevisionTag(ctx context.Context, base, token, revision, digest string) error {

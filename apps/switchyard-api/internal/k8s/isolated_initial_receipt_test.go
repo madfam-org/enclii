@@ -245,6 +245,10 @@ func initialNativeHTTPProfile(t *testing.T, profile string) (*Client, *initialHT
 		for _, key := range []string{"DATABASE_URL", "DIRECT_DATABASE_URL", "MAP_SIMULATION_RUNTIME_DATABASE_URL", "MAP_SIMULATION_SEED_ENABLED", "MAP_SIMULATION_ENABLED", "MAP_SIMULATION_KERNEL_ID", "APP_ORIGIN", "JANUA_AUDIENCE", "JANUA_ISSUER_URL", "JANUA_JWKS_URL", "RLS_POR_CASO", "MAP_SIMULATION_CONTEXT_KEY", "MAP_SIMULATION_CONTROL_KEY", "MAP_SIMULATION_MAIL_KEY", "MAP_SIMULATION_MCP_CLIENT_ID", "MAP_MCP_PSEUDONYM_KEY"} {
 			p.Data[key] = []byte("synthetic-value")
 		}
+	} else if profile == fixedStepTurnoVigenteProfile {
+		// Same portal custody; a live workload is bound by generation.
+		p.Profile = profile
+		p.Identity.DeploymentResourceVersion, p.Identity.DeploymentGeneration = "", 3
 	} else {
 		require.Equal(t, "portal-sim-initial", profile)
 	}
@@ -276,6 +280,9 @@ func initialNativeHTTPProfile(t *testing.T, profile string) (*Client, *initialHT
 	}
 	f := &initialHTTPFixture{p: p, expected: expected, job: job, pod: pod, intent: cm, stdout: `{"fuente":"portal-sim-reset-custody","version":"crea-sim-reset-custody-v1","estado":"PREPARADO","schemaSha256":"` + strings.Repeat("d", 64) + `","databaseIdentitySha256":"` + strings.Repeat("e", 64) + `"}` + "\n", initStdout: `{"perfil":"crea-sim-portal-inicial","version":"portal-inicial-v1","estado":"PREPARADO"}` + "\n"}
 
+	if profile == fixedStepTurnoVigenteProfile {
+		f.stdout, f.initStdout = fixedStepStdout("APLICADO"), ""
+	}
 	if _, isMAP := initialKernelFixtures[profile]; isMAP {
 		f.stdout = `{"huella":"` + strings.Repeat("d", 64) + `","codigoSha256":"` + strings.Repeat("e", 64) + `","fixtureSha256":"` + strings.Repeat("f", 64) + `","roles":7,"casos":6}` + "\n"
 	}

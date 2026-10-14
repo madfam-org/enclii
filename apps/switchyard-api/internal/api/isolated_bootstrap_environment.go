@@ -31,10 +31,39 @@ func (h *Handler) initialWorkload(ctx context.Context, p isolatedBootstrapProfil
 		return nil, fmt.Errorf("owned workload namespace unavailable")
 	}
 	deployment, err := h.opsKubeClient().AppsV1().Deployments(p.Namespace).Get(ctx, p.Service, metav1.GetOptions{})
-	if err != nil || deployment.UID == "" || deployment.Spec.Replicas == nil || *deployment.Spec.Replicas != 0 || len(deployment.Spec.Template.Spec.Containers) != 1 || deployment.Spec.Template.Labels["enclii.dev/service"] != p.Service {
+	if err != nil || deployment.UID == "" || deployment.Spec.Replicas == nil || len(deployment.Spec.Template.Spec.Containers) != 1 || deployment.Spec.Template.Labels["enclii.dev/service"] != p.Service {
+		return nil, fmt.Errorf("initial bootstrap requires the exact owned workload")
+	}
+	if k8s.IsFixedStepProfile(p.Name) {
+		// A fixed step runs against a live database: its workload may serve,
+		// but every Pod must already run the template image this Job will run,
+		// so no Pod still on an older image meets the changed catalog.
+		if !rolloutConverged(deployment) {
+			return nil, fmt.Errorf("fixed step requires the owned workload's rollout to have converged on its pinned image")
+		}
+		return deployment, nil
+	}
+	if *deployment.Spec.Replicas != 0 {
 		return nil, fmt.Errorf("initial bootstrap requires the exact owned workload held at zero replicas")
 	}
 	return deployment, nil
+}
+
+// rolloutConverged: the controller observed the current spec and every Pod it
+// counts belongs to the current template (zero replicas converges trivially).
+func rolloutConverged(d *appsv1.Deployment) bool {
+	want := *d.Spec.Replicas
+	return d.Generation > 0 && d.Status.ObservedGeneration == d.Generation && d.Status.Replicas == want && d.Status.UpdatedReplicas == want
+}
+
+// sameWorkloadRevision: an initial profile's held Deployment must not change
+// at all; a fixed step's live Deployment must keep its generation (its spec),
+// while its status, and so its resourceVersion, may move.
+func sameWorkloadRevision(p isolatedBootstrapProfile, current, observed *appsv1.Deployment) bool {
+	if k8s.IsFixedStepProfile(p.Name) {
+		return current.Generation == observed.Generation && rolloutConverged(current)
+	}
+	return current.ResourceVersion == observed.ResourceVersion
 }
 
 func (h *Handler) initialWorkloadValue(ctx context.Context, p isolatedBootstrapProfile, d *appsv1.Deployment, name string) ([]byte, error) {
@@ -175,7 +204,7 @@ func strictInitialKernelRuntime(raw string) bool {
 func (h *Handler) initialJobData(ctx context.Context, p isolatedBootstrapProfile, d *appsv1.Deployment, b *addons.InitialBootstrapCredentials, namespace string) (map[string][]byte, error) {
 	data := map[string][]byte{"ca.crt": []byte(b.PublicCA)}
 	runtimeKey := "DATABASE_URL"
-	if p.Name == "portal-sim-initial" {
+	if p.portalDatabase() {
 		runtimeKey = "CREA_SIM_PORTAL_DATABASE_URL"
 	}
 	appURI, err := h.initialWorkloadValue(ctx, p, d, runtimeKey)
@@ -190,7 +219,7 @@ func (h *Handler) initialJobData(ctx context.Context, p isolatedBootstrapProfile
 	if err != nil {
 		return nil, err
 	}
-	if p.Name == "portal-sim-initial" {
+	if p.portalDatabase() {
 		runtime, err := strictInitialURI(b.RuntimeURI, false)
 		if err != nil || !strictInitialPortalRuntime(string(appURI)) {
 			return nil, fmt.Errorf("initial portal runtime requires strict managed CA transport")
@@ -257,6 +286,15 @@ func (h *Handler) initialBootstrapIdentity(ctx context.Context, p isolatedBootst
 	if proof == nil || binding == uuid.Nil || onboarding == uuid.Nil || d == nil || d.UID == "" || d.ResourceVersion == "" {
 		return k8s.InitialBootstrapIdentity{}, fail
 	}
+	// A held workload is bound by resourceVersion; a fixed step's live one by
+	// generation (see k8s.InitialBootstrapIdentity).
+	resourceVersion, generation := d.ResourceVersion, int64(0)
+	if k8s.IsFixedStepProfile(p.Name) {
+		if d.Generation <= 0 {
+			return k8s.InitialBootstrapIdentity{}, fail
+		}
+		resourceVersion, generation = "", d.Generation
+	}
 	app, e := h.opsKubeClient().CoreV1().Namespaces().Get(ctx, p.Namespace, metav1.GetOptions{})
 	if e != nil || app.UID == "" || app.Labels[k8s.LabelProjectNamespace] != project.String() {
 		return k8s.InitialBootstrapIdentity{}, fail
@@ -269,6 +307,6 @@ func (h *Handler) initialBootstrapIdentity(ctx context.Context, p isolatedBootst
 	if e != nil || svc.UID == "" || d.Spec.Selector == nil || len(d.Spec.Selector.MatchExpressions) != 0 || len(d.Spec.Selector.MatchLabels) == 0 || !reflect.DeepEqual(svc.Spec.Selector, d.Spec.Selector.MatchLabels) {
 		return k8s.InitialBootstrapIdentity{}, fail
 	}
-	return k8s.InitialBootstrapIdentity{ApplicationNamespaceUID: string(app.UID), AddonNamespaceUID: string(ns.UID), DeploymentUID: string(d.UID), DeploymentResourceVersion: d.ResourceVersion, WorkloadServiceUID: string(svc.UID), ClusterUID: b.ClusterUID, BindingID: binding, OnboardingID: onboarding, Database: p.Database, OwnerRole: "enclii_migrator", RuntimeRole: p.RuntimeRole, PublicCASHA256: initialPayloadSHA([]byte(b.PublicCA)), Producer: proof.Producer, SourceRevision: proof.Revision, BuildRunID: proof.RunID, Checks: proof.Checks, SignatureVerified: proof.SignatureVerified, PinPayloadSHA256: proof.PinPayloadSHA256}, nil
+	return k8s.InitialBootstrapIdentity{ApplicationNamespaceUID: string(app.UID), AddonNamespaceUID: string(ns.UID), DeploymentUID: string(d.UID), DeploymentResourceVersion: resourceVersion, DeploymentGeneration: generation, WorkloadServiceUID: string(svc.UID), ClusterUID: b.ClusterUID, BindingID: binding, OnboardingID: onboarding, Database: p.Database, OwnerRole: "enclii_migrator", RuntimeRole: p.RuntimeRole, PublicCASHA256: initialPayloadSHA([]byte(b.PublicCA)), Producer: proof.Producer, SourceRevision: proof.Revision, BuildRunID: proof.RunID, Checks: proof.Checks, SignatureVerified: proof.SignatureVerified, PinPayloadSHA256: proof.PinPayloadSHA256}, nil
 }
 func initialPayloadSHA(b []byte) string { sum := sha256.Sum256(b); return hex.EncodeToString(sum[:]) }
