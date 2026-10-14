@@ -214,6 +214,11 @@ func TestTargetBoundScaleRestartUsesOnlyVerifiedUIDAndRV(t *testing.T) {
 			httpRequest.Header.Set("Content-Type", "application/json")
 			engine.ServeHTTP(response, httpRequest)
 			require.Equal(t, status, response.Code, response.Body.String())
+			if scenario == "foreign-namespace" {
+				require.Contains(t, response.Body.String(), `"refusal_detail":"target_identity_mismatch"`, "scale names the refusing ownership check")
+			} else {
+				require.NotContains(t, response.Body.String(), "refusal_detail")
+			}
 			require.NoError(t, mock.ExpectationsWereMet())
 			mu.Lock()
 			defer mu.Unlock()
