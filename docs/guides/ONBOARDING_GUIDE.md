@@ -502,7 +502,7 @@ curl -H "Authorization: Bearer $ADMIN_TOKEN" \
 | Secrets provisioner | `apps/switchyard-api/internal/provisioning/secrets.go` |
 | R2 provisioner | `apps/switchyard-api/internal/provisioning/r2.go` |
 | Input validation | `apps/switchyard-api/internal/provisioning/validate.go` |
-| RBAC manifest | `infra/k8s/base/switchyard-rbac.yaml` |
+| RBAC manifest | `infra/k8s/base/switchyard-rbac.yaml` (cluster and enclii-namespace); `infra/k8s/cross-namespace-rbac/rbac.yaml` (Roles in data, argocd and enclii-builds) |
 | ArgoCD template generator | `apps/switchyard-api/internal/api/argocd_template.go` |
 | Onboarding repository | `apps/switchyard-api/internal/db/onboarding_repository.go` |
 | enclii.yaml parser | `apps/switchyard-api/internal/api/enclii_yaml.go` |

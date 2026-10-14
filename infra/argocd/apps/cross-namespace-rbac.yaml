@@ -1,0 +1,34 @@
+# Cross-namespace RBAC for enclii's own services
+# Deploys: switchyard-api Roles in data and argocd, roundhouse's Role in
+#          enclii-builds. Kept out of the production overlay, whose
+#          `namespace: enclii` would rewrite them into enclii (see
+#          infra/k8s/cross-namespace-rbac/rbac.yaml).
+---
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: cross-namespace-rbac
+  namespace: argocd
+  labels:
+    app.kubernetes.io/name: cross-namespace-rbac
+    app.kubernetes.io/part-of: enclii
+    app.kubernetes.io/component: rbac
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: default
+
+  source:
+    repoURL: https://github.com/madfam-org/enclii.git
+    targetRevision: main
+    path: infra/k8s/cross-namespace-rbac
+
+  destination:
+    server: https://kubernetes.default.svc
+
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - ServerSideApply=true
