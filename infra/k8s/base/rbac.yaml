@@ -43,6 +43,15 @@ rules:
 - apiGroups: ["apps"]
   resources: ["replicasets"]
   verbs: ["get", "list", "watch"]
+# StatefulSets/DaemonSets: `enclii ops pods restart` rollout restarts. The only
+# write is kubectl rollout restart's patch of the pod-template annotation
+# kubectl.kubernetes.io/restartedAt; Deployments use the rule above, which is
+# already cluster-wide. RBAC cannot express the namespace allowlist without one
+# Role per namespace, so the API enforces it: ENCLII_OPS_RESTART_NAMESPACES,
+# never kube-*, platform_admin rank only.
+- apiGroups: ["apps"]
+  resources: ["statefulsets", "daemonsets"]
+  verbs: ["get", "patch"]
 # Services: full lifecycle management for service networking
 - apiGroups: [""]
   resources: ["services"]
@@ -61,6 +70,13 @@ rules:
 - apiGroups: [""]
   resources: ["pods/log"]
   verbs: ["get"]
+# Pods: `enclii ops pods restart pod/<name>` deletes ONE pod owned by a
+# ReplicaSet, StatefulSet or DaemonSet, with a UID precondition and the pod's
+# own grace period, so its controller recreates it (the StatefulSet
+# OrderedReady case). Same API-side allowlist and rank as above.
+- apiGroups: [""]
+  resources: ["pods"]
+  verbs: ["delete"]
 # PersistentVolumeClaims: volume management for stateful services
 - apiGroups: [""]
   resources: ["persistentvolumeclaims"]

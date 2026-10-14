@@ -1,0 +1,169 @@
+# Cross-namespace RBAC for enclii's own services.
+#
+# These Roles and RoleBindings live OUTSIDE the enclii namespace on purpose:
+#   - data:          switchyard-api manages the shared PgBouncer config,
+#                    userlist and rollout (app-role provisioning);
+#   - argocd:        switchyard-api manages project Applications and declares
+#                    annotation tracking (#730);
+#   - enclii-builds: roundhouse runs build Jobs.
+#
+# They used to sit in infra/k8s/base, where the production overlay's
+# `namespace: enclii` rewrote every one of them into `enclii`, so none was
+# effective (onboard ensure failed: "configmaps pgbouncer-config is forbidden"
+# in namespace data, 2026-10-14). This kustomization has NO namespace field,
+# so each resource keeps its declared namespace. Synced by the
+# cross-namespace-rbac Application (infra/argocd/apps/cross-namespace-rbac.yaml).
+---
+# Role: allows opt-in runtime ArgoCD Application reconciliation
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: switchyard-argocd-application-manager
+  namespace: argocd
+  labels:
+    app.kubernetes.io/name: switchyard-api
+    app.kubernetes.io/component: provisioning
+    enclii.dev/managed-by: platform
+rules:
+  - apiGroups: ["argoproj.io"]
+    resources: ["applications"]
+    verbs: ["get", "list", "watch", "create", "update", "patch"]
+---
+# RoleBinding: binds the ArgoCD Application manager role to switchyard-api
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: switchyard-argocd-application-manager
+  namespace: argocd
+  labels:
+    app.kubernetes.io/name: switchyard-api
+    app.kubernetes.io/component: provisioning
+    enclii.dev/managed-by: platform
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: switchyard-argocd-application-manager
+subjects:
+  - kind: ServiceAccount
+    name: switchyard-api
+    namespace: enclii
+---
+# Role: lets `enclii ops apps tracking` declare the Argo CD 3.x annotation
+# tracking default once (one data key, optimistic concurrency). Read access
+# already comes from the cluster-wide read-only ConfigMap rule; update is
+# limited to this one object. Create/delete/patch are deliberately absent.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: switchyard-argocd-tracking-declarer
+  namespace: argocd
+  labels:
+    app.kubernetes.io/name: switchyard-api
+    app.kubernetes.io/component: provisioning
+    enclii.dev/managed-by: platform
+rules:
+  - apiGroups: [""]
+    resources: ["configmaps"]
+    verbs: ["get", "update"]
+    resourceNames: ["argocd-cm"]
+---
+# RoleBinding: binds the tracking declarer role to switchyard-api
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: switchyard-argocd-tracking-declarer
+  namespace: argocd
+  labels:
+    app.kubernetes.io/name: switchyard-api
+    app.kubernetes.io/component: provisioning
+    enclii.dev/managed-by: platform
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: switchyard-argocd-tracking-declarer
+subjects:
+  - kind: ServiceAccount
+    name: switchyard-api
+    namespace: enclii
+---
+# Role: allows switchyard-api to manage PgBouncer config in data namespace
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: switchyard-pgbouncer-manager
+  namespace: data
+  labels:
+    app.kubernetes.io/name: switchyard-api
+    app.kubernetes.io/component: provisioning
+    enclii.dev/managed-by: platform
+rules:
+  # Read and update PgBouncer ConfigMap
+  - apiGroups: [""]
+    resources: ["configmaps"]
+    verbs: ["get", "patch", "update"]
+    resourceNames: ["pgbouncer-config"]
+  # Read and update PgBouncer userlist Secret
+  - apiGroups: [""]
+    resources: ["secrets"]
+    verbs: ["get", "update"]
+    resourceNames: ["pgbouncer-userlist"]
+  # Patch PgBouncer Deployment for rollout restart
+  - apiGroups: ["apps"]
+    resources: ["deployments"]
+    verbs: ["get", "patch"]
+    resourceNames: ["pgbouncer"]
+---
+# RoleBinding: binds the Role to switchyard-api ServiceAccount
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: switchyard-pgbouncer-manager
+  namespace: data
+  labels:
+    app.kubernetes.io/name: switchyard-api
+    app.kubernetes.io/component: provisioning
+    enclii.dev/managed-by: platform
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: switchyard-pgbouncer-manager
+subjects:
+  - kind: ServiceAccount
+    name: switchyard-api
+    namespace: enclii
+---
+# RBAC: Allow Roundhouse to create Jobs in the builds namespace
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: roundhouse-builder
+  namespace: enclii-builds
+  labels:
+    app.kubernetes.io/name: roundhouse
+    app.kubernetes.io/part-of: enclii
+rules:
+  # Create and monitor build Jobs
+  - apiGroups: ["batch"]
+    resources: ["jobs"]
+    verbs: ["create", "get", "list", "watch", "delete"]
+  # Get logs from build pods
+  - apiGroups: [""]
+    resources: ["pods", "pods/log"]
+    verbs: ["get", "list", "watch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: roundhouse-builder
+  namespace: enclii-builds
+  labels:
+    app.kubernetes.io/name: roundhouse
+    app.kubernetes.io/part-of: enclii
+subjects:
+  - kind: ServiceAccount
+    name: roundhouse
+    namespace: enclii
+roleRef:
+  kind: Role
+  name: roundhouse-builder
+  apiGroup: rbac.authorization.k8s.io

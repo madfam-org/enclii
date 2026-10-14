@@ -86,6 +86,8 @@ Canonical routing: `apps/switchyard-api/internal/secretsintake/registry.yaml`
 | `dhanam/session-auth` | `secret/dhanam` | `SESSION_SECRET`, `NEXTAUTH_SECRET` |
 | `dhanam/app-infra` | `secret/dhanam` | `R2_*`, `CLOUDFLARE_API_TOKEN`, PostHog, Sentry |
 | `dhanam/banxico` | `secret/dhanam` | `banxico_api_token` (ExternalSecret `dhanam-secrets-extended`) |
+| `dhanam/karafiel-callback-secret` | `secret/dhanam` | `karafiel_dhanam_signing_secret` (generated; see [Dhanam ↔ Karafiel webhook keys](#dhanam--karafiel-webhook-keys-2026-10-14)) |
+| `karafiel/dhanam-webhook-secret` | `secret/karafiel` | `dhanam_karafiel_signing_secret` (generated; same section) |
 | `platform/comms-resend-api-key` | `secret/comms` | `resend-api-key` → `resend_api_key` in Vault |
 
 After `platform/comms-resend-api-key` intake, fan-out to all consumers:
@@ -565,6 +567,49 @@ enclii secrets intake status int_<id>
 Rotate both sides together: a mismatch shows as 401s at the Worker, then as a
 stale-heartbeat page.
 
+### Synthetic buyer identity (2026-10-14)
+
+The S-Gate 1 synthetic buyer (`infra/k8s/production/synthetics/`) buys Dhanam
+Essentials on **staging** with **Stripe test mode** every 15 minutes and pages
+when the staging money path breaks (`SyntheticCheckoutFailing`). It signs in as
+a dedicated staging identity. It holds **no Stripe key**: only Dhanam holds
+Stripe keys. Between runs, Dhanam staging's synthetic-cancel endpoint cancels
+the identity's test subscription, called as that identity.
+
+| Property in `secret/synthetics` | Target | Written by | ExternalSecret → Secret | Env in the runner |
+|---|---|---|---|---|
+| `dhanam_staging_synth_email` | `synthetics/dhanam-staging-checkout` | owner, masked prompt | `journeys-dhanam-staging-synthetic` → same name | `DHANAM_STAGING_SYNTH_EMAIL` |
+| `dhanam_staging_synth_password` | same | same | same | `DHANAM_STAGING_SYNTH_PASSWORD` |
+
+- **The identity.** A Janua account used for nothing else, with no MFA, that
+  Dhanam staging accepts (staging trusts the same issuer as production). Its
+  password is the one set on the account, so never `--generate` it.
+- **Dhanam staging side.** The cancel endpoint answers 404 until Dhanam staging
+  sets `SYNTHETIC_CANCEL_ENABLED=true` and lists this identity's Janua user id
+  in `SYNTHETIC_ACCOUNT_IDS` (dhanam staging overlay; dhanam's own docs).
+- **Order.** This target ships on its own, before the CronJob (enclii#751),
+  so the identity is in Vault before the CronJob appears. Were the CronJob
+  first, the ExternalSecret would report `SecretSyncedError`, its pods would
+  fail with `CreateContainerConfigError`, and `SyntheticJourneysNotRunning`
+  would fire 45 minutes after the CronJob appears.
+
+Owner sequence, after the change is deployed (switchyard-api digest bump for
+the registry), from an up-to-date checkout:
+
+```bash
+cd ~/labspace/enclii && git pull --ff-only
+cd ~/labspace/enclii && ASSERT_PATH=synthetics bash scripts/apply-switchyard-vault-policy-remote.sh < ~/.config/madfam/vault-admin.token
+# expect: APPLIED_OK_asserted_path_present
+enclii secrets intake submit synthetics/dhanam-staging-checkout --reason "S-Gate 1 synthetic buyer identity (staging, Stripe test mode)"
+# prompts (masked): dhanam_staging_synth_email, dhanam_staging_synth_password
+enclii secrets intake status int_<id>
+# expect: external_secret_refreshed: false until the CronJob change (and its
+# ExternalSecret) is deployed; ESO then syncs the stored values on its own
+```
+
+Rotation is the same `intake submit` with the new values (both: the prompt
+asks for every key of the target).
+
 ### Selva → Yantra4D edge (2026-10-08)
 
 One more Janua `client_credentials` client, same mechanics as the digital-twins
@@ -599,6 +644,40 @@ in both registry copies. Until selva-office ships `selva-service-clients`,
 intake reports `external_secret_refreshed: false`, which is expected. Re-running
 the provision command rotates the secret; the workers' Reloader annotation rolls
 them onto the new value.
+
+### Dhanam ↔ Karafiel webhook keys (2026-10-14)
+
+Owner ruling: the webhooks between Dhanam and Karafiel use one dedicated HMAC
+key per direction, sent with a signed timestamp (`X-Dhanam-Timestamp` +
+`X-Dhanam-Signature-V2`) and a 5-minute replay window. Each key is minted where
+it is verified; the signer reads the same Vault property through its own
+read-only ExternalSecret, so nobody copies a value.
+
+| Direction | Target | Property | Verifier ExternalSecret (force-synced) | Signer copy |
+|---|---|---|---|---|
+| Dhanam → Karafiel | `karafiel/dhanam-webhook-secret` | `secret/karafiel` `dhanam_karafiel_signing_secret` | `karafiel-dhanam-signing` (karafiel api) | `dhanam-secrets-karafiel-signing` (dhanam api) |
+| Karafiel → Dhanam | `dhanam/karafiel-callback-secret` | `secret/dhanam` `karafiel_dhanam_signing_secret` | `dhanam-secrets-karafiel-callback` (dhanam api) | `karafiel-dhanam-callback-signing` (karafiel worker) |
+
+Both Vault paths are already in the `switchyard-secret-writer` policy, so no
+policy re-apply is needed. Owner sequence, after the registry change is
+deployed (switchyard-api digest bump) and from an up-to-date checkout:
+
+```bash
+cd ~/labspace/enclii && git pull --ff-only
+make -C ~/labspace/enclii install-cli CLI_INSTALL_DIR=$HOME/.local/bin
+enclii secrets intake submit karafiel/dhanam-webhook-secret --generate dhanam_karafiel_signing_secret --reason "dhanam to karafiel webhook key"
+enclii secrets intake submit dhanam/karafiel-callback-secret --generate karafiel_dhanam_signing_secret --reason "karafiel to dhanam callback key"
+enclii secrets intake status int_<id>
+```
+
+Both values are minted server-side (32 bytes, never returned). Until the dhanam
+and karafiel ExternalSecrets exist, intake reports
+`external_secret_refreshed: false`, which is expected. The signer copies follow
+on their 15-minute refresh; the sync order does not matter, because both
+verifiers keep accepting the previous signature until their cutover flag is
+turned off in the dhanam and karafiel repos. Do not rotate either key after
+that flip without a deploy window: both sides read the new value only when
+their pods restart.
 
 
 Add targets via PR to the registry — do not hardcode paths in runbooks. A new

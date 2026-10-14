@@ -530,6 +530,20 @@ func (s *AddonService) RefreshStatus(ctx context.Context, addonID uuid.UUID) (*t
 		return nil, err
 	}
 
+	// Converge the control-plane egress on every refresh of a live PostgreSQL
+	// addon, so clusters provisioned before the policy existed heal (an
+	// instance rescheduled onto a node with no API-server endpoint otherwise
+	// crash-loops). Best effort: a failure is logged, never returned.
+	if addon.Type == types.DatabaseAddonTypePostgres && addon.K8sNamespace != "" && addon.K8sResourceName != "" &&
+		addon.Status != types.DatabaseAddonStatusDeleted && addon.Status != types.DatabaseAddonStatusFailed &&
+		addon.Status != types.DatabaseAddonStatusDeleting && addon.Status != types.DatabaseAddonStatusPendingDeletion {
+		if pg, ok := s.provisioners[types.DatabaseAddonTypePostgres].(*PostgresProvisioner); ok && pg.k8sClient != nil {
+			if err := pg.ensureControlPlaneEgress(ctx, addon.K8sNamespace, addon.K8sResourceName); err != nil {
+				s.logger.WithError(err).WithField("addon_id", addon.ID.String()).Warn("CNPG control-plane egress not converged")
+			}
+		}
+	}
+
 	// Isolated cached Ready rows must revalidate the actual Cluster/runtime role.
 	// Legacy Ready and failed/deleted terminal behavior stays unchanged.
 	isolatedReady := addon.Type == types.DatabaseAddonTypePostgres && runtimeProfile(addon.Config)

@@ -85,7 +85,8 @@ func apiRequest(ctx context.Context, cfg *config.Config, method, path string, pa
 // verbatim into the caller's roles and a rank assertable by string is a rank
 // any tenant administrator could mint for itself.
 //
-// Every /v1/admin/* route and the secret-intake routes now require that rank.
+// Every /v1/admin/* route, the secret-intake routes and ops pods restart now
+// require that rank.
 // The old message ("your account lacks permission") sent an operator looking
 // for a role to grant themselves, which is exactly the thing that no longer
 // exists. This one says what actually has to change and who can change it.
@@ -118,7 +119,8 @@ func isPlatformRankPath(path string) bool {
 	}
 	return strings.HasPrefix(trimmed, "/v1/admin/") ||
 		trimmed == "/v1/admin" ||
-		strings.HasPrefix(trimmed, "/v1/secrets/intake")
+		strings.HasPrefix(trimmed, "/v1/secrets/intake") ||
+		trimmed == "/v1/ops/pods/restart"
 }
 
 // apiRequestResponse is like apiRequest but returns the raw *http.Response.

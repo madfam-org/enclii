@@ -2413,6 +2413,9 @@ export interface paths {
          * @description Validates K8s manifests from a repository against the cluster's admission policies
          *     (Kyverno, OPA) using server-side dry-run. Use this before onboarding to catch
          *     issues like unqualified images, missing security context, or policy violations.
+         *     If the target namespace does not exist yet (a first onboarding), namespaced
+         *     objects cannot be dry-run: they are skipped and reported in `notes`, while
+         *     static checks and cluster-scoped objects are still validated.
          */
         post: operations["preflightOnboard"];
         delete?: never;
@@ -4414,6 +4417,12 @@ export interface components {
             /** @description Whether all manifests passed validation */
             pass?: boolean;
             violations?: components["schemas"]["PreflightIssue"][];
+            /**
+             * @description Checks the preflight could not run. Notes never fail the preflight.
+             *     Example: before a new project's namespace exists, the admission dry
+             *     run of its namespaced objects is skipped and reported here.
+             */
+            notes?: string[];
         };
         PreflightIssue: {
             /** @description Manifest filename */

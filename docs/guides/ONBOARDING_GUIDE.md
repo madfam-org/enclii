@@ -29,7 +29,7 @@ Projects onboarded to Enclii **MUST** meet the following requirements:
 
 1. **Health endpoint**: Every service MUST expose a health endpoint (e.g., `/health` returning HTTP 200) for status monitoring. Services without health endpoints will show as "degraded" on the status page.
 
-2. **No NetworkPolicy resources**: Project K8s manifests MUST NOT include `kind: NetworkPolicy` resources. NetworkPolicies are centrally managed by enclii via the `network` section in `enclii.yaml`. Including them causes ArgoCD resource ownership conflicts. The preflight check (`POST /v1/admin/onboard/preflight`) will warn about this.
+2. **No NetworkPolicy resources**: Project K8s manifests MUST NOT include `kind: NetworkPolicy` resources. NetworkPolicies are centrally managed by enclii via the `network` section in `enclii.yaml`. Including them causes ArgoCD resource ownership conflicts. The preflight check (`POST /v1/admin/onboard/preflight`) reports this as a violation, also on a first onboarding.
 
 3. **Network and status declarations**: Projects SHOULD declare `network` and `status` sections in `enclii.yaml` for auto-provisioned NetworkPolicies and status page registration.
 
@@ -255,6 +255,30 @@ curl -X POST "https://api.enclii.dev/v1/admin/onboard/preflight" \
 
 This fetches YAML manifests from the repo, runs server-side dry-run against the cluster, and reports any violations (unqualified images, missing security context, etc.).
 
+**First onboarding: the namespace does not exist yet.** Onboarding itself
+creates the project namespace, and the API server refuses every request for a
+namespaced object in a namespace that does not exist, dry run included. A
+dry-run create of the Namespace does not help: dry-run objects are never
+persisted, so the next request still finds no namespace. So when the target
+namespace is missing, the preflight:
+
+- still runs the static checks (the NetworkPolicy rule and the kustomization
+  resolution) and the server-side dry run of cluster-scoped objects. Any
+  violation from these fails the preflight as before;
+- skips the admission dry run of namespaced objects (Deployments, Services,
+  ConfigMaps and the like) and says so in the result's `notes` field. The CLI
+  prints it under `Preflight note(s):`. A note never fails the preflight.
+
+The namespace is looked up explicitly. Only a "not found" answer counts as
+missing; any other lookup error is reported as a violation, and every object
+is then dry-run as before.
+
+For the full admission check, run the preflight again after onboarding has
+created the namespace. The API call above does this without side effects.
+`enclii onboard --preflight` also runs the full check, but after printing the
+result it calls onboarding again, which refuses because the repository is
+already onboarded. `enclii onboard ensure` does not run the admission dry run.
+
 ### Preventive Image Hygiene Gates (auto-run on every onboard)
 
 Every call to `POST /v1/admin/onboard` runs two additional gates BEFORE ArgoCD Application creation. Either one returning a blocker aborts onboarding with HTTP 400 — there is no bypass flag. Both gates are also available side-effect-free via `GET /v1/admin/preflight?repo=owner/name`.
@@ -478,7 +502,7 @@ curl -H "Authorization: Bearer $ADMIN_TOKEN" \
 | Secrets provisioner | `apps/switchyard-api/internal/provisioning/secrets.go` |
 | R2 provisioner | `apps/switchyard-api/internal/provisioning/r2.go` |
 | Input validation | `apps/switchyard-api/internal/provisioning/validate.go` |
-| RBAC manifest | `infra/k8s/base/switchyard-rbac.yaml` |
+| RBAC manifest | `infra/k8s/base/switchyard-rbac.yaml` (cluster and enclii-namespace); `infra/k8s/cross-namespace-rbac/rbac.yaml` (Roles in data, argocd and enclii-builds) |
 | ArgoCD template generator | `apps/switchyard-api/internal/api/argocd_template.go` |
 | Onboarding repository | `apps/switchyard-api/internal/db/onboarding_repository.go` |
 | enclii.yaml parser | `apps/switchyard-api/internal/api/enclii_yaml.go` |

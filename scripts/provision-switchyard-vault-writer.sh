@@ -11,7 +11,7 @@
 # Policy-only (add paths without rotating writer token):
 #   POLICY_ONLY=1 VAULT_TOKEN_FILE=... ./scripts/provision-switchyard-vault-writer.sh
 #
-# Last Updated: 2026-10-08 (selva: intake target selva/yantra4d-client for the selva-yantra4d machine edge)
+# Last Updated: 2026-10-14 (fabrication-prep: R2 credential mirror from `enclii buckets create`)
 set -euo pipefail
 
 VAULT_NS="${VAULT_NS:-vault}"
@@ -349,6 +349,35 @@ path "secret/data/selva" {
 path "secret/data/selva/*" {
   capabilities = ["create", "update", "patch", "read"]
 }
+# synthetics — added 2026-10-14 with the synthetics/dhanam-staging-checkout
+# intake target (the S-Gate 1 synthetic buyer's staging identity, typed by
+# the owner at the masked prompt). The write is a
+# read-merge-write, so READ is required too. Merged in git is not applied in
+# Vault: re-apply this policy (ASSERT_PATH=synthetics
+# scripts/apply-switchyard-vault-policy-remote.sh) before the first submit,
+# or it 403s.
+path "secret/data/synthetics" {
+  capabilities = ["create", "update", "patch", "read"]
+}
+path "secret/data/synthetics/*" {
+  capabilities = ["create", "update", "patch", "read"]
+}
+# fabrication-prep — added 2026-10-14. Not an intake target: the writer is
+# `enclii buckets create` (storage_r2.go), which mirrors a project's R2
+# credentials to secret/<project> for its default Secret and to
+# secret/<project>/<namespace>/<secret> for any other binding. That path is
+# built from the project slug at runtime, so check-intake-policy-parity.sh
+# cannot see it: the first bucket for a project with no path here is created,
+# its Secret written, and only the Vault mirror is refused (a warning that
+# names this file). Re-apply this policy (ASSERT_PATH=fabrication-prep
+# scripts/apply-switchyard-vault-policy-remote.sh), then re-run
+# `enclii buckets create`; adoption repairs the mirror without rotating.
+path "secret/data/fabrication-prep" {
+  capabilities = ["create", "update", "patch", "read"]
+}
+path "secret/data/fabrication-prep/*" {
+  capabilities = ["create", "update", "patch", "read"]
+}
 path "secret/metadata/ceq" {
   capabilities = ["read", "list"]
 }
@@ -539,6 +568,18 @@ path "secret/metadata/selva" {
   capabilities = ["read", "list"]
 }
 path "secret/metadata/selva/*" {
+  capabilities = ["read", "list"]
+}
+path "secret/metadata/synthetics" {
+  capabilities = ["read", "list"]
+}
+path "secret/metadata/synthetics/*" {
+  capabilities = ["read", "list"]
+}
+path "secret/metadata/fabrication-prep" {
+  capabilities = ["read", "list"]
+}
+path "secret/metadata/fabrication-prep/*" {
   capabilities = ["read", "list"]
 }
 

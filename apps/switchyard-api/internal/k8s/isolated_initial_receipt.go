@@ -31,6 +31,17 @@ var initialSHA = regexp.MustCompile(`^[a-f0-9]{64}$`)
 var initialRevision = regexp.MustCompile(`^[a-f0-9]{40}$`)
 var initialUID = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$`)
 
+// The runtime may report a container status's `image` as the image's local
+// config ID ("sha256:<64 hex>") instead of the spec reference: containerd on
+// the production cluster does (2026-10-14), so collection refused two Jobs
+// that ran exactly the pinned images. The proof of what ran stays `imageID`,
+// the registry digest, which must still equal the pinned digest exactly.
+var initialImageConfigID = regexp.MustCompile(`^sha256:[a-f0-9]{64}$`)
+
+func initialStatusImage(reported, pinned string) bool {
+	return reported == pinned || initialImageConfigID.MatchString(reported)
+}
+
 // Constructed only by the authenticated server after source/CI/signature,
 // binding, workload and CNPG custody verification. No owner URI or human actor.
 // PinPayloadSHA256 hashes the verified payload; it is NOT a Git pin revision.
@@ -184,16 +195,16 @@ func DecodeInitialBootstrapJSON(b []byte, out any) error {
 
 func (p IsolatedInitialJobPlan) initialIntent(job *batchv1.Job) (initialIntent, error) {
 	id := p.Identity
-	producer, db, role, checks := "madfam-org/crea-sim", "crea_sim_portal_sim", "crea_sim_portal", 2
-	if p.Profile == "map-sim-initial" {
-		producer, db, role, checks = "madfam-org/crea-map", "crea_sim_kernel01_sim", "crea_sim_kernel01", 15
+	want, known := initialProvenanceFor(p.Profile)
+	if !known {
+		return initialIntent{}, fmt.Errorf("initial verified provenance incomplete")
 	}
 	for _, uid := range []string{id.ApplicationNamespaceUID, id.AddonNamespaceUID, id.DeploymentUID, id.DeploymentResourceVersion, id.WorkloadServiceUID, id.ClusterUID} {
 		if !initialUID.MatchString(uid) {
 			return initialIntent{}, fmt.Errorf("initial authoritative identity incomplete")
 		}
 	}
-	if id.BindingID == uuid.Nil || id.OnboardingID == uuid.Nil || id.Database != db || id.OwnerRole != "enclii_migrator" || id.RuntimeRole != role || id.Producer != producer || !initialRevision.MatchString(id.SourceRevision) || id.BuildRunID <= 0 || id.Checks < checks || !id.SignatureVerified || !initialSHA.MatchString(id.PinPayloadSHA256) || id.PublicCASHA256 != initialHash(p.Data["ca.crt"]) {
+	if id.BindingID == uuid.Nil || id.OnboardingID == uuid.Nil || id.Database != want.Database || id.OwnerRole != "enclii_migrator" || id.RuntimeRole != want.RuntimeRole || id.Producer != want.Producer || !initialRevision.MatchString(id.SourceRevision) || id.BuildRunID <= 0 || id.Checks < want.Checks || !id.SignatureVerified || !initialSHA.MatchString(id.PinPayloadSHA256) || id.PublicCASHA256 != initialHash(p.Data["ca.crt"]) {
 		return initialIntent{}, fmt.Errorf("initial verified provenance incomplete")
 	}
 	spec, _ := json.Marshal(job.Spec)
@@ -322,10 +333,10 @@ func validInitialNative(r InitialNativeReceipt, p IsolatedInitialJobPlan, cm *co
 	if r.Version != initialRecordVersion || r.Classification != "INITIAL_ONLY" || r.IntentSHA256 != cm.Data["sha256"] || r.IntentUID != string(cm.UID) || !initialUID.MatchString(r.JobUID) || !initialUID.MatchString(r.PodUID) || r.Image != p.Image || r.SourceRevision != p.Identity.SourceRevision || !initialSHA.MatchString(r.StdoutSHA256) {
 		return false
 	}
-	if p.Profile == "portal-sim-initial" {
+	if p.Profile == initialPortalProfile {
 		return r.MAP == nil && validPortal001(r.Portal001) && validPortal002(r.Portal002) && initialSHA.MatchString(r.InitStdoutSHA256)
 	}
-	return r.Portal001 == nil && r.Portal002 == nil && r.InitStdoutSHA256 == "" && validMAPInitial(r.MAP)
+	return IsMapSimProfile(p.Profile) && r.Portal001 == nil && r.Portal002 == nil && r.InitStdoutSHA256 == "" && validMAPInitial(r.MAP)
 }
 func validPortal001(r *InitialPortal001Receipt) bool {
 	return r != nil && r.Profile == "crea-sim-portal-inicial" && r.Version == "portal-inicial-v1" && r.State == "PREPARADO"
@@ -412,7 +423,7 @@ func (c *Client) collectInitialReceipt(ctx context.Context, p IsolatedInitialJob
 			found := false
 			for _, s := range status {
 				if s.Name == spec[i].Name {
-					if found || s.Image != p.Image || (s.ImageID != p.Image && s.ImageID != "docker-pullable://"+p.Image && s.ImageID != "containerd://sha256:"+strings.Split(p.Image, "@sha256:")[1]) || s.RestartCount != 0 || s.State.Terminated == nil || s.State.Terminated.ExitCode != 0 {
+					if found || !initialStatusImage(s.Image, p.Image) || (s.ImageID != p.Image && s.ImageID != "docker-pullable://"+p.Image && s.ImageID != "containerd://sha256:"+strings.Split(p.Image, "@sha256:")[1]) || s.RestartCount != 0 || s.State.Terminated == nil || s.State.Terminated.ExitCode != 0 {
 						return false
 					}
 					found = true
@@ -432,7 +443,7 @@ func (c *Client) collectInitialReceipt(ctx context.Context, p IsolatedInitialJob
 		return nil, e
 	}
 	r := InitialNativeReceipt{Version: initialRecordVersion, Classification: "INITIAL_ONLY", IntentSHA256: intent.Data["sha256"], IntentUID: string(intent.UID), JobUID: string(job.UID), PodUID: string(pod.UID), Image: p.Image, SourceRevision: p.Identity.SourceRevision, StdoutSHA256: initialHash(b)}
-	if p.Profile == "portal-sim-initial" {
+	if p.Profile == initialPortalProfile {
 		r.Portal002 = &InitialPortal002Receipt{}
 		if DecodeInitialBootstrapJSON(b, r.Portal002) != nil {
 			return nil, fmt.Errorf("initial portal002 output refused")
@@ -534,10 +545,8 @@ func validateInitialStatusIntent(cm *corev1.ConfigMap, p IsolatedInitialJobPlan,
 		return fmt.Errorf("initial status ownership refused")
 	}
 	id := in.Identity
-	producer, db, role, checks := "madfam-org/crea-sim", "crea_sim_portal_sim", "crea_sim_portal", 2
-	if in.Profile == "map-sim-initial" {
-		producer, db, role, checks = "madfam-org/crea-map", "crea_sim_kernel01_sim", "crea_sim_kernel01", 15
-	} else if in.Profile != "portal-sim-initial" {
+	want, known := initialProvenanceFor(in.Profile)
+	if !known {
 		return fmt.Errorf("initial status profile refused")
 	}
 	for _, uid := range []string{id.ApplicationNamespaceUID, id.AddonNamespaceUID, id.DeploymentUID, id.DeploymentResourceVersion, id.WorkloadServiceUID, id.ClusterUID} {
@@ -545,11 +554,8 @@ func validateInitialStatusIntent(cm *corev1.ConfigMap, p IsolatedInitialJobPlan,
 			return fmt.Errorf("initial status identity refused")
 		}
 	}
-	prefix := "ghcr.io/madfam-org/crea-sim/gateway@sha256:"
-	if in.Profile == "map-sim-initial" {
-		prefix = "ghcr.io/madfam-org/crea-map/crea-map-web@sha256:"
-	}
-	if !strings.HasPrefix(in.Image, prefix) || !initialSHA.MatchString(strings.TrimPrefix(in.Image, prefix)) || id.Producer != producer || id.Database != db || id.RuntimeRole != role || id.OwnerRole != "enclii_migrator" || !id.SignatureVerified || !initialSHA.MatchString(id.PinPayloadSHA256) || !initialRevision.MatchString(id.SourceRevision) || id.BindingID == uuid.Nil || id.OnboardingID == uuid.Nil || !initialSHA.MatchString(id.PublicCASHA256) || id.BuildRunID <= 0 || id.Checks < checks {
+	prefix := want.ImagePrefix
+	if !strings.HasPrefix(in.Image, prefix) || !initialSHA.MatchString(strings.TrimPrefix(in.Image, prefix)) || id.Producer != want.Producer || id.Database != want.Database || id.RuntimeRole != want.RuntimeRole || id.OwnerRole != "enclii_migrator" || !id.SignatureVerified || !initialSHA.MatchString(id.PinPayloadSHA256) || !initialRevision.MatchString(id.SourceRevision) || id.BindingID == uuid.Nil || id.OnboardingID == uuid.Nil || !initialSHA.MatchString(id.PublicCASHA256) || id.BuildRunID <= 0 || id.Checks < want.Checks {
 		return fmt.Errorf("initial status source refused")
 	}
 	return nil

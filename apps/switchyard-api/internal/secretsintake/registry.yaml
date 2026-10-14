@@ -1008,6 +1008,26 @@ targets:
     keys:
       - alertmanager_heartbeat_token
 
+  # synthetics (2026-10-14) — the S-Gate 1 synthetic buyer: the identity the
+  # journeys CronJob (infra/k8s/production/synthetics) signs in to Dhanam
+  # staging with. No Stripe key: only Dhanam holds Stripe keys (2026-04-25
+  # rule); the runner resets and cleans up through Dhanam staging's
+  # synthetic-cancel endpoint, signed in as this identity.
+  #
+  # Value-intake, NEVER --generate: the Janua password is the one set on the
+  # synthetic account. LOWERCASE keys, as Vault stores them;
+  # journeys-dhanam-staging-synthetic maps them byte for byte (ESO syncs both
+  # or none).
+  synthetics/dhanam-staging-checkout:
+    label: Dhanam staging synthetic buyer
+    description: Identity of the */15 staging synthetic buyer (journeys CronJob, namespace synthetics) — the Janua email and password of a dedicated staging account with no MFA. No Stripe key (only Dhanam holds Stripe keys). Typed at the masked prompt; never generated.
+    vault_path: secret/synthetics
+    namespace: synthetics
+    external_secret: journeys-dhanam-staging-synthetic  # pragma: allowlist secret
+    keys:
+      - dhanam_staging_synth_email
+      - dhanam_staging_synth_password
+
   # crea-map (2026-10-07) — the MAP MCP pseudonym key (crea-map #866, §11.100).
   # The HMAC key behind the MCP's U-/I- pseudonyms. crea-map reads it as
   # MAP_MCP_PSEUDONYM_KEY (32 bytes or more); without it /api/mcp answers 503.
@@ -1118,6 +1138,10 @@ targets:
       - crea_sim_session_key
       - sim01_context_key
       - sim01_control_key
+      - sim02_context_key
+      - sim02_control_key
+      - sim03_context_key
+      - sim03_control_key
 
   crea-sim/capture-runtime:
     label: Private synthetic mail capture runtime
@@ -1129,6 +1153,8 @@ targets:
       - crea_sim_database_namespace
       - crea_sim_portal_database_url
       - sim01_mail_key
+      - sim02_mail_key
+      - sim03_mail_key
 
   crea-sim/kernel01-runtime:
     label: Isolated synthetic kernel runtime
@@ -1143,6 +1169,37 @@ targets:
       - map_simulation_mail_key
       - map_simulation_mcp_client_id
       - map_mcp_pseudonym_key
+
+  # Kernels 02 and 03 share kernel 01's Vault path under their own prefixed
+  # properties: the training writer policy grants exactly five data paths, and
+  # a new path would need a Vault policy change. Each kernel's ExternalSecret
+  # projects only its own properties; the public MCP client id is the one
+  # shared property, filed once through crea-sim/kernel01-runtime.
+  crea-sim/kernel02-runtime:
+    label: Isolated synthetic kernel 02 runtime
+    description: Governed isolated runtime custody; no owner, provider or production credential
+    vault_path: secret/crea-sim-map01
+    namespace: crea-sim
+    external_secret: crea-sim-map02 # pragma: allowlist secret -- ExternalSecret resource name; not a credential
+    keys:
+      - map02_database_url
+      - map02_context_key
+      - map02_control_key
+      - map02_mail_key
+      - map02_mcp_pseudonym_key
+
+  crea-sim/kernel03-runtime:
+    label: Isolated synthetic kernel 03 runtime
+    description: Governed isolated runtime custody; no owner, provider or production credential
+    vault_path: secret/crea-sim-map01
+    namespace: crea-sim
+    external_secret: crea-sim-map03 # pragma: allowlist secret -- ExternalSecret resource name; not a credential
+    keys:
+      - map03_database_url
+      - map03_context_key
+      - map03_control_key
+      - map03_mail_key
+      - map03_mcp_pseudonym_key
 
   crea-sim/gateway-ca:
     label: Verified public portal database CA
@@ -1170,6 +1227,24 @@ targets:
     external_secret: crea-sim-map01-ca # pragma: allowlist secret -- ExternalSecret resource name; not a credential
     keys:
       - database_ca_pem
+
+  crea-sim/kernel02-ca:
+    label: Verified public kernel 02 database CA
+    description: Governed isolated runtime custody; no owner, provider or production credential
+    vault_path: secret/crea-sim-map01
+    namespace: crea-sim
+    external_secret: crea-sim-map02-ca # pragma: allowlist secret -- ExternalSecret resource name; not a credential
+    keys:
+      - map02_database_ca_pem
+
+  crea-sim/kernel03-ca:
+    label: Verified public kernel 03 database CA
+    description: Governed isolated runtime custody; no owner, provider or production credential
+    vault_path: secret/crea-sim-map01
+    namespace: crea-sim
+    external_secret: crea-sim-map03-ca # pragma: allowlist secret -- ExternalSecret resource name; not a credential
+    keys:
+      - map03_database_ca_pem
 
   janua-staging/runtime-crypto:
     label: Fresh isolated staging identity crypto
@@ -1211,3 +1286,34 @@ targets:
     keys:
       - redis_password
       - redis_url
+
+  # Dhanam <-> Karafiel webhook signing keys (owner ruling 2026-10-14): one
+  # dedicated HMAC key per direction, carried with a signed timestamp. Each is
+  # minted where it is VERIFIED (the rule stated at the tulana block above)
+  # and the signer reads the same property through its own read-only
+  # ExternalSecret, the secret/comms fan-out pattern, so no value is ever
+  # copied by hand.
+  #
+  # ONE KEY PER TARGET, so `--generate <key>` mints it with no prompt; never
+  # typed. LOWERCASE properties, byte for byte what the four ExternalSecrets
+  # map. Intake force-syncs the verifier's ExternalSecret; the signer's copy
+  # follows on its 15-minute refresh. The sync order does not matter: both
+  # verifiers keep accepting the previous signature until their cutover flag
+  # is turned off.
+  karafiel/dhanam-webhook-secret:
+    label: Karafiel webhook key for Dhanam
+    description: HMAC key Dhanam signs its Karafiel-bound webhooks with (X-Dhanam-Timestamp + X-Dhanam-Signature-V2) and Karafiel's api verifies, projected by karafiel-dhanam-signing. Dhanam holds a read-only copy through its own ExternalSecret dhanam-secrets-karafiel-signing (namespace dhanam). Mint server-side with --generate dhanam_karafiel_signing_secret.
+    vault_path: secret/karafiel
+    namespace: karafiel
+    external_secret: karafiel-dhanam-signing  # pragma: allowlist secret
+    keys:
+      - dhanam_karafiel_signing_secret
+
+  dhanam/karafiel-callback-secret:
+    label: Dhanam callback key for Karafiel
+    description: HMAC key Karafiel's worker signs its cfdi-issued callback to Dhanam with (X-Dhanam-Timestamp + X-Dhanam-Signature-V2) and Dhanam's api verifies, projected by dhanam-secrets-karafiel-callback. Karafiel holds a read-only copy through its own ExternalSecret karafiel-dhanam-callback-signing (namespace karafiel). Mint server-side with --generate karafiel_dhanam_signing_secret.
+    vault_path: secret/dhanam
+    namespace: dhanam
+    external_secret: dhanam-secrets-karafiel-callback  # pragma: allowlist secret
+    keys:
+      - karafiel_dhanam_signing_secret

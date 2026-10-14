@@ -146,3 +146,40 @@ func TestInitialWorkloadValueRequiresExactExternalCustody(t *testing.T) {
 		})
 	}
 }
+
+func TestInitialMAPBundleGivesMigrationsTheOwnerDirectURL(t *testing.T) {
+	profile, err := isolatedBootstrapProfileFor("map-sim-initial")
+	require.NoError(t, err)
+	host := "pg-owned-rw.project-fixture.svc.cluster.local:5432"
+	owner := "postgresql://enclii_migrator:synthetic-only-password@" + host + "/crea_sim_kernel01_sim?sslmode=require"
+	runtime := "postgresql://crea_sim_kernel01:synthetic-only-password@" + host + "/crea_sim_kernel01_sim?sslmode=require"
+	app, err := strictInitialURI(runtime, true)
+	require.NoError(t, err)
+	values := map[string]string{
+		"DATABASE_URL": app, "MAP_SIMULATION_ENABLED": "true", "MAP_SIMULATION_KERNEL_ID": "crea-sim-map01",
+		"APP_ORIGIN": "https://map-sim.creatumundo.mx", "JANUA_AUDIENCE": "crea-sim", "JANUA_ISSUER_URL": "https://auth.madfam.io",
+		"JANUA_JWKS_URL": "http://janua-api.janua.svc.cluster.local:80/.well-known/jwks.json", "RLS_POR_CASO": "true",
+		"MAP_SIMULATION_CONTEXT_KEY": strings.Repeat("a", 64), "MAP_SIMULATION_CONTROL_KEY": strings.Repeat("b", 64),
+		"MAP_SIMULATION_MAIL_KEY": strings.Repeat("c", 64), "MAP_MCP_PSEUDONYM_KEY": strings.Repeat("d", 64),
+		"MAP_SIMULATION_MCP_CLIENT_ID": "jnc_synthetic_fixture_client",
+	}
+	var env []corev1.EnvVar
+	for name, value := range values {
+		env = append(env, corev1.EnvVar{Name: name, Value: value})
+	}
+	d := &appsv1.Deployment{Spec: appsv1.DeploymentSpec{Template: corev1.PodTemplateSpec{Spec: corev1.PodSpec{Containers: []corev1.Container{{Env: env}}}}}}
+	h := &Handler{}
+	b := &addons.InitialBootstrapCredentials{OwnerURI: owner, RuntimeURI: runtime, PublicCA: "synthetic-public-ca"}
+	data, err := h.initialJobData(t.Context(), profile, d, b, "project-fixture")
+	require.NoError(t, err)
+	strictOwner, err := strictInitialURI(owner, true)
+	require.NoError(t, err)
+	// crea-map's schema declares directUrl = env("DIRECT_DATABASE_URL"):
+	// `prisma migrate deploy` refuses the schema without it.
+	require.Equal(t, []byte(strictOwner), data["DIRECT_DATABASE_URL"])
+	require.Equal(t, data["DATABASE_URL"], data["DIRECT_DATABASE_URL"])
+	require.Equal(t, []byte(app), data["MAP_SIMULATION_RUNTIME_DATABASE_URL"])
+	require.NotEqual(t, data["DATABASE_URL"], data["MAP_SIMULATION_RUNTIME_DATABASE_URL"])
+	// ca.crt + the 16 names the Job admits for this profile.
+	require.Len(t, data, 17)
+}

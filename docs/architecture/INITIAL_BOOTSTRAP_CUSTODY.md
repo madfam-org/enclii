@@ -30,6 +30,14 @@ catalog before returning its typed receipt. No runtime owner credentials enter
 application configuration. The source-only fixture proves those commands and
 checks; it is not a canonical gateway-image or hosted admission/readiness proof.
 
+Three MAP profiles prepare the three training kernels: `map-sim-initial`
+(kernel 01), `map02-sim-initial` and `map03-sim-initial`. They share one
+definition. The profile name alone selects the kernel's service, database and
+runtime role from a closed list, and the retained intent must carry exactly that
+database and role. Every MAP-specific step below applies to all three alike.
+Kernels 02 and 03 share kernel 01's Vault path under their own prefixed keys,
+so each kernel's ExternalSecret may read only that kernel's properties from it.
+
 The fixed MAP fresh guard, Prisma migration and compiled seed commands are
 unchanged. Its five-key stdout remains `huella`, `codigoSha256`,
 `fixtureSha256`, `roles`, `casos`: `roles=7` Member templates and `casos=6`
@@ -79,9 +87,11 @@ It changes the Job spec hash, so it applies to new operations only; it does not
 resume or adopt held history.
 
 The Job name is deterministic for project/addon/service/profile and excludes the
-request key. Its namespace Create is the atomic arbiter: concurrent requests with
-the same or different keys can persist/activate only one Job. The operation-key
-SHA remains in the immutable intent; a later incompatible-key POST is refused.
+request key. Each MAP kernel therefore has its own Job name, and kernel 01's
+name is unchanged. Its namespace Create is the atomic arbiter: concurrent
+requests with the same or different keys can persist/activate only one Job. The
+operation-key SHA remains in the immutable intent; a later incompatible-key
+POST is refused.
 The history list remains a refusal guard for old keyed Job/intent names, which
 cannot be adopted into this new name. No database or extra launch lock is added.
 
@@ -116,7 +126,7 @@ role checks remain independent gates before any live initial bootstrap.
 
 ## Public boundary checkpoint
 
-- Date: 2026-10-13.
+- Date: 2026-10-14.
 - Owner: Enclii initial-custody source maintainers; root review before release.
 - Public-safe change: fixed initial profiles, bounded retained receipt contracts
   and source/native proof boundaries.
