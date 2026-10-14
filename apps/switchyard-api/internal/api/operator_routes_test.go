@@ -17,6 +17,7 @@ import (
 func TestOperatorRoutesRequireDatabasePlatformRank(t *testing.T) {
 	routes := []struct{ method, path string }{
 		{http.MethodPost, "/v1/ops/jobs/suspend"},
+		{http.MethodPost, "/v1/ops/apps/tracking"},
 		{http.MethodPost, "/v1/ops/inventory/topology"},
 		{http.MethodPost, "/v1/ops/inventory/applications"},
 		{http.MethodPost, "/v1/ops/inventory/volumes"},

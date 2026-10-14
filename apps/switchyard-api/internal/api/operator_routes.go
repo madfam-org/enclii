@@ -36,7 +36,7 @@ func registerOperatorRoutes(protected *gin.RouterGroup, h *Handler) {
 	ops.GET("/apps/bind-target/:idempotency_id", platformOperator, h.ReadServiceDeploymentTargetReceipt)
 	ops.POST("/:domain/:action", func(c *gin.Context) {
 		if c.Param("domain") == "inventory" || (c.Param("domain") == "jobs" && c.Param("action") == "suspend") ||
-			(c.Param("domain") == "apps" && c.Param("action") == "bind-target") {
+			(c.Param("domain") == "apps" && (c.Param("action") == "bind-target" || c.Param("action") == "tracking")) {
 			platformOperator(c)
 			return
 		}

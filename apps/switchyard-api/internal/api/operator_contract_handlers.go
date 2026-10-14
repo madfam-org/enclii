@@ -104,6 +104,11 @@ func (h *Handler) handleOperatorOperation(c *gin.Context, prefix, domain, action
 		c.JSON(status, resp)
 		return
 	}
+	if prefix == "ops" && domain == "apps" && action == "tracking" {
+		resp, status := h.handleOpsAppsTracking(c.Request.Context(), req, c.GetString("user_id"))
+		c.JSON(status, resp)
+		return
+	}
 	if req.DryRun {
 		if resp, handled := h.handleReadOnlyOperatorOperation(c, prefix, domain, action, operation, req); handled {
 			c.JSON(http.StatusOK, resp)
