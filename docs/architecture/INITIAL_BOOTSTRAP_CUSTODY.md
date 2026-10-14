@@ -67,6 +67,17 @@ same suspended Job UID/spec are checked again. Activation uses its freshly read
 resourceVersion in one PUT. The creation version is historical; normal Job
 controller status changes do not rewrite it.
 
+Each profile's first init container, `network-ready`, waits at most 120 s for
+one TCP handshake with its own database host before any database step. The
+Job's egress policy is created moments before activation, and a new Pod IP must
+also reach the addon's ingress rules. Until the CNI programs both, connections
+are refused at once, so a guard that tries once would hold the Job on a
+transient (observed 2026-10-14 on `map-sim-initial`: `fresh-only` exited within
+seconds with no server-side log). The probe uses the image's own `node`, does
+not authenticate or read data, and prints only fixed messages, never the URL.
+It changes the Job spec hash, so it applies to new operations only; it does not
+resume or adopt held history.
+
 The Job name is deterministic for project/addon/service/profile and excludes the
 request key. Its namespace Create is the atomic arbiter: concurrent requests with
 the same or different keys can persist/activate only one Job. The operation-key

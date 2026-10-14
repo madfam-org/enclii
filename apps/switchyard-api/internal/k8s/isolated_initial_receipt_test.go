@@ -29,8 +29,9 @@ func TestInitialPortalProfileRuns001Then002WithClosedCustody(t *testing.T) {
 	p := initialPortalPlan()
 	job, e := BuildIsolatedInitialJob(p)
 	require.NoError(t, e)
-	require.Len(t, job.Spec.Template.Spec.InitContainers, 1)
-	require.Equal(t, []string{"node", "packages/entrenamiento/src/migrar.ts"}, job.Spec.Template.Spec.InitContainers[0].Command)
+	require.Len(t, job.Spec.Template.Spec.InitContainers, 2)
+	require.Equal(t, []string{"node", "-e", initialNetworkReadyProbe, "CREA_SIM_MIGRATOR_DATABASE_URL"}, job.Spec.Template.Spec.InitContainers[0].Command)
+	require.Equal(t, []string{"node", "packages/entrenamiento/src/migrar.ts"}, job.Spec.Template.Spec.InitContainers[1].Command)
 	require.Equal(t, []string{"node", "packages/entrenamiento/src/preparar-custodia-reset.ts"}, job.Spec.Template.Spec.Containers[0].Command)
 	require.Len(t, p.Data, 4)
 	for _, c := range append(job.Spec.Template.Spec.InitContainers, job.Spec.Template.Spec.Containers...) {

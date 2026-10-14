@@ -197,9 +197,14 @@ func TestInitialMAPJobUsesCanonicalEntrypointsAndFreshGuard(t *testing.T) {
 	require.Equal(t, "tmp", spec.Volumes[1].Name)
 	require.NotNil(t, spec.Volumes[1].EmptyDir)
 	require.False(t, *spec.AutomountServiceAccountToken)
-	require.Len(t, spec.InitContainers, 2)
-	require.Contains(t, spec.InitContainers[0].Command[2], "a[0].tablas!==0n")
-	require.Equal(t, []string{"node", "/app/prisma-cli/node_modules/prisma/build/index.js", "migrate", "deploy", "--schema=/app/prisma/schema.prisma"}, spec.InitContainers[1].Command)
+	require.Len(t, spec.InitContainers, 3)
+	// Network readiness comes first: a just-created egress policy may not be
+	// programmed when the Pod starts, and the guard below tries only once.
+	require.Equal(t, "network-ready", spec.InitContainers[0].Name)
+	require.Equal(t, []string{"node", "-e", initialNetworkReadyProbe, "DATABASE_URL"}, spec.InitContainers[0].Command)
+	require.Equal(t, "fresh-only", spec.InitContainers[1].Name)
+	require.Contains(t, spec.InitContainers[1].Command[2], "a[0].tablas!==0n")
+	require.Equal(t, []string{"node", "/app/prisma-cli/node_modules/prisma/build/index.js", "migrate", "deploy", "--schema=/app/prisma/schema.prisma"}, spec.InitContainers[2].Command)
 	require.Equal(t, []string{"node", "/app/dist/semilla-simulacion.cjs", "--aplicar"}, spec.Containers[0].Command)
 	for _, container := range append(spec.InitContainers, spec.Containers...) {
 		require.Equal(t, p.Image, container.Image)
@@ -214,4 +219,17 @@ func TestInitialMAPJobUsesCanonicalEntrypointsAndFreshGuard(t *testing.T) {
 	}
 	encoded, _ := json.Marshal(p)
 	require.NotContains(t, string(encoded), "synthetic-value")
+}
+
+func TestInitialNetworkReadyProbeIsBoundedAndQuiet(t *testing.T) {
+	// The probe only opens a TCP handshake: no driver, no credentials in use,
+	// no URL fragment in its output, and a fixed upper bound well inside the
+	// Job's 600 s deadline.
+	require.Contains(t, initialNetworkReadyProbe, "net.connect({host:h,port:p})")
+	require.Contains(t, initialNetworkReadyProbe, "Date.now()+120000")
+	require.NotContains(t, initialNetworkReadyProbe, "require('/app")
+	for _, out := range []string{"'INITIAL_NETWORK_READY\\n'", "'Initial network not ready.\\n'", "'Initial network probe refused.\\n'"} {
+		require.Contains(t, initialNetworkReadyProbe, out)
+	}
+	require.Equal(t, 3, strings.Count(initialNetworkReadyProbe, "process.std"), "only the three fixed messages are written")
 }

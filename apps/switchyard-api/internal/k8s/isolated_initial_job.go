@@ -38,6 +38,25 @@ const initialMAPFreshGuard = `let c;
  process.stdout.write('INITIAL_DATABASE_EMPTY\n');
 }catch{process.stderr.write('Initial database guard refused.\n');process.exitCode=1;}finally{if(c)await c.$disconnect().catch(()=>{});}})();`
 
+// Fixed network readiness before any database step. The Job's own egress
+// policy is created moments before its Pod, and a new Pod IP must also reach
+// the addon's ingress rules; until the CNI programs both, connections are
+// refused at once. A once-only Job whose first database step makes a single
+// attempt is then held on a transient (observed 2026-10-14: fresh-only exited
+// within seconds, with no server-side log). This waits, bounded, for one TCP
+// handshake with the host named by the given variable. It neither
+// authenticates nor reads data, and prints no part of the URL.
+const initialNetworkReadyProbe = `const net=require('net');
+let h,p;
+try{const u=new URL(process.env[process.argv[1]]);h=u.hostname.replace(/^\[|\]$/g,'');p=Number(u.port||5432);if(!h||!(p>0&&p<65536))throw Error();}
+catch{process.stderr.write('Initial network probe refused.\n');process.exit(1);}
+const end=Date.now()+120000;let wait=250;
+const attempt=()=>{let settled=false;const s=net.connect({host:h,port:p});s.setTimeout(3000);
+ const retry=()=>{if(settled)return;settled=true;s.destroy();if(Date.now()>=end){process.stderr.write('Initial network not ready.\n');process.exit(1);}setTimeout(attempt,wait);wait=Math.min(wait*2,3000);};
+ s.once('connect',()=>{if(settled)return;settled=true;s.destroy();process.stdout.write('INITIAL_NETWORK_READY\n');process.exit(0);});
+ s.once('timeout',retry);s.once('error',retry);};
+attempt();`
+
 // A server-built plan: HTTP requests never bind this type. Data is kept out of
 // JSON and is transported only to a short-lived Secret owned by the fixed Job.
 type IsolatedInitialJobPlan struct {
@@ -156,15 +175,25 @@ func BuildIsolatedInitialJob(p IsolatedInitialJobPlan) (*batchv1.Job, error) {
 		init := container.DeepCopy()
 		init.Name = "migrate"
 		init.Command = migration
-		job.Spec.Template.Spec.InitContainers = []corev1.Container{*fresh, *init}
+		job.Spec.Template.Spec.InitContainers = []corev1.Container{initialNetworkReady(container, "DATABASE_URL"), *fresh, *init}
 	}
 	if p.Profile == "portal-sim-initial" {
 		init := container.DeepCopy()
 		init.Name = "portal001"
 		init.Command = migration
-		job.Spec.Template.Spec.InitContainers = []corev1.Container{*init}
+		job.Spec.Template.Spec.InitContainers = []corev1.Container{initialNetworkReady(container, "CREA_SIM_MIGRATOR_DATABASE_URL"), *init}
 	}
 	return job, nil
+}
+
+// initialNetworkReady runs first, with the same image, identity and limits as
+// the profile's own containers; only the fixed probe and the variable it reads
+// differ.
+func initialNetworkReady(base corev1.Container, variable string) corev1.Container {
+	ready := base.DeepCopy()
+	ready.Name = "network-ready"
+	ready.Command = []string{"node", "-e", initialNetworkReadyProbe, variable}
+	return *ready
 }
 
 func initialJobReceipt(job *batchv1.Job, dryRun bool) IsolatedInitialJobReceipt {
