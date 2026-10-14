@@ -486,8 +486,11 @@ jobs:
     # staging never pages critical (Argo, PodChronicRestart7d); an Argo app
     # Degraded only by Jobs that failed over 6h ago drops to a warning while a
     # fresh failure or a workload shortfall still pages; CNPGClusterDegraded's
-    # threshold equals cluster.yaml's `instances`. promtool evaluates the real
-    # rules with the image production runs; a failed pull skips with a reason.
+    # threshold equals cluster.yaml's `instances`. Also the PagerPathDrill
+    # rule, the one critical alert that fires on purpose: its weekly and
+    # one-off windows, its two per-product series, and its route to
+    # critical-receiver. promtool evaluates the real rules with the image
+    # production runs; a failed pull skips with a reason.
     steps:
       - uses: actions/checkout@v7
 
@@ -505,7 +508,7 @@ jobs:
             docker run --rm --entrypoint /bin/promtool -v {dir}:/w:ro
             docker.io/prom/prometheus:v2.53.3
             test rules /w/{name}
-        run: pytest tests/scripts/test_alert_noise_rules.py -v -rs
+        run: pytest tests/scripts/test_alert_noise_rules.py tests/scripts/test_pager_path_drill.py -v -rs
 
   client-slo-rules-test:
     name: Client SLO rule coverage
