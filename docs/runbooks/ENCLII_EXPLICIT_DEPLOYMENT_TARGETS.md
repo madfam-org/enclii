@@ -44,9 +44,16 @@ registration has those prerequisites.
 Exact Namespace/Application/Deployment reads require current nondeleting UIDs
 and resourceVersions, the registered single-source destination, and
 self-referencing Argo tracking. The fixed `argocd/argocd-cm` read must explicitly
-configure `annotation` or `annotation+label` tracking; absent or label-only
-configuration is refused. No installed default is guessed. ConfigMap UID,
-tracking method and installation ID belong to immutable authority identity.
+configure the tracking method; an absent method is refused and no installed
+default is guessed. With `annotation` or `annotation+label`, the Deployment must
+carry the self-referencing tracking ID and matching installation ID. With
+declared `label` tracking, the Deployment's instance label (the configured
+`application.instanceLabelKey`, or Argo's documented `app.kubernetes.io/instance`)
+must equal the Application name and no installation ID may be declared; the label
+is only a marker, and Argo's own `status.resources` must still list exactly this
+Deployment. Any other method is refused. ConfigMap UID, tracking method,
+installation ID and, for label tracking, the instance label key belong to
+immutable authority identity.
 ConfigMap resourceVersion belongs to the reviewed plan and audit, rather than
 permanent identity: an unrelated update preserving those authority fields does
 not invalidate every later operation.
