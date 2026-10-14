@@ -31,6 +31,17 @@ var initialSHA = regexp.MustCompile(`^[a-f0-9]{64}$`)
 var initialRevision = regexp.MustCompile(`^[a-f0-9]{40}$`)
 var initialUID = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$`)
 
+// The runtime may report a container status's `image` as the image's local
+// config ID ("sha256:<64 hex>") instead of the spec reference: containerd on
+// the production cluster does (2026-10-14), so collection refused two Jobs
+// that ran exactly the pinned images. The proof of what ran stays `imageID`,
+// the registry digest, which must still equal the pinned digest exactly.
+var initialImageConfigID = regexp.MustCompile(`^sha256:[a-f0-9]{64}$`)
+
+func initialStatusImage(reported, pinned string) bool {
+	return reported == pinned || initialImageConfigID.MatchString(reported)
+}
+
 // Constructed only by the authenticated server after source/CI/signature,
 // binding, workload and CNPG custody verification. No owner URI or human actor.
 // PinPayloadSHA256 hashes the verified payload; it is NOT a Git pin revision.
@@ -412,7 +423,7 @@ func (c *Client) collectInitialReceipt(ctx context.Context, p IsolatedInitialJob
 			found := false
 			for _, s := range status {
 				if s.Name == spec[i].Name {
-					if found || s.Image != p.Image || (s.ImageID != p.Image && s.ImageID != "docker-pullable://"+p.Image && s.ImageID != "containerd://sha256:"+strings.Split(p.Image, "@sha256:")[1]) || s.RestartCount != 0 || s.State.Terminated == nil || s.State.Terminated.ExitCode != 0 {
+					if found || !initialStatusImage(s.Image, p.Image) || (s.ImageID != p.Image && s.ImageID != "docker-pullable://"+p.Image && s.ImageID != "containerd://sha256:"+strings.Split(p.Image, "@sha256:")[1]) || s.RestartCount != 0 || s.State.Terminated == nil || s.State.Terminated.ExitCode != 0 {
 						return false
 					}
 					found = true
