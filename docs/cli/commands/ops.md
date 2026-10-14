@@ -99,6 +99,10 @@ The apply writes one data key with the reviewed resourceVersion as an
 optimistic-concurrency precondition; labels, annotations and other data are
 unchanged. A concurrent change returns `refused` with nothing written. Any
 other write error returns `unknown`: run the plan again before another attempt.
+The platform intentionally grants the apply path no RBAC write on
+`argocd-cm`, so it returns `refused` with nothing written: the plan is the
+supported read-only check, and any declaration change is a reviewed
+platform-bootstrap action.
 An exact repeat after success returns `already-declared` without writing.
 The `infra/argocd/resource-customizations.yaml` bootstrap patch predates this
 command and does not carry the key; do not re-apply it as a substitute.
