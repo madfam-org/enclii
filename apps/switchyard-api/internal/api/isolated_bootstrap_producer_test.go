@@ -25,10 +25,18 @@ func bootstrapDigestOf(body string) string {
 
 func bootstrapJSON(value any) string { b, _ := json.Marshal(value); return string(b) }
 
+// bootstrapRedirect is a registry-style storage redirect (GHCR answers blob
+// reads with 307 to its package CDN).
+func bootstrapRedirect(location string) *http.Response {
+	header := make(http.Header)
+	header.Set("Location", location)
+	return &http.Response{StatusCode: http.StatusTemporaryRedirect, Body: io.NopCloser(strings.NewReader("")), Header: header}
+}
+
 func TestBootstrapProducerProofRejectsFalseReleaseEvidence(t *testing.T) {
 	profile, err := isolatedBootstrapProfileFor("map-sim-initial")
 	require.NoError(t, err)
-	for _, name := range []string{"verified", "foreign source", "non-main run", "another revision", "unsigned", "failed CI", "pending CI", "empty CI", "truncated CI", "tag mismatch", "pin mismatch", "tampered config bytes", "missing image config", "commit status pending", "mandatory skipped", "mandatory missing", "mandatory duplicate"} {
+	for _, name := range []string{"verified", "foreign source", "non-main run", "another revision", "unsigned", "failed CI", "pending CI", "empty CI", "truncated CI", "tag mismatch", "pin mismatch", "tampered config bytes", "missing image config", "commit status pending", "mandatory skipped", "mandatory missing", "mandatory duplicate", "redirected blob", "redirected tampered blob", "insecure blob redirect", "redirected manifest"} {
 		t.Run(name, func(t *testing.T) {
 			revision := strings.Repeat("a", 40)
 			source := "https://github.com/" + profile.Producer
@@ -108,12 +116,27 @@ func TestBootstrapProducerProofRejectsFalseReleaseEvidence(t *testing.T) {
 				switch {
 				case r.URL.Host == "ghcr.io" && r.URL.Path == "/token":
 					body = `{"token":"synthetic-registry-token"}`
+				case r.URL.Host == "pkg-containers.githubusercontent.com" && r.URL.Path == "/blob-storage":
+					require.Empty(t, r.Header.Get("Authorization"), "the registry bearer must never reach blob storage")
+					body = config
+					if name == "redirected tampered blob" {
+						body += " "
+					}
 				case r.URL.Host == "ghcr.io" && strings.HasSuffix(r.URL.Path, "/blobs/"+configDigest):
+					switch name {
+					case "redirected blob", "redirected tampered blob":
+						return bootstrapRedirect("https://pkg-containers.githubusercontent.com/blob-storage?sig=fixture"), nil
+					case "insecure blob redirect":
+						return bootstrapRedirect("http://pkg-containers.githubusercontent.com/blob-storage"), nil
+					}
 					body = config
 					if name == "tampered config bytes" {
 						body += " "
 					}
 				case r.URL.Host == "ghcr.io" && strings.HasSuffix(r.URL.Path, "/manifests/"+digest):
+					if name == "redirected manifest" {
+						return bootstrapRedirect("https://pkg-containers.githubusercontent.com/blob-storage"), nil
+					}
 					body = manifest
 				case r.URL.Host == "ghcr.io" && strings.HasSuffix(r.URL.Path, "/manifests/"+revision):
 					body = manifest
@@ -134,7 +157,7 @@ func TestBootstrapProducerProofRejectsFalseReleaseEvidence(t *testing.T) {
 				return &http.Response{StatusCode: 200, Body: io.NopCloser(strings.NewReader(body)), Header: make(http.Header)}, nil
 			})}
 			proof, err := adapter.verify(t.Context(), profile, image)
-			if name == "verified" {
+			if name == "verified" || name == "redirected blob" {
 				require.NoError(t, err)
 				require.True(t, proof.SignatureVerified)
 				require.Equal(t, int64(123), proof.RunID)
