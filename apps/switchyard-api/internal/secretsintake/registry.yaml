@@ -1100,6 +1100,10 @@ targets:
       - crea_sim_session_key
       - sim01_context_key
       - sim01_control_key
+      - sim02_context_key
+      - sim02_control_key
+      - sim03_context_key
+      - sim03_control_key
 
   crea-sim/capture-runtime:
     label: Private synthetic mail capture runtime
@@ -1111,6 +1115,8 @@ targets:
       - crea_sim_database_namespace
       - crea_sim_portal_database_url
       - sim01_mail_key
+      - sim02_mail_key
+      - sim03_mail_key
 
   crea-sim/kernel01-runtime:
     label: Isolated synthetic kernel runtime
@@ -1125,6 +1131,37 @@ targets:
       - map_simulation_mail_key
       - map_simulation_mcp_client_id
       - map_mcp_pseudonym_key
+
+  # Kernels 02 and 03 share kernel 01's Vault path under their own prefixed
+  # properties: the training writer policy grants exactly five data paths, and
+  # a new path would need a Vault policy change. Each kernel's ExternalSecret
+  # projects only its own properties; the public MCP client id is the one
+  # shared property, filed once through crea-sim/kernel01-runtime.
+  crea-sim/kernel02-runtime:
+    label: Isolated synthetic kernel 02 runtime
+    description: Governed isolated runtime custody; no owner, provider or production credential
+    vault_path: secret/crea-sim-map01
+    namespace: crea-sim
+    external_secret: crea-sim-map02 # pragma: allowlist secret -- ExternalSecret resource name; not a credential
+    keys:
+      - map02_database_url
+      - map02_context_key
+      - map02_control_key
+      - map02_mail_key
+      - map02_mcp_pseudonym_key
+
+  crea-sim/kernel03-runtime:
+    label: Isolated synthetic kernel 03 runtime
+    description: Governed isolated runtime custody; no owner, provider or production credential
+    vault_path: secret/crea-sim-map01
+    namespace: crea-sim
+    external_secret: crea-sim-map03 # pragma: allowlist secret -- ExternalSecret resource name; not a credential
+    keys:
+      - map03_database_url
+      - map03_context_key
+      - map03_control_key
+      - map03_mail_key
+      - map03_mcp_pseudonym_key
 
   crea-sim/gateway-ca:
     label: Verified public portal database CA
@@ -1152,6 +1189,24 @@ targets:
     external_secret: crea-sim-map01-ca # pragma: allowlist secret -- ExternalSecret resource name; not a credential
     keys:
       - database_ca_pem
+
+  crea-sim/kernel02-ca:
+    label: Verified public kernel 02 database CA
+    description: Governed isolated runtime custody; no owner, provider or production credential
+    vault_path: secret/crea-sim-map01
+    namespace: crea-sim
+    external_secret: crea-sim-map02-ca # pragma: allowlist secret -- ExternalSecret resource name; not a credential
+    keys:
+      - map02_database_ca_pem
+
+  crea-sim/kernel03-ca:
+    label: Verified public kernel 03 database CA
+    description: Governed isolated runtime custody; no owner, provider or production credential
+    vault_path: secret/crea-sim-map01
+    namespace: crea-sim
+    external_secret: crea-sim-map03-ca # pragma: allowlist secret -- ExternalSecret resource name; not a credential
+    keys:
+      - map03_database_ca_pem
 
   janua-staging/runtime-crypto:
     label: Fresh isolated staging identity crypto

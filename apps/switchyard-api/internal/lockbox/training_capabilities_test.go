@@ -234,7 +234,8 @@ func TestTrainingCapabilitiesRegistryDriftAndConfigurationAreClosed(t *testing.T
 	registry, err := secretsintake.LoadRegistry()
 	require.NoError(t, err)
 	for _, name := range []string{"foreign path", "foreign namespace", "missing destination", "missing ID with destination retained",
-		"unreviewed ID on approved path", "reroute within retained destination set", "target ID alias", "two IDs swapped"} {
+		"unreviewed ID on approved path", "reroute within retained destination set", "target ID alias", "two IDs swapped",
+		"kernel on a sixth path", "kernel moved to another approved path"} {
 		t.Run(name, func(t *testing.T) {
 			copy := make(map[string]secretsintake.Target, len(registry))
 			for id, target := range registry {
@@ -273,6 +274,14 @@ func TestTrainingCapabilitiesRegistryDriftAndConfigurationAreClosed(t *testing.T
 				ui, selva := copy["crea-sim/ui-oidc"], copy["crea-sim/selva-oidc"]
 				ui.VaultPath, selva.VaultPath = selva.VaultPath, ui.VaultPath
 				copy[ui.ID], copy[selva.ID] = ui, selva
+			case "kernel on a sixth path":
+				target := copy["crea-sim/kernel02-runtime"]
+				target.VaultPath = "secret/crea-sim-map02"
+				copy[target.ID] = target
+			case "kernel moved to another approved path":
+				target := copy["crea-sim/kernel03-ca"]
+				target.VaultPath = "secret/crea-sim-gateway"
+				copy[target.ID] = target
 			}
 			_, err := trainingCapabilityPaths(copy)
 			require.ErrorIs(t, err, ErrTrainingCapabilitiesUnverified)
@@ -290,6 +299,28 @@ func TestTrainingCapabilitiesRegistryDriftAndConfigurationAreClosed(t *testing.T
 	client.enabled = false
 	_, err = client.ProbeTrainingCustodyCapabilities(t.Context())
 	require.ErrorIs(t, err, ErrTrainingCapabilitiesUnverified)
+}
+
+// Kernels 02 and 03 file into kernel 01's path, so the writer policy keeps
+// exactly five training data paths and their five metadata paths.
+func TestTrainingCapabilitiesKeepFiveDestinationsWithThreeKernels(t *testing.T) {
+	registry, err := secretsintake.LoadRegistry()
+	require.NoError(t, err)
+	for _, id := range []string{"crea-sim/kernel01-runtime", "crea-sim/kernel02-runtime", "crea-sim/kernel03-runtime", "crea-sim/kernel01-ca", "crea-sim/kernel02-ca", "crea-sim/kernel03-ca"} {
+		require.Equal(t, "secret/crea-sim-map01", registry[id].VaultPath, id)
+		require.Equal(t, "crea-sim", registry[id].Namespace, id)
+	}
+	paths, err := TrainingCustodyCapabilityPaths()
+	require.NoError(t, err)
+	var destinations []string
+	for _, path := range paths {
+		if name, data := strings.CutPrefix(path, "secret/data/"); data {
+			destinations = append(destinations, name)
+			require.Contains(t, paths, "secret/metadata/"+name)
+		}
+	}
+	require.Equal(t, []string{"crea-sim-captura", "crea-sim-gateway", "crea-sim-map01", "crea-sim-selva", "janua-staging"}, destinations)
+	require.Len(t, paths, 10)
 }
 
 func TestTrainingCapabilitiesHonorsShorterClientTimeoutWithoutRetry(t *testing.T) {
