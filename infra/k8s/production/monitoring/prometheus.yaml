@@ -2681,6 +2681,73 @@ data:
                 If the series is absent while kube-state-metrics is up, the
                 StatefulSet itself is gone: check the Prometheus CR
                 `rules-eval` and the prometheus-operator log.
+
+  # =========================================================================
+  # Pager path drill. Watchdog proves rules reach Alertmanager; nothing
+  # proved that a CRITICAL page reaches a person (Alertmanager route ->
+  # critical-receiver -> Courier chat + email) except a real outage. This
+  # fires on a schedule so the whole path is exercised while nothing is
+  # broken, and a drill that does NOT arrive is the finding.
+  #
+  # WHEN. Every Monday 16:00-16:05 UTC (10:00-10:05 in Mexico City), plus the
+  # one-off window in the expression below.
+  #
+  # SHAPE. Two series, product="drill-a" and product="drill-b", with
+  # `category: revenue-probe`, the label the per-product revenue route in
+  # alertmanager.yaml matches (it groups by [alertname, product]). With that
+  # route live the drill is two Alertmanager groups: two emails
+  # "[CRITICAL] PagerPathDrill" and two Courier webhook posts, of which chat
+  # shows ONE, because Courier dedups on alertname per UTC hour
+  # (`alarm:PagerPathDrill:<hour>`, angelia). Without that route (it is a
+  # separate change and may land later) the drill falls to the generic
+  # critical route: one group, one email listing both, one chat message.
+  # Either way it pages through critical-receiver.
+  #
+  # ONE-OFF WINDOW. The second `or` branch fires once, for 5 minutes, at the
+  # epoch-second constants in it (UTC). Whoever merges this sets START to
+  # the moment the drill should run and END to START + 300 (the test pins
+  # the 300), e.g. START=$(date -u -d '2026-10-14 17:00' +%s) with GNU date.
+  # A window in the past is inert, so leaving it after the drill pages nobody.
+  #
+  # No `for:`: the window is the duration. A Prometheus restart or a reload
+  # across 16:00 delays the page by at most the group interval.
+  # =========================================================================
+  pager-path-drill-rules.yml: |
+    groups:
+      - name: pager-path-drill
+        interval: 1m
+        rules:
+          - alert: PagerPathDrill
+            expr: |
+              (
+                label_replace(vector(1), "product", "drill-a", "", "")
+                or
+                label_replace(vector(1), "product", "drill-b", "", "")
+              )
+              and on ()
+              (
+                (day_of_week() == 1 and hour() == 16 and minute() < 5)
+                or
+                # ONE-OFF DRILL WINDOW — coordinator sets before merge (START, END = START + 300)
+                (vector(time()) >= 1791956700 and vector(time()) < 1791957000)
+              )
+            labels:
+              severity: critical
+              category: revenue-probe
+              service: alertmanager
+            annotations:
+              summary: "DRILL — pager path test, no action needed ({{ $labels.product }})"
+              description: |
+                Scheduled drill of the critical paging path, not an outage.
+                It fires every Monday 16:00-16:05 UTC as two series,
+                product drill-a and drill-b, and resolves by itself.
+
+                Expected: two emails "[CRITICAL] PagerPathDrill" (one per
+                product; their resolved twins follow after 16:05) and one
+                chat message (Courier sends one per alertname per hour). If
+                either never arrives, that last mile is broken: check
+                AlertmanagerEmailDeliveryFailing and CourierReceiverDown,
+                then the Alertmanager log.
 ---
 # Prometheus PVC
 apiVersion: v1
