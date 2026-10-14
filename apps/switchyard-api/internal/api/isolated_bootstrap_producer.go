@@ -60,11 +60,37 @@ func (a bootstrapProducerIO) readJSON(ctx context.Context, address, bearer strin
 	if bearer != "" {
 		req.Header.Set("Authorization", "Bearer "+bearer)
 	}
-	response, err := a.Client.Do(req)
+	// Never follow redirects implicitly, whatever client the caller supplied;
+	// the single permitted blob-storage hop below is explicit.
+	client := *a.Client
+	client.CheckRedirect = func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }
+	response, err := client.Do(req)
 	if err != nil {
 		return fmt.Errorf("producer request failed")
 	}
 	defer response.Body.Close()
+	contentAddressed := strings.Contains(req.URL.Path, "/manifests/sha256:") || strings.Contains(req.URL.Path, "/blobs/sha256:")
+	// Registries serve blobs from storage behind one redirect (GHCR: 307 to its
+	// package CDN). Only a content-addressed blob may follow it, exactly once,
+	// over HTTPS and without the registry bearer; the digest check below still
+	// binds the bytes to the requested digest, wherever they were served from.
+	if strings.Contains(req.URL.Path, "/blobs/sha256:") && isRegistryRedirect(response.StatusCode) {
+		target, redirectErr := response.Location()
+		if redirectErr != nil || target.Scheme != "https" || target.Host == "" || target.User != nil {
+			return fmt.Errorf("producer blob redirect refused")
+		}
+		_, _ = io.Copy(io.Discard, io.LimitReader(response.Body, 4096))
+		storage, storageErr := http.NewRequestWithContext(ctx, http.MethodGet, target.String(), nil)
+		if storageErr != nil {
+			return fmt.Errorf("producer request unavailable")
+		}
+		redirected, storageErr := client.Do(storage)
+		if storageErr != nil {
+			return fmt.Errorf("producer request failed")
+		}
+		defer redirected.Body.Close()
+		response = redirected
+	}
 	if response.StatusCode != http.StatusOK {
 		return fmt.Errorf("producer response refused: HTTP %d", response.StatusCode)
 	}
@@ -73,7 +99,7 @@ func (a bootstrapProducerIO) readJSON(ctx context.Context, address, bearer strin
 		return fmt.Errorf("producer response exceeds bounds")
 	}
 	// Registry content-addressed reads are checked against bytes, not a header.
-	if strings.Contains(req.URL.Path, "/manifests/sha256:") || strings.Contains(req.URL.Path, "/blobs/sha256:") {
+	if contentAddressed {
 		want := req.URL.Path[strings.LastIndex(req.URL.Path, "/")+1:]
 		sum := sha256.Sum256(body)
 		if want != "sha256:"+hex.EncodeToString(sum[:]) {
@@ -84,6 +110,14 @@ func (a bootstrapProducerIO) readJSON(ctx context.Context, address, bearer strin
 		return fmt.Errorf("producer response is not JSON")
 	}
 	return nil
+}
+
+func isRegistryRedirect(status int) bool {
+	switch status {
+	case http.StatusMovedPermanently, http.StatusFound, http.StatusSeeOther, http.StatusTemporaryRedirect, http.StatusPermanentRedirect:
+		return true
+	}
+	return false
 }
 
 func (a bootstrapProducerIO) registryToken(ctx context.Context, packageName string) (string, error) {
