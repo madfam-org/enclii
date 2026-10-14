@@ -124,6 +124,10 @@ type OnboardingRequest struct {
 type PreflightResult struct {
 	Pass       bool             `json:"pass"`
 	Violations []PreflightIssue `json:"violations,omitempty"`
+	// Notes reports checks the preflight could not run, such as the admission
+	// dry run of namespaced objects when the project namespace does not exist
+	// yet. Notes never fail the preflight; only Violations do.
+	Notes []string `json:"notes,omitempty"`
 }
 
 // PreflightIssue describes a single manifest validation failure
