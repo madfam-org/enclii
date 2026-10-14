@@ -474,13 +474,16 @@ platforms:
   # access and refresh tokens (falling back to the global audience only when it
   # is unset), so the session the web holds is directly usable at the API.
   #
-  # allowed_scopes is EXACTLY the web's request, `openid profile email fh:read
-  # fh:write`: the API enforces fh:read on GET/HEAD/OPTIONS and fh:write on every
-  # other method. fh:admin and fh:export are deliberately absent. allowed_scopes
-  # is a client-level grant, so anything listed here any user of this client
-  # could request. offline_access is absent too: Janua issues a refresh token on
-  # every authorization-code exchange without it, and the refresh_token grant is
-  # gated by grant_types alone.
+  # allowed_scopes is exactly `openid profile email fh:read fh:write`: the API
+  # enforces fh:read on GET/HEAD/OPTIONS and fh:write on every other method.
+  # fh:admin and fh:export are deliberately absent. allowed_scopes is a
+  # client-level grant, so anything listed here any user of this client could
+  # request. The web's request is `openid profile email offline_access fh:read
+  # fh:write`; offline_access is still not listed: Janua issues a refresh token
+  # on every authorization-code exchange without it, the refresh_token grant is
+  # gated by grant_types alone, and when allowed_scopes is enforced on the
+  # authorization-code flow the OIDC identity scopes (openid, profile, email,
+  # offline_access) stay grantable to every end-user sign-in.
   #
   # BOTH the id and the secret go to Vault (target family-history/web-oidc,
   # lowercase to match what Vault stores), nauta-style: the family-history
