@@ -65,6 +65,44 @@ labels and container identity corroborate ownership. Actual images must be
 immutable digest references. This adapter does not itself prove registry
 signature/admission policy or enroll an image for simulator reset authority.
 
+## Refusal detail
+
+An ownership refusal keeps HTTP 409, its `error` text and
+`refusal_code: "ownership_unverified"`, and adds `refusal_detail`: the name of
+the one check that refused. The name is a closed, value-free word; it never
+carries an object name, UID, label, image, file name or file content. The same
+field is added to the bound scale/restart refusals, and switchyard-api logs
+`workload target ownership refused` with the detail and, for a failed read, the
+API server or GitHub error (`enclii ops pods logs <pod> -n enclii --container switchyard-api`).
+Intent refusals (`persisted registration/environment ownership intent ...`) and
+`argo_tracking_unverified` are unchanged and carry no detail.
+
+| `refusal_detail` | Check that refused |
+| --- | --- |
+| `namespace_read`, `deployment_read`, `application_read`, `argo_config_read` | The fixed read of the Namespace, the Deployment, the registered Argo Application or `argocd/argocd-cm` failed (not found, forbidden, unavailable) |
+| `sync_revision_invalid` | The Application's `status.sync.revision` is not a 40-character commit SHA |
+| `declared_manifest_fetch` | The manifest directory could not be read from GitHub at that revision |
+| `declared_manifest_layout` | No single kustomization, a nested or duplicate file, or a resource that is not a flat local file of that directory |
+| `kustomization_transform_unsupported` | The kustomization uses a field other than `apiVersion`, `kind`, `resources`, `images` and `namespace` (for example `configMapGenerator`, `patches`, `nameSuffix`) |
+| `kustomization_namespace_mismatch` | The kustomization's `namespace` differs from the requested namespace |
+| `declared_manifest_invalid` | A declared file could not be parsed or resolved |
+| `declared_manifest_missing` | No declared `apps/v1` Deployment has the requested name |
+| `declared_deployment_duplicate`, `declared_deployment_invalid` | The Deployment is declared twice, or in another namespace/apiVersion |
+| `snapshot_incomplete`, `target_identity_mismatch`, `object_deleting`, `native_identity_missing` | A native object is absent, misnamed, being deleted, or lacks UID/resourceVersion |
+| `application_identity_mismatch` | The Application read is not the registered one in `argocd` |
+| `namespace_project_label`, `enclii_label_conflict` | An `enclii.dev/project` or `enclii.dev/service` label names another owner |
+| `argo_multi_source`, `argo_source_mismatch`, `argo_destination_mismatch`, `argo_compared_source_mismatch` | The Application's source/destination, or the source Argo compared, is not the registered repository/path/ref/namespace |
+| `argo_config_identity` | `argocd-cm` lacks UID/resourceVersion or is being deleted |
+| `tracking_annotation_mismatch`, `installation_id_mismatch` | Annotation tracking: the tracking ID or installation ID on the Deployment differs |
+| `instance_label_key_invalid`, `installation_id_declared`, `instance_label_mismatch` | Label tracking: invalid configured key, an installation ID declared, or the instance label names another Application |
+| `argo_resources_unreadable`, `argo_resource_not_listed` | Argo's `status.resources` is unreadable or does not list this Deployment exactly once |
+| `declared_target_mismatch`, `selector_mismatch`, `declared_labels_mismatch` | The declared Deployment's identity, selector or labels differ from the live one |
+| `image_pattern`, `container_names` | A live image is not a digest reference, or the container names differ from the declared ones |
+
+A project whose production kustomization uses a generator is refused with
+`kustomization_transform_unsupported` for every Deployment it declares. Declare
+the generated object as a plain manifest listed in `resources` instead.
+
 ## Persistence and unknown outcomes
 
 Migration 043 creates empty immutable bindings and immutable audit receipts. It
