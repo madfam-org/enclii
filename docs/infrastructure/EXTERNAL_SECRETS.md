@@ -448,13 +448,13 @@ patch is invisible to the next reader of the repo; a git-only change is a no-op.
    has the new key (compare key names or count, never values).
 7. **Roll the consumer.** Env vars sourced from the Secret are read at pod
    start, so the running pods keep the old environment until they restart.
-   `enclii ops pods restart` is **not implemented yet** (the apply returns
-   HTTP 501, see [ops.md](../cli/commands/ops.md#remaining-adapter-work)).
-   Use the Enclii service restart API (`POST /v1/services/{id}/restart`,
-   admin role; SDK `services.restart()`) when the workload is a registered
-   Enclii service whose Deployment carries the service name in the project
-   namespace; otherwise do a rollout restart of the consuming Deployment as a
-   recorded break-glass step.
+   Roll the consuming workload with
+   `enclii ops pods restart deployment/<name> -n <namespace>` (dry run, then
+   `--expect-uid <uid> --apply --reason "..."`; platform_admin rank, and the
+   namespace must be in the API's restart allowlist — see
+   [ops.md](../cli/commands/ops.md#ops-pods-restart)). The Enclii service
+   restart API (`POST /v1/services/{id}/restart`, SDK `services.restart()`)
+   also works for a registered Enclii service.
 8. **Confirm git and live agree** on the entry you added before you close the
    change.
 

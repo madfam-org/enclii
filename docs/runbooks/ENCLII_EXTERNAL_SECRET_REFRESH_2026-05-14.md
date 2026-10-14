@@ -120,8 +120,7 @@ What the refresh does **not** do:
   maps. The live object must be patched first, and git kept in step. Procedure:
   [EXTERNAL_SECRETS.md — changing a git-only ExternalSecret](../infrastructure/EXTERNAL_SECRETS.md#procedure-changing-a-git-only-externalsecret-until-539).
 - **It does not restart consumers.** Pods that read the Secret as env vars keep
-  the old environment until they restart. `enclii ops pods restart` is not
-  implemented yet: its apply returns HTTP 501 (`adapter_required`). Roll the
-  Deployment instead — through the Enclii service restart API for a registered
-  service, otherwise as a recorded break-glass rollout restart. See
-  [ops.md — Remaining Adapter Work](../cli/commands/ops.md#remaining-adapter-work).
+  the old environment until they restart. Roll them with
+  `enclii ops pods restart deployment/<name> -n <namespace>`, which needs the
+  platform_admin rank and a namespace in the API's restart allowlist. See
+  [ops.md — `ops pods restart`](../cli/commands/ops.md#ops-pods-restart).

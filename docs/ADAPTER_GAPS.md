@@ -15,11 +15,42 @@ Track operations that still require break-glass (`kubectl`, provider CLIs, manua
 | Signup verification email (Resend) | ~~Janua bridge~~ | **Closed** — `enclii.dev` verified; Vault backfill via `enclii secrets vault-backfill`; `providers.resend.*` + Dispatch Provider Hub | — |
 | Agent SaaS tool plane (`madfam.ops.*` proxy) | N/A — not built | Coupler `madfam.ops.*` → Enclii `providers.*` / `ops.*` (admin JWT) | P1 — track in [COUPLER_REMEDIATION_PLAN.md](strategy/COUPLER_REMEDIATION_PLAN.md) |
 | GitOps deploy tracking has no reconcile fallback | ArgoCD Notifications push (`/v1/callbacks/argocd-sync`) is the **only** release/deployment/activity signal for externally-managed (GitOps) services; if the push channel breaks, tracking silently freezes | ArgoCD `Application` poller in switchyard-api (reads `status.sync.revision` + `status.summary.images` directly) **or** relax the K8s-poll reconciler to track image-digest changes for name/repo-matched services (not only `enclii.dev/managed-by: switchyard`) | **P1** — see progress log 2026-07-12 |
-| `ops.pods.restart` apply not wired | `--apply` returns HTTP 501 `adapter_required` ("adapter execution is not wired in this build; dry-run is safe, apply is blocked"). Recreating a wedged pod needs break-glass `kubectl delete pod`. This blocks the common StatefulSet case: under the default `OrderedReady` policy the controller will not replace a crash-looping pod from the old revision, so a merged manifest fix never takes effect (loki-0, 2026-10-14, after #736). The same step appears in the roundhouse image-pull recovery. | Wire the `pods.restart` adapter, deleting a named pod and letting its controller recreate it, plus a StatefulSet-aware "recreate stuck ordinal" mode, with the existing audit step | **P1** |
+| `ops.pods.restart` apply not wired | ~~`--apply` returned HTTP 501 `adapter_required`, so a wedged pod needed break-glass `kubectl delete pod` and a workload restart needed `kubectl rollout restart`. The common case was a StatefulSet pod crash-looping on an old revision, which `OrderedReady` never replaces (loki-0, 2026-10-14, after #736).~~ | **Closed** — `enclii ops pods restart <kind>/<name>`: a rollout restart of a Deployment, StatefulSet or DaemonSet, or the recreation of one controller-owned pod (the stuck-ordinal case, flagged by the StatefulSet dry run). Platform rank, `ENCLII_OPS_RESTART_NAMESPACES` allowlist, audit row before the mutation. See the progress log, 2026-10-14 | — |
 
 When closing a gap, remove the row and link the PR that added the adapter.
 
 ## Progress log
+
+### 2026-10-14 — `ops pods restart` wired (row closed)
+
+`enclii ops pods restart` advertised a capability whose apply returned HTTP
+501, so restarts went through break-glass `kubectl`: deleting a crash-looping
+StatefulSet pod that `OrderedReady` would not replace (`loki-0`), and rolling
+Deployments so they read a changed Secret. The adapter now does both
+(`apps/switchyard-api/internal/api/operator_pods_restart.go`):
+
+- `deployment|statefulset|daemonset/<name>` sends `kubectl rollout restart`'s
+  strategic-merge patch, the pod-template annotation
+  `kubectl.kubernetes.io/restartedAt`, and nothing else.
+- `pod/<name>` deletes one pod owned by a ReplicaSet, StatefulSet or DaemonSet,
+  with a UID precondition and the pod's own grace period. Other pods are
+  refused. The StatefulSet dry run marks a pod that is not Ready and runs a
+  revision other than the update revision as `stuck`, and prints the
+  `pod/<name>` command for it.
+- Guards: the route needs the database-resolved `platform_admin` rank (the
+  same guard as `jobs suspend` and `apps tracking`), so tenant administrators
+  cannot reach it. The namespace must be in `ENCLII_OPS_RESTART_NAMESPACES`
+  (empty refuses all; `kube-*` is refused even when listed). Apply needs
+  `--reason`. An audit row (actor, time, object, UID, reason, patch) is written
+  before the mutation, and nothing is changed if it cannot be written; a second
+  row records the result. `--expect-uid` binds the apply to the reviewed object.
+- RBAC (`infra/k8s/base/rbac.yaml`): `get`/`patch` on StatefulSets and
+  DaemonSets and `delete` on pods, added to the `switchyard-api` ClusterRole.
+  Deployment patch was already granted there. The namespace allowlist is
+  enforced by the API, because RBAC would need one Role per namespace.
+
+Procedure: [`docs/cli/commands/ops.md`](cli/commands/ops.md#ops-pods-restart).
+PR: feat/ops-pods-restart-adapter.
 
 ### 2026-08-17 — `domains add` provisions the edge (issue #386 closed)
 
