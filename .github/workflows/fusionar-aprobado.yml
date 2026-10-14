@@ -1,0 +1,117 @@
+# Fusionar lo aprobado por el dueño, en cuanto todo esté verde.
+#
+# El dueño pone la etiqueta «aprobado-para-fusionar» en un PR. La aprobación se
+# ata al commit exacto: este workflow publica el estado «fusionar/aprobado» en el
+# head de ese momento. Un push posterior es otro commit sin ese estado: se quita
+# la etiqueta y hay que volver a aprobar. Se fusiona (squash, con el sha del head)
+# sólo si el head trae ese estado puesto por este workflow, el PR no es borrador,
+# no tiene conflictos y TODAS las corridas de GitHub Actions de ese head
+# terminaron en verde (y hay al menos una). Varios PRs aprobados se fusionan
+# seguidos: un tren.
+#
+# Sólo cuentan las etiquetas de las cuentas en `vars.APROBADORES_FUSION`
+# (por omisión, «aldoruizluna»). Los agentes nunca ponen esta etiqueta.
+# La fusión usa el secreto FUSIONADOR_TOKEN (PAT del dueño): un push hecho con
+# GITHUB_TOKEN no dispara el CI ni el despliegue de main. Sin ese secreto, este
+# workflow no fusiona nada.
+name: Fusionar lo aprobado
+
+on:
+  pull_request_target:
+    types: [labeled, synchronize, reopened, ready_for_review]
+  workflow_run:
+    workflows: ["CI Pipeline", "Integration Tests", "Public hygiene", "Pre-commit secret hooks", "Docs Link Check", "Documentation Lint", "GA Doc Drift", "Production Readiness Ratchet"]
+    types: [completed]
+  schedule:
+    - cron: '*/10 * * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pull-requests: write
+  issues: write
+  statuses: write
+  actions: read
+  checks: read
+
+concurrency:
+  group: fusionar-aprobado
+  cancel-in-progress: false
+
+jobs:
+  fusionar:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/github-script@v7
+        env:
+          ETIQUETA: aprobado-para-fusionar
+          APROBADORES: ${{ vars.APROBADORES_FUSION || 'aldoruizluna' }}
+          FUSIONADOR_TOKEN: ${{ secrets.FUSIONADOR_TOKEN }}
+          ESTE_WORKFLOW: Fusionar lo aprobado
+        with:
+          script: |
+            const {owner, repo} = context.repo;
+            const ETIQUETA = process.env.ETIQUETA, CONTEXTO = 'fusionar/aprobado';
+            const aprobadores = process.env.APROBADORES.split(',').map(s => s.trim().toLowerCase()).filter(Boolean);
+            const BOT = 'github-actions[bot]';
+
+            // 1. Eventos del propio PR: registrar la aprobación o retirarla.
+            if (context.eventName === 'pull_request_target') {
+              const pr = context.payload.pull_request, accion = context.payload.action;
+              const tieneEtiqueta = pr.labels.some(l => l.name === ETIQUETA);
+              if (accion === 'labeled' && context.payload.label?.name === ETIQUETA) {
+                const quien = (context.payload.sender?.login || '').toLowerCase();
+                if (!aprobadores.includes(quien)) {
+                  await github.rest.issues.removeLabel({owner, repo, issue_number: pr.number, name: ETIQUETA}).catch(() => {});
+                  await github.rest.issues.createComment({owner, repo, issue_number: pr.number,
+                    body: `La etiqueta «${ETIQUETA}» sólo cuenta si la pone el dueño; se retiró.`});
+                  return;
+                }
+                await github.rest.repos.createCommitStatus({owner, repo, sha: pr.head.sha, state: 'success', context: CONTEXTO,
+                  description: `Aprobado por ${quien} en ${pr.head.sha.slice(0, 8)}`.slice(0, 140)});
+              } else if (accion === 'synchronize' && tieneEtiqueta) {
+                await github.rest.issues.removeLabel({owner, repo, issue_number: pr.number, name: ETIQUETA}).catch(() => {});
+                await github.rest.issues.createComment({owner, repo, issue_number: pr.number,
+                  body: `Llegó un commit nuevo (${pr.head.sha.slice(0, 8)}) después de la aprobación: se retiró «${ETIQUETA}». Vuelve a ponerla para aprobar este head.`});
+                return;
+              }
+            }
+
+            // 2. Fusionar lo aprobado que ya esté verde.
+            if (!process.env.FUSIONADOR_TOKEN) { core.notice('Falta el secreto FUSIONADOR_TOKEN: no se fusiona nada.'); return; }
+            const fusionador = require('@actions/github').getOctokit(process.env.FUSIONADOR_TOKEN);
+            const abiertos = await github.paginate(github.rest.pulls.list, {owner, repo, state: 'open', per_page: 100});
+            for (const resumen of abiertos.filter(p => p.labels.some(l => l.name === ETIQUETA))) {
+              const n = resumen.number;
+              const {data: pr} = await github.rest.pulls.get({owner, repo, pull_number: n});
+              const head = pr.head.sha;
+              if (pr.draft) { core.info(`#${n}: borrador, no se fusiona.`); continue; }
+              const estados = await github.paginate(github.rest.repos.listCommitStatusesForRef, {owner, repo, ref: head, per_page: 100});
+              const aprobacion = estados.find(s => s.context === CONTEXTO);
+              if (!aprobacion || aprobacion.state !== 'success' || aprobacion.creator?.login !== BOT) {
+                core.info(`#${n}: el head ${head.slice(0, 8)} no tiene la aprobación de este workflow.`); continue;
+              }
+              const otros = estados.filter(s => s.context !== CONTEXTO);
+              const ultimoPorContexto = new Map();
+              for (const s of otros) if (!ultimoPorContexto.has(s.context)) ultimoPorContexto.set(s.context, s);
+              if ([...ultimoPorContexto.values()].some(s => s.state !== 'success')) { core.info(`#${n}: hay estados de commit sin verde.`); continue; }
+              const corridas = (await github.paginate(github.rest.actions.listWorkflowRunsForRepo, {owner, repo, head_sha: head, per_page: 100}))
+                .filter(r => r.name !== process.env.ESTE_WORKFLOW);
+              if (corridas.length === 0) { core.info(`#${n}: todavía no hay corridas en ${head.slice(0, 8)}.`); continue; }
+              const pendientes = corridas.filter(r => r.status !== 'completed');
+              if (pendientes.length) { core.info(`#${n}: corriendo: ${pendientes.map(r => r.name).join(', ')}.`); continue; }
+              const rojas = corridas.filter(r => !['success', 'skipped', 'neutral'].includes(r.conclusion));
+              if (rojas.length) { core.info(`#${n}: sin verde: ${rojas.map(r => `${r.name}=${r.conclusion}`).join(', ')}.`); continue; }
+              const checks = await github.paginate(github.rest.checks.listForRef, {owner, repo, ref: head, per_page: 100});
+              const checksRojos = checks.filter(c => c.app?.slug !== 'github-actions' && (c.status !== 'completed' || !['success', 'skipped', 'neutral'].includes(c.conclusion)));
+              if (checksRojos.length) { core.info(`#${n}: checks externos sin verde.`); continue; }
+              if (pr.mergeable === false) { core.warning(`#${n}: tiene conflictos con la base.`); continue; }
+              if (pr.mergeable === null) { core.info(`#${n}: GitHub aún calcula si se puede fusionar.`); continue; }
+              try {
+                const {data: r} = await fusionador.rest.pulls.merge({owner, repo, pull_number: n, sha: head, merge_method: 'squash'});
+                core.notice(`#${n} fusionado: ${r.sha}`);
+              } catch (e) {
+                core.warning(`#${n}: no se fusionó (${e.status}): ${e.message}`);
+              }
+            }
