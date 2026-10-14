@@ -415,7 +415,7 @@ func TestInitialNativeHTTPRetainsTypedHistoryAfterJobTTLWithoutGETWrites(t *test
 }
 
 func TestInitialNativeHTTPRefusesForeignPartialAndAmbiguousEvidence(t *testing.T) {
-	for _, name := range []string{"foreign Pod", "replacement Job", "multiple Pods", "foreign image", "foreign digest", "wrong command", "wrong env", "extra Pod label", "nonzero exit", "restarted", "incomplete", "failed", "malformed stdout", "unknown stdout field", "oversize", "already prepared", "changed during stream"} {
+	for _, name := range []string{"foreign Pod", "replacement Job", "multiple Pods", "foreign image", "foreign digest", "config ID with foreign digest", "foreign status image", "wrong command", "wrong env", "extra Pod label", "nonzero exit", "restarted", "incomplete", "failed", "malformed stdout", "unknown stdout field", "oversize", "already prepared", "changed during stream"} {
 		t.Run(name, func(t *testing.T) {
 			c, f := initialNativeHTTP(t)
 			switch name {
@@ -429,6 +429,11 @@ func TestInitialNativeHTTPRefusesForeignPartialAndAmbiguousEvidence(t *testing.T
 				f.pod.Spec.Containers[0].Image = "foreign"
 			case "foreign digest":
 				f.pod.Status.ContainerStatuses[0].ImageID = "containerd://sha256:" + strings.Repeat("f", 64)
+			case "config ID with foreign digest":
+				f.pod.Status.ContainerStatuses[0].Image = "sha256:" + strings.Repeat("c", 64)
+				f.pod.Status.ContainerStatuses[0].ImageID = "ghcr.io/madfam-org/foreign/image@sha256:" + strings.Repeat("f", 64)
+			case "foreign status image":
+				f.pod.Status.ContainerStatuses[0].Image = "ghcr.io/madfam-org/foreign/image@sha256:" + strings.Repeat("f", 64)
 			case "wrong command":
 				f.pod.Spec.Containers[0].Command = []string{"unsafe"}
 			case "wrong env":
@@ -785,4 +790,24 @@ func TestInitialLegacyKeyedJobHistoryRefusesNewDeterministicName(t *testing.T) {
 	for _, action := range fake.Actions() {
 		require.Contains(t, []string{"get", "list"}, action.GetVerb())
 	}
+}
+
+func TestInitialNativeHTTPAcceptsRuntimeConfigIDWhenDigestMatches(t *testing.T) {
+	// containerd reports status.image as the local config ID; imageID still
+	// carries the pinned registry digest, which is the proof of what ran.
+	c, f := initialNativeHTTP(t)
+	for i := range f.pod.Status.ContainerStatuses {
+		f.pod.Status.ContainerStatuses[i].Image = "sha256:" + strings.Repeat("c", 64)
+	}
+	for i := range f.pod.Status.InitContainerStatuses {
+		f.pod.Status.InitContainerStatuses[i].Image = "sha256:" + strings.Repeat("d", 64)
+	}
+	var in initialIntent
+	require.NoError(t, DecodeInitialBootstrapJSON([]byte(f.intent.Data["payload"]), &in))
+	native, e := c.collectInitialReceipt(t.Context(), f.p, f.job, f.expected, f.intent, in)
+	require.NoError(t, e)
+	require.Equal(t, "INITIAL_ONLY", native.Classification)
+	require.True(t, initialStatusImage(f.p.Image, f.p.Image))
+	require.False(t, initialStatusImage("sha256:"+strings.Repeat("c", 63), f.p.Image), "only a full 64-hex config ID")
+	require.False(t, initialStatusImage("docker.io/library/other:latest", f.p.Image))
 }
