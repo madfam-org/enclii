@@ -9,6 +9,7 @@ import (
 
 	"github.com/DATA-DOG/go-sqlmock"
 	"github.com/google/uuid"
+	"github.com/lib/pq"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes/fake"
@@ -172,5 +173,19 @@ func TestBindingNetworkEnvFailureDeactivatesLedger(t *testing.T) {
 	env, err := svc.GetEnvVarsForService(context.Background(), s.ID)
 	if err == nil || len(env) != 0 || probe.calls != 0 {
 		t.Fatal("unverified network emitted credentials")
+	}
+}
+
+// A live (active or suspended) binding for the same pair is a clean conflict,
+// never an opaque failure, and nothing reaches the network or credentials.
+func TestBindingNetworkDuplicateLiveBindingIsConflict(t *testing.T) {
+	svc, mock, kube, a, s, probe := bindingNetworkFixture(t)
+	expectBindingAddon(mock, a)
+	expectBindingService(mock, s)
+	mock.ExpectExec(`INSERT INTO database_addon_bindings`).WithArgs(sqlmock.AnyArg(), a.ID, s.ID, sqlmock.AnyArg(), types.DatabaseAddonBindingStatusActive, sqlmock.AnyArg(), sqlmock.AnyArg()).
+		WillReturnError(&pq.Error{Code: "23505", Constraint: "unique_live_binding_per_service"})
+	b, err := svc.CreateBinding(context.Background(), a.ID, s.ID, "")
+	if !errors.Is(err, ErrBindingExists) || b != nil || probe.calls != 0 || len(kube.Actions()) != 0 {
+		t.Fatalf("duplicate live binding was not a clean conflict: %v", err)
 	}
 }
