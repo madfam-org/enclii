@@ -69,7 +69,7 @@ CATEGORY = "revenue-probe"
 ZERO_DIGEST = "sha256:" + "0" * 64
 IDENTITY_ENV = {
     "DHANAM_STAGING_SYNTH_EMAIL": "dhanam_staging_synth_email",
-    "DHANAM_STAGING_SYNTH_PASSWORD": "dhanam_staging_synth_password",
+    "DHANAM_STAGING_SYNTH_PASSWORD": "dhanam_staging_synth_password",  # pragma: allowlist secret (Vault property name, not a value)
 }
 
 
