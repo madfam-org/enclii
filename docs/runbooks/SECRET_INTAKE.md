@@ -120,6 +120,7 @@ ESO sources: `enclii-secrets`, `janua-secrets`, `madfam-site-secrets`, `phynd-cr
 | `fashion-cabinet/asset-shells-publisher` | `secret/fashion-cabinet` | `asset_shells_publisher_client_id`, `asset_shells_publisher_client_secret` |
 | `forj/pravara-intake` | `secret/forj` | `pravara_intake_client_id`, `pravara_intake_client_secret` |
 | `digifab-quoting/pravara-intake` | `secret/digifab-quoting` | `pravara_intake_client_id`, `pravara_intake_client_secret` |
+| `digifab-quoting/web-oidc` | `secret/digifab-quoting` | `janua_client_id`, `janua_client_secret` |
 | `digifab-quoting/web-session` | `secret/digifab-quoting` | `nextauth_secret` |
 | `zavlo/cfdi-emitter` | `secret/zavlo` | `zavlo_cfdi_emitter_client_id`, `zavlo_cfdi_emitter_client_secret` |
 | `routecraft/billing-relay` | `secret/routecraft` | `billing_relay_client_id`, `billing_relay_client_secret` |
@@ -423,6 +424,51 @@ enclii secrets intake status int_<id>
 Until the digifab-quoting ExternalSecret exists, intake reports
 `external_secret_refreshed: false`, which is expected: ESO reads the property on
 its first sync.
+
+### Cotiza web Janua login client (2026-10-13)
+
+The Cotiza web app (`cotiza.studio`) signs in through NextAuth's Janua provider,
+which reads `JANUA_CLIENT_ID` and `JANUA_CLIENT_SECRET`. Neither is in
+`digifab-quoting-secrets`, and the ecosystem registry had no login client for
+Cotiza. The platform `cotiza-web` declares the confidential client
+`digifab-quoting-web` (audience `digifab-api`, which the Cotiza API accepts by
+default; one callback, `https://cotiza.studio/api/auth/callback/janua`), and the
+provisioner files the id and the secret into a dedicated ExternalSecret.
+
+| Property in `secret/digifab-quoting` | Target | Written by | ExternalSecret | Env var |
+|---|---|---|---|---|
+| `janua_client_id` | `digifab-quoting/web-oidc` | `enclii secrets provision oidc --platform cotiza-web` | `digifab-quoting-web-oidc` | `JANUA_CLIENT_ID` |
+| `janua_client_secret` | `digifab-quoting/web-oidc` | `enclii secrets provision oidc --platform cotiza-web` | `digifab-quoting-web-oidc` | `JANUA_CLIENT_SECRET` |
+
+`NEXTAUTH_SECRET` stays on its own target and ExternalSecret
+(`digifab-quoting/web-session`, above), so an unprovisioned client never holds
+the session secret's sync. If Janua already has a row named
+`digifab-quoting-web`, the run adopts it by name and reconciles its callback,
+scopes and grants; its stored secret is not retrievable, so the run then needs
+`--rotate-secret`.
+
+Owner sequence, after the registry change is deployed (switchyard-api digest
+bump). The Vault policy already covers `secret/digifab-quoting`:
+
+```bash
+export ENCLII_API_ENDPOINT=https://api.enclii.dev
+# Creating or adopting a Janua client needs a Janua admin session (`--profile admin`).
+# Until a CLI release embeds cotiza-web, pass the registry from a main checkout:
+enclii --profile admin secrets provision oidc --platform cotiza-web \
+  --registry config/ecosystem-oidc-provision.yaml \
+  --reason "cotiza web sign-in" --dry-run
+enclii --profile admin secrets provision oidc --platform cotiza-web \
+  --registry config/ecosystem-oidc-provision.yaml \
+  --reason "cotiza web sign-in"
+# prints: ✓ cotiza-web client_id=jnc_… created=true intake=int_…
+# "exists without retrievable secret": re-run with --rotate-secret --grace-hours 0
+enclii secrets intake status int_<id>
+```
+
+Then pin the printed `jnc_…` id as `janua_client.client_id` for `cotiza-web`
+(both copies) so later runs reconcile instead of creating a second client.
+Until the digifab-quoting ExternalSecret exists, intake reports
+`external_secret_refreshed: false`, which is expected.
 
 ### Alertmanager SMTP credential (2026-10-05)
 

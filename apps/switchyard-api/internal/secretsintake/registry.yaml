@@ -758,6 +758,27 @@ targets:
     keys:
       - nextauth_secret
 
+  # Cotiza web Janua login client (2026-10-13). The web's NextAuth provider
+  # reads JANUA_CLIENT_ID / JANUA_CLIENT_SECRET, which digifab-quoting-secrets
+  # (projected from ecosystem-service-auth, out of the intake's reach) does not
+  # carry. The pair gets its own ExternalSecret, digifab-quoting-web-oidc, in
+  # digifab-quoting's infra/k8s/production (property janua_client_id →
+  # JANUA_CLIENT_ID, janua_client_secret → JANUA_CLIENT_SECRET). Written only by
+  # `enclii secrets provision oidc --platform cotiza-web`; no human types either
+  # value. A separate target from digifab-quoting/web-session so
+  # `--generate nextauth_secret` never prompts for the Janua pair, and a separate
+  # ExternalSecret so an unprovisioned client never holds the NextAuth secret's
+  # sync (ESO syncs all of an ExternalSecret's keys or none).
+  digifab-quoting/web-oidc:
+    label: Cotiza web Janua OAuth client
+    description: Cotiza web (cotiza.studio) Janua confidential client id + secret, filed by `enclii secrets provision oidc --platform cotiza-web`. No human types either value.
+    vault_path: secret/digifab-quoting
+    namespace: digifab-quoting
+    external_secret: digifab-quoting-web-oidc  # pragma: allowlist secret
+    keys:
+      - janua_client_id
+      - janua_client_secret
+
   # zavlo has no cluster deployment yet (no k8s manifests in its repo), so the
   # namespace is the repo name, the onboarding default. The pair waits in Vault.
   # zavlo-backend reads ZAVLO_CFDI_EMITTER_CLIENT_ID / _SECRET.
