@@ -270,6 +270,8 @@ func TestIsPlatformRankPath_ADR003(t *testing.T) {
 		{"/v1/admin/tenant-scope/dry-run", true},
 		{"/v1/secrets/intake/targets", true},
 		{"/v1/secrets/intake/abc123", true},
+		{"/v1/ops/pods/restart", true},
+		{"/v1/ops/pods/diagnose", false},
 		{"/v1/admin/projects/acme/reconcile-services", false},
 		{"/v1/projects/acme", false},
 		{"/v1/services/abc/exec", false},

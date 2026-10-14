@@ -109,6 +109,11 @@ func (h *Handler) handleOperatorOperation(c *gin.Context, prefix, domain, action
 		c.JSON(status, resp)
 		return
 	}
+	if prefix == "ops" && domain == "pods" && action == "restart" {
+		resp, status := h.handleOpsPodsRestart(c.Request.Context(), req, opsActorFromContext(c))
+		c.JSON(status, resp)
+		return
+	}
 	if req.DryRun {
 		if resp, handled := h.handleReadOnlyOperatorOperation(c, prefix, domain, action, operation, req); handled {
 			c.JSON(http.StatusOK, resp)

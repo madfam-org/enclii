@@ -86,6 +86,8 @@ Canonical routing: `apps/switchyard-api/internal/secretsintake/registry.yaml`
 | `dhanam/session-auth` | `secret/dhanam` | `SESSION_SECRET`, `NEXTAUTH_SECRET` |
 | `dhanam/app-infra` | `secret/dhanam` | `R2_*`, `CLOUDFLARE_API_TOKEN`, PostHog, Sentry |
 | `dhanam/banxico` | `secret/dhanam` | `banxico_api_token` (ExternalSecret `dhanam-secrets-extended`) |
+| `dhanam/karafiel-callback-secret` | `secret/dhanam` | `karafiel_dhanam_signing_secret` (generated; see [Dhanam ↔ Karafiel webhook keys](#dhanam--karafiel-webhook-keys-2026-10-14)) |
+| `karafiel/dhanam-webhook-secret` | `secret/karafiel` | `dhanam_karafiel_signing_secret` (generated; same section) |
 | `platform/comms-resend-api-key` | `secret/comms` | `resend-api-key` → `resend_api_key` in Vault |
 
 After `platform/comms-resend-api-key` intake, fan-out to all consumers:
@@ -614,6 +616,40 @@ in both registry copies. Until selva-office ships `selva-service-clients`,
 intake reports `external_secret_refreshed: false`, which is expected. Re-running
 the provision command rotates the secret; the workers' Reloader annotation rolls
 them onto the new value.
+
+### Dhanam ↔ Karafiel webhook keys (2026-10-14)
+
+Owner ruling: the webhooks between Dhanam and Karafiel use one dedicated HMAC
+key per direction, sent with a signed timestamp (`X-Dhanam-Timestamp` +
+`X-Dhanam-Signature-V2`) and a 5-minute replay window. Each key is minted where
+it is verified; the signer reads the same Vault property through its own
+read-only ExternalSecret, so nobody copies a value.
+
+| Direction | Target | Property | Verifier ExternalSecret (force-synced) | Signer copy |
+|---|---|---|---|---|
+| Dhanam → Karafiel | `karafiel/dhanam-webhook-secret` | `secret/karafiel` `dhanam_karafiel_signing_secret` | `karafiel-dhanam-signing` (karafiel api) | `dhanam-secrets-karafiel-signing` (dhanam api) |
+| Karafiel → Dhanam | `dhanam/karafiel-callback-secret` | `secret/dhanam` `karafiel_dhanam_signing_secret` | `dhanam-secrets-karafiel-callback` (dhanam api) | `karafiel-dhanam-callback-signing` (karafiel worker) |
+
+Both Vault paths are already in the `switchyard-secret-writer` policy, so no
+policy re-apply is needed. Owner sequence, after the registry change is
+deployed (switchyard-api digest bump) and from an up-to-date checkout:
+
+```bash
+cd ~/labspace/enclii && git pull --ff-only
+make -C ~/labspace/enclii install-cli CLI_INSTALL_DIR=$HOME/.local/bin
+enclii secrets intake submit karafiel/dhanam-webhook-secret --generate dhanam_karafiel_signing_secret --reason "dhanam to karafiel webhook key"
+enclii secrets intake submit dhanam/karafiel-callback-secret --generate karafiel_dhanam_signing_secret --reason "karafiel to dhanam callback key"
+enclii secrets intake status int_<id>
+```
+
+Both values are minted server-side (32 bytes, never returned). Until the dhanam
+and karafiel ExternalSecrets exist, intake reports
+`external_secret_refreshed: false`, which is expected. The signer copies follow
+on their 15-minute refresh; the sync order does not matter, because both
+verifiers keep accepting the previous signature until their cutover flag is
+turned off in the dhanam and karafiel repos. Do not rotate either key after
+that flip without a deploy window: both sides read the new value only when
+their pods restart.
 
 
 Add targets via PR to the registry — do not hardcode paths in runbooks. A new

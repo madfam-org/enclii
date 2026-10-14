@@ -1213,3 +1213,34 @@ targets:
     keys:
       - redis_password
       - redis_url
+
+  # Dhanam <-> Karafiel webhook signing keys (owner ruling 2026-10-14): one
+  # dedicated HMAC key per direction, carried with a signed timestamp. Each is
+  # minted where it is VERIFIED (the rule stated at the tulana block above)
+  # and the signer reads the same property through its own read-only
+  # ExternalSecret, the secret/comms fan-out pattern, so no value is ever
+  # copied by hand.
+  #
+  # ONE KEY PER TARGET, so `--generate <key>` mints it with no prompt; never
+  # typed. LOWERCASE properties, byte for byte what the four ExternalSecrets
+  # map. Intake force-syncs the verifier's ExternalSecret; the signer's copy
+  # follows on its 15-minute refresh. The sync order does not matter: both
+  # verifiers keep accepting the previous signature until their cutover flag
+  # is turned off.
+  karafiel/dhanam-webhook-secret:
+    label: Karafiel webhook key for Dhanam
+    description: HMAC key Dhanam signs its Karafiel-bound webhooks with (X-Dhanam-Timestamp + X-Dhanam-Signature-V2) and Karafiel's api verifies, projected by karafiel-dhanam-signing. Dhanam holds a read-only copy through its own ExternalSecret dhanam-secrets-karafiel-signing (namespace dhanam). Mint server-side with --generate dhanam_karafiel_signing_secret.
+    vault_path: secret/karafiel
+    namespace: karafiel
+    external_secret: karafiel-dhanam-signing  # pragma: allowlist secret
+    keys:
+      - dhanam_karafiel_signing_secret
+
+  dhanam/karafiel-callback-secret:
+    label: Dhanam callback key for Karafiel
+    description: HMAC key Karafiel's worker signs its cfdi-issued callback to Dhanam with (X-Dhanam-Timestamp + X-Dhanam-Signature-V2) and Dhanam's api verifies, projected by dhanam-secrets-karafiel-callback. Karafiel holds a read-only copy through its own ExternalSecret karafiel-dhanam-callback-signing (namespace karafiel). Mint server-side with --generate karafiel_dhanam_signing_secret.
+    vault_path: secret/dhanam
+    namespace: dhanam
+    external_secret: dhanam-secrets-karafiel-callback  # pragma: allowlist secret
+    keys:
+      - karafiel_dhanam_signing_secret

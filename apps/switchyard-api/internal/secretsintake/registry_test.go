@@ -12,7 +12,7 @@ import (
 func TestLoadRegistry(t *testing.T) {
 	reg, err := LoadRegistry()
 	require.NoError(t, err)
-	assert.Len(t, reg, 83)
+	assert.Len(t, reg, 85)
 	assert.Contains(t, reg, "ceq/vast-api-key")
 	assert.Contains(t, reg, "karafiel/web-oidc-janua")
 	adminSession := reg["karafiel/admin-session"]
@@ -37,7 +37,7 @@ func TestGetTarget(t *testing.T) {
 func TestListTargetsSorted(t *testing.T) {
 	list, err := ListTargets()
 	require.NoError(t, err)
-	require.Len(t, list, 83)
+	require.Len(t, list, 85)
 	for i := 1; i < len(list); i++ {
 		assert.Less(t, list[i-1].ID, list[i].ID, "targets should be sorted by id")
 	}
@@ -68,6 +68,7 @@ func TestListTargetsSorted(t *testing.T) {
 		"creator-census/youtube-key",
 		"dhanam/app-infra",
 		"dhanam/banxico",
+		"dhanam/karafiel-callback-secret",
 		"dhanam/oidc-janua",
 		"dhanam/session-auth",
 		"dhanam/stripe-mx-live",
@@ -83,6 +84,7 @@ func TestListTargetsSorted(t *testing.T) {
 		"janua/internal-api-key",
 		"kalya/internal-api-key",
 		"karafiel/admin-session",
+		"karafiel/dhanam-webhook-secret",
 		"karafiel/web-oidc-janua",
 		"lexidrop/oidc-janua",
 		"lexidrop/selva-inference",
@@ -763,6 +765,61 @@ func TestDigifabQuotingWebOIDCTarget(t *testing.T) {
 	}
 	assert.NotEmpty(t, tgt.Label)
 	assert.Contains(t, tgt.Description, "--platform cotiza-web")
+}
+
+// Dhanam <-> Karafiel webhook signing keys (owner ruling 2026-10-14): one
+// dedicated HMAC key per direction, minted where it is verified and read by the
+// signer through its own read-only ExternalSecret. Pinned end to end because
+// every link fails silently: a wrong Vault path or property is a key the four
+// ExternalSecrets (two in each repo) never sync, and a wrong ExternalSecret
+// name means intake never force-syncs the verifier. The two keys must never
+// share a property, or one direction could forge the other.
+func TestDhanamKarafielWebhookSigningTargets(t *testing.T) {
+	cases := []struct {
+		id, vaultPath, namespace, externalSecret, key, signerCopy string
+	}{
+		{
+			id:             "karafiel/dhanam-webhook-secret",
+			vaultPath:      "secret/karafiel",
+			namespace:      "karafiel",
+			externalSecret: "karafiel-dhanam-signing",
+			key:            "dhanam_karafiel_signing_secret",
+			signerCopy:     "dhanam-secrets-karafiel-signing",
+		},
+		{
+			id:             "dhanam/karafiel-callback-secret",
+			vaultPath:      "secret/dhanam",
+			namespace:      "dhanam",
+			externalSecret: "dhanam-secrets-karafiel-callback",
+			key:            "karafiel_dhanam_signing_secret",
+			signerCopy:     "karafiel-dhanam-callback-signing",
+		},
+	}
+	seen := map[string]string{}
+	for _, tc := range cases {
+		t.Run(tc.id, func(t *testing.T) {
+			tgt, err := GetTarget(tc.id)
+			require.NoError(t, err)
+			assert.Equal(t, tc.vaultPath, tgt.VaultPath, "minted where it is verified")
+			assert.Equal(t, tc.namespace, tgt.Namespace)
+			assert.Equal(t, tc.externalSecret, tgt.ExternalSecret,
+				"intake force-syncs the verifier's dedicated ExternalSecret")
+			assert.NotEqual(t, tc.namespace+"-secrets", tgt.ExternalSecret,
+				"never the service's main ExternalSecret: one missing property would freeze it")
+			assert.Equal(t, []string{tc.key}, tgt.Keys,
+				"one key per target: a second key would be prompted for during --generate")
+			assert.Equal(t, strings.ToLower(tc.key), tc.key,
+				"Vault stores lowercase; an upper-case key would never match the ExternalSecret property")
+			assert.Contains(t, tgt.Description, "--generate "+tc.key,
+				"server-minted, never typed")
+			assert.Contains(t, tgt.Description, tc.signerCopy,
+				"the description names the signer's read-only copy")
+			assert.NotEmpty(t, tgt.Label)
+			assert.GreaterOrEqual(t, tgt.GenerateBytes(), DefaultGenerateBytes)
+			seen[tc.key] = tgt.VaultPath + "#" + tc.key
+		})
+	}
+	assert.Len(t, seen, 2, "each direction has its own property")
 }
 
 // Keep the historical inventory exact while the new isolated targets have their

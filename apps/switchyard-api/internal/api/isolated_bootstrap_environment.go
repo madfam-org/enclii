@@ -194,7 +194,9 @@ func (h *Handler) initialJobData(ctx context.Context, p isolatedBootstrapProfile
 	if err != nil {
 		return nil, err
 	}
-	data["DATABASE_URL"], data["MAP_SIMULATION_RUNTIME_DATABASE_URL"], data["MAP_SIMULATION_SEED_ENABLED"] = []byte(owner), []byte(runtime), []byte("true")
+	// crea-map's schema declares directUrl = env("DIRECT_DATABASE_URL"): without
+	// it `prisma migrate deploy` fails schema validation before any DDL.
+	data["DATABASE_URL"], data["DIRECT_DATABASE_URL"], data["MAP_SIMULATION_RUNTIME_DATABASE_URL"], data["MAP_SIMULATION_SEED_ENABLED"] = []byte(owner), []byte(owner), []byte(runtime), []byte("true")
 	return data, nil
 }
 

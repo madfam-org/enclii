@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"context"
 	"fmt"
+	"io"
 	"os"
 	"strings"
 	"syscall"
@@ -228,14 +229,9 @@ func runOnboard(cfg *config.Config, opts onboardOpts) error {
 		if err := apiClient.PreflightOnboard(ctx, &req, &pfResult); err != nil {
 			return fmt.Errorf("preflight check failed: %w", err)
 		}
-		if !pfResult.Pass {
-			fmt.Printf("\nPreflight FAILED — %d violation(s):\n", len(pfResult.Violations))
-			for _, v := range pfResult.Violations {
-				fmt.Printf("  %s %s/%s: %s\n", v.File, v.Kind, v.Name, v.Message)
-			}
+		if !printPreflightResult(os.Stdout, pfResult) {
 			return fmt.Errorf("fix violations and retry")
 		}
-		fmt.Println("Preflight passed.")
 	}
 
 	fmt.Printf("Onboarding %s as project %q...\n", opts.repo, opts.project)
@@ -253,6 +249,28 @@ func runOnboard(cfg *config.Config, opts onboardOpts) error {
 	}
 
 	return nil
+}
+
+// printPreflightResult prints the preflight verdict, its violations and its
+// notes, and reports whether the preflight passed. Notes describe checks the
+// server could not run (for example the admission dry run of namespaced
+// objects before the project namespace exists); they never fail the preflight.
+func printPreflightResult(w io.Writer, result types.PreflightResult) bool {
+	if result.Pass {
+		fmt.Fprintln(w, "Preflight passed.")
+	} else {
+		fmt.Fprintf(w, "\nPreflight FAILED — %d violation(s):\n", len(result.Violations))
+		for _, v := range result.Violations {
+			fmt.Fprintf(w, "  %s %s/%s: %s\n", v.File, v.Kind, v.Name, v.Message)
+		}
+	}
+	if len(result.Notes) > 0 {
+		fmt.Fprintln(w, "Preflight note(s):")
+		for _, note := range result.Notes {
+			fmt.Fprintf(w, "  - %s\n", note)
+		}
+	}
+	return result.Pass
 }
 
 func printDryRun(opts onboardOpts, req types.OnboardingRequest) {

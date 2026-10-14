@@ -511,6 +511,55 @@ func TestRunOnboard_PreflightFails(t *testing.T) {
 	assert.Contains(t, err.Error(), "fix violations")
 }
 
+func TestRunOnboard_PreflightPrintsNotes(t *testing.T) {
+	note := `namespace "test-project" does not exist yet; onboarding creates it, so the admission dry run of 3 namespaced object(s) was skipped.`
+	var onboardCalled bool
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		if r.URL.Path == "/v1/admin/onboard/preflight" {
+			json.NewEncoder(w).Encode(types.PreflightResult{Pass: true, Notes: []string{note}})
+			return
+		}
+		onboardCalled = true
+		json.NewEncoder(w).Encode(map[string]interface{}{"status": "completed", "namespace": "test-project"})
+	}))
+	defer server.Close()
+
+	cfg := &config.Config{APIEndpoint: server.URL, APIToken: "test-token"}
+	opts := onboardOpts{repo: "madfam-org/test-project", project: "test-project", branch: "main", preflight: true}
+
+	var err error
+	out := captureStdoutStderr(t, func() { err = runOnboard(cfg, opts) })
+	require.NoError(t, err)
+	assert.Contains(t, out, "Preflight passed.")
+	assert.Contains(t, out, "Preflight note(s):")
+	assert.Contains(t, out, "  - "+note)
+	assert.True(t, onboardCalled, "a note must not stop onboarding")
+}
+
+func TestRunOnboard_PreflightFailurePrintsViolationsAndNotes(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(types.PreflightResult{
+			Pass:       false,
+			Violations: []types.PreflightIssue{{File: "netpol.yaml", Kind: "NetworkPolicy", Name: "allow-all", Message: "remove this resource"}},
+			Notes:      []string{"admission dry run of 2 namespaced object(s) was skipped"},
+		})
+	}))
+	defer server.Close()
+
+	cfg := &config.Config{APIEndpoint: server.URL, APIToken: "test-token"}
+	opts := onboardOpts{repo: "madfam-org/test-project", project: "test-project", branch: "main", preflight: true}
+
+	var err error
+	out := captureStdoutStderr(t, func() { err = runOnboard(cfg, opts) })
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "fix violations")
+	assert.Contains(t, out, "Preflight FAILED — 1 violation(s):")
+	assert.Contains(t, out, "netpol.yaml NetworkPolicy/allow-all: remove this resource")
+	assert.Contains(t, out, "  - admission dry run of 2 namespaced object(s) was skipped")
+}
+
 func TestRunOnboard_WithR2Bucket(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		var req types.OnboardingRequest

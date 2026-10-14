@@ -27,7 +27,8 @@ encouraging direct `kubectl`.
 | `enclii ops capabilities` | List server-supported operator capabilities |
 | `enclii ops apps status|sync|sync-sweep|diff|retire|rollback` | Argo app inspection and remediation |
 | `enclii ops apps tracking` | Declare Argo CD's annotation tracking default once in `argocd-cm` ([below](#argo-tracking-declaration)) |
-| `enclii ops pods diagnose|logs|restart` | Pod diagnosis and logs. `restart` is **not implemented yet** — see [Remaining Adapter Work](#remaining-adapter-work) |
+| `enclii ops pods diagnose|logs` | Pod diagnosis and logs |
+| `enclii ops pods restart` | Audited rollout restart of a Deployment, StatefulSet or DaemonSet, or recreation of one controller-owned pod ([below](#ops-pods-restart)) |
 | `enclii ops jobs list|trigger|suspend` | CronJob inspection, audited triggers and durable service-job holds |
 | `enclii ops storage volumes|pvc|longhorn|repair-plan|settings-apply|prune-detached|storageclass-apply|r2-audit` | PVC/PV/Longhorn inspection, repair planning, CPU settings (O-5), orphan prune (O-4), StorageClass reconcile, R2 credential audit (incomplete, shared, or mismatched buckets) |
 | `enclii ops secrets external|vault|refresh|sync|sync-sweep|rotate|vault-backfill` | ExternalSecrets and Vault readiness workflows |
@@ -58,6 +59,8 @@ enclii ops policy cosign-enable --apply --reason "GA O-11 Cosign enforce"
 ./scripts/wave0-ga-ops.sh --apply --disk-prune --reason "GA Wave 0"
 enclii ops pods diagnose switchyard-api -n enclii --json
 enclii ops pods logs forgesight-pipeline-manual-abc123 -n forgesight --tail 500 --limit-bytes 524288 --json
+enclii ops pods restart pod/loki-0 -n logging
+enclii ops pods restart pod/loki-0 -n logging --expect-uid <reviewed-uid> --apply --reason "recreate loki-0 on the fixed revision"
 enclii ops apps sync monitoring --apply --reason "clear Argo drift after reviewed manifest patch"
 enclii ops apps sync-sweep -n argocd
 enclii ops apps sync-sweep -n argocd --apply --reason "GA O-8 Argo sweep"
@@ -157,6 +160,67 @@ without direct `kubectl` access:
 | `--tail` | Recent lines to request; default `400`; use `0` for all lines within `--limit-bytes` |
 | `--limit-bytes` | Maximum bytes to return; default `262144`; server-capped at 2 MiB |
 | `--container` | Optional container name for multi-container pods |
+
+## `ops pods restart`
+
+`enclii ops pods restart <kind>/<name> -n <namespace>` replaces two break-glass
+commands:
+
+| Target | Effect | Replaces |
+|--------|--------|----------|
+| `deployment/<name>`, `statefulset/<name>`, `daemonset/<name>` (or `deploy`, `sts`, `ds`) | Rollout restart: one strategic-merge patch of the pod-template annotation `kubectl.kubernetes.io/restartedAt`, the same body `kubectl rollout restart` sends. Nothing else in the object changes. | `kubectl rollout restart` |
+| `pod/<name>` | Deletes that one pod so its ReplicaSet, StatefulSet or DaemonSet recreates it. The delete carries a UID precondition and uses the pod's own grace period. It is a delete, not an eviction, so PodDisruptionBudgets are not consulted. | `kubectl delete pod` |
+
+Use `pod/<name>` for a StatefulSet pod that crash-loops on an old revision.
+Under the default `OrderedReady` policy the controller never replaces it, so a
+merged manifest fix does not take effect, and a rollout restart stalls behind
+it. The StatefulSet dry run lists the pods it selects, marks such a pod
+`stuck` (not Ready, revision differs from the update revision) and prints the
+`pod/<name>` command for it.
+
+Guards, all enforced by the API:
+
+- **Platform rank.** The route requires the server-resolved `platform_admin`
+  rank (ADR-003), for the dry run too. `ENCLII_TENANT_SCOPE_ENFORCE` does not
+  relax it, so a tenant administrator cannot restart any tenant's workloads.
+- **Namespace allowlist.** The namespace must be listed in the API's
+  `ENCLII_OPS_RESTART_NAMESPACES` (comma-separated exact names, set on the
+  `switchyard-api` Deployment in `infra/k8s/base/switchyard-api.yaml`). An
+  empty list refuses every namespace. `kube-*` namespaces are refused even
+  when listed. A refused namespace is answered with HTTP 409 `refused` before
+  anything is read from the cluster. Add a namespace by PR.
+- **Controller-owned pods only.** `pod/<name>` refuses a pod without a
+  ReplicaSet, StatefulSet or DaemonSet controller (bare pods, Job pods,
+  operator-managed pods), a pod already terminating, and a paused Deployment.
+- **Reviewed object.** The dry run prints the object's UID. Pass it back with
+  `--expect-uid`; the apply is refused (HTTP 409) when the object was replaced
+  since. Without `--expect-uid` a pod delete still binds to the UID it reads
+  just before deleting.
+- **Audit.** `--apply` requires `--reason`. Before the mutation the API writes
+  an `ops.pods.restart` audit row with outcome `requested`: actor, time,
+  namespace, kind, name, UID, reason and the patch. If that row cannot be
+  written nothing is changed (HTTP 503). A second row records `success` or
+  `failure` and points at the first; the response's `audit_id` is the first.
+
+```bash
+# Rollout restart, e.g. so a Deployment reads a changed Secret
+enclii ops pods restart deployment/<name> -n <namespace>
+enclii ops pods restart deployment/<name> -n <namespace> --expect-uid <reviewed-uid> \
+  --apply --reason "load the rotated environment Secret"
+
+# Recreate a crash-looping StatefulSet pod that OrderedReady will not replace
+enclii ops pods restart statefulset/loki -n logging   # lists pods; loki-0 shows stuck
+enclii ops pods restart pod/loki-0 -n logging --expect-uid <reviewed-uid> \
+  --apply --reason "recreate loki-0 on the fixed revision"
+```
+
+A successful apply returns HTTP 202 `submitted`: the patch or delete was
+accepted, not that the new pods are Ready. Follow it with
+`enclii ops pods diagnose`. An HTTP 502 naming RBAC means the
+`switchyard-api` ClusterRole rules for this command (`infra/k8s/base/rbac.yaml`)
+are not live yet. For a registered Enclii service the service restart API
+(`POST /v1/services/{id}/restart`) remains available and is target-bound to
+the service's verified Deployment.
 
 ## Required Mutation Flags
 
@@ -289,25 +353,15 @@ restart.
 
 ## Remaining Adapter Work
 
-- `apps rollback`, `pods restart`, `storage repair-plan`,
-  `policy waiver-plan`, and `runners drain` are contract-only until guarded
-  apply adapters are wired. (`secrets refresh` and its alias `secrets sync`
-  are wired — see [below](#ops-secrets-sync-and-refresh).)
-- **`pods restart` is not implemented.** The capability is advertised and the
-  CLI accepts it, but Switchyard has no apply adapter for it: the dry-run
-  returns a generic `planned` response carrying the warning
-  `adapter execution is not wired in this build; dry-run is safe, apply is blocked`,
-  and `--apply` returns **HTTP 501** with status `adapter_required`
-  (confirmed 2026-09-27). A successful dry-run is not evidence the apply works.
-  Until the adapter lands, restart a workload by rolling its Deployment:
-  - for a registered Enclii service, use the service restart API
-    (`POST /v1/services/{id}/restart`, admin role; TypeScript SDK
-    `services.restart()`). It rolls the Deployment named after the service in
-    the project's namespace by setting `kubectl.kubernetes.io/restartedAt`,
-    which the project ApplicationSet ignores, so self-heal does not revert it;
-  - for any other workload, a rollout restart of the Deployment
-    (`kubectl rollout restart deployment/<name> -n <namespace>`) is the
-    recorded break-glass step.
+- `apps rollback`, `storage repair-plan`, `policy waiver-plan`, and
+  `runners drain` are contract-only until guarded apply adapters are wired.
+  (`secrets refresh` and its alias `secrets sync` are wired — see
+  [below](#ops-secrets-sync-and-refresh); `pods restart` is wired — see
+  [above](#ops-pods-restart).)
+- An API build older than the `pods restart` adapter answers the dry run with
+  a generic `planned` response (`adapter execution is not wired in this build`)
+  and `--apply` with HTTP 501 `adapter_required`. A wired build answers with
+  the live object, its UID and the patch.
 - `apps retire` deletes only the Argo Application by default and uses orphan
   propagation so live resources are not pruned during routine legacy-app
   retirement. Destructive cascade retirement must be explicitly requested by
