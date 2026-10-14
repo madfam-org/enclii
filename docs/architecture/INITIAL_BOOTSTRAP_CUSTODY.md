@@ -4,7 +4,8 @@ The existing platform-admin initial-bootstrap POST retains its five-field closed
 request (`profile`, `service_id`, `idempotency_key`, `dry_run`, `reason`). It does
 not accept commands, SQL, images, namespaces, credentials or receipt content.
 The project-access, completed onboarding, exact active addon binding, owned
-workload held at zero replicas, CNPG ownership/public CA, signature enforcement,
+workload held at zero replicas (a fixed step instead requires a converged
+rollout; see below), CNPG ownership/public CA, signature enforcement,
 producer OCI/source/main CI matrix and cosign verification remain required.
 The observed Service selector must match the exact Deployment selector.
 
@@ -46,6 +47,85 @@ not the seed stdout case count. The initial
 portal/manifest wire works with the current initial MAP source. The separately
 governed fresh reset-origin witness is required for reusable reset generations;
 legacy initial metadata cannot be adopted as that witness.
+
+## Fixed step `portal-sim-turno-vigente`
+
+`portal-sim-turno-vigente` applies crea-sim's fixed portal step 003
+(`sql/003-turno-vigente-por-persona.sql`) to the database that
+`portal-sim-initial` prepared. It is a separate, closed profile, not a second
+run of the initial one. It uses the same route and the same five-field
+request. It keeps the same project, service, addon, binding, onboarding,
+producer, signer, required checks, Vault path and four custody keys as
+`portal-sim-initial`. Only the following differ.
+
+- **Command.** One init container, `network-ready`, then
+  `node packages/entrenamiento/src/preparar-turno-vigente.ts`, with no
+  argument and no SQL. Neither the 001 migration nor the custody preparer runs.
+- **Live workload.** The owned gateway may serve. Its rollout must have
+  converged on its pinned image: the controller observed the current
+  generation, and every Pod it counts belongs to the current template. The
+  retained identity binds the Deployment UID and `deployment_generation`, not
+  its resourceVersion, because status updates move a running Deployment's
+  resourceVersion. A spec change between admission and collection is refused.
+- **Ordering guard.** The image's own verified source revision must carry two
+  files: `packages/entrenamiento/sql/003-turno-vigente-por-persona.sql`, whose
+  SHA-256 is pinned in code, and `packages/entrenamiento/src/preparar-turno-vigente.ts`.
+  That revision is the image's OCI revision, already bound to the signed main
+  build. A missing or different file is refused before signature verification
+  and before any Job exists. The Job runs the deployed image, so a gateway that
+  does not yet accept the 003 catalog never meets it. Releasing a different
+  step means a new step and a new pin; 003 itself is never edited.
+- **Records.** Jobs, intents and receipts carry
+  `enclii.dev/managed-by=isolated-fixed-step`, version `isolated-fixed-step-v1`
+  and names `step-<24 hex>`. The initial history guard does not list them, so
+  `portal-sim-initial`'s retained history stays readable with its own key.
+  New identity and receipt fields are omitted when empty, so retained initial
+  intents and receipts stay byte-for-byte canonical.
+
+### Classification
+
+The collector reads only the main container's stdout, with the same bounds and
+closed-JSON rules as initial collection. It accredits exactly one shape as
+`FIXED_STEP_APPLIED`:
+
+- `fuente` = `portal-sim-turno-vigente`;
+- `version` = `crea-sim-turno-vigente-v1`;
+- `estado` = `APLICADO` or `YA_APLICADO`;
+- `schemaSha256` and `databaseIdentitySha256`, each 64 lowercase hex.
+
+Any other output from an accredited, exit-0 Pod is retained as
+`FIXED_STEP_HELD` with `held_reason=output_unclassified` and only its stdout
+hash. A failed Job is retained, on its own key, as `FIXED_STEP_HELD` with
+`held_reason=job_failed`, from its native failed status alone; no log is read.
+Integrity refusals (foreign Pod, image, command, exit code, restart or oversize
+output) stay errors and write nothing. The database's immutable
+`sim_capacitacion_custodia.turno_vigente_recibos` row remains the authority on
+whether 003 is applied.
+
+### Re-runs
+
+A re-run is allowed, because the step is idempotent (`YA_APLICADO`). Each
+operation key is its own operation: the Job name hashes
+project/addon/service/profile and the key.
+
+- **Same key.** A same-key POST never reruns. It reads or collects that one
+  operation.
+- **New key.** A new key is admitted only when every other fixed-step Job and
+  every initial Job on the same addon/service has finished (Complete or Failed,
+  with no active or terminating Pod) or is gone.
+- **No wedge.** A retained receipt is not required to proceed. An operation
+  whose Job expired uncollected (TTL one hour) no longer blocks, and its
+  same-key POST returns held without writing.
+- **Suspended Jobs.** A suspended Job blocks, as initial history does.
+
+In the database, the step runs under the custody advisory lock in one
+transaction, so even two concurrent keys cannot apply 003 twice. The gate
+keeps one operation at a time so the history stays readable.
+
+The GET status route accepts `step-<24 hex>` names. A live operation reads
+`FIXED_STEP_EXECUTION`. A suspended or failed Job reads `FIXED_STEP_HELD`. A
+succeeded Job not yet collected reads `FIXED_STEP_UNRETAINED`. A retained
+receipt reads its own class.
 
 ## Immutable history and uncertainty
 
@@ -100,7 +180,8 @@ The implementation reads the same ID after an unknown create outcome and
 returns held. A later POST cannot resume a suspended/failed Job, a missing
 intent or an intent whose Job/receipt is missing. Another operation key is
 refused while initial history for the same addon/service exists. No third
-launch record or reset adapter is introduced.
+launch record or reset adapter is introduced. These rules bind initial
+profiles; the fixed step above has its own per-key re-run rule.
 
 After a complete Job, the explicit same-key POST may collect once. The server
 requires the exact retained Job UID/spec, one controller-owned successful Pod,
