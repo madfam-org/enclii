@@ -60,49 +60,62 @@ func ValidateSnapshot(s Snapshot, namespace, deployment string) (Plan, error) {
 		return Plan{}, ErrIntent
 	}
 	n, d, a, declared := s.Namespace, s.Deployment, s.Application, s.Declared
-	if n == nil || d == nil || a == nil || declared == nil || n.Name != namespace || d.Namespace != namespace || d.Name != deployment ||
-		n.DeletionTimestamp != nil || d.DeletionTimestamp != nil || a.GetDeletionTimestamp() != nil ||
-		n.UID == "" || d.UID == "" || a.GetUID() == "" || n.ResourceVersion == "" || d.ResourceVersion == "" || a.GetResourceVersion() == "" ||
-		a.GetName() != i.Application || a.GetNamespace() != "argocd" {
-		return Plan{}, ErrOwnership
+	// Every ownership refusal below names its check (refusal.go); the order of
+	// the checks is unchanged, and so is the set of accepted snapshots.
+	if n == nil || d == nil || a == nil || declared == nil {
+		return Plan{}, RefuseOwnership(ReasonSnapshotIncomplete)
+	}
+	if n.Name != namespace || d.Namespace != namespace || d.Name != deployment {
+		return Plan{}, RefuseOwnership(ReasonTargetIdentity)
+	}
+	if n.DeletionTimestamp != nil || d.DeletionTimestamp != nil || a.GetDeletionTimestamp() != nil {
+		return Plan{}, RefuseOwnership(ReasonObjectDeleting)
+	}
+	if n.UID == "" || d.UID == "" || a.GetUID() == "" || n.ResourceVersion == "" || d.ResourceVersion == "" || a.GetResourceVersion() == "" {
+		return Plan{}, RefuseOwnership(ReasonNativeIdentity)
+	}
+	if a.GetName() != i.Application || a.GetNamespace() != "argocd" {
+		return Plan{}, RefuseOwnership(ReasonApplicationIdentity)
 	}
 	if project := n.Labels["enclii.dev/project"]; project != "" && project != i.ProjectID.String() {
-		return Plan{}, ErrOwnership
+		return Plan{}, RefuseOwnership(ReasonNamespaceProject)
 	}
 	if _, exists, e := unstructured.NestedFieldNoCopy(a.Object, "spec", "sources"); e != nil || exists {
-		return Plan{}, ErrOwnership
+		return Plan{}, RefuseOwnership(ReasonArgoMultiSource)
 	}
 	for _, field := range []struct {
-		path  []string
-		value string
+		path   []string
+		value  string
+		reason Reason
 	}{
-		{[]string{"spec", "source", "path"}, i.Path}, {[]string{"spec", "source", "targetRevision"}, i.Ref},
-		{[]string{"spec", "destination", "namespace"}, namespace}, {[]string{"spec", "destination", "server"}, "https://kubernetes.default.svc"},
+		{[]string{"spec", "source", "path"}, i.Path, ReasonArgoSource}, {[]string{"spec", "source", "targetRevision"}, i.Ref, ReasonArgoSource},
+		{[]string{"spec", "destination", "namespace"}, namespace, ReasonArgoDestination},
+		{[]string{"spec", "destination", "server"}, "https://kubernetes.default.svc", ReasonArgoDestination},
 	} {
 		actual, _, e := unstructured.NestedString(a.Object, field.path...)
 		if e != nil || actual != field.value {
-			return Plan{}, ErrOwnership
+			return Plan{}, RefuseOwnership(field.reason)
 		}
 	}
 	source, _, err := unstructured.NestedString(a.Object, "spec", "source", "repoURL")
 	canonical, _, repoErr := CanonicalRepo(source)
 	if err != nil || repoErr != nil || canonical != i.Repo {
-		return Plan{}, ErrOwnership
+		return Plan{}, RefuseOwnership(ReasonArgoSource)
 	}
 	comparedRepo, _, err := unstructured.NestedString(a.Object, "status", "sync", "comparedTo", "source", "repoURL")
 	comparedCanonical, _, comparedErr := CanonicalRepo(comparedRepo)
 	comparedPath, _, pathErr := unstructured.NestedString(a.Object, "status", "sync", "comparedTo", "source", "path")
 	comparedRef, _, refErr := unstructured.NestedString(a.Object, "status", "sync", "comparedTo", "source", "targetRevision")
 	if err != nil || comparedErr != nil || pathErr != nil || refErr != nil || comparedCanonical != i.Repo || comparedPath != i.Path || comparedRef != i.Ref {
-		return Plan{}, ErrOwnership
+		return Plan{}, RefuseOwnership(ReasonArgoComparedSource)
 	}
 	revision, _, err := unstructured.NestedString(a.Object, "status", "sync", "revision")
 	if err != nil || !sha40.MatchString(revision) {
-		return Plan{}, ErrOwnership
+		return Plan{}, RefuseOwnership(ReasonSyncRevision)
 	}
 	config := s.ArgoConfig
 	if config == nil || config.Namespace != "argocd" || config.Name != "argocd-cm" || config.UID == "" || config.ResourceVersion == "" || config.DeletionTimestamp != nil {
-		return Plan{}, ErrOwnership
+		return Plan{}, RefuseOwnership(ReasonArgoConfigIdentity)
 	}
 	i.ArgoConfigUID = string(config.UID)
 	i.TrackingMethod = config.Data["application.resourceTrackingMethod"]
@@ -111,8 +124,11 @@ func ValidateSnapshot(s Snapshot, namespace, deployment string) (Plan, error) {
 	switch i.TrackingMethod {
 	case "annotation", "annotation+label":
 		tracking := i.Application + ":apps/Deployment:" + namespace + "/" + deployment
-		if d.Annotations["argocd.argoproj.io/tracking-id"] != tracking || d.Annotations["argocd.argoproj.io/installation-id"] != i.InstallationID {
-			return Plan{}, ErrOwnership
+		if d.Annotations["argocd.argoproj.io/tracking-id"] != tracking {
+			return Plan{}, RefuseOwnership(ReasonTrackingAnnotation)
+		}
+		if d.Annotations["argocd.argoproj.io/installation-id"] != i.InstallationID {
+			return Plan{}, RefuseOwnership(ReasonInstallationID)
 		}
 	case "label":
 		// Declared label tracking: Argo stamps every resource it manages with the
@@ -123,8 +139,14 @@ func ValidateSnapshot(s Snapshot, namespace, deployment string) (Plan, error) {
 		if key == "" {
 			key = "app.kubernetes.io/instance" // Argo's documented instance label key
 		}
-		if len(validation.IsQualifiedName(key)) != 0 || i.InstallationID != "" || d.Labels[key] != i.Application {
-			return Plan{}, ErrOwnership
+		if len(validation.IsQualifiedName(key)) != 0 {
+			return Plan{}, RefuseOwnership(ReasonInstanceLabelKey)
+		}
+		if i.InstallationID != "" {
+			return Plan{}, RefuseOwnership(ReasonInstallationIDDeclared)
+		}
+		if d.Labels[key] != i.Application {
+			return Plan{}, RefuseOwnership(ReasonInstanceLabel)
 		}
 		i.InstanceLabelKey = key
 	default:
@@ -132,7 +154,7 @@ func ValidateSnapshot(s Snapshot, namespace, deployment string) (Plan, error) {
 	}
 	resources, _, err := unstructured.NestedSlice(a.Object, "status", "resources")
 	if err != nil {
-		return Plan{}, ErrOwnership
+		return Plan{}, RefuseOwnership(ReasonArgoResources)
 	}
 	matches := 0
 	for _, raw := range resources {
@@ -141,19 +163,25 @@ func ValidateSnapshot(s Snapshot, namespace, deployment string) (Plan, error) {
 			matches++
 		}
 	}
-	if matches != 1 || declared.Namespace != namespace || declared.Name != deployment || !reflect.DeepEqual(d.Spec.Selector, declared.Spec.Selector) {
-		return Plan{}, ErrOwnership
+	if matches != 1 {
+		return Plan{}, RefuseOwnership(ReasonArgoResourceListing)
+	}
+	if declared.Namespace != namespace || declared.Name != deployment {
+		return Plan{}, RefuseOwnership(ReasonDeclaredTarget)
+	}
+	if !reflect.DeepEqual(d.Spec.Selector, declared.Spec.Selector) {
+		return Plan{}, RefuseOwnership(ReasonSelector)
 	}
 	for _, labels := range []map[string]string{d.Labels, d.Spec.Template.Labels, declared.Labels, declared.Spec.Template.Labels} {
 		if service := labels["enclii.dev/service"]; service != "" && service != s.Service.Name {
-			return Plan{}, ErrOwnership
+			return Plan{}, RefuseOwnership(ReasonEncliiLabel)
 		}
 		if project := labels["enclii.dev/project"]; project != "" && project != i.ProjectID.String() {
-			return Plan{}, ErrOwnership
+			return Plan{}, RefuseOwnership(ReasonEncliiLabel)
 		}
 	}
 	if !declaredLabelsMatch(declared.Labels, d.Labels) || !declaredLabelsMatch(declared.Spec.Template.Labels, d.Spec.Template.Labels) {
-		return Plan{}, ErrOwnership
+		return Plan{}, RefuseOwnership(ReasonDeclaredLabels)
 	}
 	names, actualNames := []string{}, []string{}
 	images := []string{}
@@ -162,7 +190,7 @@ func ValidateSnapshot(s Snapshot, namespace, deployment string) (Plan, error) {
 	}
 	for _, container := range d.Spec.Template.Spec.Containers {
 		if !imagePattern.MatchString(container.Image) {
-			return Plan{}, ErrOwnership
+			return Plan{}, RefuseOwnership(ReasonImagePattern)
 		}
 		actualNames = append(actualNames, container.Name)
 		images = append(images, container.Image)
@@ -170,7 +198,7 @@ func ValidateSnapshot(s Snapshot, namespace, deployment string) (Plan, error) {
 	sort.Strings(names)
 	sort.Strings(actualNames)
 	if len(names) == 0 || !reflect.DeepEqual(names, actualNames) {
-		return Plan{}, ErrOwnership
+		return Plan{}, RefuseOwnership(ReasonContainerNames)
 	}
 	identityHash, err := hash(struct {
 		Namespace, Name string

@@ -7,6 +7,8 @@ import (
 	"github.com/madfam-org/enclii/apps/switchyard-api/internal/workloadtargets"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
+	"k8s.io/client-go/dynamic"
+	"k8s.io/client-go/kubernetes"
 )
 
 // Only fixed metadata/source reads occur here. No fallback list selector,
@@ -46,27 +48,9 @@ func (h *Handler) readWorkloadTargetSnapshot(ctx context.Context, r workloadtarg
 	if err != nil || !s.NamespaceIntentExclusive {
 		return s, workloadtargets.ErrIntent
 	}
-	kube := h.opsKubeClient()
-	s.Namespace, err = kube.CoreV1().Namespaces().Get(ctx, r.Namespace, metav1.GetOptions{})
+	revision, err := readTargetNativeObjects(ctx, h.opsKubeClient(), h.k8sClient.DynamicClient, *s.Registration.ArgocdAppName, r, &s)
 	if err != nil {
-		return s, workloadtargets.ErrOwnership
-	}
-	s.Deployment, err = kube.AppsV1().Deployments(r.Namespace).Get(ctx, r.Deployment, metav1.GetOptions{})
-	if err != nil {
-		return s, workloadtargets.ErrOwnership
-	}
-	s.Application, err = h.k8sClient.DynamicClient.Resource(argoApplicationGVR).Namespace("argocd").Get(ctx, *s.Registration.ArgocdAppName, metav1.GetOptions{})
-	if err != nil {
-		return s, workloadtargets.ErrOwnership
-	}
-	config, err := kube.CoreV1().ConfigMaps("argocd").Get(ctx, "argocd-cm", metav1.GetOptions{})
-	if err != nil {
-		return s, workloadtargets.ErrOwnership
-	}
-	s.ArgoConfig = config
-	revision, _, err := unstructured.NestedString(s.Application.Object, "status", "sync", "revision")
-	if err != nil || !workloadtargets.ValidRevision(revision) {
-		return s, workloadtargets.ErrOwnership
+		return s, err
 	}
 	path, ok := s.Registration.ConfigSnapshot["manifest_path"].(string)
 	if !ok || !workloadtargets.ValidPath(path) {
@@ -75,8 +59,33 @@ func (h *Handler) readWorkloadTargetSnapshot(ctx context.Context, r workloadtarg
 	parts := strings.Split(repo, "/")
 	manifests, err := h.fetchManifestFiles(ctx, parts[0], parts[1], path, revision)
 	if err != nil {
-		return s, workloadtargets.ErrOwnership
+		return s, workloadtargets.RefuseOwnershipCause(workloadtargets.ReasonManifestFetch, err)
 	}
 	s.Declared, err = declaredTarget(manifests, r.Namespace, r.Deployment)
 	return s, err
+}
+
+// readTargetNativeObjects performs the four fixed native reads (Namespace,
+// Deployment, the registered Argo Application, argocd/argocd-cm) and returns
+// the Application's synced revision. Each failure names its read; the API
+// server's error is kept for the server log only.
+func readTargetNativeObjects(ctx context.Context, kube kubernetes.Interface, dyn dynamic.Interface, application string, r workloadtargets.Request, s *workloadtargets.Snapshot) (string, error) {
+	var err error
+	if s.Namespace, err = kube.CoreV1().Namespaces().Get(ctx, r.Namespace, metav1.GetOptions{}); err != nil {
+		return "", workloadtargets.RefuseOwnershipCause(workloadtargets.ReasonNamespaceRead, err)
+	}
+	if s.Deployment, err = kube.AppsV1().Deployments(r.Namespace).Get(ctx, r.Deployment, metav1.GetOptions{}); err != nil {
+		return "", workloadtargets.RefuseOwnershipCause(workloadtargets.ReasonDeploymentRead, err)
+	}
+	if s.Application, err = dyn.Resource(argoApplicationGVR).Namespace("argocd").Get(ctx, application, metav1.GetOptions{}); err != nil {
+		return "", workloadtargets.RefuseOwnershipCause(workloadtargets.ReasonApplicationRead, err)
+	}
+	if s.ArgoConfig, err = kube.CoreV1().ConfigMaps("argocd").Get(ctx, "argocd-cm", metav1.GetOptions{}); err != nil {
+		return "", workloadtargets.RefuseOwnershipCause(workloadtargets.ReasonArgoConfigRead, err)
+	}
+	revision, _, err := unstructured.NestedString(s.Application.Object, "status", "sync", "revision")
+	if err != nil || !workloadtargets.ValidRevision(revision) {
+		return "", workloadtargets.RefuseOwnership(workloadtargets.ReasonSyncRevision)
+	}
+	return revision, nil
 }

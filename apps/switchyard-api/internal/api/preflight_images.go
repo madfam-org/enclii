@@ -56,6 +56,11 @@ func resolveAdmissionObjects(manifests []checks.ManifestFile, namespace string) 
 	return objects, nil
 }
 
+// admissionKustomizationKeys are the only kustomization fields preflight and
+// explicit workload targets resolve. Any other field (a generator, patch,
+// prefix/suffix or component) is refused, because its effect is not modelled.
+var admissionKustomizationKeys = map[string]bool{"apiVersion": true, "kind": true, "resources": true, "images": true, "namespace": true}
+
 func validateAdmissionKustomization(manifests []checks.ManifestFile, namespace string) error {
 	files := make(map[string]bool)
 	for _, f := range manifests {
@@ -77,9 +82,7 @@ func validateAdmissionKustomization(manifests []checks.ManifestFile, namespace s
 			return fmt.Errorf("invalid kustomization identity in %s", f.Path)
 		}
 		for key := range doc {
-			switch key {
-			case "apiVersion", "kind", "resources", "images", "namespace":
-			default:
+			if !admissionKustomizationKeys[key] {
 				return fmt.Errorf("kustomization %s uses unsupported transform %s", f.Path, key)
 			}
 		}

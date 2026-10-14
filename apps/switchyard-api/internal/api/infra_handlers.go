@@ -272,7 +272,9 @@ func (h *Handler) RestartService(c *gin.Context) {
 			logging.String("service", svc.Name),
 			logging.Error("error", err),
 		)
-		c.JSON(targetMutationStatus(err), gin.H{"error": "restart refused or outcome unverified; inspect exact target before another attempt"})
+		body := gin.H{"error": "restart refused or outcome unverified; inspect exact target before another attempt"}
+		h.addTargetRefusalDetail(c, "service.restart", err, body)
+		c.JSON(targetMutationStatus(err), body)
 		return
 	}
 
@@ -354,7 +356,9 @@ func (h *Handler) ScaleService(c *gin.Context) {
 			logging.String("service", svc.Name),
 			logging.Error("error", err),
 		)
-		c.JSON(targetMutationStatus(err), gin.H{"error": "scale refused or outcome unverified; inspect exact target before another attempt"})
+		body := gin.H{"error": "scale refused or outcome unverified; inspect exact target before another attempt"}
+		h.addTargetRefusalDetail(c, "service.scale", err, body)
+		c.JSON(targetMutationStatus(err), body)
 		return
 	}
 

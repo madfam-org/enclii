@@ -6,6 +6,7 @@ import (
 	"net/http"
 
 	"github.com/gin-gonic/gin"
+	"github.com/madfam-org/enclii/apps/switchyard-api/internal/logging"
 	"github.com/madfam-org/enclii/apps/switchyard-api/internal/workloadtargets"
 )
 
@@ -59,5 +60,26 @@ func (h *Handler) targetPlanRefusal(c *gin.Context, err error) {
 	if errors.Is(err, workloadtargets.ErrIntent) {
 		message = "persisted registration/environment ownership intent missing or conflicting"
 	}
-	c.JSON(status, gin.H{"operation": "ops.apps.bind-target", "status": "refused", "error": message, "refusal_code": code})
+	body := gin.H{"operation": "ops.apps.bind-target", "status": "refused", "error": message, "refusal_code": code}
+	h.addTargetRefusalDetail(c, "ops.apps.bind-target", err, body)
+	c.JSON(status, body)
+}
+
+// addTargetRefusalDetail adds refusal_detail, the value-free name of the
+// ownership check that refused (workloadtargets/refusal.go), and logs it with
+// the underlying read error. error and refusal_code keep their values.
+func (h *Handler) addTargetRefusalDetail(c *gin.Context, operation string, err error, body gin.H) {
+	reason, ok := workloadtargets.RefusalReason(err)
+	if !ok {
+		return
+	}
+	body["refusal_detail"] = string(reason)
+	if h.logger == nil {
+		return
+	}
+	fields := []logging.Field{logging.String("operation", operation), logging.String("refusal_detail", string(reason))}
+	if cause := workloadtargets.RefusalCause(err); cause != nil {
+		fields = append(fields, logging.Error("cause", cause))
+	}
+	h.logger.Warn(c.Request.Context(), "workload target ownership refused", fields...)
 }

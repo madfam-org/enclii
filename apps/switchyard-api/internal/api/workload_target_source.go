@@ -12,32 +12,44 @@ import (
 
 // declaredTarget filters only explicitly listed flat resources. It does not
 // turn deferred, unreferenced manifests into mutation candidates or apply them.
+// Every refusal names its check (workloadtargets/refusal.go).
 func declaredTarget(files []checks.ManifestFile, namespace, name string) (*appsv1.Deployment, error) {
+	refuse := workloadtargets.RefuseOwnership
 	byName := map[string]checks.ManifestFile{}
 	var kustomization *checks.ManifestFile
 	for _, file := range files {
 		if path.Base(file.Path) != file.Path || byName[file.Path].Path != "" {
-			return nil, workloadtargets.ErrOwnership
+			return nil, refuse(workloadtargets.ReasonManifestLayout)
 		}
 		byName[file.Path] = file
 		if checks.IsKustomizationFile(file.Path) {
 			if kustomization != nil {
-				return nil, workloadtargets.ErrOwnership
+				return nil, refuse(workloadtargets.ReasonManifestLayout)
 			}
 			copy := file
 			kustomization = &copy
 		}
 	}
 	if kustomization == nil {
-		return nil, workloadtargets.ErrOwnership
+		return nil, refuse(workloadtargets.ReasonManifestLayout)
 	}
 	var doc map[string]interface{}
-	if yamlv3.Unmarshal([]byte(kustomization.Content), &doc) != nil {
-		return nil, workloadtargets.ErrOwnership
+	if err := yamlv3.Unmarshal([]byte(kustomization.Content), &doc); err != nil {
+		return nil, workloadtargets.RefuseOwnershipCause(workloadtargets.ReasonManifestInvalid, err)
+	}
+	// Classify the two refusals resolveAdmissionObjects would also make, so the
+	// operator sees which one; the accepted set is unchanged.
+	for key := range doc {
+		if !admissionKustomizationKeys[key] {
+			return nil, refuse(workloadtargets.ReasonKustomizationTransform)
+		}
+	}
+	if ns, ok := doc["namespace"]; ok && ns != namespace {
+		return nil, refuse(workloadtargets.ReasonKustomizationNamespace)
 	}
 	resources, ok := doc["resources"].([]interface{})
 	if !ok || len(resources) == 0 {
-		return nil, workloadtargets.ErrOwnership
+		return nil, refuse(workloadtargets.ReasonManifestLayout)
 	}
 	selected := []checks.ManifestFile{*kustomization}
 	seen := map[string]bool{}
@@ -45,14 +57,14 @@ func declaredTarget(files []checks.ManifestFile, namespace, name string) (*appsv
 		filename, ok := item.(string)
 		file, exists := byName[filename]
 		if !ok || !exists || path.Base(filename) != filename || seen[filename] || checks.IsKustomizationFile(filename) {
-			return nil, workloadtargets.ErrOwnership
+			return nil, refuse(workloadtargets.ReasonManifestLayout)
 		}
 		seen[filename] = true
 		selected = append(selected, file)
 	}
 	objects, err := resolveAdmissionObjects(selected, namespace)
 	if err != nil {
-		return nil, workloadtargets.ErrOwnership
+		return nil, workloadtargets.RefuseOwnershipCause(workloadtargets.ReasonManifestInvalid, err)
 	}
 	var target *appsv1.Deployment
 	for _, item := range objects {
@@ -61,17 +73,20 @@ func declaredTarget(files []checks.ManifestFile, namespace, name string) (*appsv
 		if obj["kind"] != "Deployment" || metadata["name"] != name {
 			continue
 		}
-		if obj["apiVersion"] != "apps/v1" || metadata["namespace"] != namespace || target != nil {
-			return nil, workloadtargets.ErrOwnership
+		if target != nil {
+			return nil, refuse(workloadtargets.ReasonDeclaredDeploymentRepeat)
+		}
+		if obj["apiVersion"] != "apps/v1" || metadata["namespace"] != namespace {
+			return nil, refuse(workloadtargets.ReasonDeclaredDeploymentShape)
 		}
 		candidate := &appsv1.Deployment{}
-		if runtime.DefaultUnstructuredConverter.FromUnstructured(obj, candidate) != nil {
-			return nil, workloadtargets.ErrOwnership
+		if err := runtime.DefaultUnstructuredConverter.FromUnstructured(obj, candidate); err != nil {
+			return nil, workloadtargets.RefuseOwnershipCause(workloadtargets.ReasonDeclaredDeploymentShape, err)
 		}
 		target = candidate
 	}
 	if target == nil {
-		return nil, workloadtargets.ErrOwnership
+		return nil, refuse(workloadtargets.ReasonDeclaredManifestMissing)
 	}
 	return target, nil
 }
