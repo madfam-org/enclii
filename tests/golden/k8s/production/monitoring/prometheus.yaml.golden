@@ -449,11 +449,19 @@ data:
       #                     body regex has its own alert
       #   module            the blackbox module (also sent as ?module=)
       #
-      # Adding a target: use a URL that answers 2xx JSON with a "status" or
-      # "ok" field WITHOUT a redirect (curl -sS -o /dev/null -w '%{http_code}'
-      # must print 200 on the exact URL), and add it to
-      # tests/scripts/test_revenue_probe_rules.py's expectations. No client
-      # hostnames: this repo is public.
+      # Adding a target: use a URL that answers 2xx WITHOUT a redirect
+      # (curl -sS -o /dev/null -w '%{http_code}' must print 200 on the exact
+      # URL), and pick the module by the BODY it answers (curl -sS the URL):
+      # a JSON object with a "status" or "ok" field is http_2xx_json; a bare
+      # JSON array (a list endpoint, `[]` when empty) is http_2xx_json_array.
+      # A module whose body check the healthy answer does not meet pages
+      # falsely and forever. Add it to tests/scripts/test_revenue_probe_rules.py's
+      # expectations. No client hostnames: this repo is public.
+      #
+      # `product` is also how Alertmanager groups these pages: the revenue
+      # route in alertmanager.yaml groups by [alertname, product], so each
+      # product failing opens its own page instead of joining one that is
+      # already firing. Keep it set, and the same for every flow of a product.
       - job_name: 'blackbox-revenue'
         metrics_path: /probe
         scrape_interval: 60s
@@ -467,10 +475,14 @@ data:
           # Until Cotiza's NextAuth secret is provisioned (digifab-quoting#81),
           # /api/health answers 503 by design ("nextauth_secret_missing") and
           # would page on arrival. The guest-quote list through the same web
-          # proxy answers 200 JSON today. Switch back to /api/health once #81
-          # has merged and /api/health returns 200.
+          # proxy answers 200 with a JSON array (`[]` when there are no guest
+          # quotes), so it is judged by http_2xx_json_array: it has no
+          # status/ok field, and under http_2xx_json it failed every probe from
+          # 2026-10-12 and held RevenueEndpointDown firing while the flow was
+          # up. Switch back to /api/health, on http_2xx_json, once #81 has
+          # merged and /api/health returns 200.
           - targets: ['https://cotiza.studio/api/v1/guest/quotes']
-            labels: {product: cotiza, flow: web-api-proxy, target_namespace: digifab-quoting, check: availability, module: http_2xx_json}
+            labels: {product: cotiza, flow: web-api-proxy, target_namespace: digifab-quoting, check: availability, module: http_2xx_json_array}
           - targets: ['https://cotiza.studio/api/quotes']
             labels: {product: cotiza, flow: quote-via-web, target_namespace: digifab-quoting, check: availability, module: http_401}
           - targets: ['https://api.cotiza.studio/quotes']
@@ -514,6 +526,8 @@ data:
             labels: {product: tezca, flow: api, target_namespace: tezca, check: availability, module: http_2xx_json}
           - targets: ['https://app.nauta.quest/health']
             labels: {product: nauta, flow: web, target_namespace: nauta, check: availability, module: http_2xx_json}
+          - targets: ['https://api.forgesight.app/health']
+            labels: {product: forgesight, flow: api, target_namespace: forgesight, check: availability, module: http_2xx_json}
         relabel_configs:
           - source_labels: [__address__]
             target_label: __param_target
@@ -2208,11 +2222,20 @@ data:
   #                        Cotiza web build fix (F1) ships;
   #   DhanamFXEmergencyFallback  until Dhanam's FX source is restored (F2).
   #
-  # The one-alertname-per-condition shape keeps one page per condition:
-  # Alertmanager groups critical alerts by alertname, and Courier pages once
-  # per alertname per hour, so twenty endpoints failing together (the tunnel
-  # down, say; CloudflaredTunnelDown fires too) are one RevenueEndpointDown
-  # page listing them, not twenty.
+  # Paging shape. Every rule here carries `category: revenue-probe`, and
+  # alertmanager.yaml routes that label, above the generic critical route,
+  # grouped by [alertname, product]: a second product failing opens its own
+  # group and notifies after group_wait (10s) instead of joining a group that
+  # is already firing for another product. The routing relies on BOTH labels:
+  # `category` on each rule below, `product` on each scrape target above
+  # (RevenueProbesNotRunning has no product and is one group of its own).
+  # Several endpoints of ONE product failing together are still one group.
+  # LIMIT, outside this repo: Courier dedups on alertname per UTC hour
+  # (`alarm:<alertname>:<hour>`, angelia apps/api/src/courier/alertmanager.ts).
+  # A second product paging inside an hour whose RevenueEndpointDown already
+  # reached chat reaches people by email only; while both keep firing, chat
+  # carries whichever group re-sends first in each hour. Email carries every
+  # group.
   #
   # Annotations use $labels and $value only: no `query` template functions.
   # =========================================================================

@@ -27,7 +27,13 @@ that, so each way they could silently stop working is pinned here:
   * the FX module has exactly one body regex, so probe_failed_due_to_regex
     means "emergency_fallback" and nothing else;
   * the rules page (critical), and the FX regex failure pages as itself, not
-    also as RevenueEndpointDown.
+    also as RevenueEndpointDown;
+  * a list endpoint that answers a bare JSON array is judged by the array
+    module, not by the status-field one it can never satisfy (Cotiza's guest
+    quote list failed every probe that way from 2026-10-12);
+  * each product pages as its own group: every rule carries the label the
+    Alertmanager revenue route matches, and every target the `product` label
+    that route groups by.
 
 The promtool layer evaluates the real rules with Prometheus's own engine; if
 the evaluator cannot RUN it skips with the reason, never passes silently.
@@ -53,6 +59,7 @@ PROMETHEUS = MONITORING / "prometheus.yaml"
 BLACKBOX = MONITORING / "blackbox-exporter.yaml"
 KUSTOMIZATION = MONITORING / "kustomization.yaml"
 NETWORK_POLICIES = MONITORING / "network-policies.yaml"
+ALERTMANAGER = MONITORING / "alertmanager.yaml"
 
 JOB = "blackbox-revenue"
 RULES_KEY = "revenue-probe-rules.yml"
@@ -74,7 +81,12 @@ REQUIRED_FLOWS = {
     ("avala", "api"),
     ("factlas", "api"),
     ("routecraft", "web"),
+    # Added after the audit: Forgesight's API.
+    ("forgesight", "api"),
 }
+
+# The label the Alertmanager revenue route matches on (alertmanager.yaml).
+CATEGORY = "revenue-probe"
 
 
 def _docs(path: Path) -> list[dict]:
@@ -180,7 +192,67 @@ def test_fx_module_fails_only_on_emergency_fallback():
     assert not http.get("fail_if_header_matches") and not http.get("fail_if_header_not_matches")
 
 
-@pytest.mark.parametrize("name", ["http_2xx_json", "http_401", "http_dhanam_catalog", "http_dhanam_fx"])
+# Bodies the two JSON modules must tell apart. Go's regexp and Python's re
+# agree on these patterns: `^` without (?m) anchors at the start of the body,
+# and blackbox_exporter matches with a search, not a full match.
+JSON_ARRAY_BODIES = ["[]", '[{"id":"q_1","status":"draft"}]', ' \n[\n  {"id": "q_1"}\n]']
+NOT_ARRAY_BODIES = [
+    '{"status":"ok"}',
+    '{"error":"internal"}',
+    "<!DOCTYPE html><html><body>[]</body></html>",
+    "",
+]
+
+
+@pytest.mark.parametrize("body", JSON_ARRAY_BODIES)
+def test_array_module_accepts_a_json_array(body):
+    (pattern,) = _modules()["http_2xx_json_array"]["http"]["fail_if_body_not_matches_regexp"]
+    assert re.search(pattern, body), body
+
+
+@pytest.mark.parametrize("body", NOT_ARRAY_BODIES)
+def test_array_module_rejects_objects_html_and_empty_bodies(body):
+    (pattern,) = _modules()["http_2xx_json_array"]["http"]["fail_if_body_not_matches_regexp"]
+    assert not re.search(pattern, body), body
+
+
+def test_array_module_checks_only_the_body_shape():
+    http = _modules()["http_2xx_json_array"]["http"]
+    assert not http.get("valid_status_codes"), "2xx, like http_2xx_json"
+    assert not http.get("fail_if_body_matches_regexp")
+    assert http["headers"] == _modules()["http_2xx_json"]["http"]["headers"]
+    assert http["preferred_ip_protocol"] == "ip4"
+    assert http["method"] == "GET"
+
+
+def test_status_module_cannot_pass_an_empty_list():
+    """Why the array module exists: `[]` never satisfies http_2xx_json."""
+    (pattern,) = _modules()["http_2xx_json"]["http"]["fail_if_body_not_matches_regexp"]
+    assert not re.search(pattern, "[]")
+
+
+def test_cotiza_guest_quote_list_is_judged_as_an_array():
+    """It answers 200 `[]`; on http_2xx_json it paged falsely from 2026-10-12."""
+    by_url = dict(_targets())
+    labels = by_url["https://cotiza.studio/api/v1/guest/quotes"]
+    assert labels["module"] == "http_2xx_json_array"
+    assert (labels["product"], labels["flow"]) == ("cotiza", "web-api-proxy")
+    # The only array target today; a second one belongs in this test with a
+    # curl of its body in review.
+    assert [u for u, l in _targets() if l["module"] == "http_2xx_json_array"] == [
+        "https://cotiza.studio/api/v1/guest/quotes"
+    ]
+
+
+def test_every_module_is_checked_below():
+    """A new module must be added to the parametrized checks, not skip them."""
+    assert set(_modules()) == set(MODULES)
+
+
+MODULES = ["http_2xx_json", "http_2xx_json_array", "http_401", "http_dhanam_catalog", "http_dhanam_fx"]
+
+
+@pytest.mark.parametrize("name", MODULES)
 def test_modules_do_not_follow_redirects_and_require_tls(name):
     http = _modules()[name]["http"]
     assert http["follow_redirects"] is False
@@ -227,6 +299,45 @@ def test_rules_page_and_fx_regex_is_not_double_paged():
         assert f'job="{JOB}"' in rule["expr"], name
     assert 'check="fx-source"' in rules["RevenueEndpointDown"]["expr"]
     assert "unless" in rules["RevenueEndpointDown"]["expr"]
+
+
+def _alertmanager_revenue_route() -> dict:
+    cm = _configmap(ALERTMANAGER, "alertmanager-config")
+    routes = yaml.safe_load(cm["data"]["alertmanager.yml"])["route"]["routes"]
+    matched = [
+        r for r in routes
+        if f'category="{CATEGORY}"' in [str(m) for m in r.get("matchers") or []]
+    ]
+    assert len(matched) == 1, f'expected one category="{CATEGORY}" route in alertmanager.yaml'
+    return matched[0]
+
+
+def test_every_product_pages_as_its_own_group():
+    """The per-product Alertmanager route works only if both labels arrive.
+
+    `category` is set on each rule; `product` is a static target label that
+    Prometheus keeps on probe_success / probe_failed_due_to_regex and the
+    rules keep on the alert (RevenueEndpointDown's `unless on (instance)`
+    keeps the left-hand labels). Drop either and the alerts fall through to
+    the generic critical route, one group per alertname again.
+    """
+    route = _alertmanager_revenue_route()
+    assert "product" in route["group_by"] and "alertname" in route["group_by"]
+    for name, rule in _rules().items():
+        assert rule["labels"].get("category") == CATEGORY, name
+        assert "product" not in rule["labels"], (
+            f"{name}: a static product label would merge every product into one group"
+        )
+        assert not re.search(r"\b(sum|avg|max|min|count|topk|bottomk)\b", rule["expr"]), (
+            f"{name}: an aggregation would drop the product label"
+        )
+    for url, labels in _targets():
+        assert re.fullmatch(r"[a-z0-9][a-z0-9-]*", labels["product"]), url
+    # One product, one target_namespace: product is a page, not a flow.
+    ns = {}
+    for _, labels in _targets():
+        ns.setdefault(labels["product"], set()).add(labels["target_namespace"])
+    assert all(len(v) == 1 for v in ns.values()), ns
 
 
 # ---------------------------------------------------------------------------
@@ -347,6 +458,44 @@ PROMTOOL_TEST = textwrap.dedent(
                   category: revenue-probe
                 exp_annotations:
                   summary: "Revenue probes are not running: the revenue flows are unwatched"
+
+      # 4. Two products fail together: two alerts, each carrying its own
+      #    `product`, which is what the Alertmanager revenue route groups by.
+      #    The guest-quote list on the array module is one of them.
+      - interval: 1m
+        input_series:
+          - series: 'probe_success{job="blackbox-revenue",instance="https://cotiza.studio/api/v1/guest/quotes",product="cotiza",flow="web-api-proxy",target_namespace="digifab-quoting",check="availability",module="http_2xx_json_array"}'
+            values: '0x20'
+          - series: 'probe_success{job="blackbox-revenue",instance="https://api.forgesight.app/health",product="forgesight",flow="api",target_namespace="forgesight",check="availability",module="http_2xx_json"}'
+            values: '0x20'
+        alert_rule_test:
+          - eval_time: 5m
+            alertname: RevenueEndpointDown
+            exp_alerts:
+              - exp_labels:
+                  severity: critical
+                  category: revenue-probe
+                  job: blackbox-revenue
+                  instance: https://cotiza.studio/api/v1/guest/quotes
+                  product: cotiza
+                  flow: web-api-proxy
+                  target_namespace: digifab-quoting
+                  check: availability
+                  module: http_2xx_json_array
+                exp_annotations:
+                  summary: "cotiza web-api-proxy is failing: https://cotiza.studio/api/v1/guest/quotes"
+              - exp_labels:
+                  severity: critical
+                  category: revenue-probe
+                  job: blackbox-revenue
+                  instance: https://api.forgesight.app/health
+                  product: forgesight
+                  flow: api
+                  target_namespace: forgesight
+                  check: availability
+                  module: http_2xx_json
+                exp_annotations:
+                  summary: "forgesight api is failing: https://api.forgesight.app/health"
     """
 ).lstrip()
 
