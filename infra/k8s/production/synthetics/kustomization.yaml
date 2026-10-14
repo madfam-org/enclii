@@ -1,0 +1,37 @@
+# Synthetic journeys (S-Gate 1): the Dhanam staging synthetic buyer.
+#
+# Rendered by the `synthetics` Argo Application (infra/argocd/apps/synthetics.yaml).
+# `resources:` is an allowlist: a manifest in this directory that is not listed
+# here is never applied, and Argo still reports Synced/Healthy. Guarded by
+# tests/scripts/test_synthetic_journeys.py.
+#
+# The runner's code, journeys and image definition live in the private
+# operations repo (tools/journeys); only its schedule, sandbox and alerting
+# live here.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: synthetics
+
+resources:
+  - namespace.yaml
+  - resource-quota.yaml
+  - network-policies.yaml
+  - serviceaccount.yaml
+  - journeys-identity.externalsecret.yaml
+  - cronjob.yaml
+
+labels:
+  - pairs:
+      app.kubernetes.io/part-of: enclii
+    includeSelectors: false
+    includeTemplates: false
+
+# PLACEHOLDER DIGEST — NO IMAGE IS PUBLISHED YET. The all-zero digest below
+# cannot be pulled; it only keeps the render valid. Replace it with the digest
+# of the image built from tools/journeys/Dockerfile before this is merged
+# (tests/scripts/test_synthetic_journeys.py fails while it is all zeros).
+images:
+  - name: journeys
+    newName: ghcr.io/madfam-org/internal-devops/journeys
+    digest: sha256:0000000000000000000000000000000000000000000000000000000000000000

@@ -540,6 +540,48 @@ runs nothing.
 Rotation is the same `intake submit` with a new app password. Never recreate
 `alertmanager-smtp-secret`.
 
+### Synthetic buyer identity (2026-10-14)
+
+The S-Gate 1 synthetic buyer (`infra/k8s/production/synthetics/`) buys Dhanam
+Essentials on **staging** with **Stripe test mode** every 15 minutes and pages
+when the staging money path breaks (`SyntheticCheckoutFailing`). It signs in as
+a dedicated staging identity and needs a Stripe **test** key to cancel that
+identity's test subscription after each run, so the next run starts on the
+free tier.
+
+| Property in `secret/synthetics` | Target | Written by | ExternalSecret → Secret | Env in the runner |
+|---|---|---|---|---|
+| `dhanam_staging_synth_email` | `synthetics/dhanam-staging-checkout` | owner, masked prompt | `journeys-dhanam-staging-synthetic` → same name | `DHANAM_STAGING_SYNTH_EMAIL` |
+| `dhanam_staging_synth_password` | same | same | same | `DHANAM_STAGING_SYNTH_PASSWORD` |
+| `dhanam_staging_synth_stripe_test_key` | same | same | same | `DHANAM_STAGING_SYNTH_STRIPE_TEST_KEY` |
+
+- **The identity.** A Janua account used for nothing else, with no MFA, that
+  Dhanam staging accepts (staging trusts the same issuer as production). Its
+  password is the one set on the account, so never `--generate` it.
+- **The key.** A Stripe **restricted test** key (`rk_test_…`) on the Stripe
+  account Dhanam staging checks out on, with exactly: Checkout Sessions read,
+  Customers read, Subscriptions write. The runner refuses to start with any
+  other kind of key and refuses on any `*_live_` key it sees anywhere.
+- **Before the first submit** the ExternalSecret reports `SecretSyncedError`,
+  the CronJob's pods fail with `CreateContainerConfigError`, and
+  `SyntheticJourneysNotRunning` fires after 45 minutes.
+
+Owner sequence, after the change is deployed (switchyard-api digest bump for
+the registry), from an up-to-date checkout:
+
+```bash
+cd ~/labspace/enclii && git pull --ff-only
+cd ~/labspace/enclii && ASSERT_PATH=synthetics bash scripts/apply-switchyard-vault-policy-remote.sh < ~/.config/madfam/vault-admin.token
+# expect: APPLIED_OK_asserted_path_present
+enclii secrets intake submit synthetics/dhanam-staging-checkout --reason "S-Gate 1 synthetic buyer identity (staging, Stripe test mode)"
+# prompts (masked): dhanam_staging_synth_email, dhanam_staging_synth_password, dhanam_staging_synth_stripe_test_key
+enclii secrets intake status int_<id>
+# expect: external_secret_refreshed: true
+```
+
+Rotation is the same `intake submit` with the new values (all three: the
+prompt asks for every key of the target).
+
 ### Selva → Yantra4D edge (2026-10-08)
 
 One more Janua `client_credentials` client, same mechanics as the digital-twins

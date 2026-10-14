@@ -29,6 +29,9 @@ NAMESPACES=(
     foundry-scout
     monitoring
     blueprint-harvester
+    # S-Gate 1 synthetic buyer: pulls ghcr.io/madfam-org/internal-devops/journeys,
+    # a package from a private repository.
+    synthetics
 )
 
 RED='\033[0;31m'

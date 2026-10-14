@@ -2142,8 +2142,12 @@ data:
         interval: 30s
         rules:
           - alert: SyntheticJourneyConsecutivelyFailing
+            # job!="journeys": the Playwright journey runner (synthetics
+            # namespace) pushes the same metric name through the pushgateway
+            # and pages through `synthetic-journeys-rules.yml` below. Without
+            # the matcher its series would page twice, here as well.
             expr: |
-              synthetic_journey_consecutive_failures >= 3
+              synthetic_journey_consecutive_failures{job!="journeys"} >= 3
             for: 1m
             labels:
               severity: critical
@@ -2327,6 +2331,127 @@ data:
                      job is not loaded (prometheus-config ConfigMap, reload);
                      0 means Prometheus cannot reach blackbox-exporter:9115
                      (blackbox-exporter-ingress NetworkPolicy, Service).
+
+  # =========================================================================
+  # Synthetic journeys (S-Gate 1, 2026-10-14). The Playwright journey runner
+  # in the `synthetics` namespace (infra/k8s/production/synthetics) pushes,
+  # per journey, through the pushgateway (job="journeys", journey="<id>",
+  # labels product and env):
+  #   synthetic_journey_success                          1/0, last run
+  #   synthetic_journey_consecutive_failures             runs in a row not passing
+  #   synthetic_journey_last_run_timestamp_seconds       last run
+  #   synthetic_journey_last_success_timestamp_seconds   last passing run (0 = never)
+  # Today one journey: dhanam.staging.essentials.checkout (product
+  # dhanam-staging-synthetic), which buys Dhanam Essentials on STAGING with
+  # Stripe TEST mode every 15 minutes and asserts webhook -> entitlement.
+  #
+  # Paging shape: both rules carry `category: revenue-probe` and severity
+  # critical, so the Alertmanager revenue route groups them by
+  # [alertname, product] with the blackbox revenue probes; `product` comes
+  # from the pushed series (dhanam-staging-synthetic), never from a static
+  # label here, so the synthetic buyer pages as its own group and never joins
+  # production Dhanam's.
+  #
+  # NotRunning stays quiet while CheckoutFailing already covers a broken run
+  # that keeps reporting (one incident, one page), and fires when the runner
+  # stops reporting, never reported although its CronJob has existed for 45
+  # minutes, or has not passed for 45 minutes without a failure streak to show
+  # for it (e.g. the gateway lost its state). A CronJob that was never created
+  # is Argo's to report, not this rule's.
+  # =========================================================================
+  synthetic-journeys-rules.yml: |
+    groups:
+      - name: synthetic-journeys
+        interval: 30s
+        rules:
+          # Two runs in a row did not pass (~15-30 minutes at */15).
+          - alert: SyntheticCheckoutFailing
+            expr: |
+              synthetic_journey_consecutive_failures{job="journeys", env="staging"} >= 2
+            for: 1m
+            labels:
+              severity: critical
+              category: revenue-probe
+            annotations:
+              summary: "{{ $labels.product }} synthetic checkout failed {{ $value }} runs in a row: {{ $labels.journey }}"
+              description: |
+                The synthetic buyer {{ $labels.journey }} (product
+                {{ $labels.product }}, env {{ $labels.env }}) has failed
+                {{ $value }} consecutive runs. Each run buys Dhanam Essentials
+                on STAGING with Stripe TEST mode: staging pricing, a checkout
+                opened through the staging API, Stripe's test card, Stripe's
+                redirect back, then the staging API must show Essentials
+                (Stripe webhook -> entitlement). No real money moves.
+
+                Triage:
+                  1. The failing step is in the last Job's log (one line per
+                     failing assertion, `step: [class] message`):
+                     enclii ops jobs list -n synthetics --json, then
+                     enclii ops pods logs <pod> -n synthetics
+                  2. identity / reset: the synthetic identity (Janua sign-in,
+                     MFA, lockout) or its Stripe test key. Re-provision through
+                     the intake target synthetics/dhanam-staging-checkout.
+                  3. checkout_session / payment: Dhanam staging
+                     (enclii ops pods diagnose -n enclii-dhanam-staging) or
+                     Stripe test mode.
+                  4. entitlement after a passing payment: the Stripe test-mode
+                     webhook to staging-api.dhan.am is not delivered, or the
+                     staging webhook handler fails.
+                  5. guard_refusal / live_key_detected: STOP. Staging returned
+                     a live-mode session or a live Stripe key; treat it as a
+                     live key reaching staging, not as a flaky probe.
+
+          # Three ways the buyer is not watching:
+          #   1. no pass for 45 minutes that CheckoutFailing does not already
+          #      cover (a last success of 0 means "never" and is left to the
+          #      failure streak);
+          #   2. no run reported for 45 minutes (the CronJob, the image, the
+          #      push or the gateway stopped);
+          #   3. no series at all for 45 minutes although the CronJob has
+          #      existed for 45 minutes (never ran: identity Secret missing,
+          #      image not pullable). Gated on kube_cronjob_created so a fresh
+          #      deploy has one 45-minute window to receive its identity
+          #      before this pages.
+          - alert: SyntheticJourneysNotRunning
+            expr: |
+              (
+                (time() - (synthetic_journey_last_success_timestamp_seconds{job="journeys", env="staging"} > 0)) > 2700
+                unless on (journey)
+                synthetic_journey_consecutive_failures{job="journeys", env="staging"} >= 2
+              )
+              or
+              (time() - synthetic_journey_last_run_timestamp_seconds{job="journeys", env="staging"}) > 2700
+              or
+              (
+                absent_over_time(synthetic_journey_last_run_timestamp_seconds{job="journeys", env="staging", journey="dhanam.staging.essentials.checkout", product="dhanam-staging-synthetic"}[45m])
+                and on ()
+                (time() - max(kube_cronjob_created{namespace="synthetics", cronjob="journeys-dhanam-staging-checkout"})) > 2700
+              )
+            for: 5m
+            labels:
+              severity: critical
+              category: revenue-probe
+            annotations:
+              summary: "Synthetic journey {{ $labels.journey }} has not passed or reported for 45 minutes"
+              description: |
+                {{ $labels.journey }} (product {{ $labels.product }}) has no
+                passing run, or no run at all, in the last 45 minutes, and
+                SyntheticCheckoutFailing is not covering it. The staging money
+                path is unwatched while this fires.
+
+                Triage:
+                  1. enclii ops jobs list -n synthetics --json: is the CronJob
+                     creating Jobs, and do they finish?
+                  2. A pod in CreateContainerConfigError: the identity Secret
+                     does not exist yet (intake target
+                     synthetics/dhanam-staging-checkout).
+                     ImagePullBackOff: the journeys image digest is not
+                     published or the namespace has no ghcr-credentials.
+                  3. Jobs finish but nothing arrives: the push to the
+                     pushgateway is refused (journeys-egress in synthetics,
+                     pushgateway-ingress-synthetics in monitoring) or the
+                     pushgateway lost its state.
+                In Grafana: synthetic_journey_last_run_timestamp_seconds{job="journeys"}.
 
   # =========================================================================
   # Resurrected 2026-08-26 (availability remediation Tier 0.3): the 5 of 8

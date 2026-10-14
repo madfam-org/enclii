@@ -990,6 +990,27 @@ targets:
     keys:
       - alertmanager_smtp_password
 
+  # synthetics (2026-10-14) — the S-Gate 1 synthetic buyer: the identity the
+  # journeys CronJob (infra/k8s/production/synthetics) signs in to Dhanam
+  # staging with, and the Stripe TEST restricted key it resets and cleans up
+  # that identity's test subscription with. Staging and test mode only; the
+  # runner refuses a live key (`*_live_`) before it does anything.
+  #
+  # Value-intake, NEVER --generate: the Janua password is the one set on the
+  # synthetic account, and the key is minted in Stripe's test-mode dashboard.
+  # LOWERCASE keys, as Vault stores them; journeys-dhanam-staging-synthetic
+  # maps them byte for byte (ESO syncs all three or none).
+  synthetics/dhanam-staging-checkout:
+    label: Dhanam staging synthetic buyer
+    description: Identity of the */15 staging synthetic buyer (journeys CronJob, namespace synthetics) — the Janua email and password of a dedicated staging account with no MFA, and a Stripe TEST restricted key (rk_test_; Checkout Sessions read, Customers read, Subscriptions write) used only to cancel that account's test subscription. Typed at the masked prompt; never generated; never a live key.
+    vault_path: secret/synthetics
+    namespace: synthetics
+    external_secret: journeys-dhanam-staging-synthetic  # pragma: allowlist secret
+    keys:
+      - dhanam_staging_synth_email
+      - dhanam_staging_synth_password
+      - dhanam_staging_synth_stripe_test_key
+
   # crea-map (2026-10-07) — the MAP MCP pseudonym key (crea-map #866, §11.100).
   # The HMAC key behind the MCP's U-/I- pseudonyms. crea-map reads it as
   # MAP_MCP_PSEUDONYM_KEY (32 bytes or more); without it /api/mcp answers 503.

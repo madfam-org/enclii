@@ -1,0 +1,15 @@
+# The synthetics namespace: scheduled synthetic journeys, isolated from
+# `monitoring` (whose quota is near its CronJob peak) and from every product
+# namespace. Pod Security `restricted`: the runner is non-root, read-only,
+# drops every capability and runs Chromium without its sandbox (Playwright's
+# default), so it needs nothing more.
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: synthetics
+  labels:
+    app.kubernetes.io/name: synthetics
+    app.kubernetes.io/component: synthetics
+    pod-security.kubernetes.io/enforce: restricted
+    pod-security.kubernetes.io/audit: restricted
+    pod-security.kubernetes.io/warn: restricted
