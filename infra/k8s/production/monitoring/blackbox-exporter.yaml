@@ -66,6 +66,26 @@ data:
           fail_if_body_not_matches_regexp:
             - '"(status|ok)"\s*:'
 
+      # 2xx and a body that is a JSON ARRAY. For list endpoints, which answer
+      # a bare array (`[]` when the list is empty) and so carry no status/ok
+      # field: under http_2xx_json such a URL fails every probe while it is
+      # healthy, a false RevenueEndpointDown that never clears. Cotiza's
+      # guest-quote list did exactly that from 2026-10-12. The regex is
+      # anchored to the start of the body (Go regexp, no (?m)), so an SPA's
+      # index.html or a JSON error object answered with 200 still fails.
+      http_2xx_json_array:
+        prober: http
+        timeout: 10s
+        http:
+          method: GET
+          preferred_ip_protocol: ip4
+          follow_redirects: false
+          fail_if_not_ssl: true
+          headers:
+            User-Agent: "madfam-revenue-probe/1.0 (+https://github.com/madfam-org/enclii)"
+          fail_if_body_not_matches_regexp:
+            - '^\s*\['
+
       # An authenticated API route answering 401 to an anonymous GET: the
       # route exists, the app is up, and auth is enforced. A 5xx, a timeout,
       # a 404 (route gone) or a 200 (auth gone) all fail.

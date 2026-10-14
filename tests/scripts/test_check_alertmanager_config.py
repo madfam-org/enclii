@@ -461,6 +461,46 @@ def test_critical_route_keeps_paging_within_the_email_budget():
     )
 
 
+REVENUE_MATCHER = 'category="revenue-probe"'
+
+
+def test_revenue_probes_page_per_product_above_the_critical_route():
+    """A second product's revenue outage must open its own page.
+
+    Under the generic critical route (group_by alertname) a RevenueEndpointDown
+    for a new product joined the group already paging for another, went out
+    only at that group's next group_interval tick and read as the same page;
+    a standing page on one product masked the next one. The revenue route
+    groups by product, sits above the critical route (which would otherwise
+    match first), and pages through the same receiver. The rules side of the
+    contract (every revenue rule carries category=revenue-probe, every target
+    a product) is pinned in tests/scripts/test_revenue_probe_rules.py.
+    """
+    cfg = _live_alertmanager_config()
+    routes = (cfg.get("route") or {}).get("routes") or []
+    revenue = [
+        (i, r) for i, r in enumerate(routes)
+        if REVENUE_MATCHER in [str(m) for m in r.get("matchers") or []]
+    ]
+    assert len(revenue) == 1, f"expected one {REVENUE_MATCHER} route, got {revenue!r}"
+    idx, route = revenue[0]
+    crit_idx = next(
+        i for i, r in enumerate(routes)
+        if (r.get("match") or {}).get("severity") == "critical"
+    )
+    assert idx < crit_idx, "the revenue route must sit above the generic critical route"
+    assert idx == _first_severity_route_index(cfg), (
+        "the alertname and info routes above must keep catching their alerts first"
+    )
+    assert [str(m) for m in route["matchers"]] == [REVENUE_MATCHER, 'severity="critical"']
+    assert route["receiver"] == "critical-receiver"
+    assert route.get("continue") is False
+    assert route.get("group_by") == ["alertname", "product"]
+    assert route.get("group_wait") == "10s"
+    assert route.get("group_interval") == "5m"
+    assert route.get("repeat_interval") == "1h"
+
+
 def test_informational_severities_go_to_a_sink():
     cfg = _live_alertmanager_config()
     routes = (cfg.get("route") or {}).get("routes") or []

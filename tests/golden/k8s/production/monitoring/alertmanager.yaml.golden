@@ -103,6 +103,39 @@ data:
           receiver: 'informational-sink'
           continue: false
 
+        # Revenue probes - ONE GROUP PER PRODUCT. The revenue-probes rules in
+        # prometheus.yaml (RevenueEndpointDown, DhanamFXEmergencyFallback,
+        # RevenueProbesNotRunning) all carry `category: revenue-probe`, and
+        # each probe target carries a `product` label that survives into
+        # the alert. Under the generic critical route below they shared one
+        # group per alertname: a second product failing while another was
+        # already paging joined that group, went out only at its next
+        # group_interval tick, and read as the same page. Here each product
+        # is its own group, so a new product's outage notifies after
+        # group_wait (10s). Same receiver as every critical (Courier + email).
+        #
+        # Email budget (note above `route:`): a product still failing re-sends
+        # hourly, 24 emails a day per product. Every product failing all day
+        # (14 today; the tunnel down, and CloudflaredTunnelDown pages too) is
+        # 336, which with the ~142/day replay baseline sits just under the
+        # ~500/day cap. A flapping endpoint can re-send at each 5m
+        # group_interval tick where its group changed. Re-run the replay
+        # before adding products or shortening these.
+        #
+        # Courier dedups on alertname per UTC hour, so chat carries one
+        # RevenueEndpointDown an hour however many products fail; email
+        # carries every group. Above the generic critical route, which would
+        # otherwise match these first; below the alertname and info routes.
+        - matchers:
+            - category="revenue-probe"
+            - severity="critical"
+          receiver: 'critical-receiver'
+          continue: false
+          group_by: ['alertname', 'product']
+          group_wait: 10s
+          group_interval: 5m
+          repeat_interval: 1h
+
         # Critical alerts - every one pages (email + Courier).
         # A NEW alertname opens its own group and goes out after group_wait
         # (10s). group_interval only paces further instances of an alertname
