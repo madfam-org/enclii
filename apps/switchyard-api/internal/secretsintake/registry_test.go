@@ -12,7 +12,7 @@ import (
 func TestLoadRegistry(t *testing.T) {
 	reg, err := LoadRegistry()
 	require.NoError(t, err)
-	assert.Len(t, reg, 81)
+	assert.Len(t, reg, 82)
 	assert.Contains(t, reg, "ceq/vast-api-key")
 	assert.Contains(t, reg, "karafiel/web-oidc-janua")
 	adminSession := reg["karafiel/admin-session"]
@@ -37,7 +37,7 @@ func TestGetTarget(t *testing.T) {
 func TestListTargetsSorted(t *testing.T) {
 	list, err := ListTargets()
 	require.NoError(t, err)
-	require.Len(t, list, 81)
+	require.Len(t, list, 82)
 	for i := 1; i < len(list); i++ {
 		assert.Less(t, list[i-1].ID, list[i].ID, "targets should be sorted by id")
 	}
@@ -72,6 +72,7 @@ func TestListTargetsSorted(t *testing.T) {
 		"dhanam/session-auth",
 		"dhanam/stripe-mx-live",
 		"digifab-quoting/pravara-intake",
+		"digifab-quoting/web-oidc",
 		"digifab-quoting/web-session",
 		"enclii/internal-api-key",
 		"family-history/api-access",
@@ -710,6 +711,31 @@ func TestDigifabQuotingWebSessionTarget(t *testing.T) {
 	assert.NotEmpty(t, tgt.Description)
 	// NEXTAUTH_SECRET must carry at least 32 bytes when minted with --generate.
 	assert.GreaterOrEqual(t, tgt.GenerateBytes(), 32)
+}
+
+// Cotiza web Janua login client (2026-10-13). Written only by
+// `enclii secrets provision oidc --platform cotiza-web`, into a DEDICATED
+// ExternalSecret: never digifab-quoting-secrets (projected from
+// ecosystem-service-auth, out of the intake's reach) and never
+// digifab-quoting-web-session (an unprovisioned client would hold the NextAuth
+// secret's sync, since ESO syncs all of an ExternalSecret's keys or none).
+// Lowercase, byte for byte what digifab-quoting-web-oidc maps.
+func TestDigifabQuotingWebOIDCTarget(t *testing.T) {
+	tgt, err := GetTarget("digifab-quoting/web-oidc")
+	require.NoError(t, err)
+	assert.Equal(t, "secret/digifab-quoting", tgt.VaultPath)
+	assert.Equal(t, "digifab-quoting", tgt.Namespace)
+	assert.Equal(t, "digifab-quoting-web-oidc", tgt.ExternalSecret)
+	assert.NotEqual(t, "digifab-quoting-secrets", tgt.ExternalSecret,
+		"digifab-quoting-secrets is projected from ecosystem-service-auth; intake cannot reach it")
+	assert.NotEqual(t, "digifab-quoting-web-session", tgt.ExternalSecret,
+		"the Janua pair must not gate the NextAuth secret's ExternalSecret")
+	assert.Equal(t, []string{"janua_client_id", "janua_client_secret"}, tgt.Keys)
+	for _, k := range tgt.Keys {
+		assert.Equal(t, strings.ToLower(k), k, "Vault stores lowercase; an upper-case key would never match the ExternalSecret property")
+	}
+	assert.NotEmpty(t, tgt.Label)
+	assert.Contains(t, tgt.Description, "--platform cotiza-web")
 }
 
 // Keep the historical inventory exact while the new isolated targets have their

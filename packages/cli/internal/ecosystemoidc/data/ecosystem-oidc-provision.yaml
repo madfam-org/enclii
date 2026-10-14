@@ -1,6 +1,6 @@
 # MADFAM ecosystem OIDC auto-provision registry
 # Consumed by: enclii secrets provision oidc
-# Last Updated: 2026-10-08
+# Last Updated: 2026-10-13
 #
 # TWO COPIES, ONE CONTENT. The CLI embeds
 # packages/cli/internal/ecosystemoidc/data/ecosystem-oidc-provision.yaml (go:embed
@@ -517,6 +517,71 @@ platforms:
         - email
         - fh:read
         - fh:write
+      grant_types:
+        - authorization_code
+        - refresh_token
+
+  # ---------------------------------------------------------------------------
+  # cotiza-web — the Cotiza web app at cotiza.studio (API api.cotiza.studio,
+  # repository and namespace digifab-quoting). A CONFIDENTIAL login client:
+  # NextAuth (provider id `janua`) runs authorization_code + PKCE (S256)
+  # server-side and holds the secret, so browsers never see it. PKCE is a
+  # per-request property of the flow, not a client field, so nothing here
+  # declares it. refresh_token is granted because the web refreshes its Janua
+  # access token server-side.
+  #
+  # The Janua NAME is `digifab-quoting-web`, the name Janua's legacy core-client
+  # seed and the Cotiza API's audience notes already use for this client. If a
+  # row by that name exists, an admin run adopts it by name and PATCHes its
+  # callback, scopes, grants and audience to this declaration (it refuses a
+  # public, inactive or org-bound row instead). An adopted row's stored secret
+  # is never retrievable, so that run needs `--rotate-secret`.
+  #
+  # audience `digifab-api` is in the Cotiza API's default audience allow-list
+  # (`digifab-api`, `janua.dev`): Janua stamps the client's audience as `aud`
+  # on the authorization-code tokens, so the session the web holds is directly
+  # usable at the API.
+  #
+  # ONE redirect URI, exact byte for byte (Janua compares scheme, host, port and
+  # path): NextAuth's callback for provider id `janua` under NEXTAUTH_URL.
+  # Deliberately NO localhost callback (the family-history-web rule): local
+  # development registers its own client.
+  #
+  # Scopes are the set the other NextAuth login clients carry (nauta, telesia,
+  # lexidrop); the web itself requests `openid profile email`.
+  #
+  # BOTH the id and the secret go to Vault (target digifab-quoting/web-oidc,
+  # lowercase, as Vault stores them): the digifab-quoting-web-oidc
+  # ExternalSecret maps `property: janua_client_id` -> JANUA_CLIENT_ID and
+  # `property: janua_client_secret` -> JANUA_CLIENT_SECRET. NEXTAUTH_SECRET is
+  # NOT minted here: it has its own target, digifab-quoting/web-session
+  # (`--generate nextauth_secret`). session_intake_target is deliberately
+  # unset — it would re-mint the session secret on every provision re-run and
+  # sign every user out.
+  #
+  # NOT pinned with a client_id: the first run creates (or adopts) it, as a
+  # Janua admin (`--profile admin`). Pin the printed jnc_… id here (both
+  # copies) after that run so later runs reconcile instead of duplicating.
+  # ---------------------------------------------------------------------------
+  cotiza-web:
+    intake_target: digifab-quoting/web-oidc
+    intake_key_map:
+      janua_client_id: client_id
+      janua_client_secret: client_secret  # pragma: allowlist secret
+    janua_client:
+      name: digifab-quoting-web
+      client_key: digifab-quoting-web  # pragma: allowlist secret
+      audience: digifab-api
+      description: Cotiza web (cotiza.studio) — confidential OIDC authorization-code + PKCE client for NextAuth
+      is_confidential: true
+      website_url: https://cotiza.studio
+      redirect_uris:
+        - https://cotiza.studio/api/auth/callback/janua
+      allowed_scopes:
+        - openid
+        - profile
+        - email
+        - offline_access
       grant_types:
         - authorization_code
         - refresh_token
