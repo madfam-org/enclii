@@ -15,7 +15,7 @@ import (
 )
 
 func TestInitialBootstrapCredentialsAreOwnerOnlyAndNeverSerializable(t *testing.T) {
-	for _, name := range []string{"owned", "foreign owner UID", "foreign namespace", "wrong owner role", "owner URI spoof", "not ready", "cached Ready actual Failed", "legacy addon"} {
+	for _, name := range []string{"owned", "foreign owner UID", "foreign namespace", "wrong owner role", "owner URI spoof", "not ready", "cached Ready actual Failed", "legacy addon", "cnpg short owner host", "foreign owner host", "other cluster owner host"} {
 		t.Run(name, func(t *testing.T) {
 			r := isolatedReq()
 			r.Namespace = "project-" + r.ProjectID.String()[:8]
@@ -45,6 +45,16 @@ func TestInitialBootstrapCredentialsAreOwnerOnlyAndNeverSerializable(t *testing.
 			if name == "wrong owner role" {
 				owner.Data["username"] = []byte("postgres")
 			}
+			// CloudNativePG writes the read-write Service's short name into host.
+			if name == "cnpg short owner host" {
+				owner.Data["host"] = []byte(resource + "-rw")
+			}
+			if name == "foreign owner host" {
+				owner.Data["host"] = []byte("attacker.example")
+			}
+			if name == "other cluster owner host" {
+				owner.Data["host"] = []byte("pg-other-rw")
+			}
 			_, err = client.CoreV1().Secrets(r.Namespace).Create(t.Context(), owner, metav1.CreateOptions{})
 			require.NoError(t, err)
 			if name == "foreign namespace" {
@@ -60,13 +70,13 @@ func TestInitialBootstrapCredentialsAreOwnerOnlyAndNeverSerializable(t *testing.
 				r.Addon.Config.DatabaseName, r.Addon.Config.RuntimeRole = "", ""
 			}
 			bundle, err := p.initialBootstrapCredentials(t.Context(), r.Addon)
-			if name != "owned" && name != "owner URI spoof" {
+			if name != "owned" && name != "owner URI spoof" && name != "cnpg short owner host" {
 				require.Error(t, err)
 				require.Nil(t, bundle)
 				return
 			}
 			require.NoError(t, err)
-			require.Contains(t, bundle.OwnerURI, "enclii_migrator:synthetic%40long%2Fpass%3Afixture@")
+			require.Contains(t, bundle.OwnerURI, "enclii_migrator:synthetic%40long%2Fpass%3Afixture@"+resource+"-rw."+r.Namespace+".svc.cluster.local:5432/")
 			require.NotContains(t, bundle.RuntimeURI, "enclii_migrator")
 			require.NotContains(t, bundle.OwnerURI, "spoofed")
 			require.Contains(t, bundle.PublicCA, "BEGIN CERTIFICATE")
