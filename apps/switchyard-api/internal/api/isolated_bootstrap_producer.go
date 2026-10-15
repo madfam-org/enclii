@@ -9,6 +9,7 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"strconv"
 	"strings"
 	"time"
 
@@ -23,6 +24,13 @@ type bootstrapProducerProof struct {
 	Checks            int    `json:"checks"`
 	SignatureVerified bool   `json:"signature_verified"`
 	PinPayloadSHA256  string `json:"pin_payload_sha256"`
+	// PinMatch says which producer pin named the owned digest: "current", the
+	// pin file at main, or "historical", an earlier main revision of it inside
+	// the profile's PinHistory window (MAP kernels only). PinRevision is that
+	// earlier revision's commit SHA; the current pin is read at main and has
+	// none. PinPayloadSHA256 always hashes the payload that matched.
+	PinMatch    string `json:"pin_match"`
+	PinRevision string `json:"pin_revision,omitempty"`
 	// VerifiedSources lists the profile's required files found (and, where
 	// pinned, byte-identical) at Revision. Empty for initial profiles.
 	VerifiedSources []string `json:"verified_sources,omitempty"`
@@ -35,6 +43,21 @@ type bootstrapProducerIO struct {
 	// ReadSource reads one file of the producer at an exact revision.
 	ReadSource      func(ctx context.Context, p isolatedBootstrapProfile, path, revision string) (string, error)
 	VerifySignature func(context.Context, isolatedBootstrapProfile, string, string, string) error
+	// Now is the clock for the pin history window; nil uses time.Now.
+	Now func() time.Time
+}
+
+const (
+	bootstrapPinCurrent    = "current"
+	bootstrapPinHistorical = "historical"
+)
+
+// bootstrapPinImage is one kustomize images entry of a producer pin.
+type bootstrapPinImage struct {
+	Name    string `yaml:"name"`
+	NewName string `yaml:"newName"`
+	Digest  string `yaml:"digest"`
+	NewTag  string `yaml:"newTag"`
 }
 
 func (h *Handler) verifyBootstrapProducer(ctx context.Context, profile isolatedBootstrapProfile, image string) (*bootstrapProducerProof, error) {
@@ -162,28 +185,22 @@ func (a bootstrapProducerIO) verify(ctx context.Context, profile isolatedBootstr
 	if err != nil {
 		return nil, fmt.Errorf("current governed producer pin unavailable")
 	}
-	var pinDocument struct {
-		Images []struct {
-			Name    string `yaml:"name"`
-			NewName string `yaml:"newName"`
-			Digest  string `yaml:"digest"`
-			NewTag  string `yaml:"newTag"`
-		} `yaml:"images"`
+	entries, err := bootstrapPinEntries(pin, profile.Image)
+	if err != nil {
+		return nil, err
 	}
-	if yaml.Unmarshal([]byte(pin), &pinDocument) != nil {
-		return nil, fmt.Errorf("producer pin is malformed")
-	}
-	matches := 0
-	for _, entry := range pinDocument.Images {
-		if entry.Name == profile.Image {
-			if entry.Digest != digest || entry.NewTag != "" || (entry.NewName != "" && entry.NewName != profile.Image) {
-				return nil, fmt.Errorf("owned image does not match current producer pin")
-			}
-			matches++
+	pinMatch, pinRevision := bootstrapPinCurrent, ""
+	if err = exactBootstrapPin(entries, profile.Image, digest); err != nil {
+		// Only a profile with a pin history window may look back, and only
+		// when the current pin is well formed but names another digest: the
+		// shape a producer re-pin leaves. Every other defect keeps its refusal.
+		if !profile.PinHistory.enabled() || !pinsAnotherDigest(entries, profile.Image, digest) {
+			return nil, err
 		}
-	}
-	if matches != 1 {
-		return nil, fmt.Errorf("producer pin must identify the image exactly once")
+		if pin, pinRevision, err = a.historicalPin(ctx, profile, digest); err != nil {
+			return nil, err
+		}
+		pinMatch = bootstrapPinHistorical
 	}
 	packageName := strings.TrimPrefix(profile.Image, "ghcr.io/")
 	token, err := a.registryToken(ctx, packageName)
@@ -310,7 +327,114 @@ func (a bootstrapProducerIO) verify(ctx context.Context, profile isolatedBootstr
 		return nil, fmt.Errorf("closed producer keyless signature verification failed")
 	}
 	sum := sha256.Sum256([]byte(pin))
-	return &bootstrapProducerProof{Image: image, Revision: revision, Producer: profile.Producer, RunID: runID, Checks: checks.TotalCount, SignatureVerified: true, PinPayloadSHA256: hex.EncodeToString(sum[:]), VerifiedSources: verified}, nil
+	return &bootstrapProducerProof{Image: image, Revision: revision, Producer: profile.Producer, RunID: runID, Checks: checks.TotalCount, SignatureVerified: true, PinPayloadSHA256: hex.EncodeToString(sum[:]), PinMatch: pinMatch, PinRevision: pinRevision, VerifiedSources: verified}, nil
+}
+
+// bootstrapPinEntries parses one kustomize pin payload and returns its
+// entries for the image, in order.
+func bootstrapPinEntries(pin, image string) ([]bootstrapPinImage, error) {
+	var document struct {
+		Images []bootstrapPinImage `yaml:"images"`
+	}
+	if yaml.Unmarshal([]byte(pin), &document) != nil {
+		return nil, fmt.Errorf("producer pin is malformed")
+	}
+	var entries []bootstrapPinImage
+	for _, entry := range document.Images {
+		if entry.Name == image {
+			entries = append(entries, entry)
+		}
+	}
+	return entries, nil
+}
+
+// exactBootstrapPin is the current-pin rule: every entry for the image carries
+// the owned digest, with no tag and no foreign newName, and there is exactly one.
+func exactBootstrapPin(entries []bootstrapPinImage, image, digest string) error {
+	for _, entry := range entries {
+		if entry.Digest != digest || entry.NewTag != "" || (entry.NewName != "" && entry.NewName != image) {
+			return fmt.Errorf("owned image does not match current producer pin")
+		}
+	}
+	if len(entries) != 1 {
+		return fmt.Errorf("producer pin must identify the image exactly once")
+	}
+	return nil
+}
+
+// pinsAnotherDigest reports whether a pin names the image exactly once, by a
+// well-formed digest other than the owned one, with no tag and no foreign
+// newName.
+func pinsAnotherDigest(entries []bootstrapPinImage, image, digest string) bool {
+	return len(entries) == 1 && entries[0].Digest != digest && bootstrapDigest.MatchString(entries[0].Digest) &&
+		entries[0].NewTag == "" && (entries[0].NewName == "" || entries[0].NewName == image)
+}
+
+// historicalPin looks back through the producer's main history of PinPath,
+// newest first: at most PinHistory.Revisions commits, none committed more than
+// PinHistory.MaxAge ago. The newest revision whose pin names the owned digest
+// decides. It must name the image exactly once, by that digest, with no tag
+// and no foreign newName, or the request is refused; it never falls through to
+// an older revision. It returns that revision's payload and commit SHA. Any
+// read failure or malformed answer refuses.
+func (a bootstrapProducerIO) historicalPin(ctx context.Context, profile isolatedBootstrapProfile, digest string) (string, string, error) {
+	window := profile.PinHistory
+	if a.ReadSource == nil {
+		return "", "", fmt.Errorf("producer pin history unavailable")
+	}
+	var commits []struct {
+		SHA    string `json:"sha"`
+		Commit struct {
+			Committer struct {
+				Date string `json:"date"`
+			} `json:"committer"`
+		} `json:"commit"`
+	}
+	query := url.Values{"sha": {"main"}, "path": {profile.PinPath}, "per_page": {strconv.Itoa(window.Revisions)}}
+	if err := a.readJSON(ctx, "https://api.github.com/repos/"+profile.Producer+"/commits?"+query.Encode(), a.GitHubToken, &commits); err != nil {
+		return "", "", fmt.Errorf("producer pin history unavailable")
+	}
+	// The page size already bounds the list; anything past it is never read.
+	if len(commits) > window.Revisions {
+		commits = commits[:window.Revisions]
+	}
+	now := time.Now
+	if a.Now != nil {
+		now = a.Now
+	}
+	oldest := now().Add(-window.MaxAge)
+	for _, commit := range commits {
+		committed, err := time.Parse(time.RFC3339, commit.Commit.Committer.Date)
+		if err != nil || !bootstrapSHA.MatchString(commit.SHA) {
+			return "", "", fmt.Errorf("producer pin history is malformed")
+		}
+		if committed.Before(oldest) {
+			continue
+		}
+		pin, err := a.ReadSource(ctx, profile, profile.PinPath, commit.SHA)
+		if err != nil {
+			return "", "", fmt.Errorf("producer pin revision unavailable")
+		}
+		entries, err := bootstrapPinEntries(pin, profile.Image)
+		if err != nil {
+			return "", "", fmt.Errorf("producer pin revision is malformed")
+		}
+		named := false
+		for _, entry := range entries {
+			named = named || entry.Digest == digest
+		}
+		if !named {
+			continue
+		}
+		if len(entries) != 1 {
+			return "", "", fmt.Errorf("producer pin must identify the image exactly once")
+		}
+		if entries[0].NewTag != "" || (entries[0].NewName != "" && entries[0].NewName != profile.Image) {
+			return "", "", fmt.Errorf("owned image does not match the producer's historical pin")
+		}
+		return pin, commit.SHA, nil
+	}
+	return "", "", fmt.Errorf("owned image is not among the producer's recent main pins")
 }
 
 // verifySources is the fixed-step ordering guard. The revision is the image's
