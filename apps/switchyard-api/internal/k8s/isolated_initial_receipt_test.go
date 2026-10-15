@@ -588,20 +588,32 @@ func TestInitialActivationHTTPUsesFreshRVAndOnePUTNoRetry(t *testing.T) {
 	}
 }
 
-// Immutable MAP940 seed811 returns six CASOS and seven Member templates.
-// Seven LECCIONES belong to the manifest, not the seed stdout case count.
+// Immutable MAP940 seed811 returns six CASOS and seven Member templates; the
+// realistic online seed (crea-sim ADR-0005) returns 52 seeded users and the
+// same seven templates. Seven LECCIONES belong to the manifest, not the seed
+// stdout case count, and no other count is accepted.
 func TestInitialMAPReceiptHTTPAcceptsSixCasesAndRejectsLessonCount(t *testing.T) {
-	for _, name := range []string{"six actual cases", "seven lessons are not cases"} {
+	for _, name := range []string{"six actual cases", "realistic population", "seven lessons are not cases", "another population size", "eight roles"} {
 		t.Run(name, func(t *testing.T) {
 			c, f := initialNativeHTTPProfile(t, "map-sim-initial")
-			if name != "six actual cases" {
+			cases := 6
+			switch name {
+			case "realistic population":
+				cases = 52
+				f.stdout = strings.Replace(f.stdout, `"casos":6`, `"casos":52`, 1)
+			case "seven lessons are not cases":
 				f.stdout = strings.Replace(f.stdout, `"casos":6`, `"casos":7`, 1)
+			case "another population size":
+				f.stdout = strings.Replace(f.stdout, `"casos":6`, `"casos":53`, 1)
+			case "eight roles":
+				f.stdout = strings.Replace(f.stdout, `"roles":7`, `"roles":8`, 1)
 			}
+			accepted := name == "six actual cases" || name == "realistic population"
 			var in initialIntent
 			require.NoError(t, DecodeInitialBootstrapJSON([]byte(f.intent.Data["payload"]), &in))
 			r, e := c.collectInitialReceipt(t.Context(), f.p, f.job, f.expected, f.intent, in)
 			require.Equal(t, 1, f.getsLogs, "MAP reads only its fixed five-key main output")
-			if name != "six actual cases" {
+			if !accepted {
 				require.ErrorContains(t, e, "typed output contract refused")
 				require.Nil(t, r)
 				require.Zero(t, f.posts)
@@ -611,7 +623,7 @@ func TestInitialMAPReceiptHTTPAcceptsSixCasesAndRejectsLessonCount(t *testing.T)
 			require.NoError(t, e)
 			require.NotNil(t, r.MAP)
 			require.Equal(t, 7, r.MAP.Roles)
-			require.Equal(t, 6, r.MAP.Cases)
+			require.Equal(t, cases, r.MAP.Cases)
 			require.Nil(t, r.Portal001)
 			require.Nil(t, r.Portal002)
 			require.Equal(t, "INITIAL_ONLY", r.Classification)
