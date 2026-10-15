@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"regexp"
 	"strings"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/madfam-org/enclii/apps/switchyard-api/internal/k8s"
@@ -26,7 +27,35 @@ type isolatedBootstrapProfile struct {
 	// before a fixed step may run its image: the ordering guard that the
 	// deployed image already contains the step. Initial profiles have none.
 	SourceRequirements []bootstrapSourceRequirement
+	// PinHistory, when set, also admits an owned digest that an earlier main
+	// revision of PinPath pinned inside this window, once the current pin
+	// names another digest. Only the MAP kernels set it. The zero value keeps
+	// the exact current-pin rule.
+	PinHistory bootstrapPinHistory
 }
+
+// bootstrapPinHistory bounds how far a profile looks back through its
+// producer's main history of PinPath: at most Revisions commits of that file,
+// newest first, none committed more than MaxAge ago. Both must be set.
+type bootstrapPinHistory struct {
+	Revisions int
+	MaxAge    time.Duration
+}
+
+func (h bootstrapPinHistory) enabled() bool { return h.Revisions > 0 && h.MaxAge > 0 }
+
+// crea-map re-pins its production image on every deploy (57 pin commits on
+// main in the eight days to 2026-10-14, up to 22 in one day), while crea-sim
+// moves its MAP pin only by its own reviewed change, so a kernel's held image
+// trails crea-map's current pin within hours. The MAP kernels therefore also
+// accept a digest crea-map pinned on main within its last 30 pin revisions
+// and 14 days: one to four days of deploys at that cadence, and never an
+// image pinned more than two weeks ago. The image still passes every
+// registry, OCI, CI and signature check that follows the pin.
+const (
+	mapPinHistoryRevisions = 30
+	mapPinHistoryMaxAge    = 14 * 24 * time.Hour
+)
 
 // bootstrapSourceRequirement names one file at the producer's exact verified
 // source revision. SHA256, when set, is the hex SHA-256 its bytes must have;
@@ -109,6 +138,7 @@ func mapSimInitialProfile(name string) (isolatedBootstrapProfile, bool) {
 		EnvironmentKeys: []string{"MAP_SIMULATION_ENABLED", "MAP_SIMULATION_KERNEL_ID", "APP_ORIGIN", "JANUA_AUDIENCE", "JANUA_ISSUER_URL", "JANUA_JWKS_URL", "RLS_POR_CASO", "MAP_SIMULATION_CONTEXT_KEY", "MAP_SIMULATION_CONTROL_KEY", "MAP_SIMULATION_MAIL_KEY", "MAP_SIMULATION_MCP_CLIENT_ID", "MAP_MCP_PSEUDONYM_KEY"},
 		VaultPath:       initialMAPVaultPath,
 		VaultProperties: mapKernelVaultProperties(name),
+		PinHistory:      bootstrapPinHistory{Revisions: mapPinHistoryRevisions, MaxAge: mapPinHistoryMaxAge},
 	}, true
 }
 

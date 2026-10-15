@@ -156,7 +156,8 @@ exposed. A partial MAP migration failure requires governed recovery review; it
 cannot be retried as a populated initial database. The portal accepts its exact
 existing immutable migration receipt and rejects a different/unknown schema.
 
-The image must match its canonical producer's current immutable pin, actual OCI
+The image must match its canonical producer's current immutable pin (a MAP
+kernel may match a recent one; see below), actual OCI
 source/revision labels, exact revision tag and successful main caller workflow
 and closed source CI. MAP requires all fifteen named CI checks to complete with
 `success`; skipped jobs cannot replace a required check. The portal requires
@@ -168,6 +169,15 @@ MAP's existing producer supplies this signed build/pin contract; it does not
 publish an image SBOM/scan attestation. That producer-library improvement is a
 separate follow-up and is not claimed by this receipt. No fictitious platform
 Release row substitutes for GitOps producer evidence.
+
+A MAP kernel's image may trail crea-map's current pin, because crea-map
+re-pins on every deploy. It is still admitted when crea-map pinned that digest
+on `main` within its last 30 pin revisions and 14 days. The dry run then shows
+`producer.pin_match=historical` and the crea-map commit in
+`producer.pin_revision`. Outside that window the preflight answers 409
+`owned image is not among the producer's recent main pins`: re-pin crea-sim's
+MAP image to crea-map's current pin and roll it out first. The portal profiles
+still require the current pin.
 
 The server verifies actual namespace/project and CNPG Cluster/owner/runtime/CA
 UID custody and current runtime-role reconciliation. Owner credentials appear

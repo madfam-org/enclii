@@ -6,6 +6,7 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
@@ -44,6 +45,9 @@ func TestInitialMAPKernel01ProfileIsUnchanged(t *testing.T) {
 		RequiredChecks:  []string{"Instalar dependencias (caché)", "Seguridad de dependencias", "Compuertas de esquema y copy", "Lint + typecheck", "Pruebas unitarias", "Clinical RLS (presence gate)", "Compilación (next build)", "verify-ok", "Móvil + a11y (e2e) 1/6", "Móvil + a11y (e2e) 2/6", "Móvil + a11y (e2e) 3/6", "Móvil + a11y (e2e) 4/6", "Móvil + a11y (e2e) 5/6", "Móvil + a11y (e2e) 6/6", "e2e-ok"},
 		EnvironmentKeys: []string{"MAP_SIMULATION_ENABLED", "MAP_SIMULATION_KERNEL_ID", "APP_ORIGIN", "JANUA_AUDIENCE", "JANUA_ISSUER_URL", "JANUA_JWKS_URL", "RLS_POR_CASO", "MAP_SIMULATION_CONTEXT_KEY", "MAP_SIMULATION_CONTROL_KEY", "MAP_SIMULATION_MAIL_KEY", "MAP_SIMULATION_MCP_CLIENT_ID", "MAP_MCP_PSEUDONYM_KEY"},
 		VaultPath:       "secret/crea-sim-map01",
+		// Admission only: which producer pins may name the image. Retained
+		// intents and receipts carry none of it.
+		PinHistory: bootstrapPinHistory{Revisions: 30, MaxAge: 14 * 24 * time.Hour},
 	}, p)
 	portal, err := isolatedBootstrapProfileFor("portal-sim-initial")
 	require.NoError(t, err)

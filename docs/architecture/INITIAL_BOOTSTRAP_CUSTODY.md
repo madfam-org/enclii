@@ -39,6 +39,20 @@ database and role. Every MAP-specific step below applies to all three alike.
 Kernels 02 and 03 share kernel 01's Vault path under their own prefixed keys,
 so each kernel's ExternalSecret may read only that kernel's properties from it.
 
+Only the MAP profiles accept an earlier producer pin. crea-map re-pins its
+image on every deploy, so a kernel's held image can trail crea-map's current
+pin within hours. When the current pin names the image exactly once by another
+digest, the server lists crea-map's `main` commits of the pin file, newest
+first: at most 30, none older than 14 days. It reads the pin at each. The newest
+revision that names the owned digest must name the image exactly once, with no
+tag and no foreign `newName`, or the request is refused; no older revision is
+tried. Any read failure refuses. Every registry, OCI, CI and signature check
+that follows is unchanged. The `producer` proof reports `pin_match` (`current`
+or `historical`), the matched commit as `pin_revision`, and that payload's
+`pin_payload_sha256`. The retained identity keeps only the payload hash, so a
+same-key collection after a further crea-map re-pin still matches its intent.
+The portal profiles keep the exact current-pin rule.
+
 The fixed MAP fresh guard, Prisma migration and compiled seed commands are
 unchanged. Its five-key stdout remains `huella`, `codigoSha256`,
 `fixtureSha256`, `roles`, `casos`: `roles=7` Member templates and `casos=6`
