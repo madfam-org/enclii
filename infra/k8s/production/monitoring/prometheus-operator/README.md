@@ -137,8 +137,12 @@ Both alerts:
   Recreate rollout took `MainPrometheusDown` to pending for about 2 minutes,
   and it went back to inactive without paging.
 
-Not covered: both instances down at once, or every Alertmanager peer down.
-Only a heartbeat checked from outside the cluster can catch those.
+Both instances down at once, or every Alertmanager peer down, is the job of
+the outside-the-cluster heartbeat. `watchdog-sink` (`../alertmanager.yaml`)
+forwards the always-firing `Watchdog` about every 2 minutes to a Cloudflare
+Worker (internal-devops `ops/cloudflare/alerting-heartbeat`). When the beats
+stop for 10 minutes, the Worker pages the pager group directly, outside the
+cluster.
 
 ## Phase B sketch (not built, not scheduled — write down before it's needed)
 
