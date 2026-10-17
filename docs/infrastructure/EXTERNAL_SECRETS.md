@@ -27,7 +27,7 @@ For Vault operations (unseal, rotation, backup), see [Vault Operations Runbook](
 ┌─────────────────────────────────────────┐
 │    HashiCorp Vault (vault namespace)    │
 │    KV v2 engine at secret/              │
-│    UI: https://vault.madfam.io          │
+│    UI: port-forward only (not published)│
 └─────────────────────────────────────────┘
                     │
           Vault token bridge
