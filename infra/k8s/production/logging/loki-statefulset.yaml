@@ -79,8 +79,24 @@ data:
       # prod promote failed ~17h and meridian's API stayed down ~12d, unnoticed.
       # See internal-devops runbooks/2026-08-07-failed-rollout-sweep.md
       retention_period: 48h
-      ingestion_rate_mb: 2
-      ingestion_burst_size_mb: 4
+      # 2 -> 4 MB/s, burst 4 -> 8 MB (2026-10-17). At 2 MB/s the distributor
+      # rejected pushes every day (10-14 266, 10-15 127, 10-16 47, 10-17 37
+      # "Ingestion rate limit exceeded" lines); a single fluent-bit chunk is
+      # ~2 MB (one rejected push carried 2,043,038 bytes), so a 4 MB burst
+      # left room for about two. This raises what a BURST may carry, not the
+      # average: the extra data stored is only what used to be rejected and
+      # lost, small next to the 48h retention (5Gi volume: 59% used at the
+      # 10-15 start, 1.6G of it chunks). If the volume does fill, cut
+      # retention_period first (the volume cannot be grown from this file:
+      # volumeClaimTemplates are immutable).
+      ingestion_rate_mb: 4
+      ingestion_burst_size_mb: 8
+      # Per-stream (per pod/container) limits, explicit. The 3MB default was
+      # never hit (0 "Per stream rate limit" lines in the 10-14..10-17 log);
+      # it is raised to the new global rate so one busy pod is not cut below
+      # what the tenant may send. Burst stays at the 15MB default.
+      per_stream_rate_limit: 4MB
+      per_stream_rate_limit_burst: 15MB
       max_streams_per_user: 10000
       max_entries_limit_per_query: 5000
       max_query_series: 500
@@ -149,7 +165,10 @@ spec:
         app.kubernetes.io/component: logging
         app.kubernetes.io/part-of: enclii
       annotations:
-        checksum/config: "loki-config"
+        # A literal, not a real checksum: loki.yaml is mounted with subPath, so
+        # a ConfigMap edit reaches Loki only when the pod restarts. Bump it in
+        # the same commit as any loki.yaml change.
+        checksum/config: "loki-config-2026-10-17-ingestion-limits"
     spec:
       serviceAccountName: loki
       # Pod-level security
@@ -362,12 +381,18 @@ spec:
           # scheduling barely changes; the limit is headroom, not a reservation.
           # GOMEMLIMIT and ingester.wal.replay_memory_ceiling (in the config
           # above) are sized against this limit.
+          # CPU LIMIT 200m -> 500m (2026-10-17). Pushes failed with a 500 after
+          # ~5s ("rpc error: code = DeadlineExceeded" from the ingester, 416
+          # lines from 10-14 to 10-17) while one process does distributor,
+          # ingester and compactor work under a 200m cap. The request stays
+          # 100m: CPU is the cluster's tight resource, and a limit reserves
+          # nothing, it only lets Loki use idle CPU.
           resources:
             requests:
               cpu: 100m
               memory: 256Mi
             limits:
-              cpu: 200m
+              cpu: 500m
               memory: 2Gi
           volumeMounts:
             - name: config
