@@ -96,8 +96,8 @@ resources:
 # Re-enable + add a tunnel route in a follow-up PR for operators.
 console:
   # Redpanda Console UI for topics/partitions/consumer-groups browsing.
-  # Exposed internally on data/redpanda-console:8080; cloudflared routes
-  # redpanda.enclii.dev → this Service.
+  # Exposed internally on data/redpanda-console:8080 only; it is not
+  # published through the tunnel. Port-forward for break-glass work.
   enabled: true
 
 # Tune for our modest cluster — auto-create topics so services can

@@ -17,7 +17,7 @@
 
 
 **Last Updated:** March 2026
-**Vault URL:** https://vault.madfam.io
+**Vault URL:** in-cluster only, `http://vault.vault.svc.cluster.local:8200`. Not published; for the UI use `kubectl -n vault port-forward svc/vault 8200:8200`.
 **Namespace:** vault
 **Pod:** vault-0
 

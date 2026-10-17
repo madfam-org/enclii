@@ -463,12 +463,9 @@ POLICY"
   kubectl exec -n vault vault-0 -- vault status
   echo
 
-  log "Checking if Cloudflare tunnel route exists for vault.madfam.io..."
-  check_http "vault.madfam.io/v1/sys/health" "200" \
-    && ok "vault.madfam.io reachable" \
-    || warn "vault.madfam.io not reachable — add Cloudflare tunnel route manually:
-    Dashboard → Zero Trust → Tunnels → enclii → Public Hostnames
-    vault.madfam.io → http://vault.vault.svc.cluster.local:8200"
+  # Vault is in-cluster only: it is not published through the tunnel. Do not
+  # add a public hostname for it; use port-forward for the UI.
+  log "Vault UI: kubectl -n vault port-forward svc/vault 8200:8200 (not published)"
 
   echo
   ok "Phase 2 complete. Vault is operational."
@@ -724,7 +721,6 @@ phase_verify_all() {
   for url in api.enclii.dev/health app.enclii.dev admin.enclii.dev status.enclii.dev docs.enclii.dev; do
     check_http "$url" || ((failed++))
   done
-  check_http "vault.madfam.io/v1/sys/health" "200" || ((failed++))
   check_http "analytics.madfam.io/_health" "200" || ((failed++))
   echo
 

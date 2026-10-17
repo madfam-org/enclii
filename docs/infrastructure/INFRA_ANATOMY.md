@@ -264,7 +264,7 @@ All services run exclusively in K8s. Docker containers (Verdaccio, registry) run
 | docs.enclii.dev | ✅ | 200 | 0.60s | Documentation operational |
 | status.enclii.dev | ✅ | 200 | 0.93s | Status page operational |
 | status.madfam.io | ✅ | 200 | 1.13s | MADFAM status operational |
-| vault.madfam.io | ⏳ | 307 | 0.60s | Vault staged, not deployed (redirect, not 502) |
+| vault.madfam.io | — | — | — | **Closed:** Vault is in-cluster only; see the routes table below. |
 
 ### Janua SSO (6 endpoints)
 
@@ -523,7 +523,7 @@ Single unified tunnel. Routes managed remotely via Cloudflare Tunnel Configurati
 | docs.enclii.dev | docs-site.enclii.svc:80 | 200 | |
 | status.enclii.dev | status-enclii.enclii.svc:80 | 200 | |
 | status.madfam.io | status-madfam.enclii.svc:80 | 200 | |
-| vault.madfam.io | vault.vault.svc.cluster.local:8200 | 307 | Backend not deployed |
+| vault.madfam.io | vault.vault.svc.cluster.local:8200 | — | **Closed:** in-cluster only; the Vault NetworkPolicy does not admit the tunnel (`vault-ingress-tunnel` admits nothing). Operators use `enclii vault status`, the SSH policy script, `kubectl exec` or a port-forward. Route and DNS record removal is an owner step. |
 | analytics.madfam.io | posthog-web.posthog.svc.cluster.local:8000 | 502 | Backend not deployed |
 
 ### Monitoring & Infrastructure Routes
@@ -534,6 +534,7 @@ Single unified tunnel. Routes managed remotely via Cloudflare Tunnel Configurati
 | grafana.enclii.dev | grafana.monitoring.svc:3000 | 302 | Login redirect |
 | prometheus.enclii.dev | prometheus.monitoring.svc:9090 | 502 | **Closed 2026-10-04 (FDY-01):** the monitoring NetworkPolicy refuses the tunnel because Prometheus has no authentication. Route and DNS record removal pending. |
 | alertmanager.enclii.dev | alertmanager.monitoring.svc:9093 | — | **Closed:** in-cluster only; the monitoring NetworkPolicy does not admit the tunnel. Alerts and silences are read in Grafana's Alerting view. Route and DNS record removed by the owner. |
+| redpanda.enclii.dev | redpanda-console.data.svc:8080 | — | **Closed:** in-cluster only; the data NetworkPolicy does not admit the tunnel (`redpanda-console-ingress` admits nothing). Port-forward for break-glass work. Route and DNS record removal is an owner step. |
 | ssh.madfam.io | ssh://<CONTROL_PLANE_IP>:22 | 302 | Cloudflare Access gate |
 
 ### Janua SSO Routes
