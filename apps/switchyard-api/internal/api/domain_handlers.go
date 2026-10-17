@@ -2,6 +2,7 @@ package api
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net/http"
 	"strings"
@@ -104,7 +105,7 @@ func (h *Handler) AddCustomDomain(c *gin.Context) {
 			if h.tunnelRoutesService != nil {
 				ready, _ = h.tunnelRoutesService.RouteExists(ctx, req.Domain)
 			}
-			go h.triggerDomainReconciliation(ctx, serviceUUID, env.ID)
+			go h.triggerDomainReconciliation(serviceUUID, env.ID)
 
 			c.JSON(http.StatusOK, gin.H{
 				"domain":             existing,
@@ -189,7 +190,7 @@ func (h *Handler) AddCustomDomain(c *gin.Context) {
 	}
 
 	// Trigger reconciliation to create Ingress
-	go h.triggerDomainReconciliation(ctx, serviceUUID, env.ID)
+	go h.triggerDomainReconciliation(serviceUUID, env.ID)
 
 	responseMessage := fmt.Sprintf("Custom domain %s added.", req.Domain)
 	if tunnelRouteAdded {
@@ -312,7 +313,7 @@ func (h *Handler) UpdateCustomDomain(c *gin.Context) {
 	}
 
 	// Trigger reconciliation to update Ingress
-	go h.triggerDomainReconciliation(ctx, domain.ServiceID, domain.EnvironmentID)
+	go h.triggerDomainReconciliation(domain.ServiceID, domain.EnvironmentID)
 
 	c.JSON(http.StatusOK, gin.H{"domain": domain})
 }
@@ -381,7 +382,7 @@ func (h *Handler) DeleteCustomDomain(c *gin.Context) {
 	}
 
 	// Trigger reconciliation to remove Ingress
-	go h.triggerDomainReconciliation(ctx, domain.ServiceID, domain.EnvironmentID)
+	go h.triggerDomainReconciliation(domain.ServiceID, domain.EnvironmentID)
 
 	response := gin.H{
 		"message":              "custom domain deleted",
@@ -514,72 +515,55 @@ func (h *Handler) VerifyCustomDomain(c *gin.Context) {
 	})
 }
 
-// triggerDomainReconciliation triggers a reconciliation for a service with updated domains
-func (h *Handler) triggerDomainReconciliation(ctx context.Context, serviceID, environmentID uuid.UUID) {
-	// Get service
-	service, err := h.repos.Services.GetByID(serviceID)
-	if err != nil {
-		h.logger.Error(ctx, "Failed to get service for reconciliation", logging.Error("error", err))
+// triggerDomainReconciliation re-applies a service's running deployment so a
+// custom-domain or route edit takes effect. Callers run it in a goroutine
+// after answering the request, so it uses its own context with a timeout
+// rather than the request's, which is cancelled on return.
+//
+// The work is the reconciler controller's ReconcileDomains: the same request
+// the deploy path builds (env vars, addon bindings, project secret,
+// environment) plus domains and routes, under the service's workload lock,
+// refusing GitOps-bound services. Any failed read stops the reconcile; it
+// never re-applies a Deployment built from empty data.
+func (h *Handler) triggerDomainReconciliation(serviceID, environmentID uuid.UUID) {
+	ctx, cancel := context.WithTimeout(context.Background(), reconciler.DomainReconcileTimeout)
+	defer cancel()
+	h.runDomainReconciliation(ctx, serviceID, environmentID)
+}
+
+// domainReconciler is the slice of reconciler.Controller the domain trigger uses.
+type domainReconciler interface {
+	ReconcileDomains(ctx context.Context, serviceID, environmentID uuid.UUID) *reconciler.ReconcileResult
+}
+
+func (h *Handler) runDomainReconciliation(ctx context.Context, serviceID, environmentID uuid.UUID) {
+	var rec domainReconciler
+	if h.reconciler != nil {
+		rec = h.reconciler
+	}
+	if h.domainReconcilerOverride != nil {
+		rec = h.domainReconcilerOverride
+	}
+	fields := []logging.Field{
+		logging.String("service_id", serviceID.String()),
+		logging.String("environment_id", environmentID.String()),
+	}
+	if rec == nil {
+		h.logger.Error(ctx, "Domain change not applied: reconciler is not configured", fields...)
 		return
 	}
 
-	// Get latest deployment
-	deployment, err := h.repos.Deployments.GetLatestByService(ctx, serviceID.String())
-	if err != nil {
-		h.logger.Warn(ctx, "No deployment found for service, skipping domain reconciliation", logging.Error("error", err))
-		return
-	}
-
-	// Get release
-	release, err := h.repos.Releases.GetByID(deployment.ReleaseID)
-	if err != nil {
-		h.logger.Error(ctx, "Failed to get release for reconciliation", logging.Error("error", err))
-		return
-	}
-
-	// Get custom domains and routes
-	domains, err := h.repos.CustomDomains.GetByServiceAndEnvironment(ctx, serviceID.String(), environmentID.String())
-	if err != nil {
-		h.logger.Error(ctx, "Failed to get custom domains", logging.Error("error", err))
-		domains = []types.CustomDomain{} // Continue with empty domains
-	}
-
-	routes, err := h.repos.Routes.GetByServiceAndEnvironment(ctx, serviceID.String(), environmentID.String())
-	if err != nil {
-		h.logger.Error(ctx, "Failed to get routes", logging.Error("error", err))
-		routes = []types.Route{} // Continue with empty routes
-	}
-
-	// Get environment variables (decrypted)
-	var envVars map[string]string
-	if h.repos.EnvVars != nil {
-		envVars, err = h.repos.EnvVars.GetDecrypted(ctx, serviceID, deployment.EnvironmentID)
-		if err != nil {
-			h.logger.Warn(ctx, "Failed to get environment variables", logging.Error("error", err))
-			envVars = make(map[string]string)
-		}
-	} else {
-		envVars = make(map[string]string)
-	}
-
-	// Reconcile
-	reconcileReq := &reconciler.ReconcileRequest{
-		Service:       service,
-		Release:       release,
-		Deployment:    deployment,
-		CustomDomains: domains,
-		Routes:        routes,
-		EnvVars:       envVars,
-	}
-
-	result := h.serviceReconciler.Reconcile(ctx, reconcileReq)
-	if !result.Success {
-		h.logger.Error(ctx, "Failed to reconcile service with custom domains",
-			logging.String("service", service.Name),
-			logging.Error("error", result.Error))
-	} else {
-		h.logger.Info(ctx, "Successfully reconciled service with custom domains",
-			logging.String("service", service.Name))
+	result := rec.ReconcileDomains(ctx, serviceID, environmentID)
+	switch {
+	case result == nil:
+		h.logger.Error(ctx, "Domain reconcile returned no result", fields...)
+	case result.Success && errors.Is(result.Error, reconciler.ErrDomainReconcileSkipped):
+		h.logger.Info(ctx, "Domain reconcile skipped: "+result.Message, fields...)
+	case result.Success:
+		h.logger.Info(ctx, "Reconciled service with custom domains", fields...)
+	default:
+		h.logger.Error(ctx, "Domain change not applied: "+result.Message,
+			append(fields, logging.Error("error", result.Error))...)
 	}
 }
 
