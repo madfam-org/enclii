@@ -93,7 +93,7 @@ type ArgocdPoller struct {
 
 	// resolveService maps a container image URI to a registered enclii service
 	// (nil when unknown). Backed by Handler.argocdServiceForImage.
-	resolveService func(ctx context.Context, imageURI string) *types.Service
+	resolveService func(ctx context.Context, appName, imageURI string) *types.Service
 
 	// latestTracked returns the service's most recent deployment and the
 	// release it points at (nil when none). Backed by Handler.argocdLatestTracked.
@@ -123,8 +123,8 @@ func NewArgocdPoller(h *Handler, interval time.Duration, namespace string) *Argo
 	}
 	return &ArgocdPoller{
 		lister: dynamicArgoAppLister{client: client, namespace: namespace},
-		resolveService: func(ctx context.Context, imageURI string) *types.Service {
-			svc, _ := h.argocdServiceForImage(ctx, imageURI)
+		resolveService: func(ctx context.Context, appName, imageURI string) *types.Service {
+			svc, _ := h.argocdServiceForImage(ctx, appName, imageURI)
 			return svc
 		},
 		latestTracked: h.argocdLatestTracked,
@@ -197,7 +197,7 @@ func (p *ArgocdPoller) reconcileApplication(ctx context.Context, app unstructure
 		return 0
 	}
 
-	resolveService := func(imageURI string) *types.Service { return p.resolveService(ctx, imageURI) }
+	resolveService := func(imageURI string) *types.Service { return p.resolveService(ctx, obs.AppName, imageURI) }
 	latestTracked := func(serviceID string) (*types.Deployment, *types.Release) {
 		return p.latestTracked(ctx, serviceID)
 	}
