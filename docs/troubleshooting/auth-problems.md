@@ -263,7 +263,7 @@ kubectl exec -n enclii deploy/switchyard-api -- date
 enclii tokens list
 
 # Create a new one; the value is shown once
-enclii tokens create --name ci-deploy --expires-in 90d --scopes deploy,logs
+enclii tokens create --name ci-deploy --expires-in 90d --scopes developer
 
 # Use it: an explicit token wins over any stored login
 export ENCLII_API_TOKEN=<token>

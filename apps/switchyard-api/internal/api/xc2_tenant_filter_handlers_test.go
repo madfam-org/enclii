@@ -241,11 +241,13 @@ func TestGetActivity_ActingAs_FiltersByTeam(t *testing.T) {
 	require.NoError(t, mock.ExpectationsWereMet())
 }
 
-func TestGetActivity_NoActingAs_UsesUnscopedQuery(t *testing.T) {
+func TestGetActivity_NoActingAs_PlatformAdminUsesUnscopedQuery(t *testing.T) {
 	h, mock, cleanup := newXc2TestHandler(t)
 	defer cleanup()
 
-	// Unscoped Query has no team filter — just `WHERE 1=1`.
+	// Unscoped Query has no team filter — just `WHERE 1=1`. Only the
+	// platform rank reaches it; other callers are covered in
+	// activity_scope_test.go.
 	mock.ExpectQuery(`(?s)WHERE 1=1\s+ORDER BY timestamp DESC`).
 		WithArgs(50, 0).
 		WillReturnRows(sqlmock.NewRows(activityScanColumns))
@@ -253,6 +255,7 @@ func TestGetActivity_NoActingAs_UsesUnscopedQuery(t *testing.T) {
 	w := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(w)
 	c.Request = httptest.NewRequest(http.MethodGet, "/v1/activity", nil)
+	c.Set("is_platform_admin", true)
 
 	h.GetActivity(c)
 

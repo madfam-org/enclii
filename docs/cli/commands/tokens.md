@@ -60,7 +60,7 @@ enclii tokens create --name <name> [--expires-in <duration>] [--scopes <list>]
 |------|------|---------|-------------|
 | `--name` | string | | Human-readable token name (required) |
 | `--expires-in` | string | `90d` | Token lifetime: e.g. `24h`, `30d`, `90d` |
-| `--scopes` | string | | Comma-separated scope list (default: full account access). The API currently acts only on `admin`; see [Scopes](#scopes). |
+| `--scopes` | string | | Comma-separated role list: `admin`, `developer` or `viewer` (default: developer, capped at your role). See [Scopes](#scopes). |
 | `--json` | bool | `false` | Emit machine-readable JSON metadata to stdout |
 
 ### `revoke`
@@ -150,7 +150,11 @@ Token '3f2b8c1e-4d5a-4e6f-9a7b-8c9d0e1f2a3b' revoked.
 
 ### Scopes
 
-The API currently interprets one scope value: a token whose scopes include `admin` gets the admin role. Any other scope string is stored and shown by `list`/`get`, but is not enforced; such a token has the developer role on the account that created it. Do not rely on scope strings such as `deploy` or `read` to limit what a token can do.
+Scopes are roles. The API accepts `admin`, `developer` and `viewer` and rejects any other string with `400`. A token's requests run with the highest role its scopes name (developer when none is given), and never above the role the token's owner holds at the time of the request: demoting an account demotes its tokens at once.
+
+You cannot create a token above your own role (`403`). Only an account whose role is admin, or a platform admin, can create an `admin` token. A token cannot create a token stronger than itself.
+
+Tokens created before this check may still carry other scope strings such as `deploy` or `read`. They are shown by `list`/`get` and grant nothing beyond developer.
 
 Tokens are sent as `Authorization: Bearer enclii_…`, which is also how the [TypeScript SDK](../../sdk/typescript/authentication.md)'s `token` option uses them.
 

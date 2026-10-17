@@ -12,6 +12,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/sirupsen/logrus"
 
+	"github.com/madfam-org/enclii/apps/switchyard-api/internal/auth"
 	"github.com/madfam-org/enclii/packages/sdk-go/pkg/types"
 )
 
@@ -22,10 +23,18 @@ type APITokenValidator interface {
 	UpdateLastUsed(ctx context.Context, id uuid.UUID, ip string) error
 }
 
+// APITokenOwnerResolver returns the highest role a token's owner holds now.
+// want is the role the token's scopes ask for; implementations may skip
+// lookups that cannot raise the answer above it.
+type APITokenOwnerResolver interface {
+	APITokenOwnerCeiling(ctx context.Context, ownerID uuid.UUID, want auth.Role) (auth.Role, error)
+}
+
 // AuthMiddleware provides authentication middleware
 type AuthMiddleware struct {
 	publicKey      *rsa.PublicKey
 	tokenValidator APITokenValidator
+	ownerResolver  APITokenOwnerResolver
 	publicPaths    map[string]bool
 	requiredRoles  map[string][]string // path -> required roles
 	adminEmails    map[string]bool     // email -> is admin (for OIDC fallback)
@@ -61,6 +70,12 @@ func NewAuthMiddleware(publicKey *rsa.PublicKey) *AuthMiddleware {
 // This enables authentication via API tokens (enclii_xxx format) in addition to JWT
 func (a *AuthMiddleware) SetTokenValidator(validator APITokenValidator) {
 	a.tokenValidator = validator
+}
+
+// SetOwnerResolver sets the resolver that bounds API-token roles by the
+// owner's current role. Without one, tokens are capped at developer.
+func (a *AuthMiddleware) SetOwnerResolver(resolver APITokenOwnerResolver) {
+	a.ownerResolver = resolver
 }
 
 // AddPublicPath adds a path that doesn't require authentication
@@ -157,18 +172,35 @@ func (a *AuthMiddleware) Middleware() gin.HandlerFunc {
 				return
 			}
 
+			// A token runs with the LOWER of the role its scopes name and the
+			// role its owner holds now. Scopes are never copied into
+			// user_roles verbatim: a free-text scope would otherwise become a
+			// role nobody granted.
+			role, err := a.apiTokenRole(c.Request.Context(), apiToken)
+			if err != nil {
+				logrus.WithFields(logrus.Fields{
+					"path":     path,
+					"method":   c.Request.Method,
+					"token_id": apiToken.ID,
+					"error":    err.Error(),
+				}).Warn("API token owner could not be resolved")
+
+				c.JSON(http.StatusUnauthorized, gin.H{
+					"error": "Invalid or expired API token",
+				})
+				c.Abort()
+				return
+			}
+
 			// Set user context from API token
 			c.Set("user_id", apiToken.UserID.String())
 			c.Set("auth_type", "api_token")
 			c.Set("api_token_id", apiToken.ID)
+			c.Set("user_roles", []string{string(role)})
 
-			// API tokens get developer role by default (scoped by token scopes if needed)
-			rolesStr := []string{"developer"}
-			if len(apiToken.Scopes) > 0 {
-				// If token has specific scopes, use those as roles
-				rolesStr = apiToken.Scopes
+			if !a.checkRoleRequirement(c, path) {
+				return
 			}
-			c.Set("user_roles", rolesStr)
 
 			// Update last used timestamp (async, don't block the request)
 			go func() {
@@ -291,28 +323,53 @@ func (a *AuthMiddleware) Middleware() gin.HandlerFunc {
 			c.Set("foundry_tier", ft)
 		}
 
-		// Check role requirements for this path
-		if requiredRoles, exists := a.requiredRoles[path]; exists {
-			userRoles := c.GetStringSlice("user_roles")
-			if !hasRequiredRole(userRoles, requiredRoles) {
-				logrus.WithFields(logrus.Fields{
-					"path":           path,
-					"method":         c.Request.Method,
-					"user_id":        c.GetString("user_id"),
-					"user_roles":     userRoles,
-					"required_roles": requiredRoles,
-				}).Warn("Insufficient permissions")
-
-				c.JSON(http.StatusForbidden, gin.H{
-					"error": "Insufficient permissions",
-				})
-				c.Abort()
-				return
-			}
+		if !a.checkRoleRequirement(c, path) {
+			return
 		}
 
 		c.Next()
 	}
+}
+
+// checkRoleRequirement enforces the role requirement registered for path, for
+// every credential type. It writes a 403 and returns false on refusal.
+func (a *AuthMiddleware) checkRoleRequirement(c *gin.Context, path string) bool {
+	requiredRoles, exists := a.requiredRoles[path]
+	if !exists {
+		return true
+	}
+	userRoles := c.GetStringSlice("user_roles")
+	if hasRequiredRole(userRoles, requiredRoles) {
+		return true
+	}
+	logrus.WithFields(logrus.Fields{
+		"path":           path,
+		"method":         c.Request.Method,
+		"user_id":        c.GetString("user_id"),
+		"user_roles":     userRoles,
+		"required_roles": requiredRoles,
+	}).Warn("Insufficient permissions")
+
+	c.JSON(http.StatusForbidden, gin.H{
+		"error": "Insufficient permissions",
+	})
+	c.Abort()
+	return false
+}
+
+// apiTokenRole bounds a token's scopes by its owner's current role. Without an
+// owner resolver the ceiling is developer, so scopes can narrow a token but
+// never raise it to admin.
+func (a *AuthMiddleware) apiTokenRole(ctx context.Context, token *types.APIToken) (auth.Role, error) {
+	requested := auth.APITokenScopeRole(token.Scopes)
+	if a.ownerResolver == nil {
+		return auth.LowerRole(requested, auth.RoleDeveloper), nil
+	}
+	ceiling, err := a.ownerResolver.APITokenOwnerCeiling(ctx, token.UserID, requested)
+	if err != nil {
+		return "", err
+	}
+	return auth.LowerRole(requested, ceiling), nil
 }
 
 // isConfiguredIssuer returns true if the given issuer matches the configured OIDC issuer.

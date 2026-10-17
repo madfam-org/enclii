@@ -1,6 +1,7 @@
 package api
 
 import (
+	"errors"
 	"fmt"
 	"net/http"
 	"time"
@@ -8,6 +9,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 
+	"github.com/madfam-org/enclii/apps/switchyard-api/internal/auth"
 	"github.com/madfam-org/enclii/apps/switchyard-api/internal/logging"
 )
 
@@ -47,15 +49,17 @@ type CreateAPITokenRequest struct {
 	ExpiresIn *int `json:"expires_in_days,omitempty"`
 }
 
-// NOTE ON SCOPES — they are ROLES, and the two auth paths disagree about them.
-// middleware/auth.go sets user_roles to this list VERBATIM, replacing the
-// default ["developer"]; auth/jwt_middleware.go ignores everything except the
-// literal "admin", which ESCALATES the token to the admin role. So a
-// well-intentioned `--scopes deploy` restricts nothing and renames the role to
-// one nothing grants, while `--scopes admin` quietly issues an admin
-// credential. Omitting scopes yields "developer" in both paths. The comment
-// this replaces said "empty = full access", which is the opposite of what the
-// middleware does.
+// NOTE ON SCOPES — they are ROLES. A token's scopes decide the role its
+// requests run with, so they are bounded twice (auth/api_token_scope.go):
+//
+//   - here, at creation: only admin, developer and viewer are accepted, and
+//     none may rank above the creating principal's current role (the lower of
+//     the session's role and the stored account role, with the platform rank
+//     counting as admin);
+//   - in every auth path, at request time: the role is the lower of what the
+//     scopes name and what the owner holds now.
+//
+// Omitting scopes yields developer, capped at the owner's role.
 
 // APITokenResponse represents a token in list responses (without the actual token)
 type APITokenResponse struct {
@@ -127,6 +131,11 @@ func (h *Handler) CreateAPIToken(c *gin.Context) {
 		return
 	}
 
+	scopes, ok := h.boundRequestedTokenScopes(c, uid, req.Scopes)
+	if !ok {
+		return
+	}
+
 	// Check token limit. CountByUser excludes expired tokens as well as revoked
 	// ones, so the cap limits LIVE credentials rather than rows.
 	count, err := h.repos.APITokens.CountByUser(ctx, uid)
@@ -185,7 +194,7 @@ func (h *Handler) CreateAPIToken(c *gin.Context) {
 	expiresAt := &exp
 
 	// Create the token
-	tokenResp, err := h.repos.APITokens.Create(ctx, uid, req.Name, req.Scopes, expiresAt)
+	tokenResp, err := h.repos.APITokens.Create(ctx, uid, req.Name, scopes, expiresAt)
 	if err != nil {
 		h.logger.Error(ctx, "Failed to create API token", logging.Error("error", err))
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create token"})
@@ -197,6 +206,58 @@ func (h *Handler) CreateAPIToken(c *gin.Context) {
 		logging.Field{Key: "name", Value: req.Name})
 
 	c.JSON(http.StatusCreated, tokenResp)
+}
+
+// boundRequestedTokenScopes validates the scopes requested for a new token
+// and returns them normalized. It writes the error response and returns false
+// when the request must be refused.
+//
+// The ceiling is the LOWER of the role this request runs with (so a token
+// cannot mint a token stronger than itself) and the account's stored role
+// (so a stale session claim cannot either).
+func (h *Handler) boundRequestedTokenScopes(c *gin.Context, uid uuid.UUID, requested []string) ([]string, bool) {
+	// Validate against the allow-list first, with no rank limit, so an unknown
+	// string is reported as such rather than as a permission problem.
+	if _, err := auth.NormalizeRequestedScopes(requested, auth.RoleAdmin); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"error":          "Invalid request: " + err.Error(),
+			"allowed_scopes": auth.AllowedAPITokenScopes(),
+		})
+		return nil, false
+	}
+
+	want := auth.APITokenScopeRole(requested)
+	if len(requested) == 0 {
+		// No scopes: the token runs with the owner's role, bounded at request
+		// time. Nothing to check here.
+		return nil, true
+	}
+
+	ceiling, err := auth.ResolveAPITokenOwnerCeiling(c.Request.Context(), h.repos, uid, want)
+	if err != nil {
+		h.logger.Error(c.Request.Context(), "Failed to resolve token owner role", logging.Error("error", err))
+		c.JSON(http.StatusForbidden, gin.H{"error": "Account unavailable for token creation"})
+		return nil, false
+	}
+	if session, ok := auth.HighestRole(callerRoleStrings(c)); ok {
+		ceiling = auth.LowerRole(ceiling, session)
+	} else {
+		ceiling = auth.RoleViewer
+	}
+
+	scopes, err := auth.NormalizeRequestedScopes(requested, ceiling)
+	if err != nil {
+		status := http.StatusBadRequest
+		if errors.Is(err, auth.ErrAPITokenScopeAboveRole) {
+			status = http.StatusForbidden
+		}
+		c.JSON(status, gin.H{
+			"error":          err.Error(),
+			"allowed_scopes": auth.AllowedAPITokenScopes(),
+		})
+		return nil, false
+	}
+	return scopes, true
 }
 
 // ListAPITokens lists all API tokens for the authenticated user

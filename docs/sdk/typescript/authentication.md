@@ -41,12 +41,12 @@ enclii tokens create --name "ci-deploy" --expires-in 30d
 |------|---------|-------------|
 | `--name` | | Human-readable token name (required) |
 | `--expires-in` | `90d` | Lifetime: Go duration syntax extended with `d` for days (`24h`, `30d`, `90d`) |
-| `--scopes` | full account access | Comma-separated scope list |
+| `--scopes` | developer, capped at your role | Comma-separated role list: `admin`, `developer` or `viewer` |
 | `--json` | `false` | Emit machine-readable JSON to stdout |
 
 Manage tokens with `enclii tokens list`, `enclii tokens get <id>`, and `enclii tokens revoke <id>`. There is no `enclii api-keys` command, and no rotate operation: to rotate, create a new token, switch your secret to it, then revoke the old one.
 
-About scopes: the API currently acts on one scope value, `admin`, which gives the token the admin role. Any other scope string is stored with the token but not enforced, so a token without `admin` has the developer role on the account that created it. Limit exposure with short `--expires-in` values and prompt revocation rather than relying on scope strings.
+About scopes: scopes are roles (`admin`, `developer`, `viewer`; anything else is rejected). A token never runs above the role its owner holds at request time, and nobody can create a token above their own role. Limit exposure with the narrowest role, short `--expires-in` values and prompt revocation.
 
 Use the token with the SDK:
 
