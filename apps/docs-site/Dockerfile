@@ -49,10 +49,12 @@ FROM docker.io/library/nginx:alpine AS runner
 # 2026-10-02: CVE-2026-103111 (pcre2 10.48-r0, fixed 10.49-r0) failed
 # `Scan: docs-site` on main run 36947907115. The libuuid floor (util-linux
 # 2.42.3) retires the seven util-linux entries from .trivyignore.
-ARG APK_SECURITY_REFRESH=2026-10-02
+# 2026-10-17: CVE-2026-77214 (libexpat 2.8.5-r0, fixed 2.9.0-r0) failed
+# `Scan: docs-site` on main run 39064455550.
+ARG APK_SECURITY_REFRESH=2026-10-17
 RUN echo "apk security refresh: ${APK_SECURITY_REFRESH}" && \
     apk upgrade --no-cache && \
-    apk add --no-cache 'libexpat>=2.8.5-r0' 'pcre2>=10.49-r0' 'libuuid>=2.42.3-r0'
+    apk add --no-cache 'libexpat>=2.9.0-r0' 'pcre2>=10.49-r0' 'libuuid>=2.42.3-r0'
 
 # Copy custom nginx config (standard port 80)
 # Security headers applied at origin (defense-in-depth; Cloudflare may also set some).
