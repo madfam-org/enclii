@@ -167,7 +167,9 @@ def test_client_deployment_unavailable_pages():
 @pytest.mark.parametrize(
     "namespace",
     ["voxa", "nauta", "janua", "selva", "pravara-mes", "enclii-x", "project-x"]
-    + REVENUE_NAMESPACES_ADDED_2026_10_11,
+    + REVENUE_NAMESPACES_ADDED_2026_10_11
+    # The self-serve front door (infra-stability 2026-10-17, E3 F4).
+    + ["enclii"],
 )
 def test_production_client_namespaces_are_covered(namespace):
     selector, exclusion = _deployment_unavailable_matchers()
@@ -186,6 +188,10 @@ def test_production_client_namespaces_are_covered(namespace):
         "project-x-staging",
         "kalya-staging",
         "digifab-quoting-staging",
+        # `enclii` is covered as a bare name, not as a prefix.
+        "enclii-staging",
+        "xenclii",
+        "enclii2",
     ],
 )
 def test_staging_and_lookalikes_are_not_covered(namespace):
@@ -226,6 +232,11 @@ PROMTOOL_TEST = textwrap.dedent(
             values: '1x10'
           - series: 'kube_deployment_status_replicas_available{namespace="digifab-quoting",deployment="digifab-quoting-web"}'
             values: '0x10'
+          # The bare `enclii` namespace (added 2026-10-17): the UI has 1 of 2.
+          - series: 'kube_deployment_spec_replicas{namespace="enclii",deployment="switchyard-ui"}'
+            values: '2x10'
+          - series: 'kube_deployment_status_replicas_available{namespace="enclii",deployment="switchyard-ui"}'
+            values: '1x10'
           # A staging namespace that `enclii-.*` matches: must NOT fire.
           - series: 'kube_deployment_spec_replicas{namespace="enclii-karafiel-staging",deployment="karafiel-admin"}'
             values: '1x10'
@@ -236,8 +247,9 @@ PROMTOOL_TEST = textwrap.dedent(
           - eval_time: 4m
             alertname: ClientDeploymentUnavailable
             exp_alerts: []
-          # Exactly two alerts: digifab-quoting and voxa/voxa-web. Neither
-          # voxa-staging nor enclii-karafiel-staging fires.
+          # Exactly three alerts: digifab-quoting, enclii/switchyard-ui and
+          # voxa/voxa-web. Neither voxa-staging nor enclii-karafiel-staging
+          # fires.
           - eval_time: 6m
             alertname: ClientDeploymentUnavailable
             exp_alerts:
@@ -249,6 +261,14 @@ PROMTOOL_TEST = textwrap.dedent(
                 exp_annotations:
                   summary: "Deployment digifab-quoting-web unavailable in digifab-quoting"
                   description: "Available replicas (0) < desired for 5m."
+              - exp_labels:
+                  severity: critical
+                  category: client-slo
+                  namespace: enclii
+                  deployment: switchyard-ui
+                exp_annotations:
+                  summary: "Deployment switchyard-ui unavailable in enclii"
+                  description: "Available replicas (1) < desired for 5m."
               - exp_labels:
                   severity: critical
                   category: client-slo
