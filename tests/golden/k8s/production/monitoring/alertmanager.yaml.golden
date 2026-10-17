@@ -122,9 +122,11 @@ data:
         # group_interval tick where its group changed. Re-run the replay
         # before adding products or shortening these.
         #
-        # Courier dedups on alertname per UTC hour, so chat carries one
-        # RevenueEndpointDown an hour however many products fail; email
-        # carries every group. Above the generic critical route, which would
+        # Courier keys each alert `alarm:<alertname>[:<identity>]:<hour>`
+        # (angelia#39, #40; <hour> is the UTC hour), and for these alerts the
+        # identity is the `product` label. So chat carries one
+        # RevenueEndpointDown per failing product per hour, and email carries
+        # every group. Above the generic critical route, which would
         # otherwise match these first; below the alertname and info routes.
         - matchers:
             - category="revenue-probe"
@@ -201,10 +203,12 @@ data:
         # A NEW alertname opens its own group and goes out after group_wait
         # (10s). group_interval only paces further instances of an alertname
         # that is already paging (e.g. a second repo's CI going red), which
-        # wait up to 15m. repeat_interval 4h re-sends a still-broken
-        # condition; Courier's hourly idempotency window
-        # (`alarm:<alertname>:<hour>`) is compatible with any repeat of 1h or
-        # more.
+        # wait up to 15m. That second instance still pages on its own: Courier
+        # keys each alert `alarm:<alertname>[:<identity>]:<hour>`, where the
+        # identity names the target (see the receivers note below), so it is
+        # not masked by the first. repeat_interval 4h re-sends a still-broken
+        # condition; Courier's hourly idempotency window is compatible with
+        # any repeat of 1h or more.
         - match:
             severity: critical
           receiver: 'critical-receiver'
@@ -255,8 +259,20 @@ data:
       # nothing and means the day Angelia widens that env var, warnings arrive
       # with no change here. Until then warnings reach people by email only.
       #
-      # Courier dedups on `alarm:<alertname>:<hour>`, an hourly idempotency
-      # window, so a critical repeat_interval under 1h would not page more
+      # Courier dedups on `alarm:<alertname>[:<identity>]:<hour>`, an hourly
+      # (UTC) idempotency window per alert and target (angelia#40, merged
+      # 2026-10-17). The identity is the first that exists of:
+      #   1. the `product` label;
+      #   2. `<namespace>/<object>`, the object being the first label present
+      #      among name, application, repo, deployment, statefulset,
+      #      daemonset, cronjob and app (no namespace: just the object);
+      #   3. `namespace`;
+      #   4. `job`;
+      #   5. none, which keeps the legacy `alarm:<alertname>:<hour>` key.
+      # So a standing `ArgoCDAppDegraded` no longer masks a second app going
+      # Degraded: each target pages once an hour. Labels that churn on a
+      # restart (pod, instance, job_name) are never part of the identity.
+      # A critical repeat_interval under 1h would not page more
       # often, it would just POST more. The critical route repeats every 4h
       # (the shared email budget, see the note above `route:`), so a condition
       # that stays broken re-pages the phone every 4h.
@@ -297,13 +313,13 @@ data:
       #               3.8x at the measured 2.7 KB).
       # Alertmanager sends the first 100 alerts of the group (ordered by job,
       # instance, then labels, not by status) and reports the rest in
-      # `truncatedAlerts`, which Courier's schema accepts. What a person sees
-      # does not change: Courier pages once per alertname per hour
-      # (`alarm:<alertname>:<hour>`), the critical route groups by alertname so
-      # any firing alert in a batch carries the page, and warnings are skipped
-      # by severity. One corner remains: a critical group of more than 100
-      # alerts whose first 100 are all RESOLVED sends no firing alert in that
-      # batch. It needs resolved alerts piling up, which stops once email
+      # `truncatedAlerts`, which Courier's schema accepts. Courier pages once
+      # per alertname and target per hour (`alarm:<alertname>[:<identity>]:<hour>`,
+      # above), so a target whose alert falls past the first 100 of its batch
+      # is not paged by that batch; it pages from a later batch that carries
+      # it. Warnings are skipped by severity. One corner remains: a critical
+      # group of more than 100 alerts whose first 100 are all RESOLVED sends
+      # no firing alert in that batch. It needs resolved alerts piling up, which stops once email
       # delivers again. The cap is on all three webhooks, not only the warning
       # digest, because a critical storm of one alertname past the limit would
       # be refused whole the same way and drop the page with it.
