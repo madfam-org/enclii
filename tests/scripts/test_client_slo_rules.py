@@ -65,6 +65,20 @@ NAMESPACE_SELECTOR = re.compile(r'namespace=~"([^"]+)"')
 NAMESPACE_EXCLUSION = re.compile(r'namespace!~"([^"]+)"')
 STAGING_EXCLUSION = ".+-staging"
 
+# Crea Tu Mundo's MAP namespace (added 2026-10-17) also runs the rehearsal
+# deployment `crea-map-ensayo-web`, which must never page. Every rule with a
+# per-workload label excludes it by that label; the quota rule is
+# namespace-scoped and cannot.
+ENSAYO_EXCLUSION = "crea-map-ensayo(-.*)?"
+ENSAYO_MATCHER = re.compile(r'(deployment|pod|service)!~"([^"]+)"')
+ENSAYO_LABELS_BY_RULE = {
+    "ClientServiceErrorRate": {"pod", "service"},
+    "ClientServiceLatencyP95": {"pod", "service"},
+    "ClientPodRestartRate": {"pod"},
+    "ClientDeploymentUnavailable": {"deployment"},
+    "TenantResourceQuotaNearLimit": set(),
+}
+
 # The seven revenue namespaces that were uncovered until 2026-10-11
 # (money-machine audit M2 F5). Names are the Argo applications' resource
 # namespaces, read from `enclii ops apps status --json`.
@@ -169,7 +183,9 @@ def test_client_deployment_unavailable_pages():
     ["voxa", "nauta", "janua", "selva", "pravara-mes", "enclii-x", "project-x"]
     + REVENUE_NAMESPACES_ADDED_2026_10_11
     # The self-serve front door (infra-stability 2026-10-17, E3 F4).
-    + ["enclii"],
+    + ["enclii"]
+    # Crea Tu Mundo's MAP, the vCTO client (infra-stability 2026-10-17, W1).
+    + ["crea-map"],
 )
 def test_production_client_namespaces_are_covered(namespace):
     selector, exclusion = _deployment_unavailable_matchers()
@@ -192,12 +208,48 @@ def test_production_client_namespaces_are_covered(namespace):
         "enclii-staging",
         "xenclii",
         "enclii2",
+        # `crea-map` is covered as a bare name, not as a prefix.
+        "crea-map-staging",
+        "crea-map2",
     ],
 )
 def test_staging_and_lookalikes_are_not_covered(namespace):
     """Staging can serve an old build for weeks; it must not page."""
     selector, exclusion = _deployment_unavailable_matchers()
     assert not _covered(selector, namespace, exclusion)
+
+
+def test_every_workload_selector_excludes_the_crea_map_rehearsal():
+    """Each selector in a rule carries the ensayo exclusion on that rule's labels."""
+    rules = _client_slo_rules()
+    assert set(ENSAYO_LABELS_BY_RULE) == set(rules)
+    for name, rule in rules.items():
+        expr = rule["expr"]
+        expected = ENSAYO_LABELS_BY_RULE[name]
+        found = ENSAYO_MATCHER.findall(expr)
+        assert {label for label, _ in found} == expected, f"{name}: {found}"
+        assert {regex for _, regex in found} <= {ENSAYO_EXCLUSION}, f"{name}: {found}"
+        # Once per selector, so neither side of a ratio or comparison leaks it.
+        for label in expected:
+            assert len([f for f in found if f[0] == label]) == len(_selectors(expr)), (
+                f"{name}: {label}!~ must accompany each of the {len(_selectors(expr))} selectors"
+            )
+
+
+@pytest.mark.parametrize(
+    "workload,excluded",
+    [
+        ("crea-map-ensayo-web", True),
+        ("crea-map-ensayo-web-5c599d8c6-t7wll", True),
+        ("crea-map-ensayo", True),
+        ("crea-map-web", False),
+        ("crea-map-web-7b9ddbb989-p5b9d", False),
+        ("crea-map", False),
+        ("", False),  # a series without the label is not hidden
+    ],
+)
+def test_ensayo_exclusion_matches_only_the_rehearsal(workload, excluded):
+    assert (re.fullmatch(ENSAYO_EXCLUSION, workload) is not None) is excluded
 
 
 # ---------------------------------------------------------------------------
@@ -237,6 +289,16 @@ PROMTOOL_TEST = textwrap.dedent(
             values: '2x10'
           - series: 'kube_deployment_status_replicas_available{namespace="enclii",deployment="switchyard-ui"}'
             values: '1x10'
+          # Crea Tu Mundo's MAP (added 2026-10-17): web has 0 of 1 available.
+          - series: 'kube_deployment_spec_replicas{namespace="crea-map",deployment="crea-map-web"}'
+            values: '1x10'
+          - series: 'kube_deployment_status_replicas_available{namespace="crea-map",deployment="crea-map-web"}'
+            values: '0x10'
+          # The rehearsal in the same namespace: the same shortfall must NOT fire.
+          - series: 'kube_deployment_spec_replicas{namespace="crea-map",deployment="crea-map-ensayo-web"}'
+            values: '1x10'
+          - series: 'kube_deployment_status_replicas_available{namespace="crea-map",deployment="crea-map-ensayo-web"}'
+            values: '0x10'
           # A staging namespace that `enclii-.*` matches: must NOT fire.
           - series: 'kube_deployment_spec_replicas{namespace="enclii-karafiel-staging",deployment="karafiel-admin"}'
             values: '1x10'
@@ -247,12 +309,20 @@ PROMTOOL_TEST = textwrap.dedent(
           - eval_time: 4m
             alertname: ClientDeploymentUnavailable
             exp_alerts: []
-          # Exactly three alerts: digifab-quoting, enclii/switchyard-ui and
-          # voxa/voxa-web. Neither voxa-staging nor enclii-karafiel-staging
-          # fires.
+          # Exactly four alerts: crea-map/crea-map-web, digifab-quoting,
+          # enclii/switchyard-ui and voxa/voxa-web. Neither voxa-staging,
+          # enclii-karafiel-staging nor crea-map-ensayo-web fires.
           - eval_time: 6m
             alertname: ClientDeploymentUnavailable
             exp_alerts:
+              - exp_labels:
+                  severity: critical
+                  category: client-slo
+                  namespace: crea-map
+                  deployment: crea-map-web
+                exp_annotations:
+                  summary: "Deployment crea-map-web unavailable in crea-map"
+                  description: "Available replicas (0) < desired for 5m."
               - exp_labels:
                   severity: critical
                   category: client-slo

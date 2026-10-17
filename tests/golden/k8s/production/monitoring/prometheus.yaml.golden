@@ -1451,6 +1451,15 @@ data:
   # both ends, so the bare namespace was never matched and a Deployment short
   # of replicas there paged nobody. Added as its own alternative to every
   # rule in the group; `enclii-<app>-staging` stays excluded by the pair.
+  #
+  # Same day (infra-stability W1): `crea-map`, Crea Tu Mundo's MAP (the vCTO
+  # client). Its namespace also runs the rehearsal deployment
+  # `crea-map-ensayo-web` (Argo app crea-map-ensayo), which must never page:
+  # every rule that has a per-workload label carries
+  # `deployment|pod|service!~"crea-map-ensayo(-.*)?"`. A series without that
+  # label has it empty, which the matcher passes, so nothing else is hidden.
+  # TenantResourceQuotaNearLimit is namespace-scoped and cannot tell the two
+  # apart; the quota is shared, so ensayo usage counts toward it (warning).
   # =========================================================================
   client-slo-rules.yml: |
     groups:
@@ -1460,9 +1469,9 @@ data:
           - alert: ClientServiceErrorRate
             expr: |
               (
-                sum by (namespace) (rate(http_requests_total{code=~"5..", namespace=~"enclii|enclii-.*|project-.*|nauta|janua|karafiel|coupler|dhanam|tezca|pravara-mes|primavera3d|fortuna|forgesight|selva|voxa|digifab-quoting|yantra4d|kalya|madfam-site|avala|factlas|routecraft", namespace!~".+-staging"}[5m]))
+                sum by (namespace) (rate(http_requests_total{code=~"5..", namespace=~"enclii|enclii-.*|project-.*|nauta|janua|karafiel|coupler|dhanam|tezca|pravara-mes|primavera3d|fortuna|forgesight|selva|voxa|digifab-quoting|yantra4d|kalya|madfam-site|avala|factlas|routecraft|crea-map", namespace!~".+-staging", pod!~"crea-map-ensayo(-.*)?", service!~"crea-map-ensayo(-.*)?"}[5m]))
                 /
-                sum by (namespace) (rate(http_requests_total{namespace=~"enclii|enclii-.*|project-.*|nauta|janua|karafiel|coupler|dhanam|tezca|pravara-mes|primavera3d|fortuna|forgesight|selva|voxa|digifab-quoting|yantra4d|kalya|madfam-site|avala|factlas|routecraft", namespace!~".+-staging"}[5m]))
+                sum by (namespace) (rate(http_requests_total{namespace=~"enclii|enclii-.*|project-.*|nauta|janua|karafiel|coupler|dhanam|tezca|pravara-mes|primavera3d|fortuna|forgesight|selva|voxa|digifab-quoting|yantra4d|kalya|madfam-site|avala|factlas|routecraft|crea-map", namespace!~".+-staging", pod!~"crea-map-ensayo(-.*)?", service!~"crea-map-ensayo(-.*)?"}[5m]))
               ) > 0.01
             for: 5m
             labels:
@@ -1475,7 +1484,7 @@ data:
           - alert: ClientServiceLatencyP95
             expr: |
               histogram_quantile(0.95,
-                sum by (namespace, le) (rate(http_request_duration_seconds_bucket{namespace=~"enclii|enclii-.*|project-.*|nauta|janua|karafiel|coupler|dhanam|tezca|pravara-mes|primavera3d|fortuna|forgesight|selva|voxa|digifab-quoting|yantra4d|kalya|madfam-site|avala|factlas|routecraft", namespace!~".+-staging"}[5m]))
+                sum by (namespace, le) (rate(http_request_duration_seconds_bucket{namespace=~"enclii|enclii-.*|project-.*|nauta|janua|karafiel|coupler|dhanam|tezca|pravara-mes|primavera3d|fortuna|forgesight|selva|voxa|digifab-quoting|yantra4d|kalya|madfam-site|avala|factlas|routecraft|crea-map", namespace!~".+-staging", pod!~"crea-map-ensayo(-.*)?", service!~"crea-map-ensayo(-.*)?"}[5m]))
               ) > 2
             for: 5m
             labels:
@@ -1488,7 +1497,7 @@ data:
           - alert: ClientPodRestartRate
             expr: |
               sum by (namespace) (
-                increase(kube_pod_container_status_restarts_total{namespace=~"enclii|enclii-.*|project-.*|nauta|janua|karafiel|coupler|dhanam|tezca|pravara-mes|primavera3d|fortuna|forgesight|selva|voxa|digifab-quoting|yantra4d|kalya|madfam-site|avala|factlas|routecraft", namespace!~".+-staging"}[1h])
+                increase(kube_pod_container_status_restarts_total{namespace=~"enclii|enclii-.*|project-.*|nauta|janua|karafiel|coupler|dhanam|tezca|pravara-mes|primavera3d|fortuna|forgesight|selva|voxa|digifab-quoting|yantra4d|kalya|madfam-site|avala|factlas|routecraft|crea-map", namespace!~".+-staging", pod!~"crea-map-ensayo(-.*)?"}[1h])
               ) > 3
             for: 5m
             labels:
@@ -1500,9 +1509,9 @@ data:
 
           - alert: ClientDeploymentUnavailable
             expr: |
-              kube_deployment_status_replicas_available{namespace=~"enclii|enclii-.*|project-.*|nauta|janua|karafiel|coupler|dhanam|tezca|pravara-mes|primavera3d|fortuna|forgesight|selva|voxa|digifab-quoting|yantra4d|kalya|madfam-site|avala|factlas|routecraft", namespace!~".+-staging"}
+              kube_deployment_status_replicas_available{namespace=~"enclii|enclii-.*|project-.*|nauta|janua|karafiel|coupler|dhanam|tezca|pravara-mes|primavera3d|fortuna|forgesight|selva|voxa|digifab-quoting|yantra4d|kalya|madfam-site|avala|factlas|routecraft|crea-map", namespace!~".+-staging", deployment!~"crea-map-ensayo(-.*)?"}
               <
-              kube_deployment_spec_replicas{namespace=~"enclii|enclii-.*|project-.*|nauta|janua|karafiel|coupler|dhanam|tezca|pravara-mes|primavera3d|fortuna|forgesight|selva|voxa|digifab-quoting|yantra4d|kalya|madfam-site|avala|factlas|routecraft", namespace!~".+-staging"}
+              kube_deployment_spec_replicas{namespace=~"enclii|enclii-.*|project-.*|nauta|janua|karafiel|coupler|dhanam|tezca|pravara-mes|primavera3d|fortuna|forgesight|selva|voxa|digifab-quoting|yantra4d|kalya|madfam-site|avala|factlas|routecraft|crea-map", namespace!~".+-staging", deployment!~"crea-map-ensayo(-.*)?"}
             for: 5m
             labels:
               severity: critical
@@ -1514,9 +1523,9 @@ data:
           - alert: TenantResourceQuotaNearLimit
             expr: |
               (
-                kube_resourcequota{type="used", namespace=~"enclii|enclii-.*|project-.*|nauta|janua|karafiel|coupler|dhanam|tezca|pravara-mes|primavera3d|fortuna|forgesight|selva|voxa|digifab-quoting|yantra4d|kalya|madfam-site|avala|factlas|routecraft", namespace!~".+-staging"}
+                kube_resourcequota{type="used", namespace=~"enclii|enclii-.*|project-.*|nauta|janua|karafiel|coupler|dhanam|tezca|pravara-mes|primavera3d|fortuna|forgesight|selva|voxa|digifab-quoting|yantra4d|kalya|madfam-site|avala|factlas|routecraft|crea-map", namespace!~".+-staging"}
                 /
-                kube_resourcequota{type="hard", namespace=~"enclii|enclii-.*|project-.*|nauta|janua|karafiel|coupler|dhanam|tezca|pravara-mes|primavera3d|fortuna|forgesight|selva|voxa|digifab-quoting|yantra4d|kalya|madfam-site|avala|factlas|routecraft", namespace!~".+-staging"}
+                kube_resourcequota{type="hard", namespace=~"enclii|enclii-.*|project-.*|nauta|janua|karafiel|coupler|dhanam|tezca|pravara-mes|primavera3d|fortuna|forgesight|selva|voxa|digifab-quoting|yantra4d|kalya|madfam-site|avala|factlas|routecraft|crea-map", namespace!~".+-staging"}
               ) > 0.9
             for: 5m
             labels:
