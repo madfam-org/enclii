@@ -515,8 +515,12 @@ data:
             labels: {product: factlas, flow: api, target_namespace: factlas, check: availability, module: http_2xx_json}
           - targets: ['https://routecraft.app/api/health']
             labels: {product: routecraft, flow: web, target_namespace: routecraft, check: availability, module: http_2xx_json}
-          - targets: ['https://auth.madfam.io/health']
-            labels: {product: janua, flow: api, target_namespace: janua, check: availability, module: http_2xx_json}
+          # Janua: the readiness REPORT, not /health. Readiness answers 200
+          # while Redis or the database is down (R107/R109: it reports, it
+          # does not gate), so http_janua_ready judges the body. /health has
+          # no Redis or database field and read green through both outages.
+          - targets: ['https://auth.madfam.io/api/v1/health/ready']
+            labels: {product: janua, flow: api, target_namespace: janua, check: availability, module: http_janua_ready}
           # Trailing slash required: /api/v1/health answers 301.
           - targets: ['https://api.karafiel.mx/api/v1/health/']
             labels: {product: karafiel, flow: api, target_namespace: karafiel, check: availability, module: http_2xx_json}
