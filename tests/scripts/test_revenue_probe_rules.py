@@ -85,6 +85,10 @@ REQUIRED_FLOWS = {
     ("forgesight", "api"),
     # Janua, judged by its readiness REPORT (R107/R109); see below.
     ("janua", "api"),
+    # Crea Tu Mundo's ERP workspace host and MAP (infra-stability 2026-10-17,
+    # E3 F3): the only vCTO client's hosts were watched by replica counts only.
+    ("ctm-erp", "workspace"),
+    ("ctm-map", "web"),
 }
 
 # The label the Alertmanager revenue route matches on (alertmanager.yaml).
@@ -317,6 +321,33 @@ def test_janua_module_keeps_the_common_conventions():
     assert http["method"] == "GET"
 
 
+def test_json_401_module_differs_from_http_401_only_by_accept():
+    """Nauta answers a request with no Accept header as a document navigation
+    (307 to /login); the exporter sends no Accept, so a workspace host on plain
+    http_401 fails every probe while healthy. Asking for JSON gets the 401."""
+    plain = _modules()["http_401"]["http"]
+    json_ = _modules()["http_401_json"]["http"]
+    assert json_["valid_status_codes"] == [401]
+    assert json_["headers"] == {**plain["headers"], "Accept": "application/json"}
+    assert {k: v for k, v in json_.items() if k != "headers"} == {
+        k: v for k, v in plain.items() if k != "headers"
+    }
+
+
+def test_client_workspace_host_is_probed_with_the_json_401_module():
+    by_url = dict(_targets())
+    labels = by_url["https://erp.creatumundo.mx/"]
+    assert labels["module"] == "http_401_json"
+    assert (labels["product"], labels["flow"], labels["target_namespace"]) == (
+        "ctm-erp",
+        "workspace",
+        "nauta",
+    )
+    # The only target on it today; a second one belongs here, with a curl of
+    # its no-Accept and JSON answers in review.
+    assert [u for u, l in _targets() if l["module"] == "http_401_json"] == ["https://erp.creatumundo.mx/"]
+
+
 def test_every_module_is_checked_below():
     """A new module must be added to the parametrized checks, not skip them."""
     assert set(_modules()) == set(MODULES)
@@ -329,6 +360,9 @@ MODULES = [
     "http_dhanam_catalog",
     "http_dhanam_fx",
     "http_janua_ready",
+    "http_401_json",
+    "http_dhanam_catalog",
+    "http_dhanam_fx",
 ]
 
 

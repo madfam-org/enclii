@@ -136,6 +136,28 @@ data:
           fail_if_body_matches_regexp:
             - '"healthy"\s*:\s*false'
 
+      # http_401 for a session-gated web app that answers a DOCUMENT
+      # navigation with a redirect to its login page and anything else with a
+      # bare 401. Nauta's middleware (apps/web/src/middleware.ts) classifies a
+      # request with no Accept header as a document navigation, and this
+      # exporter sends none, so under plain http_401 a healthy workspace host
+      # answers 307 and fails every probe. Asking for JSON makes it answer
+      # 401. The 401 means: the hostname reaches the app through Cloudflare
+      # and the tunnel, the app resolved the host to a client workspace (an
+      # unbound host answers 404), and the session gate is on (200 fails).
+      http_401_json:
+        prober: http
+        timeout: 10s
+        http:
+          method: GET
+          preferred_ip_protocol: ip4
+          follow_redirects: false
+          fail_if_not_ssl: true
+          valid_status_codes: [401]
+          headers:
+            User-Agent: "madfam-revenue-probe/1.0 (+https://github.com/madfam-org/enclii)"
+            Accept: "application/json"
+
       # Dhanam's public billing catalog: 2xx and at least one product.
       http_dhanam_catalog:
         prober: http
