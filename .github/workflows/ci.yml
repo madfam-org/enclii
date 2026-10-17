@@ -1861,6 +1861,10 @@ jobs:
     name: Commit Image Digests
     runs-on: ubuntu-24.04
     needs: [docker-build, image-scan, detect-changes]
+    outputs:
+      # Space-separated names of the services whose pin is on main. Set even
+      # when the job fails because a sibling was not pinned.
+      pinned: ${{ steps.pin.outputs.pinned }}
     # RFC 0017 Tier B (see build-publish.yml header): sibling failures must
     # NOT block deploy of successful builds. docker-build and image-scan are
     # matrix jobs whose aggregate result is 'failure' if any one leg fails
@@ -1927,10 +1931,36 @@ jobs:
           cosign-release: 'v2.4.3'
 
       - name: Update all service digests from build artifacts
+        id: pin
+        # Every built service that is NOT pinned is recorded in
+        # /tmp/unpinned.tsv with its reason and raised as an ::error::
+        # annotation, and the "Fail when a built service was not pinned" step
+        # below turns the job red AFTER the other services' pins are pushed.
+        # RFC 0017 Tier B is kept: one service's skipped pin never blocks a
+        # sibling's pin. What changed (infra-stability 2026-10-17, E4-F5) is
+        # that a skip is no longer a plain `echo "WARNING…"` inside a green
+        # job. switchyard-api has no ArgoCD app and no push-triggered deploy,
+        # so its digest pin IS its deploy; a silent skip left a merged control
+        # plane change undeployed while main CI reported done (enclii#379/#380,
+        # and the 2026-10-11 bundled-cosign scan finding).
+        #
+        # tests/scripts/test_commit_digests_unpinned_gate.py runs this script
+        # verbatim; keep it free of ${{ }} expressions (inputs come via env).
+        env:
+          MATRIX: ${{ needs.detect-changes.outputs.matrix }}
+          REPOSITORY: ${{ github.repository }}
         run: |
           UPDATED=0
           MODIFIED_FILES=""
-          MATRIX='${{ needs.detect-changes.outputs.matrix }}'
+          PINNED_NAMES=""
+          UNPINNED_FILE=/tmp/unpinned.tsv
+          : > "$UNPINNED_FILE"
+
+          # Record a built service that will not be pinned in this run.
+          unpinned() {
+            printf '%s\t%s\n' "$1" "$2" >> "$UNPINNED_FILE"
+            echo "::error title=Built but NOT pinned: $1::$2. The image was built but its digest is not pinned, so it does not deploy. Sibling services still pin."
+          }
 
           # Get list of services that were actually built (from the matrix)
           BUILT_NAMES=$(echo "$MATRIX" | jq -r '.include[].name')
@@ -1962,7 +1992,7 @@ jobs:
             # artifact digest is the signed source of truth; resolving tags or
             # manifests after the fact can pin an unsigned digest into GitOps.
             if [ -z "$DIGEST" ]; then
-              echo "WARNING: Missing digest artifact for ${NAME}; skipping this service instead of pinning an unverifiable registry fallback"
+              unpinned "$NAME" "no digest artifact (its build leg failed or did not upload one); not resolving an unverifiable registry fallback"
               continue
             fi
 
@@ -1972,48 +2002,50 @@ jobs:
             SCAN_REQUIRED=$(echo "$MATRIX" | jq -r --arg name "$NAME" '.include[] | select(.name == $name) | .scan')
             if [ "$SCAN_REQUIRED" = "true" ]; then
               SCAN_RESULT_FILE="/tmp/scan-results/scan-result-${NAME}.txt"
-              if [ ! -f "$SCAN_RESULT_FILE" ] || [ "$(cat "$SCAN_RESULT_FILE")" != "pass" ]; then
-                echo "WARNING: Trivy scan for ${NAME} is missing or did not pass; skipping pin for this service (siblings still deploy)"
+              if [ ! -f "$SCAN_RESULT_FILE" ]; then
+                unpinned "$NAME" "Trivy scan result missing (the Scan: ${NAME} leg did not record an outcome)"
+                continue
+              fi
+              SCAN_RESULT="$(cat "$SCAN_RESULT_FILE")"
+              if [ "$SCAN_RESULT" != "pass" ]; then
+                unpinned "$NAME" "Trivy scan did not pass (result: ${SCAN_RESULT:-empty}); see the Scan: ${NAME} job"
                 continue
               fi
             fi
 
-            if [ -n "$DIGEST" ]; then
-              REF="ghcr.io/${{ github.repository }}/${IMAGE}@${DIGEST}"
-              echo "Verifying cosign signature for ${REF}"
+            REF="ghcr.io/${REPOSITORY}/${IMAGE}@${DIGEST}"
+            echo "Verifying cosign signature for ${REF}"
 
-              VERIFIED=0
-              for WAIT in 0 5 10 20 30 60; do
-                if [ "$WAIT" -gt 0 ]; then
-                  echo "Signature not visible yet for ${REF}, retrying in ${WAIT}s..."
-                  sleep "$WAIT"
-                fi
-
-                if COSIGN_EXPERIMENTAL=1 cosign verify \
-                  --certificate-identity-regexp='^https://github\.com/madfam-org/[A-Za-z0-9_.-]+/\.github/workflows/[A-Za-z0-9_.-]+\.ya?ml@refs/(heads/main|tags/v[0-9].*)$' \
-                  --certificate-oidc-issuer='https://token.actions.githubusercontent.com' \
-                  "$REF" >/tmp/cosign-verify-${NAME}.json 2>/tmp/cosign-verify-${NAME}.err; then
-                  VERIFIED=1
-                  break
-                fi
-              done
-
-              if [ "$VERIFIED" -ne 1 ]; then
-                echo "WARNING: Refusing to pin unsigned or unverifiable digest ${REF}; skipping this service"
-                cat /tmp/cosign-verify-${NAME}.err || true
-                continue
+            VERIFIED=0
+            for WAIT in 0 5 10 20 30 60; do
+              if [ "$WAIT" -gt 0 ]; then
+                echo "Signature not visible yet for ${REF}, retrying in ${WAIT}s..."
+                sleep "$WAIT"
               fi
 
-              echo "Updating ${NAME} in ${KUSTOMIZATION}: signed digest=${DIGEST}"
-              (cd "${KUSTOMIZATION}" && kustomize edit set image "${KUSTOMIZE_IMAGE}=ghcr.io/${{ github.repository }}/${IMAGE}@${DIGEST}")
-              UPDATED=$((UPDATED + 1))
-              KUST_FILE="${KUSTOMIZATION}/kustomization.yaml"
-              if ! echo "$MODIFIED_FILES" | grep -q "$KUST_FILE"; then
-                MODIFIED_FILES="$MODIFIED_FILES $KUST_FILE"
+              if COSIGN_EXPERIMENTAL=1 cosign verify \
+                --certificate-identity-regexp='^https://github\.com/madfam-org/[A-Za-z0-9_.-]+/\.github/workflows/[A-Za-z0-9_.-]+\.ya?ml@refs/(heads/main|tags/v[0-9].*)$' \
+                --certificate-oidc-issuer='https://token.actions.githubusercontent.com' \
+                "$REF" >/tmp/cosign-verify-${NAME}.json 2>/tmp/cosign-verify-${NAME}.err; then
+                VERIFIED=1
+                break
               fi
-            else
-            echo "ERROR: Could not resolve ${NAME} digest from artifact"
-          fi
+            done
+
+            if [ "$VERIFIED" -ne 1 ]; then
+              cat /tmp/cosign-verify-${NAME}.err || true
+              unpinned "$NAME" "refusing to pin an unsigned or unverifiable digest ${DIGEST} (cosign verify failed)"
+              continue
+            fi
+
+            echo "Updating ${NAME} in ${KUSTOMIZATION}: signed digest=${DIGEST}"
+            (cd "${KUSTOMIZATION}" && kustomize edit set image "${KUSTOMIZE_IMAGE}=ghcr.io/${REPOSITORY}/${IMAGE}@${DIGEST}")
+            UPDATED=$((UPDATED + 1))
+            PINNED_NAMES="${PINNED_NAMES:+$PINNED_NAMES }${NAME}"
+            KUST_FILE="${KUSTOMIZATION}/kustomization.yaml"
+            if ! echo "$MODIFIED_FILES" | grep -q "$KUST_FILE"; then
+              MODIFIED_FILES="$MODIFIED_FILES $KUST_FILE"
+            fi
           done
 
           echo "Updated $UPDATED service digest(s)"
@@ -2022,11 +2054,11 @@ jobs:
 
           EXPECTED=$(echo "$BUILT_NAMES" | wc -l | tr -d ' ')
           if [ "$UPDATED" -lt "$EXPECTED" ]; then
-            echo "WARNING: Only $UPDATED/$EXPECTED service digests resolved"
+            echo "::warning::Only $UPDATED/$EXPECTED built service digests will be pinned; the job fails after pushing them (see the job summary)"
           fi
 
           if [ "$UPDATED" -eq 0 ]; then
-            echo "ERROR: No digests resolved despite $EXPECTED services built"
+            echo "::error::No digests resolved despite $EXPECTED services built"
             exit 1
           fi
 
@@ -2040,6 +2072,7 @@ jobs:
           git config user.email "github-actions[bot]@users.noreply.github.com"
 
           # Retry loop: handles concurrent pushes
+          PUSHED=0
           for ATTEMPT in 1 2 3; do
             echo "Push attempt $ATTEMPT/3"
             git fetch origin main
@@ -2052,18 +2085,66 @@ jobs:
             done
 
             git add $MODIFIED_FILES
-            git diff --staged --quiet && { echo "No changes to commit"; exit 0; }
+            if git diff --staged --quiet; then
+              echo "No changes to commit"
+              PUSHED=1
+              break
+            fi
             git commit -m "chore(deploy): update $UPDATED service digest(s)"
 
             if git push origin main; then
               echo "Push succeeded on attempt $ATTEMPT"
-              exit 0
+              PUSHED=1
+              break
             fi
             echo "Push failed (likely concurrent update), retrying..."
             sleep $((ATTEMPT * 2))
           done
-          echo "ERROR: Failed to push after 3 attempts"
-          exit 1
+          if [ "$PUSHED" -ne 1 ]; then
+            echo "::error::Failed to push digest pins after 3 attempts; nothing from this run is pinned"
+            exit 1
+          fi
+          # Only services whose pin is on main. report-lifecycle reads this.
+          echo "pinned=${PINNED_NAMES}" >> "$GITHUB_OUTPUT"
+
+      - name: Fail when a built service was not pinned
+        # Runs after the pins above are pushed (or after the pin step failed),
+        # so the siblings are already deployed when this turns the job red.
+        if: always()
+        env:
+          MATRIX: ${{ needs.detect-changes.outputs.matrix }}
+          PINNED: ${{ steps.pin.outputs.pinned }}
+          PIN_OUTCOME: ${{ steps.pin.outcome }}
+        run: |
+          UNPINNED_FILE=/tmp/unpinned.tsv
+          BUILT=$(echo "$MATRIX" | jq -r '.include[].name' | grep -c . || true)
+          SKIPPED=0
+          [ -s "$UNPINNED_FILE" ] && SKIPPED=$(grep -c . "$UNPINNED_FILE")
+          {
+            echo "## Digest pins"
+            echo ""
+            echo "Built: ${BUILT}. Pinned on main: $(echo "$PINNED" | wc -w | tr -d ' ') (${PINNED:-none}). Built but NOT pinned: ${SKIPPED}. Pin step: ${PIN_OUTCOME}."
+            if [ "$SKIPPED" -gt 0 ]; then
+              echo ""
+              echo "| Service | Why it was not pinned |"
+              echo "|---|---|"
+              while IFS="$(printf '\t')" read -r SVC WHY; do
+                [ -n "$SVC" ] || continue
+                echo "| \`${SVC}\` | ${WHY} |"
+              done < "$UNPINNED_FILE"
+              echo ""
+              echo "These images were built but do not deploy: their digest is not pinned in GitOps. switchyard-api in particular has no other deploy path. Fix the cause, then rerun the failed jobs."
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
+          if [ "$SKIPPED" -gt 0 ]; then
+            echo "::error title=${SKIPPED} built service(s) NOT pinned::$(cut -f1 "$UNPINNED_FILE" | tr '\n' ' ')- see the job summary. The other services' pins were pushed."
+            exit 1
+          fi
+          if [ "$PIN_OUTCOME" != "success" ]; then
+            echo "::error::The pin step did not succeed (${PIN_OUTCOME}); see its log."
+            exit 1
+          fi
+          echo "All ${BUILT} built service(s) pinned."
 
   # =============================================================================
   # DEPLOYMENT VERIFICATION: Validate ArgoCD sync and smoke test production
@@ -2186,10 +2267,15 @@ jobs:
     name: Report Lifecycle Events
     runs-on: ubuntu-24.04
     needs: [docker-build, detect-changes, commit-digests]
+    # commit-digests fails when a built service was not pinned (its scan did
+    # not pass, for example) even though the siblings' pins were pushed. The
+    # siblings still get their events; digest_committed is reported only for
+    # services that are actually pinned.
     if: |
       always() &&
       needs.docker-build.result == 'success' &&
-      needs.commit-digests.result == 'success' &&
+      (needs.commit-digests.result == 'success' ||
+        (needs.commit-digests.result == 'failure' && needs.commit-digests.outputs.pinned != '')) &&
       github.ref == 'refs/heads/main'
     steps:
       - uses: actions/checkout@v7
@@ -2197,6 +2283,7 @@ jobs:
       - name: Report build events from services.json
         run: |
           MATRIX='${{ needs.detect-changes.outputs.matrix }}'
+          PINNED='${{ needs.commit-digests.outputs.pinned }}'
           BUILT_NAMES=$(echo "$MATRIX" | jq -r '.include[].name')
 
           for SERVICE in $BUILT_NAMES; do
@@ -2221,7 +2308,14 @@ jobs:
                 }
               }' || true
 
-            # Report digest_committed event
+            # Report digest_committed event, only for a service that is pinned
+            case " $PINNED " in
+              *" $SERVICE "*) ;;
+              *)
+                echo "::warning::$SERVICE was built but not pinned; not reporting digest_committed"
+                continue
+                ;;
+            esac
             echo "Reporting digest_committed for $SERVICE..."
             curl -sf -X POST "https://api.enclii.dev/v1/callbacks/lifecycle-event" \
               -H "Authorization: Bearer ${{ secrets.ENCLII_CALLBACK_TOKEN }}" \
@@ -2358,7 +2452,7 @@ jobs:
           echo "✅ All CI checks passed (including Operation Ratchet + Fortification)!"
 
   workflow-contracts:
-    name: Workflow contracts (digest-pin retry, ARC :stable promotion)
+    name: Workflow contracts (digest-pin retry, unpinned-service gate, ARC :stable promotion)
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     # weighbridge.yml and deploy-pipeline-monitor.yml commit their own image
@@ -2366,6 +2460,9 @@ jobs:
     # first test runs their "Commit digest pin" script verbatim against a
     # throwaway bare origin. arc-runner-image.yml moves :stable only after both
     # smoke checks and the signature (#664): the second pins that order.
+    # commit-digests fails loudly when a built service is not pinned, after
+    # its siblings' pins are pushed (E4-F5): the third runs both steps
+    # verbatim against a bare origin with cosign/kustomize shims.
     steps:
       - uses: actions/checkout@v7
 
@@ -2378,4 +2475,4 @@ jobs:
         run: pip install --quiet pyyaml pytest
 
       - name: Run workflow contract tests
-        run: pytest tests/scripts/test_digest_pin_push_retry.py tests/scripts/test_arc_runner_image_promotion.py -v
+        run: pytest tests/scripts/test_digest_pin_push_retry.py tests/scripts/test_arc_runner_image_promotion.py tests/scripts/test_commit_digests_unpinned_gate.py -v -rs
