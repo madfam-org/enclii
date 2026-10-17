@@ -19,7 +19,7 @@
 | Signup API smoke | `enclii-signup-smoke.spec.ts` | No 502/503 on `/v1/signup` and status route |
 | Signup API wizard smoke | `scripts/ga-signup-api-smoke.sh` | Initiate, status, verify gate, GitHub gate, UI shells |
 | Signup page loads | `enclii-signup-smoke.spec.ts` | `app.enclii.dev/signup` returns &lt;500 |
-| Commercial GA proof harness | `.github/workflows/commercial-ga-proof.yml` / `make commercial-ga-proof` | Public health, landing/pricing, signup shell, Dhanam checkout, and authenticated billing endpoints pass or produce explicit warnings |
+| Commercial GA proof harness | `.github/workflows/commercial-ga-proof.yml` / `make commercial-ga-proof` | Public health, landing/pricing, signup page (2xx), signup API live (`GET /v1/signup/<non-uuid>/status` answers 400 `invalid signup id`), Dhanam checkout ending on the hosted checkout host, and authenticated billing endpoints with `metering.status: ok` all PASS. A 404/5xx/no answer is a FAIL (exit 1). A checkout that lands on the sales booking page, or billing metering that is not running, is a **CHECK**: a known non-pass state that needs an owner action. It does not fail the job and is not a pass; the JSON summary says `"verdict": "not_proven"` |
 
 ---
 
@@ -30,7 +30,7 @@
 | 1 | Open https://enclii.dev — pricing section visible or documented skip | ☑ (2026-05-30) |
 | 2 | CTA links to signup or app (no broken href) | ☑ → `app.enclii.dev/signup` (2026-07-11: landing CTAs deep-link to the signup wizard) |
 | 3 | Tier copy matches [docs/faq/billing.md](../faq/billing.md) Community/Sovereign table | ☑ (2026-07-11) — drift resolved: landing and FAQ both say Community (free) / Sovereign $20/mo / Ecosystem (coming soon) |
-| 4 | Dhanam checkout URL works for Pro upgrade (if applicable) | ☑ HTTP 200 — `DHANAM_ENCLII_CHECKOUT_URL` |
+| 4 | Dhanam checkout URL works for Pro upgrade (if applicable) | ☐ Not proven (2026-10-17): `DHANAM_ENCLII_CHECKOUT_URL` answers 302 to the sales booking page (`kalya.app/madfam`), because hosted checkout is off in production. The earlier ☑ counted the booking page's HTTP 200. The proof harness reports this state as CHECK |
 
 ---
 
@@ -64,8 +64,8 @@ Strict mode requires:
 | --- | --- |
 | `ENCLII_SYNTHETICS_BEARER_TOKEN` | Authenticated billing endpoint probe without printing token material. |
 | `ENCLII_SYNTHETIC_PROJECT_SLUG` | Project used for billing cost, budgets, and throttles proof. |
-| `DHANAM_ENCLII_CHECKOUT_URL` | Paid checkout reachability proof. |
-| `ENCLII_COMMERCIAL_GA_STRICT=true` | Converts missing optional proof inputs from warnings into failures. |
+| `DHANAM_ENCLII_CHECKOUT_URL` | Paid checkout reachability proof. The final URL after redirects must be on `CHECKOUT_HOSTS` (default `app.dhan.am`); `SALES_BOOKING_HOSTS` (default `kalya.app`) is a CHECK; any other host is a FAIL. |
+| `ENCLII_COMMERCIAL_GA_STRICT=true` | Converts missing optional proof inputs from warnings into failures. It does not turn a CHECK into a failure. |
 
 ## Sign-off
 

@@ -433,6 +433,13 @@ jobs:
       - name: Run pgBackRest restore drill tests
         run: pytest tests/scripts/test_pgbackrest_restore_drill.py -v
 
+      # Runs scripts/commercial-ga-proof.sh against a local stub. A 404/5xx on
+      # signup or checkout must fail; a checkout that lands on the sales
+      # booking page must be a CHECK (not a pass, and not an exit 1 that would
+      # hold MainCIFailingForTooLong open while it is the known state).
+      - name: Run commercial GA proof tests
+        run: pytest tests/scripts/test_commercial_ga_proof.py -v
+
   alertmanager-config-lint:
     name: Alertmanager config loadability
     runs-on: ubuntu-24.04
