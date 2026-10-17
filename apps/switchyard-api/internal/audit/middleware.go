@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"io"
+	"net/url"
 	"strings"
 	"time"
 
@@ -44,9 +45,12 @@ func (m *Middleware) AuditMiddleware() gin.HandlerFunc {
 			return
 		}
 
-		// Capture request body for context
+		// Capture request body for context — except on routes whose bodies
+		// carry credentials, where the body is never read or stored at all.
+		// Redaction is a second line of defence, not the first.
+		omitBody := isCredentialRoute(c.FullPath(), c.Request.URL.Path)
 		var requestBody map[string]interface{}
-		if c.Request.Body != nil {
+		if !omitBody && c.Request.Body != nil {
 			bodyBytes, err := io.ReadAll(c.Request.Body)
 			if err == nil {
 				// Restore body for handler
@@ -75,6 +79,18 @@ func (m *Middleware) AuditMiddleware() gin.HandlerFunc {
 		if actorID != uuid.Nil {
 			actorIDPtr = &actorID
 		}
+		auditContext := map[string]interface{}{
+			"method":      c.Request.Method,
+			"path":        c.Request.URL.Path,
+			"query":       sanitizeQuery(c.Request.URL.RawQuery),
+			"status_code": statusCode,
+			"duration_ms": time.Since(startTime).Milliseconds(),
+		}
+		if omitBody {
+			auditContext["request_body_omitted"] = true
+		} else {
+			auditContext["request_body"] = sanitizeRequestBody(requestBody)
+		}
 		auditLog := &types.AuditLog{
 			ActorID:      actorIDPtr,
 			ActorEmail:   actorEmail,
@@ -86,14 +102,7 @@ func (m *Middleware) AuditMiddleware() gin.HandlerFunc {
 			IPAddress:    c.ClientIP(),
 			UserAgent:    c.Request.UserAgent(),
 			Outcome:      outcome,
-			Context: map[string]interface{}{
-				"method":       c.Request.Method,
-				"path":         c.Request.URL.Path,
-				"query":        c.Request.URL.RawQuery,
-				"status_code":  statusCode,
-				"duration_ms":  time.Since(startTime).Milliseconds(),
-				"request_body": sanitizeRequestBody(requestBody),
-			},
+			Context:      auditContext,
 			Metadata: map[string]interface{}{
 				"route":  c.FullPath(),
 				"params": c.Params,
@@ -248,48 +257,168 @@ func determineOutcome(statusCode int) string {
 	return "unknown"
 }
 
-// sanitizeRequestBody removes sensitive fields from request body
+// sanitizeRequestBody returns a copy of body with sensitive values redacted
+// at every depth, through nested objects and arrays.
 func sanitizeRequestBody(body map[string]interface{}) map[string]interface{} {
 	if body == nil {
 		return nil
 	}
-
-	// Create a copy to avoid modifying original
-	sanitized := make(map[string]interface{})
-	for k, v := range body {
-		// Redact sensitive fields
-		if isSensitiveField(k) {
-			sanitized[k] = "[REDACTED]"
-		} else {
-			sanitized[k] = v
-		}
-	}
-
+	sanitized, _ := sanitizeValue(body, 0).(map[string]interface{})
 	return sanitized
+}
+
+const (
+	redactedValue = "[REDACTED]"
+	// maxSanitizeDepth bounds recursion; anything deeper is dropped rather
+	// than stored unexamined.
+	maxSanitizeDepth = 32
+)
+
+func sanitizeValue(v interface{}, depth int) interface{} {
+	if depth > maxSanitizeDepth {
+		return "[TRUNCATED]"
+	}
+	switch t := v.(type) {
+	case map[string]interface{}:
+		out := make(map[string]interface{}, len(t))
+		for k, child := range t {
+			if isSensitiveField(k) {
+				out[k] = redactedValue
+				continue
+			}
+			out[k] = sanitizeValue(child, depth+1)
+		}
+		return out
+	case []interface{}:
+		out := make([]interface{}, len(t))
+		for i, child := range t {
+			out[i] = sanitizeValue(child, depth+1)
+		}
+		return out
+	default:
+		return v
+	}
+}
+
+// sensitiveFieldFragments redact any key that CONTAINS them (after
+// lower-casing and removing '_' and '-').
+var sensitiveFieldFragments = []string{
+	"password",
+	"passwd",
+	"passphrase",
+	"secret",
+	"token",
+	"apikey",
+	"privatekey",
+	"credential",
+	"auth",
+	"plaintext",
+	"ciphertext",
+	"connectionstring",
+	"dsn",
+	"cookie",
+	"signature",
+	"certificate",
+}
+
+// sensitiveFieldNames redact keys that EQUAL them (same normalization). They
+// are too generic to match as fragments ("env" would hit "environment") but
+// are where key/value and env-map payloads carry their values. The NAME half
+// of a key/value pair ("key", "name") is kept for the audit trail.
+var sensitiveFieldNames = map[string]bool{
+	"value":      true,
+	"values":     true,
+	"data":       true,
+	"stringdata": true,
+	"binarydata": true,
+	"env":        true,
+	"envs":       true,
+	"envvars":    true,
+	"vars":       true,
+	"variables":  true,
+	"pem":        true,
+	"cert":       true,
+}
+
+func normalizeFieldName(fieldName string) string {
+	lower := strings.ToLower(fieldName)
+	return strings.NewReplacer("_", "", "-", "", " ", "").Replace(lower)
 }
 
 // isSensitiveField checks if a field contains sensitive data
 func isSensitiveField(fieldName string) bool {
-	sensitive := []string{
-		"password",
-		"secret",
-		"token",
-		"api_key",
-		"apikey",
-		"private_key",
-		"privatekey",
-		"credential",
-		"auth",
+	name := normalizeFieldName(fieldName)
+	if sensitiveFieldNames[name] {
+		return true
 	}
-
-	lowerField := strings.ToLower(fieldName)
-	for _, s := range sensitive {
-		if strings.Contains(lowerField, s) {
+	for _, s := range sensitiveFieldFragments {
+		if strings.Contains(name, s) {
 			return true
 		}
 	}
-
 	return false
+}
+
+// credentialRouteSegments mark routes whose request bodies carry credentials
+// or secret material. A route matches when any literal path segment contains
+// one of them; path parameters (":id") are ignored.
+var credentialRouteSegments = []string{
+	"secret",
+	"env-var",
+	"envvar",
+	"intake",
+	"token",
+	"auth",
+	"login",
+	"register",
+	"signup",
+	"password",
+	"credential",
+	"webhook",
+	"provision",
+	"vault",
+	"integration",
+	"invitation",
+	"key",
+}
+
+// isCredentialRoute reports whether the request body must not be stored. It
+// checks the matched route template and, when no route matched, the raw path
+// (failing toward omission).
+func isCredentialRoute(routeTemplate, rawPath string) bool {
+	path := routeTemplate
+	if path == "" {
+		path = rawPath
+	}
+	for _, segment := range strings.Split(strings.ToLower(path), "/") {
+		if segment == "" || strings.HasPrefix(segment, ":") || strings.HasPrefix(segment, "*") {
+			continue
+		}
+		for _, marker := range credentialRouteSegments {
+			if strings.Contains(segment, marker) {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// sanitizeQuery redacts the values of sensitive query parameters (for
+// example a credential passed as ?token=). Unparseable queries are dropped.
+func sanitizeQuery(rawQuery string) string {
+	if rawQuery == "" {
+		return ""
+	}
+	values, err := url.ParseQuery(rawQuery)
+	if err != nil {
+		return "[UNPARSEABLE]"
+	}
+	for k := range values {
+		if isSensitiveField(k) {
+			values[k] = []string{redactedValue}
+		}
+	}
+	return values.Encode()
 }
 
 // Close gracefully shuts down the async logger

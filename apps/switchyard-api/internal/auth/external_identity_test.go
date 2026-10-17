@@ -231,6 +231,9 @@ func TestExternalIdentityChangesPreserveLocalAndAPIKeyIdentity(t *testing.T) {
 					require.NoError(t, err)
 					token = pair.AccessToken
 					mock.ExpectQuery(`FROM users WHERE id = \$1`).WithArgs(localID).WillReturnRows(linkedExternalRow(localID, "fixture-subject", true))
+				} else {
+					// The token's admin scope holds only while its owner is admin.
+					mock.ExpectQuery(`FROM users WHERE id = \$1`).WithArgs(localID).WillReturnRows(ownerRow(localID, "admin", true))
 				}
 				response := identityRequest(middleware, token, func(c *gin.Context) {
 					require.Equal(t, localID.String(), c.GetString("user_id"))
