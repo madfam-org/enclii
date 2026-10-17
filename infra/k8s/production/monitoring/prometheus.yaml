@@ -456,7 +456,10 @@ data:
       # JSON array (a list endpoint, `[]` when empty) is http_2xx_json_array.
       # A module whose body check the healthy answer does not meet pages
       # falsely and forever. Add it to tests/scripts/test_revenue_probe_rules.py's
-      # expectations. No client hostnames: this repo is public.
+      # expectations. This repo is public: a client hostname goes here only
+      # when the repo already publishes that client's domain (its tenant
+      # entry in apps/switchyard-api/internal/ecosystem/tenants.json), and
+      # never with any data about the client's people.
       #
       # `product` is also how Alertmanager groups these pages: the revenue
       # route in alertmanager.yaml groups by [alertname, product], so each
@@ -532,6 +535,17 @@ data:
             labels: {product: nauta, flow: web, target_namespace: nauta, check: availability, module: http_2xx_json}
           - targets: ['https://api.forgesight.app/health']
             labels: {product: forgesight, flow: api, target_namespace: forgesight, check: availability, module: http_2xx_json}
+          # Crea Tu Mundo, the vCTO client (tenant `crea` in tenants.json).
+          # Its ERP is a Nauta workspace on its own hostname: replica alerts
+          # in `nauta` cannot see a lost tunnel route, DNS record or
+          # workspace-hostname binding, and app.nauta.quest/health does not
+          # cross the binding. The root answers 401 to a JSON request (see
+          # http_401_json in blackbox-exporter.yaml for why not http_401).
+          - targets: ['https://erp.creatumundo.mx/']
+            labels: {product: ctm-erp, flow: workspace, target_namespace: nauta, check: availability, module: http_401_json}
+          # Its MAP (crea-map-web).
+          - targets: ['https://map.creatumundo.mx/api/health']
+            labels: {product: ctm-map, flow: web, target_namespace: crea-map, check: availability, module: http_2xx_json}
         relabel_configs:
           - source_labels: [__address__]
             target_label: __param_target
