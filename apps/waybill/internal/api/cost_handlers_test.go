@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -145,5 +146,78 @@ func TestParsePeriodTable(t *testing.T) {
 		if delta < want-2*time.Hour || delta > want+2*time.Hour {
 			t.Fatalf("period %s: expected ~%v, got %v", p, want, delta)
 		}
+	}
+}
+
+// getCostWithMetering drives GET /projects/:id/cost through the real reader:
+// the total and breakdown queries return no rows (empty hourly_usage), and
+// the metering query returns the given signals.
+func getCostWithMetering(t *testing.T, heartbeat interface{}, unaggregated int, meterErr error) map[string]interface{} {
+	t.Helper()
+	r, mock, cleanup := newCostRouter(t)
+	defer cleanup()
+
+	mock.ExpectQuery("SELECT metric_type").WillReturnRows(sqlmock.NewRows([]string{"metric_type", "total"}))
+	mock.ExpectQuery("SELECT metric_type").WillReturnRows(sqlmock.NewRows([]string{"metric_type", "total"}))
+	q := mock.ExpectQuery("FROM budget_evaluator_runs")
+	if meterErr != nil {
+		q.WillReturnError(meterErr)
+	} else {
+		q.WillReturnRows(sqlmock.NewRows([]string{"last_heartbeat", "last_hour", "project_rows", "unaggregated"}).
+			AddRow(heartbeat, nil, 0, unaggregated))
+	}
+
+	req, _ := http.NewRequest("GET", "/api/v1/projects/"+uuid.New().String()+"/cost?period=30d", nil)
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d (body=%s)", w.Code, w.Body.String())
+	}
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Fatal(err)
+	}
+	var resp map[string]interface{}
+	if err := json.Unmarshal(w.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	return resp
+}
+
+func meteringStatusOf(t *testing.T, resp map[string]interface{}) string {
+	t.Helper()
+	m, ok := resp["metering"].(map[string]interface{})
+	if !ok {
+		t.Fatalf("response has no metering block: %v", resp)
+	}
+	s, _ := m["status"].(string)
+	return s
+}
+
+func TestGetProjectCostReportsMeteringNotRunning(t *testing.T) {
+	// No aggregator heartbeat and no usage rows: total_cents is 0, but the
+	// response must say the 0 is not a measurement.
+	resp := getCostWithMetering(t, nil, 0, nil)
+	if resp["total_cents"].(float64) != 0 {
+		t.Fatalf("expected total_cents 0, got %v", resp["total_cents"])
+	}
+	if resp["spend_known"] != false {
+		t.Fatalf("spend_known must be false, got %v", resp["spend_known"])
+	}
+	if got := meteringStatusOf(t, resp); got != "not_running" {
+		t.Fatalf("expected metering.status not_running, got %q", got)
+	}
+}
+
+func TestGetProjectCostReportsMeteringUnknownOnReadError(t *testing.T) {
+	resp := getCostWithMetering(t, nil, 0, errors.New("boom"))
+	if resp["spend_known"] != false || meteringStatusOf(t, resp) != "unknown" {
+		t.Fatalf("a failed metering read must be unknown/spend_known=false, got %v", resp)
+	}
+}
+
+func TestGetProjectCostRealZeroIsKnown(t *testing.T) {
+	resp := getCostWithMetering(t, time.Now().UTC().Add(-5*time.Minute), 0, nil)
+	if resp["spend_known"] != true || meteringStatusOf(t, resp) != "ok" {
+		t.Fatalf("a live aggregator with no usage is a real zero, got %v", resp)
 	}
 }

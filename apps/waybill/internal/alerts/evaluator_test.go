@@ -26,6 +26,7 @@ type fakeStore struct {
 	runsFinished int
 	runAlerts    int
 	runErrors    int
+	runNotes     string
 }
 
 func newFakeStore(budgetList []*budgets.Budget) *fakeStore {
@@ -102,24 +103,44 @@ func (f *fakeStore) RecordEvaluatorRun(_ context.Context) (int64, error) {
 	return int64(f.runsStarted), nil
 }
 
-func (f *fakeStore) FinishEvaluatorRun(_ context.Context, _ int64, _, alertsFired, errs int, _ string) error {
+func (f *fakeStore) FinishEvaluatorRun(_ context.Context, _ int64, _, alertsFired, errs int, notes string) error {
 	f.runsFinished++
+	f.runNotes = notes
 	f.runAlerts = alertsFired
 	f.runErrors = errs
 	return nil
 }
 
 // staticCost returns a fixed total for every call, useful for crossing tests.
+// Metering reads "ok" unless meter or meterErr is set.
 type staticCost struct {
-	cents int64
-	err   error
+	cents    int64
+	err      error
+	meter    *budgets.Metering
+	meterErr error
+	// costCalls counts ProjectCost reads, so tests can prove a budget with
+	// unverified metering is never judged.
+	costCalls *int
 }
 
 func (s staticCost) ProjectCost(_ context.Context, _ uuid.UUID, _, _ time.Time) (int64, error) {
+	if s.costCalls != nil {
+		*s.costCalls++
+	}
 	if s.err != nil {
 		return 0, s.err
 	}
 	return s.cents, nil
+}
+
+func (s staticCost) Metering(_ context.Context, _ uuid.UUID, _, _, now time.Time) (budgets.Metering, error) {
+	if s.meterErr != nil {
+		return budgets.Metering{Status: budgets.MeteringUnknown}, s.meterErr
+	}
+	if s.meter != nil {
+		return *s.meter, nil
+	}
+	return budgets.Metering{Status: budgets.MeteringOK, CheckedAt: now}, nil
 }
 
 type recordingDispatcher struct {
@@ -327,3 +348,75 @@ type mutableClock struct{ now time.Time }
 func (m *mutableClock) Now() time.Time { return m.now }
 
 func clockNow() time.Time { return time.Date(2026, 4, 17, 12, 0, 0, 0, time.UTC) }
+
+// --- read proof: no metering data is never "under budget" ---
+
+func TestEvaluatorRefusesToJudgeWhenMeteringNotRunning(t *testing.T) {
+	// $0 of missing data against a $100 budget must not be evaluated as 0%.
+	// The budget is skipped as an error and the run row names why.
+	b := makeBudget(100_00, []int{50, 80, 100})
+	b.HardThrottle = true
+	store := newFakeStore([]*budgets.Budget{b})
+	disp := &recordingDispatcher{}
+	calls := 0
+	cost := staticCost{
+		cents:     0,
+		costCalls: &calls,
+		meter:     &budgets.Metering{Status: budgets.MeteringNotRunning, Detail: "never ran"},
+	}
+	e := NewEvaluator(nil, store, cost, disp, zap.NewNop(), Config{Clock: fixedClock{now: clockNow()}})
+	n, err := e.RunOnce(context.Background())
+	if err != nil || n != 0 {
+		t.Fatalf("expected no alerts and no run error, got n=%d err=%v", n, err)
+	}
+	if calls != 0 {
+		t.Fatalf("spend must not be read for a budget whose metering is unverified; ProjectCost called %d times", calls)
+	}
+	if store.runErrors != 1 {
+		t.Fatalf("unverified budget must count as a run error, got errors=%d", store.runErrors)
+	}
+	if store.runNotes != "metering_unverified=1" {
+		t.Fatalf("run notes must name the unverified count, got %q", store.runNotes)
+	}
+	if len(disp.calls) != 0 || len(store.throttles) != 0 {
+		t.Fatalf("no dispatch or throttle on unverified metering")
+	}
+}
+
+func TestEvaluatorRefusesToJudgeWhenMeteringStale(t *testing.T) {
+	b := makeBudget(100_00, []int{50})
+	store := newFakeStore([]*budgets.Budget{b})
+	calls := 0
+	cost := staticCost{
+		cents:     10_00,
+		costCalls: &calls,
+		meter:     &budgets.Metering{Status: budgets.MeteringStale, UnaggregatedEvents: 3},
+	}
+	e := NewEvaluator(nil, store, cost, &recordingDispatcher{}, zap.NewNop(), Config{Clock: fixedClock{now: clockNow()}})
+	_, _ = e.RunOnce(context.Background())
+	if calls != 0 || store.runErrors != 1 || store.runNotes != "metering_unverified=1" {
+		t.Fatalf("stale metering must skip the budget visibly: calls=%d errors=%d notes=%q", calls, store.runErrors, store.runNotes)
+	}
+}
+
+func TestEvaluatorRefusesToJudgeWhenMeteringReadFails(t *testing.T) {
+	b := makeBudget(100_00, []int{50})
+	store := newFakeStore([]*budgets.Budget{b})
+	calls := 0
+	cost := staticCost{costCalls: &calls, meterErr: errors.New("db down")}
+	e := NewEvaluator(nil, store, cost, &recordingDispatcher{}, zap.NewNop(), Config{Clock: fixedClock{now: clockNow()}})
+	_, _ = e.RunOnce(context.Background())
+	if calls != 0 || store.runErrors != 1 || store.runNotes != "metering_unverified=1" {
+		t.Fatalf("a failed metering read must skip the budget visibly: calls=%d errors=%d notes=%q", calls, store.runErrors, store.runNotes)
+	}
+}
+
+func TestEvaluatorHealthyMeteringLeavesNotesEmpty(t *testing.T) {
+	b := makeBudget(100_00, []int{50})
+	store := newFakeStore([]*budgets.Budget{b})
+	e := NewEvaluator(nil, store, staticCost{cents: 10_00}, &recordingDispatcher{}, zap.NewNop(), Config{Clock: fixedClock{now: clockNow()}})
+	_, _ = e.RunOnce(context.Background())
+	if store.runErrors != 0 || store.runNotes != "" {
+		t.Fatalf("healthy run must have no errors or notes, got errors=%d notes=%q", store.runErrors, store.runNotes)
+	}
+}

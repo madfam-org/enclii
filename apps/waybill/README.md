@@ -68,6 +68,7 @@ go run ./cmd/aggregator
 | `PRICE_BUILD_MINUTE` | Build cost per minute | `0.01` |
 | `PRICE_STORAGE_GB_MONTH` | Storage cost per GB-month | `0.25` |
 | `PRICE_BANDWIDTH_GB` | Bandwidth cost per GB | `0.10` |
+| `WAYBILL_METERING_STALE_AFTER` | API: how old the aggregator heartbeat may be before cost reads report `metering.status: stale`. Keep it above the aggregator's `WAYBILL_ALERT_INTERVAL` | `1h` |
 
 ## API Endpoints
 
@@ -176,6 +177,25 @@ GB-hours = GB-equivalent × hours_running
 
 ### Views
 - `project_usage_summary` - Current period usage per project
+
+## Metering status (read proof)
+
+Spend is a sum over `hourly_usage`, which only the aggregator writes. An empty
+table therefore reads as `$0.00` whether a project spent nothing or nothing was
+metered. `GET /api/v1/projects/:id/cost` says which, in `spend_known` and a
+`metering` block:
+
+| `metering.status` | Meaning | Signal |
+|---|---|---|
+| `ok` | The total is a measurement (a zero is a real zero) | Aggregator heartbeat within `WAYBILL_METERING_STALE_AFTER`, and no overdue metered event without its `hourly_usage` hour |
+| `not_running` | The aggregator has never run against this database | No `budget_evaluator_runs` row (the evaluator runs inside the aggregator process) |
+| `stale` | The aggregator stopped reporting, or usage events were never rolled up; a non-zero total is a floor | Heartbeat older than the window, or `unaggregated_events > 0` |
+| `unknown` | The status read failed | Query error (logged) |
+
+The budget evaluator applies the same check before judging a budget: a budget
+whose spend is not `ok` is skipped and counted in the run row's `errors`, with
+`notes = metering_unverified=N`. Missing data is never evaluated as "under
+budget". `enclii billing show` prints such spend as unknown instead of `$0.00`.
 
 ## Aggregation
 

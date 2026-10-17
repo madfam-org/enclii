@@ -90,6 +90,7 @@ pick it up) or *owner decision* (needs the maintainer before work starts).
 | Item | Why it matters | Priority | Kind | Link |
 |---|---|---|---|---|
 | Add reviewed service-job hold release and environment retirement | Durable suspension has no automatic expiry or resume path; removal needs an audited binding check and explicit authorization | P2 | engineering | [Operator job suspension](docs/cli/commands/ops.md#service-job-suspension) |
+| Deploy the Waybill aggregator (`waybill` image, `--target aggregator`, one replica) and wire its Dhanam alert endpoint | The API is deployed but the aggregator and budget evaluator are not, so `hourly_usage` stays empty: spend reads `metering.status: not_running` and no budget is judged. Show the same status in the dashboard billing page, which still renders `total_cents` as a figure | P1 | engineering + owner merge | [Waybill metering status](apps/waybill/README.md#metering-status-read-proof) |
 | Rebuild the dispatch, switchyard-ui and status images | They were last built before the base-image package updates that #669 brought to docs-site; a rebuild picks them up | P1 | engineering | [#669](https://github.com/madfam-org/enclii/pull/669) |
 | `enclii registry login`: the CLI form of `infra/scripts/npm/registry-login.py` | The CLI already holds and refreshes the Janua session the script borrows from `~/.enclii/credentials.json`; a native command makes registry credentials an Enclii operation like the rest | P2 | engineering | [npm registry doc](docs/infrastructure/npm-registry.md#automated-workstations-and-agents) |
 | Authenticate ECR Public pulls in CI, or pull through `mirror.gcr.io` | Anonymous pulls from GitHub-hosted runners hit HTTP 429 and fail image builds that use `public.ecr.aws` bases | P2 | engineering | [base-image mirror policy](docs/runbooks/ENCLII_BASE_IMAGE_MIRROR_POLICY_2026-05-14.md) |
@@ -144,7 +145,7 @@ Platform foundation is live in production. Commercial launch (GA) is gated on op
 | Preview Environments | ✅ Production | Bet A staging-proven |
 | OIDC Authentication | ✅ Production | Janua SSO integration |
 | GitHub OAuth | ✅ Production | Repo imports, linked accounts |
-| Cost Allocation (Waybill) | ✅ Production | Enforce on deploy/build |
+| Cost Allocation (Waybill) | 🟡 API only | Aggregator not deployed; spend reads `metering.status: not_running` (see backlog) |
 | Billing / throttles UI+CLI | ✅ Production | `/projects/:slug/billing`, `enclii billing throttles` |
 | Self-serve signup | 🟡 Staged | Disabled in prod until Wave 2 (O-17) |
 | SLA / support / legal | 🟡 Draft | Wave 4 publish |

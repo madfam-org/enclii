@@ -71,11 +71,29 @@ func (h *CostHandlers) getProjectCost(c *gin.Context) {
 		return
 	}
 
+	// total_cents is a sum over hourly_usage, so it reads 0 both when the
+	// project spent nothing and when the aggregator never ran. The metering
+	// block says which; spend_known is false unless metering is "ok". A failed
+	// status read is reported as "unknown", never as ok.
+	meter, err := h.cost.Metering(c.Request.Context(), projectID, start, end, end)
+	if err != nil {
+		h.logger.Error("metering status failed", zap.Error(err))
+	}
+	if !meter.SpendKnown() {
+		h.logger.Warn("project cost served without trustworthy metering",
+			zap.String("project_id", projectID.String()),
+			zap.String("metering_status", string(meter.Status)),
+			zap.String("detail", meter.Detail),
+		)
+	}
+
 	c.JSON(http.StatusOK, gin.H{
 		"project_id":   projectID,
 		"period_start": start,
 		"period_end":   end,
 		"total_cents":  total,
+		"spend_known":  meter.SpendKnown(),
+		"metering":     meter,
 		"group_by":     groupBy,
 		"series":       series,
 		"breakdown":    breakdown,

@@ -3,6 +3,7 @@ package cmd
 import (
 	"context"
 	"fmt"
+	"io"
 	"strconv"
 	"strings"
 	"text/tabwriter"
@@ -49,9 +50,19 @@ Examples:
 
 func newBillingShowCommand(cfg *config.Config) *cobra.Command {
 	var project, period string
+	var jsonOut bool
 	cmd := &cobra.Command{
 		Use:   "show",
 		Short: "Show current-period spend vs. budgets",
+		Long: `Show current-period spend vs. budgets.
+
+Spend is the sum of what the Waybill aggregator rolled up, so it reads $0.00
+both when a project spent nothing and when nothing was metered. The API says
+which: unless metering is "ok", the spend is printed as unknown (or as an
+undercount) instead of as a figure, and budget consumption is not computed.
+
+--json prints {"cost": …, "budgets": [...]} exactly as the API returned them;
+read cost.spend_known and cost.metering.status before trusting total_cents.`,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			if project == "" {
 				project = cfg.Project
@@ -61,66 +72,142 @@ func newBillingShowCommand(cfg *config.Config) *cobra.Command {
 			}
 
 			ctx := context.Background()
-			var cost struct {
-				ProjectID   string `json:"project_id"`
-				PeriodStart string `json:"period_start"`
-				PeriodEnd   string `json:"period_end"`
-				TotalCents  int64  `json:"total_cents"`
-				Breakdown   []struct {
-					Key       string `json:"key"`
-					CostCents int64  `json:"cost_cents"`
-				} `json:"breakdown"`
-			}
+			var cost billingCost
 			path := fmt.Sprintf("/v1/projects/%s/billing/cost?period=%s", project, period)
 			if err := billingRequest(ctx, cfg, "GET", path, nil, &cost); err != nil {
 				return err
 			}
 
-			var budgets struct {
-				Budgets []struct {
-					ID              string `json:"id"`
-					AmountCents     int64  `json:"amount_cents"`
-					Currency        string `json:"currency"`
-					Period          string `json:"period"`
-					AlertThresholds []int  `json:"alert_thresholds"`
-				} `json:"budgets"`
-			}
+			var budgets billingBudgets
 			if err := billingRequest(ctx, cfg, "GET", fmt.Sprintf("/v1/projects/%s/billing/budgets", project), nil, &budgets); err != nil {
 				return err
 			}
-
-			fmt.Fprintf(cmd.OutOrStdout(), "Project: %s\n", project)
-			fmt.Fprintf(cmd.OutOrStdout(), "Period:  %s → %s\n", cost.PeriodStart, cost.PeriodEnd)
-			fmt.Fprintf(cmd.OutOrStdout(), "Spend:   $%.2f\n", float64(cost.TotalCents)/100)
-			if len(budgets.Budgets) > 0 {
-				b := budgets.Budgets[0]
-				pct := 0
-				if b.AmountCents > 0 {
-					pct = int((cost.TotalCents * 100) / b.AmountCents)
-				}
-				fmt.Fprintf(cmd.OutOrStdout(), "Budget:  $%.2f (%s) — %d%% consumed\n",
-					float64(b.AmountCents)/100, b.Period, pct)
-			} else {
-				fmt.Fprintln(cmd.OutOrStdout(), "Budget:  (none — run `enclii billing budgets create`)")
+			if budgets.Budgets == nil {
+				budgets.Budgets = []billingBudget{}
 			}
 
-			if len(cost.Breakdown) > 0 {
-				fmt.Fprintln(cmd.OutOrStdout(), "\nTop drivers:")
-				tw := tabwriter.NewWriter(cmd.OutOrStdout(), 0, 0, 2, ' ', 0)
-				for i, b := range cost.Breakdown {
-					if i >= 5 {
-						break
-					}
-					fmt.Fprintf(tw, "  %s\t$%.2f\n", b.Key, float64(b.CostCents)/100)
-				}
-				_ = tw.Flush()
+			if jsonOut {
+				return printJSON(cmd.OutOrStdout(), map[string]interface{}{
+					"project": project,
+					"cost":    cost,
+					"budgets": budgets.Budgets,
+				})
 			}
+			renderBillingShow(cmd.OutOrStdout(), project, &cost, budgets.Budgets)
 			return nil
 		},
 	}
 	cmd.Flags().StringVarP(&project, "project", "p", "", "Project slug")
 	cmd.Flags().StringVar(&period, "period", "30d", "Period window: 7d|14d|30d|90d|1y|mtd")
+	cmd.Flags().BoolVar(&jsonOut, "json", false, "Emit machine-readable JSON")
 	return cmd
+}
+
+// billingMetering mirrors budgets.Metering in apps/waybill/internal/budgets.
+type billingMetering struct {
+	Status             string  `json:"status"`
+	Detail             string  `json:"detail"`
+	LastHeartbeatAt    *string `json:"last_heartbeat_at"`
+	LastAggregatedHour *string `json:"last_aggregated_hour"`
+	ProjectUsageRows   int64   `json:"project_usage_rows"`
+	UnaggregatedEvents int64   `json:"unaggregated_events"`
+	StaleAfterSeconds  int64   `json:"stale_after_seconds"`
+	CheckedAt          string  `json:"checked_at"`
+}
+
+// billingCost is GET /v1/projects/:slug/billing/cost (Waybill getProjectCost).
+// Metering and SpendKnown are pointers so an API that predates them decodes
+// as "not reported", which is shown as unverified rather than as a fact.
+type billingCost struct {
+	ProjectID   string           `json:"project_id"`
+	PeriodStart string           `json:"period_start"`
+	PeriodEnd   string           `json:"period_end"`
+	TotalCents  int64            `json:"total_cents"`
+	SpendKnown  *bool            `json:"spend_known,omitempty"`
+	Metering    *billingMetering `json:"metering,omitempty"`
+	GroupBy     string           `json:"group_by,omitempty"`
+	Breakdown   []struct {
+		Key       string `json:"key"`
+		CostCents int64  `json:"cost_cents"`
+	} `json:"breakdown"`
+}
+
+type billingBudget struct {
+	ID              string `json:"id"`
+	AmountCents     int64  `json:"amount_cents"`
+	Currency        string `json:"currency"`
+	Period          string `json:"period"`
+	AlertThresholds []int  `json:"alert_thresholds"`
+}
+
+type billingBudgets struct {
+	Budgets []billingBudget `json:"budgets"`
+}
+
+// spendLine returns the Spend: value and whether the figure is a measurement.
+// Only metering status "ok" makes it one; a missing status (older API) is
+// unverified, never a silent $0.00.
+func (c *billingCost) spendLine() (string, bool) {
+	amount := fmt.Sprintf("$%.2f", float64(c.TotalCents)/100)
+	if c.Metering == nil {
+		return amount + " (unverified: this API does not report metering status)", false
+	}
+	switch c.Metering.Status {
+	case "ok":
+		return amount, true
+	case "not_running":
+		return "unknown — metering is not running (the Waybill aggregator has never reported)", false
+	case "stale":
+		// What was aggregated is real, so a non-zero total is a floor.
+		since := "never"
+		if c.Metering.LastHeartbeatAt != nil {
+			since = *c.Metering.LastHeartbeatAt
+		}
+		if c.TotalCents > 0 {
+			return fmt.Sprintf("at least %s — metering is stale (last aggregator report: %s)", amount, since), false
+		}
+		return fmt.Sprintf("unknown — metering is stale (last aggregator report: %s)", since), false
+	default:
+		return fmt.Sprintf("unknown — metering status %q", c.Metering.Status), false
+	}
+}
+
+func renderBillingShow(w io.Writer, project string, cost *billingCost, budgets []billingBudget) {
+	spend, known := cost.spendLine()
+	fmt.Fprintf(w, "Project: %s\n", project)
+	fmt.Fprintf(w, "Period:  %s → %s\n", cost.PeriodStart, cost.PeriodEnd)
+	fmt.Fprintf(w, "Spend:   %s\n", spend)
+	if !known && cost.Metering != nil && cost.Metering.Detail != "" {
+		fmt.Fprintf(w, "Metering: %s — %s\n", cost.Metering.Status, cost.Metering.Detail)
+	}
+	if len(budgets) > 0 {
+		b := budgets[0]
+		if known {
+			pct := 0
+			if b.AmountCents > 0 {
+				pct = int((cost.TotalCents * 100) / b.AmountCents)
+			}
+			fmt.Fprintf(w, "Budget:  $%.2f (%s) — %d%% consumed\n",
+				float64(b.AmountCents)/100, b.Period, pct)
+		} else {
+			fmt.Fprintf(w, "Budget:  $%.2f (%s) — consumption unknown (spend is not measured)\n",
+				float64(b.AmountCents)/100, b.Period)
+		}
+	} else {
+		fmt.Fprintln(w, "Budget:  (none — run `enclii billing budgets create`)")
+	}
+
+	if len(cost.Breakdown) > 0 {
+		fmt.Fprintln(w, "\nTop drivers:")
+		tw := tabwriter.NewWriter(w, 0, 0, 2, ' ', 0)
+		for i, b := range cost.Breakdown {
+			if i >= 5 {
+				break
+			}
+			fmt.Fprintf(tw, "  %s\t$%.2f\n", b.Key, float64(b.CostCents)/100)
+		}
+		_ = tw.Flush()
+	}
 }
 
 // ----------------------------------------------------------------------------

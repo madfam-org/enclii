@@ -22,6 +22,7 @@ import (
 	"database/sql"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"strings"
@@ -35,10 +36,18 @@ import (
 )
 
 // CostQuery is the minimal interface the evaluator needs from a cost reader.
-// It mirrors budgets.CostReader.ProjectCost and keeps tests hermetic.
+// It mirrors budgets.CostReader.ProjectCost and budgets.CostReader.Metering
+// and keeps tests hermetic.
 type CostQuery interface {
 	ProjectCost(ctx context.Context, projectID uuid.UUID, start, end time.Time) (int64, error)
+	Metering(ctx context.Context, projectID uuid.UUID, start, end, now time.Time) (budgets.Metering, error)
 }
+
+// errMeteringUnverified marks a budget the evaluator refused to judge because
+// the spend behind it is not a measurement (aggregator down, stale, or events
+// never rolled up). Judging it would compare $0.00 of missing data against
+// the budget and silently report "under budget".
+var errMeteringUnverified = errors.New("metering unverified")
 
 // BudgetStore is the slice of budgets.Store the evaluator depends on.
 type BudgetStore interface {
@@ -122,9 +131,13 @@ func (e *Evaluator) RunOnce(ctx context.Context) (fired int, err error) {
 
 	projectsEvaluated := 0
 	errCount := 0
+	unverified := 0
 	for _, b := range budgetList {
 		n, err := e.evaluateBudget(ctx, b)
 		if err != nil {
+			if errors.Is(err, errMeteringUnverified) {
+				unverified++
+			}
 			e.logger.Error("budget evaluation failed",
 				zap.String("budget_id", b.ID.String()),
 				zap.String("project_id", b.ProjectID.String()),
@@ -137,8 +150,14 @@ func (e *Evaluator) RunOnce(ctx context.Context) (fired int, err error) {
 		projectsEvaluated++
 	}
 
+	notes := ""
+	if unverified > 0 {
+		// Counted in errors too; the note names why, so a run row with
+		// errors>0 is never read as "budgets checked, all under".
+		notes = fmt.Sprintf("metering_unverified=%d", unverified)
+	}
 	if runID > 0 {
-		if err := e.store.FinishEvaluatorRun(ctx, runID, projectsEvaluated, fired, errCount, ""); err != nil {
+		if err := e.store.FinishEvaluatorRun(ctx, runID, projectsEvaluated, fired, errCount, notes); err != nil {
 			e.logger.Warn("finish evaluator run", zap.Error(err))
 		}
 	}
@@ -148,7 +167,20 @@ func (e *Evaluator) RunOnce(ctx context.Context) (fired int, err error) {
 // evaluateBudget fires alerts for any thresholds the project has newly crossed.
 // Returns the number of new alert events emitted.
 func (e *Evaluator) evaluateBudget(ctx context.Context, b *budgets.Budget) (int, error) {
-	periodStart, periodEnd := budgets.PeriodBounds(b.Period, e.clock.Now())
+	now := e.clock.Now()
+	periodStart, periodEnd := budgets.PeriodBounds(b.Period, now)
+
+	// Read proof first: a budget is only judged against spend that is a
+	// measurement. A failed or non-ok metering read skips the budget as an
+	// error instead of letting a $0.00 of missing data pass as "under budget".
+	meter, err := e.cost.Metering(ctx, b.ProjectID, periodStart, periodEnd, now)
+	if err != nil {
+		return 0, fmt.Errorf("%w: %v", errMeteringUnverified, err)
+	}
+	if !meter.SpendKnown() {
+		return 0, fmt.Errorf("%w: %s: %s", errMeteringUnverified, meter.Status, meter.Detail)
+	}
+
 	actualCents, err := e.cost.ProjectCost(ctx, b.ProjectID, periodStart, periodEnd)
 	if err != nil {
 		return 0, fmt.Errorf("project cost: %w", err)
