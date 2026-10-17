@@ -99,9 +99,12 @@ spec:
             # refused even if listed. Workload namespaces only: the control
             # plane and data plane (enclii, data, vault, argocd, storage,
             # operators) stay out. Seeded with the namespaces of the recorded
-            # break-glass restarts; extend it here, by PR.
+            # break-glass restarts; extend it here, by PR. monitoring
+            # (2026-10-17): Grafana applies an intake-submitted admin password
+            # at pod start (monitoring/grafana-admin), so the submit is followed
+            # by `ops pods restart deployment/grafana -n monitoring`.
             - name: ENCLII_OPS_RESTART_NAMESPACES
-              value: "logging,dhanam,digifab-quoting"
+              value: "logging,dhanam,digifab-quoting,monitoring"
           ports:
             - containerPort: 4200
               name: http
