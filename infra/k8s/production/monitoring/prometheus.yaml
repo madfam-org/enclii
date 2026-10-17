@@ -1318,6 +1318,25 @@ data:
               summary: "Longhorn volume {{ $labels.volume }} is {{ $value | humanizePercentage }} full"
               description: "Volume is above 90% capacity for 1h. Expand or clean up data to prevent write failures."
 
+          # Snapshot bloat (2026-10-17). actualSize counts every snapshot in the
+          # volume's chain, so on a volume that rewrites its data (TSDB, WAL,
+          # index) it climbs far past the claim while the filesystem is fine:
+          # prometheus-rules-eval read 5.8x, prometheus-data 3.2x, loki 2.0x,
+          # the shared postgres 1.8x. That eats node disk that Longhorn then
+          # cannot schedule replicas onto. Expanding the claim does not help
+          # (a bigger volume grows bigger snapshots); the fix is the volume's
+          # recurring-job group and pruning stranded snapshots, per
+          # infra/helm/longhorn/recurring-jobs.yaml. Warning: digest only.
+          - alert: LonghornSnapshotBloat
+            expr: (longhorn_volume_actual_size_bytes / longhorn_volume_capacity_bytes) > 1.5
+            for: 6h
+            labels:
+              severity: warning
+              service: longhorn
+            annotations:
+              summary: "Longhorn volume {{ $labels.volume }} holds {{ $value | humanize }}x its size in snapshots"
+              description: "actualSize / capacity has been above 1.5 for 6h. The excess is snapshot history, not data. Move the volume to the recurring-job group that matches its churn (high-churn for TSDB/WAL/index volumes) and delete the snapshots the old group stranded: procedure in infra/helm/longhorn/recurring-jobs.yaml."
+
   chronic-restart-rules.yml: |
     # Chronic crash-loop detection across the entire MADFAM platform.
     # Existing PodWriteFailureCrashLoop catches 30m bursts; this group
