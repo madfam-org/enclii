@@ -599,7 +599,7 @@ Email: [security@madfam.io](mailto:security@madfam.io)
 We run our entire production infrastructure on Enclii, authenticated by Janua.
 
 When prospects ask **"Can Enclii handle production?"** — we answer with verifiable proof:
-> "We run our entire production on Enclii. Here's our status page showing 99.95% uptime. We deploy 10-20 times per day with zero downtime using our own platform."
+> "We run our entire production on Enclii. We deploy 10-20 times per day with zero downtime using our own platform."
 
 **Production services running today:**
 - Control Plane API at api.enclii.dev
