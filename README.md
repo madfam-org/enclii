@@ -95,9 +95,9 @@ _Last Updated: 2026-07-26_
 - **Self-hosted PostgreSQL** - In-cluster with persistent storage
 - **Self-hosted Redis** - In-cluster caching (Sentinel ready for multi-node)
 
-> **Builder Node Targeting**: Build workloads are isolated on "The Forge" via Kubernetes taints (`builder=true:NoSchedule`). Production apps run exclusively on "The Sanctuary".
+> **Builder Node Targeting**: Build workloads are steered to builder-role nodes with Kubernetes taints (`builder=true:NoSchedule`). Not every builder-role node is tainted yet, so production workloads can still land on one; tightening that placement is open work.
 
-> **Infrastructure Audit (Jan 2026)**: Evaluated Ubicloud managed PostgreSQL and Redis Sentinel. **Decision: NOT NEEDED** for 99.5% SLA / 24-hour RPO. Sentinel manifests staged for future multi-node deployment.
+> **Infrastructure Audit (Jan 2026)**: Evaluated Ubicloud managed PostgreSQL and Redis Sentinel. **Decision: NOT NEEDED** at this stage. Sentinel manifests staged for future multi-node deployment.
 
 Self-hosted infrastructure is significantly cheaper than equivalent SaaS platforms, but the platform is still a production-running beta until the remaining blockers below are closed.
 
@@ -599,7 +599,7 @@ Email: [security@madfam.io](mailto:security@madfam.io)
 We run our entire production infrastructure on Enclii, authenticated by Janua.
 
 When prospects ask **"Can Enclii handle production?"** — we answer with verifiable proof:
-> "We run our entire production on Enclii. Here's our status page showing 99.95% uptime. We deploy 10-20 times per day with zero downtime using our own platform."
+> "We run our entire production on Enclii, deployed with our own platform."
 
 **Production services running today:**
 - Control Plane API at api.enclii.dev
