@@ -158,16 +158,27 @@ spec:
         - name: config
           configMap:
             name: cloudflared-config
-      # Spread across nodes for HA (when multiple nodes available)
+      # Never two connectors on one node. This was `preferred`, and both
+      # replicas ran on the control-plane node, so losing that one node took
+      # every tunnel hostname down (infra-stability audit 2026-10-17, E2-04).
+      # `required` is enforced at scheduling time (IgnoredDuringExecution: a
+      # running pod is never evicted by it).
+      #
+      # Rollouts: maxSurge 1 / maxUnavailable 0 (above) start the new pod
+      # before an old one stops, so a rollout needs a node that runs no
+      # connector, a third eligible node. Three untainted workload nodes
+      # exist today. With only two (one drained or lost), a rollout cannot
+      # place its surge pod: it waits, both old connectors keep serving, and
+      # the Deployment reports Progressing and then Degraded after
+      # progressDeadlineSeconds (600s), which ArgoCDAppDegraded surfaces.
+      # Replacing a lost replica needs only one free node, never a surge.
       affinity:
         podAntiAffinity:
-          preferredDuringSchedulingIgnoredDuringExecution:
-            - weight: 100
-              podAffinityTerm:
-                labelSelector:
-                  matchLabels:
-                    app: cloudflared
-                topologyKey: kubernetes.io/hostname
+          requiredDuringSchedulingIgnoredDuringExecution:
+            - labelSelector:
+                matchLabels:
+                  app: cloudflared
+              topologyKey: kubernetes.io/hostname
       # Quick recovery from node issues
       tolerations:
         - key: "node.kubernetes.io/not-ready"
