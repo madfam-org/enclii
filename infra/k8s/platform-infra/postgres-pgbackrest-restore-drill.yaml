@@ -107,7 +107,21 @@ spec:
       # sized in May for ~1.6GB and no longer fits. Longhorn allows online
       # expansion (allowVolumeExpansion: true), and the PVC is detached
       # between drills.
-      storage: 8Gi
+      #
+      # 8Gi -> 12Gi (2026-10-17). Data files grew 2.1GB (09-13) -> 2.7GB
+      # (09-25), roughly 0.3-0.6GB a month, and a run needs data + the WAL
+      # that replay keeps in pg_wal (up to ~1-2GB). At that rate 8Gi runs
+      # out around data ~5.5GB, i.e. 5-9 months after 09-25 (estimate).
+      # 12Gi is the 10Gi live volume plus room for WAL, so the drill can
+      # restore whatever the live volume can hold. Note that Longhorn's actualSize for this volume (7.54 GiB
+      # on 8Gi on 10-17) is a HIGH-WATER MARK, not the fill: the drill
+      # deletes the restored data on exit and before each restore, but
+      # freed blocks are not trimmed, so actualSize stays near the claim
+      # size. The drill prints the real fill (df) after the restore.
+      # Growing a claim is allowed in place; the volume is detached between
+      # runs, so Longhorn expands it offline and the filesystem grows on the
+      # next attach.
+      storage: 12Gi
   storageClassName: longhorn
 ---
 apiVersion: batch/v1
@@ -343,6 +357,10 @@ spec:
                   # pg_hba.conf; the server listens on no TCP address.
                   echo "local all all trust" > /tmp/drill-pg_hba.conf
                   echo "  restored size: $(du -sh "${PGDATA_DIR}" | cut -f1)"
+                  # The real fill of the scratch volume (Longhorn's actualSize
+                  # is a high-water mark), so a drill that is close to running
+                  # out of space says so before it does.
+                  echo "  scratch volume: $(df -h /var/lib/restore-drill | tail -n 1)"
                   [ "$(remaining)" -gt 0 ] || fail "the restore used up the ${DRILL_DEADLINE_SECONDS}s budget"
 
                   echo "[3/5] Start the restored cluster (archive OFF, local socket only) and replay WAL"
