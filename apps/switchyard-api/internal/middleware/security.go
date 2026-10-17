@@ -1,8 +1,10 @@
 package middleware
 
 import (
+	"math/rand/v2"
 	"net"
 	"net/http"
+	"net/netip"
 	"os"
 	"strconv"
 	"strings"
@@ -20,6 +22,9 @@ type SecurityMiddleware struct {
 	mutex        sync.RWMutex
 	config       *SecurityConfig
 	stopCleanup  chan struct{} // Channel to stop the cleanup goroutine
+
+	// trustedProxies is config.TrustedProxies parsed once at construction.
+	trustedProxies []netip.Prefix
 }
 
 // rateLimiterEntry holds a rate limiter and its last access time
@@ -47,9 +52,12 @@ type SecurityConfig struct {
 	WriteTimeout   time.Duration
 
 	// IP filtering
-	AllowedIPs     []string // CIDR blocks
-	BlockedIPs     []string // CIDR blocks
-	TrustedProxies []string // for X-Forwarded-For header
+	AllowedIPs []string // CIDR blocks
+	BlockedIPs []string // CIDR blocks
+	// TrustedProxies lists the peers (CIDRs or bare IPs) whose forwarded
+	// headers are believed. Empty means nobody's: the peer address is used.
+	// DefaultSecurityConfig reads ENCLII_TRUSTED_PROXY_CIDRS.
+	TrustedProxies []string
 
 	// CORS
 	AllowedOrigins   []string
@@ -68,6 +76,8 @@ func NewSecurityMiddleware(config *SecurityConfig) *SecurityMiddleware {
 		rateLimiters: make(map[string]*rateLimiterEntry),
 		config:       config,
 		stopCleanup:  make(chan struct{}),
+
+		trustedProxies: parseTrustedProxies(config.TrustedProxies),
 	}
 
 	// Start cleanup goroutine
@@ -440,67 +450,164 @@ func (s *SecurityMiddleware) UserAgentValidationMiddleware() gin.HandlerFunc {
 	}
 }
 
-// Get client IP address considering proxies
+// getClientIP returns the address the rate limiter and the security logs key
+// on. Forwarded headers are believed ONLY when the immediate peer
+// (RemoteAddr) is inside SecurityConfig.TrustedProxies; from any other peer
+// they are client-controlled and ignored. With no trusted proxies configured
+// (the default) the peer address is the answer.
+//
+// From a trusted peer, in order:
+//  1. CF-Connecting-IP, set by Cloudflare and passed through by cloudflared;
+//  2. X-Forwarded-For, walked right to left, skipping trusted hops;
+//  3. X-Real-IP;
+//  4. the peer address.
 func (s *SecurityMiddleware) getClientIP(c *gin.Context) string {
-	// Check X-Forwarded-For header (if using trusted proxies)
-	if len(s.config.TrustedProxies) > 0 {
-		forwarded := c.Request.Header.Get("X-Forwarded-For")
-		if forwarded != "" {
-			// Get the first IP in the chain
-			ips := strings.Split(forwarded, ",")
-			return strings.TrimSpace(ips[0])
-		}
+	peer := remoteHost(c.Request.RemoteAddr)
+	peerAddr, err := netip.ParseAddr(peer)
+	if err != nil || !s.isTrustedProxy(peerAddr) {
+		return peer
 	}
 
-	// Check X-Real-IP header
-	if realIP := c.Request.Header.Get("X-Real-IP"); realIP != "" {
-		return realIP
+	if ip, ok := parseIP(c.Request.Header.Get("CF-Connecting-IP")); ok {
+		return ip
 	}
-
-	// Fall back to remote address
-	ip, _, err := net.SplitHostPort(c.Request.RemoteAddr)
-	if err != nil {
-		return c.Request.RemoteAddr
-	}
-
-	return ip
-}
-
-// evictOldestLimiters removes the oldest rate limiters based on last access time
-// SECURITY FIX: Prevents unbounded memory growth by evicting least recently used entries
-func (s *SecurityMiddleware) evictOldestLimiters(count int) {
-	// Build a list of IP addresses sorted by last access time
-	type entry struct {
-		ip         string
-		lastAccess time.Time
-	}
-
-	entries := make([]entry, 0, len(s.rateLimiters))
-	for ip, limiterEntry := range s.rateLimiters {
-		entries = append(entries, entry{ip: ip, lastAccess: limiterEntry.lastAccess})
-	}
-
-	// Sort by last access time (oldest first)
-	for i := 0; i < len(entries)-1; i++ {
-		for j := i + 1; j < len(entries); j++ {
-			if entries[i].lastAccess.After(entries[j].lastAccess) {
-				entries[i], entries[j] = entries[j], entries[i]
+	if xff := c.Request.Header.Get("X-Forwarded-For"); xff != "" {
+		hops := strings.Split(xff, ",")
+		for i := len(hops) - 1; i >= 0; i-- {
+			addr, err := netip.ParseAddr(strings.TrimSpace(hops[i]))
+			if err != nil {
+				break // malformed chain: stop believing it
+			}
+			if i == 0 || !s.isTrustedProxy(addr) {
+				return addr.Unmap().String()
 			}
 		}
 	}
+	if ip, ok := parseIP(c.Request.Header.Get("X-Real-IP")); ok {
+		return ip
+	}
+	return peer
+}
 
-	// Remove the oldest entries
-	removed := 0
-	for i := 0; i < len(entries) && removed < count; i++ {
-		delete(s.rateLimiters, entries[i].ip)
-		removed++
+func (s *SecurityMiddleware) isTrustedProxy(addr netip.Addr) bool {
+	addr = addr.Unmap()
+	for _, p := range s.trustedProxies {
+		if p.Contains(addr) {
+			return true
+		}
+	}
+	return false
+}
+
+// remoteHost strips the port from a RemoteAddr, tolerating a bare host.
+func remoteHost(remoteAddr string) string {
+	host, _, err := net.SplitHostPort(remoteAddr)
+	if err != nil {
+		return remoteAddr
+	}
+	return host
+}
+
+// parseIP returns the canonical form of a single IP header value.
+func parseIP(v string) (string, bool) {
+	addr, err := netip.ParseAddr(strings.TrimSpace(v))
+	if err != nil {
+		return "", false
+	}
+	return addr.Unmap().String(), true
+}
+
+// parseTrustedProxies turns CIDRs or bare IPs into prefixes. An entry that
+// does not parse is logged and dropped, so a typo narrows trust rather than
+// widening it.
+func parseTrustedProxies(entries []string) []netip.Prefix {
+	out := make([]netip.Prefix, 0, len(entries))
+	for _, raw := range entries {
+		e := strings.TrimSpace(raw)
+		if e == "" {
+			continue
+		}
+		if strings.Contains(e, "/") {
+			p, err := netip.ParsePrefix(e)
+			if err != nil {
+				logrus.WithField("entry", e).Error("Ignoring invalid trusted proxy CIDR")
+				continue
+			}
+			out = append(out, p.Masked())
+			continue
+		}
+		a, err := netip.ParseAddr(e)
+		if err != nil {
+			logrus.WithField("entry", e).Error("Ignoring invalid trusted proxy address")
+			continue
+		}
+		a = a.Unmap()
+		out = append(out, netip.PrefixFrom(a, a.BitLen()))
+	}
+	return out
+}
+
+// evictOldestLimiters removes the count least recently used rate limiters.
+// Callers hold s.mutex. Selection is a quickselect on lastAccess with a
+// random pivot, so the expected cost is linear in the number of limiters
+// (the previous pairwise sort was quadratic and ran under the global lock,
+// exactly when the map was full).
+func (s *SecurityMiddleware) evictOldestLimiters(count int) {
+	if count <= 0 || len(s.rateLimiters) == 0 {
+		return
+	}
+	entries := make([]limiterAge, 0, len(s.rateLimiters))
+	for ip, e := range s.rateLimiters {
+		entries = append(entries, limiterAge{ip: ip, lastAccess: e.lastAccess})
+	}
+	if count > len(entries) {
+		count = len(entries)
+	}
+	selectOldest(entries, count)
+	for _, e := range entries[:count] {
+		delete(s.rateLimiters, e.ip)
 	}
 
-	if removed > 0 {
-		logrus.WithFields(logrus.Fields{
-			"evicted_count": removed,
-			"remaining":     len(s.rateLimiters),
-		}).Info("Evicted old rate limiters")
+	logrus.WithFields(logrus.Fields{
+		"evicted_count": count,
+		"remaining":     len(s.rateLimiters),
+	}).Info("Evicted old rate limiters")
+}
+
+type limiterAge struct {
+	ip         string
+	lastAccess time.Time
+}
+
+// selectOldest partially orders entries so that entries[:k] hold the k
+// oldest lastAccess values (in no particular order). Expected O(n).
+func selectOldest(entries []limiterAge, k int) {
+	lo, hi := 0, len(entries)-1
+	for lo < hi {
+		pivot := entries[lo+rand.IntN(hi-lo+1)].lastAccess // #nosec G404 -- pivot choice, not security
+		// Three-way partition: [lo,lt) older, [lt,gt] equal, (gt,hi] newer.
+		lt, i, gt := lo, lo, hi
+		for i <= gt {
+			switch t := entries[i].lastAccess; {
+			case t.Before(pivot):
+				entries[lt], entries[i] = entries[i], entries[lt]
+				lt++
+				i++
+			case t.After(pivot):
+				entries[i], entries[gt] = entries[gt], entries[i]
+				gt--
+			default:
+				i++
+			}
+		}
+		switch {
+		case k < lt:
+			hi = lt - 1
+		case k > gt+1:
+			lo = gt + 1
+		default:
+			return
+		}
 	}
 }
 
@@ -577,7 +684,21 @@ func DefaultSecurityConfig() *SecurityConfig {
 		AllowedHeaders:   []string{"Authorization", "Content-Type", "X-Requested-With", "X-IDP-Token", "X-CSRF-Token"},
 		AllowCredentials: true,
 		MaxAge:           86400, // 24 hours
+		TrustedProxies:   getTrustedProxies(),
 	}
+}
+
+// getTrustedProxies reads ENCLII_TRUSTED_PROXY_CIDRS (comma-separated CIDRs
+// or IPs). Unset means no proxy is trusted and forwarded headers are ignored.
+// Behind cloudflared, set it to the range the cloudflared pods connect from
+// (the cluster pod CIDR) so the limiter keys on each visitor's
+// CF-Connecting-IP instead of on the cloudflared pod.
+func getTrustedProxies() []string {
+	v := os.Getenv("ENCLII_TRUSTED_PROXY_CIDRS")
+	if strings.TrimSpace(v) == "" {
+		return nil
+	}
+	return strings.Split(v, ",")
 }
 
 // getAllowedOrigins returns the allowed CORS origins based on environment configuration.
