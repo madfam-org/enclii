@@ -271,8 +271,8 @@ spec:
                 - name: MIN_USER_TABLES
                   value: "500"
                 # The archive trails real time by a minute or two
-                # (archive_timeout=60, and the sidecar's `pgbackrest check`
-                # forces a WAL switch every 30 s), and the replay keeps
+                # (archive_timeout=60; the sidecar's `pgbackrest check` also
+                # forces a WAL switch every 300 s), and the replay keeps
                 # chasing it while the drill runs, so a complete replay ends
                 # at or after the drill start. 30 min allows for an archiver
                 # hiccup. The old 6 h proved nothing: the newest backup
