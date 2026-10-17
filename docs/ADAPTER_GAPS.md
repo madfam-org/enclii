@@ -24,6 +24,25 @@ When closing a gap, remove the row and link the PR that added the adapter.
 
 ## Progress log
 
+### 2026-10-17 — Longhorn replica count: drift is visible, changing it is not wired (gap open)
+
+`storageclass-apply` now asks for 2 replicas on `longhorn` and
+`longhorn-replicated`, and its dry run and apply report a live class whose
+`numberOfReplicas` differs as `drift` (status `drift_detected`) instead of
+"already present". It still never mutates an existing class. Open gaps, each
+done today by break-glass `kubectl` or the Longhorn UI:
+
+- deleting a StorageClass so `storageclass-apply` can recreate it
+  (parameters are immutable);
+- reading and patching a Longhorn volume's `spec.numberOfReplicas`
+  (`ops storage longhorn` does not return it);
+- reading StorageClass parameters (`ops storage volumes` returns only the
+  class name);
+- moving a volume between recurring-job groups (the
+  `recurring-job-group.longhorn.io/<group>` volume labels) and deleting the
+  snapshots the old group leaves behind
+  (`infra/helm/longhorn/recurring-jobs.yaml` header).
+
 ### 2026-10-14 — `ops pods restart` wired (row closed)
 
 `enclii ops pods restart` advertised a capability whose apply returned HTTP
