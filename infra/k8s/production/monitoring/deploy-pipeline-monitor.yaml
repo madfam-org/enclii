@@ -32,13 +32,23 @@ metadata:
     app.kubernetes.io/component: monitoring
     app.kubernetes.io/part-of: enclii
 data:
-  # 14 critical-path repos. Adding a repo: append below; per-repo `branch`
-  # defaults to `main` (override only if the repo's deploy branch differs).
+  # 20 critical-path repos. Per-repo `branch` defaults to `main` (override
+  # only if the repo's deploy branch differs).
   #
   # THIS LIST IS FROZEN LEGACY STATE — do not extend it. check-zero-touch-
   # boundaries.sh rejects any new entry, because monitor targets belong in
   # onboarding/Argo state, not hardcoded per-app in Enclii. avala was added
   # here on 2026-08-11 and correctly bounced by that guard.
+  #
+  # One bounded exception, 2026-10-17 (infra-stability audit E3-F13): nauta,
+  # crea-map, angelia, yantra4d, kalya and avala were added. They carry the
+  # vCTO client (Crea Tu Mundo's MAP and the Nauta cockpit), the pager itself
+  # (angelia = Courier) and the products that sell, and red main CI on any of
+  # them alerted nobody. Each was green on main (latest completed Actions
+  # runs = success) and at Argo parity (Synced, revision = main) when added,
+  # so none pages on arrival. Deriving these targets from Argo state, as the
+  # parity monitor does, remains the real fix; until then the guard's
+  # allowlist and this list move together.
   #
   # What that means for coverage, since the two monitors answer different
   # questions:
@@ -70,7 +80,13 @@ data:
         {"repo": "madfam-org/madfam-site"},
         {"repo": "madfam-org/digifab-quoting"},
         {"repo": "madfam-org/pravara-mes"},
-        {"repo": "madfam-org/sim4d"}
+        {"repo": "madfam-org/sim4d"},
+        {"repo": "madfam-org/nauta"},
+        {"repo": "madfam-org/crea-map"},
+        {"repo": "madfam-org/angelia"},
+        {"repo": "madfam-org/yantra4d"},
+        {"repo": "madfam-org/kalya"},
+        {"repo": "madfam-org/avala"}
       ]
     }
 
@@ -169,8 +185,8 @@ metadata:
     app.kubernetes.io/part-of: enclii
 spec:
   # Every 5 minutes — matches the alert "for: 0m, expr > 1800" cadence.
-  # 14 repos × 2 GitHub API calls = 28 req/run = 336 req/hour. Authenticated
-  # GitHub limit is 5000 req/hour, so we sit at ~7% utilization with plenty
+  # 20 repos × 2 GitHub API calls = 40 req/run = 480 req/hour. Authenticated
+  # GitHub limit is 5000 req/hour, so we sit at ~10% utilization with plenty
   # of headroom for retries.
   schedule: "*/5 * * * *"
   concurrencyPolicy: Forbid
