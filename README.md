@@ -95,7 +95,7 @@ _Last Updated: 2026-07-26_
 - **Self-hosted PostgreSQL** - In-cluster with persistent storage
 - **Self-hosted Redis** - In-cluster caching (Sentinel ready for multi-node)
 
-> **Builder Node Targeting**: Build workloads are isolated on "The Forge" via Kubernetes taints (`builder=true:NoSchedule`). Production apps run exclusively on "The Sanctuary".
+> **Builder Node Targeting**: Build workloads are steered to builder-role nodes with Kubernetes taints (`builder=true:NoSchedule`). Not every builder-role node is tainted yet, so production workloads can still land on one; tightening that placement is open work.
 
 > **Infrastructure Audit (Jan 2026)**: Evaluated Ubicloud managed PostgreSQL and Redis Sentinel. **Decision: NOT NEEDED** at this stage. Sentinel manifests staged for future multi-node deployment.
 
