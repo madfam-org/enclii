@@ -36,6 +36,15 @@
 # was 46 days old and the runbook's next-bump date was 2026-09-19, i.e.
 # inside the window that ends in a registration outage.
 #
+# 2026-10-17 bump: 2.337.0 (published 2026-08-27) → 2.338.0 (published
+# 2026-10-06; linux/amd64 config `created` 2026-10-06T13:57:43Z), the newest
+# upstream release at the time of writing. GitHub's self-hosted runner
+# reference: with automatic updates disabled, "you will be required to update
+# your runner version within 30 days of a new version being made available",
+# and "If you do not perform a software update within 30 days, the GitHub
+# Actions service will not queue jobs to your runner." 30 days after
+# 2026-10-06 is 2026-11-05.
+#
 # BUMPING THIS LINE DOES NOT DEPLOY ANYTHING. The pools run a digest pin
 # (Kyverno `require-image-digest`), so the new agent only reaches runners
 # once the overlay digest produced by .github/workflows/arc-runner-image.yml
@@ -51,8 +60,8 @@
 # registry is unreachable from CI. Update it in the same edit as BASE_TAG —
 # the ratchet fails the build if the two disagree.
 ARG BASE_IMAGE=ghcr.io/actions/actions-runner
-ARG BASE_TAG=2.337.0
-ARG BASE_TAG_DATE=2026-08-27
+ARG BASE_TAG=2.338.0
+ARG BASE_TAG_DATE=2026-10-06
 FROM ${BASE_IMAGE}:${BASE_TAG}
 ARG BASE_IMAGE
 ARG BASE_TAG

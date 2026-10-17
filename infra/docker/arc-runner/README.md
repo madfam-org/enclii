@@ -208,8 +208,8 @@ the only place a root-only squashfs tree would be caught.
     Main pushes, and `workflow_dispatch` on `main` with `tag_stable=true`.
     Pull requests build and smoke-test but never push and never move it.
 - Base image (pinned in [`Dockerfile`](./Dockerfile)):
-  `ghcr.io/actions/actions-runner:2.337.0` (upstream release published
-  2026-08-27). The `Dockerfile` is the source of truth for this value; this
+  `ghcr.io/actions/actions-runner:2.338.0` (upstream release published
+  2026-10-06). The `Dockerfile` is the source of truth for this value; this
   line and the comment in `infra/helm/arc/values-runner-set.yaml` track it.
 - Build host: GitHub-hosted `ubuntu-24.04`, pinned rather than
   `ubuntu-latest` so a GitHub label move cannot change the build host
