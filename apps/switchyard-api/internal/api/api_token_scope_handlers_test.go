@@ -19,6 +19,16 @@ import (
 	"github.com/madfam-org/enclii/apps/switchyard-api/internal/db"
 )
 
+// adminEmailAuth is an AuthManager carrying an operator admin-email set, as
+// the OIDC and JWT managers do (ENCLII_ADMIN_EMAILS).
+type adminEmailAuth struct{ set map[string]bool }
+
+func (a adminEmailAuth) AuthMiddleware() gin.HandlerFunc { return func(c *gin.Context) { c.Next() } }
+func (a adminEmailAuth) RequireRole(...string) gin.HandlerFunc {
+	return func(c *gin.Context) { c.Next() }
+}
+func (a adminEmailAuth) IsAdminEmail(email string) bool { return a.set[email] }
+
 // scopesArg matches the scopes column value the repository writes.
 type scopesArg struct{ want []string }
 
@@ -44,7 +54,14 @@ func TestCreateAPIToken_ScopesBoundedByCaller(t *testing.T) {
 		wantStatus    int
 		wantStored    []string
 		noOwnerLookup bool
+		adminEmails   map[string]bool // nil: no auth manager wired
 	}{
+		// Production OIDC: the operator is admin by the session-time
+		// admin-email override while users.role stays developer.
+		{name: "operator in admin-email set may mint admin", sessionRole: "admin", storedRole: "developer", adminEmails: map[string]bool{"owner@example.test": true}, scopes: []string{"admin"}, wantStatus: http.StatusCreated, wantStored: []string{"admin"}},
+		{name: "same account not in the set may not mint admin", sessionRole: "admin", storedRole: "developer", adminEmails: map[string]bool{"operator@example.test": true}, platformAdmin: ptrBool(false), scopes: []string{"admin"}, wantStatus: http.StatusForbidden},
+		{name: "empty admin-email set may not mint admin", sessionRole: "admin", storedRole: "developer", adminEmails: map[string]bool{}, platformAdmin: ptrBool(false), scopes: []string{"admin"}, wantStatus: http.StatusForbidden},
+		{name: "self-signed-up developer stays capped at developer", sessionRole: "developer", storedRole: "developer", adminEmails: map[string]bool{"operator@example.test": true}, platformAdmin: ptrBool(false), scopes: []string{"admin"}, wantStatus: http.StatusForbidden},
 		{name: "developer may not mint admin", sessionRole: "developer", storedRole: "developer", platformAdmin: ptrBool(false), scopes: []string{"admin"}, wantStatus: http.StatusForbidden},
 		{name: "viewer may not mint developer", sessionRole: "viewer", storedRole: "viewer", platformAdmin: ptrBool(false), scopes: []string{"developer"}, wantStatus: http.StatusForbidden},
 		{name: "admin may mint admin", sessionRole: "admin", storedRole: "admin", scopes: []string{"admin"}, wantStatus: http.StatusCreated, wantStored: []string{"admin"}},
@@ -68,6 +85,9 @@ func TestCreateAPIToken_ScopesBoundedByCaller(t *testing.T) {
 					APITokens:   db.NewAPITokenRepository(database),
 				},
 				logger: testLogger(t),
+			}
+			if tc.adminEmails != nil {
+				h.auth = adminEmailAuth{set: tc.adminEmails}
 			}
 			uid := uuid.New()
 

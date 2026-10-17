@@ -115,9 +115,17 @@ func TestAPITokenRoleBoundedByOwner(t *testing.T) {
 		ownerErr      error
 		platformAdmin *bool // nil: the platform rank must not be queried
 		platformErr   error
+		adminEmails   map[string]bool // the managers' ENCLII_ADMIN_EMAILS set
 		wantStatus    int
 		wantRole      string
 	}{
+		// The operator admin-email set raises a developer-stored owner to
+		// admin, exactly as the session paths do, without a platform lookup.
+		{name: "admin scope, developer owner in admin-email set", scopes: []string{"admin"}, ownerRole: "developer", ownerActive: true, adminEmails: map[string]bool{"owner@example.test": true}, wantStatus: http.StatusNoContent, wantRole: "admin"},
+		{name: "admin scope, developer owner not in admin-email set", scopes: []string{"admin"}, ownerRole: "developer", ownerActive: true, adminEmails: map[string]bool{"operator@example.test": true}, platformAdmin: boolPtr(false), wantStatus: http.StatusNoContent, wantRole: "developer"},
+		{name: "admin scope, developer owner, empty admin-email set", scopes: []string{"admin"}, ownerRole: "developer", ownerActive: true, adminEmails: map[string]bool{}, platformAdmin: boolPtr(false), wantStatus: http.StatusNoContent, wantRole: "developer"},
+		{name: "admin-email set does not change the case of the match", scopes: []string{"admin"}, ownerRole: "developer", ownerActive: true, adminEmails: map[string]bool{"OWNER@example.test": true}, platformAdmin: boolPtr(false), wantStatus: http.StatusNoContent, wantRole: "developer"},
+		{name: "no scopes, developer owner in admin-email set", scopes: nil, ownerRole: "developer", ownerActive: true, adminEmails: map[string]bool{"owner@example.test": true}, wantStatus: http.StatusNoContent, wantRole: "developer"},
 		{name: "admin scope, admin owner", scopes: []string{"admin"}, ownerRole: "admin", ownerActive: true, wantStatus: http.StatusNoContent, wantRole: "admin"},
 		{name: "admin scope, developer owner", scopes: []string{"admin"}, ownerRole: "developer", ownerActive: true, platformAdmin: boolPtr(false), wantStatus: http.StatusNoContent, wantRole: "developer"},
 		{name: "admin scope, viewer owner", scopes: []string{"admin"}, ownerRole: "viewer", ownerActive: true, platformAdmin: boolPtr(false), wantStatus: http.StatusNoContent, wantRole: "viewer"},
@@ -138,6 +146,7 @@ func TestAPITokenRoleBoundedByOwner(t *testing.T) {
 				owner := uuid.New()
 				validator := &scopedTokenValidator{owner: owner, scopes: tc.scopes, used: make(chan struct{}, 1)}
 				manager.SetAPITokenValidator(validator)
+				manager.adminEmails = tc.adminEmails
 
 				q := mock.ExpectQuery(`FROM users WHERE id = \$1`).WithArgs(owner)
 				if tc.ownerErr != nil {
@@ -155,7 +164,10 @@ func TestAPITokenRoleBoundedByOwner(t *testing.T) {
 
 				handler := manager.AuthMiddleware()
 				if mode == "oidc" {
-					handler = (&OIDCManager{jwtManager: manager, repos: manager.repos}).AuthMiddleware()
+					// The OIDC manager carries its own set; the JWT manager's must
+					// not be what decides.
+					manager.adminEmails = nil
+					handler = (&OIDCManager{jwtManager: manager, repos: manager.repos, adminEmails: tc.adminEmails}).AuthMiddleware()
 				}
 				router := gin.New()
 				var gotRole string
@@ -183,3 +195,39 @@ func TestAPITokenRoleBoundedByOwner(t *testing.T) {
 }
 
 func boolPtr(b bool) *bool { return &b }
+
+func TestRepoAPITokenOwnerResolver(t *testing.T) {
+	cases := []struct {
+		name          string
+		storedRole    string
+		adminEmails   map[string]bool
+		platformAdmin *bool
+		want          Role
+	}{
+		{"stored admin", "admin", nil, nil, RoleAdmin},
+		{"developer in admin-email set", "developer", map[string]bool{"owner@example.test": true}, nil, RoleAdmin},
+		{"developer not in set", "developer", map[string]bool{"other@example.test": true}, boolPtr(false), RoleDeveloper},
+		{"developer, empty set", "developer", map[string]bool{}, boolPtr(false), RoleDeveloper},
+		{"developer with platform rank", "developer", nil, boolPtr(true), RoleAdmin},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			conn, mock, err := sqlmock.New()
+			require.NoError(t, err)
+			t.Cleanup(func() { require.NoError(t, mock.ExpectationsWereMet()); conn.Close() })
+			owner := uuid.New()
+			mock.ExpectQuery(`FROM users WHERE id = \$1`).WithArgs(owner).WillReturnRows(ownerRow(owner, tc.storedRole, true))
+			if tc.platformAdmin != nil {
+				mock.ExpectQuery(`SELECT is_platform_admin FROM users`).WithArgs(owner).
+					WillReturnRows(sqlmock.NewRows([]string{"is_platform_admin"}).AddRow(*tc.platformAdmin))
+			}
+			r := RepoAPITokenOwnerResolver{
+				Repos:        &db.Repositories{Users: db.NewUserRepository(conn), TenantScope: db.NewTenantScopeRepository(conn)},
+				IsAdminEmail: MatchAdminEmails(tc.adminEmails),
+			}
+			got, err := r.APITokenOwnerCeiling(context.Background(), owner, RoleAdmin)
+			require.NoError(t, err)
+			assert.Equal(t, tc.want, got)
+		})
+	}
+}

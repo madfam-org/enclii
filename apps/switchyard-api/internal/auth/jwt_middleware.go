@@ -26,7 +26,7 @@ func (j *JWTManager) AuthMiddleware() gin.HandlerFunc {
 
 		// Check if this is an API token (starts with "enclii_")
 		if strings.HasPrefix(tokenString, "enclii_") {
-			j.handleAPITokenAuth(c, tokenString)
+			j.handleAPITokenAuth(c, tokenString, MatchAdminEmails(j.adminEmails))
 			return
 		}
 
@@ -94,8 +94,10 @@ func (j *JWTManager) AuthMiddleware() gin.HandlerFunc {
 	}
 }
 
-// handleAPITokenAuth handles authentication via API tokens (enclii_xxx format)
-func (j *JWTManager) handleAPITokenAuth(c *gin.Context, tokenString string) {
+// handleAPITokenAuth handles authentication via API tokens (enclii_xxx format).
+// isAdminEmail is the admin-email set of the calling manager's session path,
+// so a token's owner is bounded by exactly the role a session would give it.
+func (j *JWTManager) handleAPITokenAuth(c *gin.Context, tokenString string, isAdminEmail AdminEmailMatcher) {
 	if j.apiTokenValidator == nil {
 		logrus.WithFields(logrus.Fields{
 			"path":   c.Request.URL.Path,
@@ -127,7 +129,7 @@ func (j *JWTManager) handleAPITokenAuth(c *gin.Context, tokenString string) {
 	// the role its owner holds now (see api_token_scope.go). The owner is
 	// re-read on every request so a demotion takes effect immediately.
 	requested := APITokenScopeRole(apiToken.Scopes)
-	ceiling, err := ResolveAPITokenOwnerCeiling(c.Request.Context(), j.repos, apiToken.UserID, requested)
+	ceiling, err := ResolveAPITokenOwnerCeiling(c.Request.Context(), j.repos, isAdminEmail, apiToken.UserID, requested)
 	if err != nil {
 		logrus.WithFields(logrus.Fields{
 			"path":     c.Request.URL.Path,

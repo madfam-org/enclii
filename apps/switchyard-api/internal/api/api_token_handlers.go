@@ -54,8 +54,8 @@ type CreateAPITokenRequest struct {
 //
 //   - here, at creation: only admin, developer and viewer are accepted, and
 //     none may rank above the creating principal's current role (the lower of
-//     the session's role and the stored account role, with the platform rank
-//     counting as admin);
+//     the session's role and the account's role, where the platform rank and
+//     the operator admin-email set count as admin);
 //   - in every auth path, at request time: the role is the lower of what the
 //     scopes name and what the owner holds now.
 //
@@ -213,8 +213,9 @@ func (h *Handler) CreateAPIToken(c *gin.Context) {
 // when the request must be refused.
 //
 // The ceiling is the LOWER of the role this request runs with (so a token
-// cannot mint a token stronger than itself) and the account's stored role
-// (so a stale session claim cannot either).
+// cannot mint a token stronger than itself) and the account's current role
+// (stored role, raised to admin only by the platform rank or the operator
+// admin-email set), so a stale session claim cannot either.
 func (h *Handler) boundRequestedTokenScopes(c *gin.Context, uid uuid.UUID, requested []string) ([]string, bool) {
 	// Validate against the allow-list first, with no rank limit, so an unknown
 	// string is reported as such rather than as a permission problem.
@@ -233,7 +234,7 @@ func (h *Handler) boundRequestedTokenScopes(c *gin.Context, uid uuid.UUID, reque
 		return nil, true
 	}
 
-	ceiling, err := auth.ResolveAPITokenOwnerCeiling(c.Request.Context(), h.repos, uid, want)
+	ceiling, err := auth.ResolveAPITokenOwnerCeiling(c.Request.Context(), h.repos, h.adminEmailMatcher(), uid, want)
 	if err != nil {
 		h.logger.Error(c.Request.Context(), "Failed to resolve token owner role", logging.Error("error", err))
 		c.JSON(http.StatusForbidden, gin.H{"error": "Account unavailable for token creation"})
@@ -258,6 +259,17 @@ func (h *Handler) boundRequestedTokenScopes(c *gin.Context, uid uuid.UUID, reque
 		return nil, false
 	}
 	return scopes, true
+}
+
+// adminEmailMatcher returns the admin-email set of the configured auth
+// manager — the set its session paths use to raise an account to admin — so
+// token creation bounds an account exactly as its session would. With no
+// manager (or one without the set) nothing matches.
+func (h *Handler) adminEmailMatcher() auth.AdminEmailMatcher {
+	if m, ok := h.auth.(interface{ IsAdminEmail(string) bool }); ok {
+		return m.IsAdminEmail
+	}
+	return nil
 }
 
 // ListAPITokens lists all API tokens for the authenticated user

@@ -23,6 +23,12 @@ import (
 //     the LOWER of what its scopes name and what its owner holds NOW. A token
 //     minted before (1) existed, or by an owner who has since been demoted,
 //     therefore never exceeds the owner's current role.
+//
+// "What the owner holds" is the role the session paths would give the same
+// account: the stored users.role, raised to admin by the platform rank
+// (users.is_platform_admin) or by the operator admin-email set
+// (ENCLII_ADMIN_EMAILS, the same set the OIDC/external session paths honour).
+// Nothing else raises it.
 
 // allowedAPITokenScopes is the explicit allow-list of scope strings a caller
 // may request. They are the three role names the auth layer understands; any
@@ -117,11 +123,12 @@ func RoleAtLeast(have, want Role) bool {
 }
 
 // OwnerRoleCeiling is the highest role a principal's tokens may carry: admin
-// for a principal whose stored role is admin or who holds the platform rank
-// (users.is_platform_admin), otherwise the stored role. An unknown stored role
-// yields viewer rather than the developer default.
-func OwnerRoleCeiling(storedRole string, isPlatformAdmin bool) Role {
-	if isPlatformAdmin {
+// for a principal whose stored role is admin or who is elevated to admin by
+// the platform rank or the operator admin-email set, otherwise the stored
+// role. An unknown stored role yields viewer rather than the developer
+// default.
+func OwnerRoleCeiling(storedRole string, elevatedToAdmin bool) Role {
+	if elevatedToAdmin {
 		return RoleAdmin
 	}
 	if r, ok := HighestRole([]string{storedRole}); ok {
@@ -175,14 +182,24 @@ func NormalizeRequestedScopes(requested []string, ceiling Role) ([]string, error
 	return out, nil
 }
 
+// AdminEmailMatcher reports whether an account email is in the operator
+// admin-email set. nil matches nothing.
+type AdminEmailMatcher func(email string) bool
+
+// MatchAdminEmails returns a matcher over set with the same exact-match
+// semantics the session paths use (`adminEmails[user.Email]`).
+func MatchAdminEmails(set map[string]bool) AdminEmailMatcher {
+	return func(email string) bool { return email != "" && set[email] }
+}
+
 // ResolveAPITokenOwnerCeiling loads the token owner's CURRENT role ceiling.
 //
-// want is the role the caller is about to grant. The platform-rank column is
-// read only when want ranks above the stored role, so the common case costs
-// one primary-key read. A missing or inactive owner is an error; a failed
-// platform-rank read is not, and leaves the ceiling at the stored role (the
-// lower answer).
-func ResolveAPITokenOwnerCeiling(ctx context.Context, repos *db.Repositories, ownerID uuid.UUID, want Role) (Role, error) {
+// want is the role the caller is about to grant. The elevations (admin-email
+// set, then the platform-rank column) are consulted only when want ranks
+// above the stored role, so the common case costs one primary-key read. A
+// missing or inactive owner is an error; a failed platform-rank read is not,
+// and leaves the ceiling at the stored role (the lower answer).
+func ResolveAPITokenOwnerCeiling(ctx context.Context, repos *db.Repositories, isAdminEmail AdminEmailMatcher, ownerID uuid.UUID, want Role) (Role, error) {
 	if repos == nil || repos.Users == nil {
 		return "", fmt.Errorf("account repository unavailable")
 	}
@@ -195,7 +212,13 @@ func ResolveAPITokenOwnerCeiling(ctx context.Context, repos *db.Repositories, ow
 	}
 
 	ceiling := OwnerRoleCeiling(owner.Role, false)
-	if RoleAtLeast(ceiling, want) || repos.TenantScope == nil {
+	if RoleAtLeast(ceiling, want) {
+		return ceiling, nil
+	}
+	if isAdminEmail != nil && isAdminEmail(owner.Email) {
+		return RoleAdmin, nil
+	}
+	if repos.TenantScope == nil {
 		return ceiling, nil
 	}
 	isPlatformAdmin, err := repos.TenantScope.IsPlatformAdmin(ctx, ownerID)
@@ -205,4 +228,28 @@ func ResolveAPITokenOwnerCeiling(ctx context.Context, repos *db.Repositories, ow
 		return ceiling, nil
 	}
 	return OwnerRoleCeiling(owner.Role, isPlatformAdmin), nil
+}
+
+// RepoAPITokenOwnerResolver applies ResolveAPITokenOwnerCeiling for callers
+// that take a resolver interface (internal/middleware.APITokenOwnerResolver).
+type RepoAPITokenOwnerResolver struct {
+	Repos        *db.Repositories
+	IsAdminEmail AdminEmailMatcher
+}
+
+// APITokenOwnerCeiling implements internal/middleware.APITokenOwnerResolver.
+func (r RepoAPITokenOwnerResolver) APITokenOwnerCeiling(ctx context.Context, ownerID uuid.UUID, want Role) (Role, error) {
+	return ResolveAPITokenOwnerCeiling(ctx, r.Repos, r.IsAdminEmail, ownerID, want)
+}
+
+// IsAdminEmail reports whether email is in this manager's admin-email set
+// (ENCLII_ADMIN_EMAILS), the set its session paths honour.
+func (j *JWTManager) IsAdminEmail(email string) bool {
+	return MatchAdminEmails(j.adminEmails)(email)
+}
+
+// IsAdminEmail reports whether email is in this manager's admin-email set
+// (ENCLII_ADMIN_EMAILS), the set its session paths honour.
+func (o *OIDCManager) IsAdminEmail(email string) bool {
+	return MatchAdminEmails(o.adminEmails)(email)
 }

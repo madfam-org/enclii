@@ -6,13 +6,16 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
+	"time"
 
+	"github.com/DATA-DOG/go-sqlmock"
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
 	"github.com/madfam-org/enclii/apps/switchyard-api/internal/auth"
+	"github.com/madfam-org/enclii/apps/switchyard-api/internal/db"
 	"github.com/madfam-org/enclii/packages/sdk-go/pkg/types"
 )
 
@@ -83,6 +86,57 @@ func TestAuthMiddleware_APITokenRoleBounded(t *testing.T) {
 			if tc.wantStatus == http.StatusOK {
 				assert.Equal(t, tc.wantRoles, gotRoles)
 			}
+		})
+	}
+}
+
+// TestAuthMiddleware_RepoOwnerResolverAdminEmailSet wires the repository-backed
+// resolver: an owner stored as developer is admin only through the operator
+// admin-email set, the same rule the session paths apply.
+func TestAuthMiddleware_RepoOwnerResolverAdminEmailSet(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	_, publicKey := generateTestRSAKeys(t)
+	cases := []struct {
+		name     string
+		set      map[string]bool
+		wantRole string
+	}{
+		{"owner in admin-email set", map[string]bool{"owner@example.test": true}, "admin"},
+		{"owner not in admin-email set", map[string]bool{"operator@example.test": true}, "developer"},
+		{"empty admin-email set", map[string]bool{}, "developer"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			conn, mock, err := sqlmock.New()
+			require.NoError(t, err)
+			t.Cleanup(func() { require.NoError(t, mock.ExpectationsWereMet()); conn.Close() })
+			owner := uuid.New()
+			mock.ExpectQuery(`FROM users WHERE id = \$1`).WithArgs(owner).WillReturnRows(
+				sqlmock.NewRows([]string{"id", "email", "password_hash", "name", "role", "oidc_subject", "oidc_issuer", "active", "created_at", "updated_at", "last_login_at"}).
+					AddRow(owner, "owner@example.test", "", "Owner", "developer", nil, nil, true, time.Now(), time.Now(), nil))
+			if tc.wantRole != "admin" {
+				mock.ExpectQuery(`SELECT is_platform_admin FROM users`).WithArgs(owner).
+					WillReturnRows(sqlmock.NewRows([]string{"is_platform_admin"}).AddRow(false))
+			}
+
+			am := NewAuthMiddleware(publicKey)
+			am.SetTokenValidator(&fixedTokenValidator{token: &types.APIToken{ID: uuid.New(), UserID: owner, Name: "fixture", Scopes: []string{"admin"}}})
+			am.SetOwnerResolver(auth.RepoAPITokenOwnerResolver{
+				Repos:        &db.Repositories{Users: db.NewUserRepository(conn), TenantScope: db.NewTenantScopeRepository(conn)},
+				IsAdminEmail: auth.MatchAdminEmails(tc.set),
+			})
+			router := gin.New()
+			var gotRoles []string
+			router.GET("/protected", am.Middleware(), func(c *gin.Context) {
+				gotRoles = c.GetStringSlice("user_roles")
+				c.Status(http.StatusOK)
+			})
+			req := httptest.NewRequest(http.MethodGet, "/protected", nil)
+			req.Header.Set("Authorization", "Bearer enclii_fixture")
+			rec := httptest.NewRecorder()
+			router.ServeHTTP(rec, req)
+			require.Equal(t, http.StatusOK, rec.Code, rec.Body.String())
+			assert.Equal(t, []string{tc.wantRole}, gotRoles)
 		})
 	}
 }

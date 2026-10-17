@@ -152,7 +152,7 @@ Token '3f2b8c1e-4d5a-4e6f-9a7b-8c9d0e1f2a3b' revoked.
 
 Scopes are roles. The API accepts `admin`, `developer` and `viewer` and rejects any other string with `400`. A token's requests run with the highest role its scopes name (developer when none is given), and never above the role the token's owner holds at the time of the request: demoting an account demotes its tokens at once.
 
-You cannot create a token above your own role (`403`). Only an account whose role is admin, or a platform admin, can create an `admin` token. A token cannot create a token stronger than itself.
+You cannot create a token above your own role (`403`). Only an account that holds admin can create an `admin` token: a stored admin role, a platform admin, or an operator listed in the deployment's admin-email set (`ENCLII_ADMIN_EMAILS`), the same accounts a sign-in session treats as admin. A token cannot create a token stronger than itself.
 
 Tokens created before this check may still carry other scope strings such as `deploy` or `read`. They are shown by `list`/`get` and grant nothing beyond developer.
 

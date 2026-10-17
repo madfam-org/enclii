@@ -365,7 +365,7 @@ func (o *OIDCManager) AuthMiddleware() gin.HandlerFunc {
 		// managers share one implementation so the role bound applied to
 		// tokens cannot drift between them.
 		if strings.HasPrefix(tokenString, "enclii_") {
-			o.jwtManager.handleAPITokenAuth(c, tokenString)
+			o.jwtManager.handleAPITokenAuth(c, tokenString, o.IsAdminEmail)
 			return
 		}
 
