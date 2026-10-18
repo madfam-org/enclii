@@ -2,7 +2,6 @@ package api
 
 import (
 	"context"
-	"database/sql"
 	"fmt"
 	"net/http"
 	"path"
@@ -105,7 +104,7 @@ func (h *Handler) processArgocdSyncRequest(ctx context.Context, req ArgocdSyncRe
 		// Associate the image with a registered enclii service. Unknown
 		// images (no name/repo match) are skipped — the poller relies on this
 		// to ignore Applications that don't map to a tracked service.
-		service, serviceName := h.argocdServiceForImage(ctx, imageURI)
+		service, serviceName := h.argocdServiceForImage(ctx, req.AppName, imageURI)
 		if service == nil {
 			continue
 		}
@@ -325,7 +324,7 @@ func (h *Handler) processArgocdSyncRequest(ctx context.Context, req ArgocdSyncRe
 // mono-service repos. Returns (nil, "") when the image maps to no known service
 // so callers can skip unknown Applications. Shared by the webhook loop and the
 // Application poller's idempotency pre-check so association never diverges.
-func (h *Handler) argocdServiceForImage(ctx context.Context, imageURI string) (*types.Service, string) {
+func (h *Handler) argocdServiceForImage(ctx context.Context, appName, imageURI string) (*types.Service, string) {
 	candidateNames := extractServiceCandidates(imageURI)
 	if len(candidateNames) == 0 {
 		h.logger.Warn(ctx, "Could not extract service name from image",
@@ -333,33 +332,56 @@ func (h *Handler) argocdServiceForImage(ctx context.Context, imageURI string) (*
 		return nil, ""
 	}
 
-	// Look up service by name, trying candidates in order
+	// Look up service by name, trying candidates in order. A name used by one
+	// service resolves as before. A name used in several projects (enclii#404)
+	// resolves only if exactly one of them belongs to the image's repo, or,
+	// failing that, to the project the Application is named after. Otherwise
+	// the image is refused outright: falling through to a shorter candidate
+	// ("api" after "voxa-api") could land on yet another project's service.
+	imageRepo := repoFullNameFromImage(imageURI)
 	var service *types.Service
 	var serviceName string
 	for _, candidate := range candidateNames {
-		svc, err := h.repos.Services.GetByName(candidate)
-		if err == nil {
-			service = svc
-			serviceName = candidate
-			break
-		}
-		if err != sql.ErrNoRows {
+		matches, err := h.repos.Services.ListByName(candidate)
+		if err != nil {
 			h.logger.Error(ctx, "Failed to look up service",
 				logging.String("service_name", candidate),
 				logging.Error("db_error", err))
+			continue
 		}
+		if len(matches) == 0 {
+			continue
+		}
+		if len(matches) == 1 {
+			service, serviceName = matches[0], candidate
+			break
+		}
+		if picked := h.disambiguateArgocdService(ctx, matches, imageRepo, appName); picked != nil {
+			service, serviceName = picked, candidate
+			break
+		}
+		h.logger.Error(ctx, "Refusing ambiguous service name for image: it is registered in more than one project",
+			logging.String("service_name", candidate),
+			logging.Int("matched_count", len(matches)),
+			logging.String("app_name", appName),
+			logging.String("image", imageURI))
+		return nil, ""
 	}
 	// Fallback: derive repo URL from image and look up by git repo
 	// (handles mono-service repos where DB service name
-	// doesn't match image-derived candidates)
-	if service == nil {
-		repoName := repoFullNameFromImage(imageURI)
-		if repoName != "" {
-			repoURL := "https://github.com/" + repoName
-			services, lookupErr := h.repos.Services.ListByGitRepo(repoURL)
-			if lookupErr == nil && len(services) > 0 {
-				service = services[0]
+	// doesn't match image-derived candidates). Refused when the repo is
+	// registered in more than one project.
+	if service == nil && imageRepo != "" {
+		repoURL := "https://github.com/" + imageRepo
+		services, lookupErr := h.repos.Services.ListByGitRepo(repoURL)
+		if lookupErr == nil && len(services) > 0 {
+			if svc, ok := singleProjectService(services); ok {
+				service = svc
 				serviceName = service.Name
+			} else {
+				h.logger.Error(ctx, "Refusing git-repo fallback for image: repo is registered in more than one project",
+					logging.String("image", imageURI),
+					logging.Int("service_count", len(services)))
 			}
 		}
 	}
@@ -628,4 +650,35 @@ func (h *Handler) enrichReleaseFromLifecycleEvents(ctx interface{ Value(any) any
 			logging.String("release_id", release.ID.String()),
 			logging.Error("error", err))
 	}
+}
+
+// disambiguateArgocdService picks the one service among same-named services
+// (different projects) that an ArgoCD image belongs to: first by the image's
+// repo, then by the Application name matching the service's project slug.
+// It returns nil when neither fact narrows the list to exactly one.
+func (h *Handler) disambiguateArgocdService(ctx context.Context, matches []*types.Service, imageRepo, appName string) *types.Service {
+	owned := matches
+	if imageRepo != "" {
+		owned = servicesOwnedByRepo(matches, imageRepo)
+	}
+	if len(owned) == 1 {
+		return owned[0]
+	}
+	if len(owned) == 0 || strings.TrimSpace(appName) == "" || h.repos.Projects == nil {
+		return nil
+	}
+	var byApp []*types.Service
+	for _, svc := range owned {
+		project, err := h.repos.Projects.GetByID(ctx, svc.ProjectID)
+		if err != nil || project == nil {
+			continue
+		}
+		if project.Slug == appName {
+			byApp = append(byApp, svc)
+		}
+	}
+	if len(byApp) == 1 {
+		return byApp[0]
+	}
+	return nil
 }

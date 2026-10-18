@@ -13,11 +13,13 @@ package api
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net/http"
 	"strings"
 	"time"
 
+	"github.com/madfam-org/enclii/apps/switchyard-api/internal/db"
 	"github.com/madfam-org/enclii/apps/switchyard-api/internal/manifest"
 	"github.com/madfam-org/enclii/packages/sdk-go/pkg/types"
 )
@@ -51,9 +53,9 @@ func (h *Handler) resolveDeclaredDomainSource(ctx context.Context, req operatorO
 		return declaredDomainSource{Err: fmt.Errorf("service registry is unavailable")}
 	}
 
-	service, err := h.repos.Services.GetByName(name)
+	service, err := h.declaredDomainService(req, name)
 	if err != nil {
-		return declaredDomainSource{Err: fmt.Errorf("service %q not found: %w", name, err)}
+		return declaredDomainSource{Err: err}
 	}
 
 	repoFullName := githubRepoFullName(service.GitRepo)
@@ -383,4 +385,37 @@ func narrowManifestToHostname(config *manifest.EncliiYAML, hostname string) *man
 		}
 	}
 	return &narrowed
+}
+
+// declaredDomainService resolves the operator's service name. With a project
+// (scope.project or args.project) the lookup is project-scoped. Without one,
+// only a platform-unique name resolves: a name that several projects use is
+// refused with the fix spelled out (enclii#404).
+func (h *Handler) declaredDomainService(req operatorOperationRequest, name string) (*types.Service, error) {
+	projectSlug := strings.TrimSpace(req.Scope["project"])
+	if projectSlug == "" {
+		projectSlug = operationArg(req, "project")
+	}
+	if projectSlug != "" {
+		if h.repos.Projects == nil {
+			return nil, fmt.Errorf("project registry is unavailable")
+		}
+		project, err := h.repos.Projects.GetBySlug(projectSlug)
+		if err != nil {
+			return nil, fmt.Errorf("project %q not found: %w", projectSlug, err)
+		}
+		service, err := h.repos.Services.GetByProjectAndName(project.ID, name)
+		if err != nil {
+			return nil, fmt.Errorf("service %q not found in project %q: %w", name, projectSlug, err)
+		}
+		return service, nil
+	}
+	service, err := h.repos.Services.GetByName(name)
+	if errors.Is(err, db.ErrAmbiguousServiceName) {
+		return nil, fmt.Errorf("service %q exists in more than one project; pass --project <slug>: %w", name, err)
+	}
+	if err != nil {
+		return nil, fmt.Errorf("service %q not found: %w", name, err)
+	}
+	return service, nil
 }

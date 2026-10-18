@@ -2,11 +2,14 @@ package reconciler
 
 import (
 	"context"
+	"fmt"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/sirupsen/logrus"
 	appsv1 "k8s.io/api/apps/v1"
 
+	"github.com/madfam-org/enclii/apps/switchyard-api/internal/db"
 	"github.com/madfam-org/enclii/apps/switchyard-api/internal/k8s"
 	"github.com/madfam-org/enclii/packages/sdk-go/pkg/types"
 )
@@ -61,10 +64,13 @@ func (c *Controller) runK8sSync(ctx context.Context, logger *logrus.Entry) {
 	for _, ns := range []string{"enclii", "janua", "data", "monitoring"} {
 		namespaceSet[ns] = true
 	}
-	// Add all environment namespaces from database
+	// Add all environment namespaces from database, remembering which
+	// projects own each one so workloads resolve to THEIR project's service.
+	nsProjects := namespaceProjects{}
 	for _, env := range envs {
 		if env.KubeNamespace != "" {
 			namespaceSet[env.KubeNamespace] = true
+			nsProjects.add(env.KubeNamespace, env.ProjectID)
 		}
 	}
 	// Convert set to slice
@@ -86,7 +92,7 @@ func (c *Controller) runK8sSync(ctx context.Context, logger *logrus.Entry) {
 		}
 
 		for _, dep := range deployments {
-			c.syncDeploymentToDatabase(ctx, ns, dep, logger)
+			c.syncDeploymentToDatabase(ctx, ns, dep, nsProjects, logger)
 		}
 
 		// Also scan StatefulSets for health propagation (databases, caches)
@@ -96,7 +102,7 @@ func (c *Controller) runK8sSync(ctx context.Context, logger *logrus.Entry) {
 				WithError(err).Warn("Failed to list K8s statefulsets")
 		} else {
 			for _, ss := range statefulSets {
-				c.syncStatefulSetHealth(ctx, ss, logger)
+				c.syncStatefulSetHealth(ctx, ss, nsProjects, logger)
 			}
 		}
 	}
@@ -121,7 +127,7 @@ func (c *Controller) runK8sSync(ctx context.Context, logger *logrus.Entry) {
 // syncDeploymentToDatabase checks if a K8s deployment has corresponding DB records.
 // Health propagation is label-agnostic (updates any service matching by name),
 // while deployment record management is label-gated (only for enclii.dev/managed-by: switchyard).
-func (c *Controller) syncDeploymentToDatabase(ctx context.Context, namespace string, k8sDep appsv1.Deployment, logger *logrus.Entry) {
+func (c *Controller) syncDeploymentToDatabase(ctx context.Context, namespace string, k8sDep appsv1.Deployment, nsProjects namespaceProjects, logger *logrus.Entry) {
 	deploymentName := k8sDep.Name
 
 	// Respect opt-out annotation (label-agnostic)
@@ -132,8 +138,15 @@ func (c *Controller) syncDeploymentToDatabase(ctx context.Context, namespace str
 
 	// STEP 1: Service health propagation (label-agnostic).
 	// Dashboard health should reflect K8s reality regardless of who created the deployment.
-	service, err := c.repositories.Services.GetByName(deploymentName)
-	if err == nil && service != nil {
+	service, err := resolveWorkloadService(c.repositories.Services, nsProjects, namespace, deploymentName)
+	if err != nil {
+		logger.WithError(err).WithFields(logrus.Fields{
+			"deployment": deploymentName,
+			"namespace":  namespace,
+		}).Warn("Not syncing deployment: its service cannot be resolved to one project")
+		return
+	}
+	if service != nil {
 		c.propagateServiceHealth(ctx, service, &k8sDep, logger)
 	}
 
@@ -336,14 +349,21 @@ func (c *Controller) createMissingRecords(ctx context.Context, service *types.Se
 // (data/postgres-pravara, monitoring/prometheus, data/redpanda, data/redis-ha)
 // where the simple ready-replicas signal is acceptable. Skipping for this PR.
 // Tracking issue: https://github.com/madfam-org/enclii/issues/new?labels=rollout-state&title=EvaluateRolloutState%3A+StatefulSet+support
-func (c *Controller) syncStatefulSetHealth(ctx context.Context, ss appsv1.StatefulSet, logger *logrus.Entry) {
+func (c *Controller) syncStatefulSetHealth(ctx context.Context, ss appsv1.StatefulSet, nsProjects namespaceProjects, logger *logrus.Entry) {
 	// Respect opt-out annotation
 	if val, ok := ss.Annotations["enclii.dev/reconcile"]; ok && val == "disabled" {
 		return
 	}
 
-	service, err := c.repositories.Services.GetByName(ss.Name)
-	if err != nil || service == nil {
+	service, err := resolveWorkloadService(c.repositories.Services, nsProjects, ss.Namespace, ss.Name)
+	if err != nil {
+		logger.WithError(err).WithFields(logrus.Fields{
+			"statefulset": ss.Name,
+			"namespace":   ss.Namespace,
+		}).Warn("Not syncing statefulset health: its service cannot be resolved to one project")
+		return
+	}
+	if service == nil {
 		return // Silent skip — most StatefulSets won't have a matching DB service
 	}
 
@@ -534,4 +554,70 @@ func isEncliiManagedDeployment(dep *appsv1.Deployment) bool {
 	}
 	managedBy, exists := dep.Labels["enclii.dev/managed-by"]
 	return exists && managedBy == "switchyard"
+}
+
+// namespaceProjects maps a Kubernetes namespace to the projects whose
+// environments deploy into it.
+type namespaceProjects map[string]map[uuid.UUID]bool
+
+func (n namespaceProjects) add(namespace string, project uuid.UUID) {
+	if n[namespace] == nil {
+		n[namespace] = map[uuid.UUID]bool{}
+	}
+	n[namespace][project] = true
+}
+
+// serviceNameLister is the slice of the service repository the K8s→DB sync
+// needs to resolve a workload name.
+type serviceNameLister interface {
+	ListByName(name string) ([]*types.Service, error)
+}
+
+// resolveWorkloadService maps a workload (Deployment or StatefulSet name plus
+// its namespace) to the one service it belongs to. Service names are unique
+// per project, not platform-wide (enclii#404), so the name alone is not
+// enough once two projects both run a "web":
+//
+//   - a service belongs to the namespace when its project has an environment
+//     there, or its own k8s_namespace is that namespace;
+//   - exactly one such service is the answer;
+//   - several is an error (ambiguous), never an arbitrary pick;
+//   - none, in a namespace some project's environments own, is "no match"
+//     (another project's service of the same name is not this workload);
+//   - none, in a namespace no environment names (the core namespaces), falls
+//     back to the name when it is platform-unique.
+//
+// (nil, nil) means no service matches.
+func resolveWorkloadService(lister serviceNameLister, nsProjects namespaceProjects, namespace, name string) (*types.Service, error) {
+	matches, err := lister.ListByName(name)
+	if err != nil {
+		return nil, err
+	}
+	if len(matches) == 0 {
+		return nil, nil
+	}
+
+	owners := nsProjects[namespace]
+	var inNamespace []*types.Service
+	for _, svc := range matches {
+		if svc == nil {
+			continue
+		}
+		if owners[svc.ProjectID] || (svc.K8sNamespace != nil && *svc.K8sNamespace == namespace) {
+			inNamespace = append(inNamespace, svc)
+		}
+	}
+
+	switch {
+	case len(inNamespace) == 1:
+		return inNamespace[0], nil
+	case len(inNamespace) > 1:
+		return nil, fmt.Errorf("%w: %q has %d services in namespace %q", db.ErrAmbiguousServiceName, name, len(inNamespace), namespace)
+	case len(owners) > 0:
+		return nil, nil
+	case len(matches) == 1:
+		return matches[0], nil
+	default:
+		return nil, fmt.Errorf("%w: %q in namespace %q, which no environment owns", db.ErrAmbiguousServiceName, name, namespace)
+	}
 }

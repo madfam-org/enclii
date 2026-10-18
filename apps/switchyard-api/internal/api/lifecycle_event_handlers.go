@@ -313,9 +313,8 @@ func (h *Handler) createDeploymentFromLifecycleEvent(ctx context.Context, req ty
 	// Resolve by name, but ONLY accept a service that belongs to the repo that
 	// sent the event.
 	//
-	// ServiceRepository.GetByName is `SELECT ... FROM services WHERE name = $1`
-	// with no project filter, so a bare candidate like "landing" or "web"
-	// matches whichever service in the WHOLE platform carries that name.
+	// Service names are unique per project, not platform-wide, so a bare
+	// candidate like "landing" or "web" can name services in several projects.
 	// Nothing in a lifecycle callback identifies the project, so without this
 	// check one project's CI can attach a Release — and then a Deployment
 	// record — to a DIFFERENT project's service. The image URI in that Release
@@ -323,34 +322,11 @@ func (h *Handler) createDeploymentFromLifecycleEvent(ctx context.Context, req ty
 	// wrong image to the wrong service becomes possible from an ordinary build.
 	//
 	// The repo IS the ownership fact we have, so it is what we verify against.
-	// A candidate whose service belongs to someone else is skipped rather than
-	// accepted, and resolution continues — the project-qualified candidate is
-	// usually next in the list.
-	var service *types.Service
-	for _, candidate := range candidates {
-		svc, err := h.repos.Services.GetByName(candidate)
-		if err != nil {
-			continue
-		}
-		if !serviceBelongsToRepo(svc, req.RepoFullName) {
-			h.logger.Warn(ctx, "Rejecting cross-project service match for lifecycle event",
-				logging.String("candidate", candidate),
-				logging.String("matched_service_repo", svc.GitRepo),
-				logging.String("event_repo", req.RepoFullName))
-			continue
-		}
-		service = svc
-		break
-	}
-	// Fallback: look up by git repo URL (handles mono-service repos
-	// where the DB service name doesn't match image-derived candidates)
-	if service == nil && req.RepoFullName != "" {
-		repoURL := "https://github.com/" + req.RepoFullName
-		services, err := h.repos.Services.ListByGitRepo(repoURL)
-		if err == nil && len(services) > 0 {
-			service = services[0]
-		}
-	}
+	// Every service with the candidate name is checked (enclii#404): exactly
+	// one owned match is accepted; none, or more than one, skips the candidate
+	// and resolution continues — the project-qualified candidate is usually
+	// next in the list.
+	service := h.resolveLifecycleService(ctx, req, candidates)
 	if service == nil {
 		h.logger.Warn(ctx, "No matching service for lifecycle event deployment",
 			logging.String("service_name", serviceName),
@@ -622,4 +598,65 @@ func normalizeRepoRef(s string) string {
 		s = strings.TrimPrefix(s, ":")
 	}
 	return strings.ToLower(s)
+}
+
+// resolveLifecycleService maps a lifecycle callback to the one service it is
+// for, or nil. See the comment at the call site for the ownership rule.
+func (h *Handler) resolveLifecycleService(ctx context.Context, req types.LifecycleEventCreate, candidates []string) *types.Service {
+	var service *types.Service
+	ambiguous := false
+	for _, candidate := range candidates {
+		matches, err := h.repos.Services.ListByName(candidate)
+		if err != nil {
+			h.logger.Warn(ctx, "Service lookup failed for lifecycle event candidate",
+				logging.String("candidate", candidate),
+				logging.Error("error", err))
+			continue
+		}
+		if len(matches) == 0 {
+			continue
+		}
+		owned := servicesOwnedByRepo(matches, req.RepoFullName)
+		if len(owned) > 1 && req.ProjectID != nil {
+			owned = servicesInProject(owned, *req.ProjectID)
+		}
+		if len(owned) == 1 {
+			service = owned[0]
+			break
+		}
+		if len(owned) == 0 {
+			h.logger.Warn(ctx, "Rejecting cross-project service match for lifecycle event",
+				logging.String("candidate", candidate),
+				logging.String("matched_service_repo", matches[0].GitRepo),
+				logging.Int("matched_count", len(matches)),
+				logging.String("event_repo", req.RepoFullName))
+			continue
+		}
+		// The same repo owns this name in several projects and the event
+		// names no project. Stop here: a shorter candidate could land on the
+		// wrong one of them.
+		h.logger.Warn(ctx, "Refusing ambiguous service name for lifecycle event",
+			logging.String("candidate", candidate),
+			logging.Int("owned_matches", len(owned)),
+			logging.String("event_repo", req.RepoFullName))
+		ambiguous = true
+		break
+	}
+	// Fallback: look up by git repo URL (handles mono-service repos
+	// where the DB service name doesn't match image-derived candidates).
+	// Refused when the repo is registered in more than one project.
+	if service == nil && !ambiguous && req.RepoFullName != "" {
+		repoURL := "https://github.com/" + req.RepoFullName
+		services, err := h.repos.Services.ListByGitRepo(repoURL)
+		if err == nil && len(services) > 0 {
+			if svc, ok := singleProjectService(services); ok {
+				service = svc
+			} else {
+				h.logger.Warn(ctx, "Refusing git-repo fallback: repo is registered in more than one project",
+					logging.String("event_repo", req.RepoFullName),
+					logging.Int("service_count", len(services)))
+			}
+		}
+	}
+	return service
 }

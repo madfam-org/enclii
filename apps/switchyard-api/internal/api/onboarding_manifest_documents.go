@@ -136,7 +136,10 @@ func (h *Handler) ensureServiceForManifestDocument(
 		return nil, false, fmt.Errorf("service registry is unavailable")
 	}
 
-	if existing, lookupErr := h.repos.Services.GetByName(name); lookupErr == nil && existing != nil {
+	// Look the name up inside the onboarding project. A same-named service in
+	// another project is a different service (enclii#404) and must not be
+	// adopted; without a project, only a platform-unique name resolves.
+	if existing, lookupErr := h.serviceForManifestName(project, name); lookupErr == nil && existing != nil {
 		return existing, false, nil
 	}
 
@@ -306,7 +309,7 @@ func (h *Handler) provisionDomainsPerManifestDocument(
 		// service with no record yet is fine here; it is registered below.
 		var existing *types.Service
 		if h.repos != nil && h.repos.Services != nil {
-			if found, err := h.repos.Services.GetByName(doc.Metadata.Name); err == nil {
+			if found, err := h.serviceForManifestName(project, doc.Metadata.Name); err == nil {
 				existing = found
 			}
 		}
@@ -381,4 +384,14 @@ func (h *Handler) registerStatusEntriesForDocuments(
 	}
 
 	return entries, firstErr
+}
+
+// serviceForManifestName resolves a manifest document's service name inside
+// the onboarding project, falling back to a platform-unique name only when no
+// project is known. GetByName refuses a name that several projects use.
+func (h *Handler) serviceForManifestName(project *types.Project, name string) (*types.Service, error) {
+	if project != nil {
+		return h.repos.Services.GetByProjectAndName(project.ID, name)
+	}
+	return h.repos.Services.GetByName(name)
 }
