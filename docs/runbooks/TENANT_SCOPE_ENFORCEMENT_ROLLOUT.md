@@ -18,24 +18,50 @@ operator allow-list keep cross-tenant reach.
 It ships in **three stages**, and the code deploy is only the first of them.
 Merging to `main` deploys immediately, and the report you need in order to
 decide anything is an endpoint in the build being deployed — so production
-ships with `ENCLII_TENANT_SCOPE_ENFORCE=false` already set
-(`infra/k8s/components/environment/production.env:61`,
-`infra/k8s/production/environment-patch.yaml:82`), overriding the code default
-of on.
+shipped with `ENCLII_TENANT_SCOPE_ENFORCE=false` set in
+`infra/k8s/components/environment/production.env` and
+`infra/k8s/production/environment-patch.yaml`, overriding the code default of
+on, until stage 3 removed it.
 
-| Stage | State | What changes for callers |
-| --- | --- | --- |
-| 1 | flag `false`, code deployed | **nothing** — identical to pre-ADR-003 |
-| 2 | operator runs the report, sets the allow-list | nothing |
-| 3 | one-line PR flips the flag to `true` | the table below |
+| Stage | State | What changes for callers | Production |
+| --- | --- | --- | --- |
+| 1 | flag `false`, code deployed | **nothing** — identical to pre-ADR-003 | done 2026-09-05 (#499, #504) |
+| 2 | operator runs the report, sets the allow-list | nothing | **done** 2026-10-18 (#798, merged 00:54 UTC) |
+| 3 | one-line PR flips the flag to `true` | the table below | **LIVE** 2026-10-18 (#800, merged 01:28 UTC; pods rolled 01:30–01:32 UTC) |
 
-**Stage 1 is not done.** While the flag reads false every tenant administrator
-can reach every tenant, which is the defect this work exists to remove. The API
-logs at ERROR on every boot in that state. Treat a cluster parked in stage 1 as
-an open item with an owner, not as a completed rollout.
+## Production status (2026-10-18, times UTC)
 
-Nothing here can be done by an agent: every step needs production credentials
-or a production database. Run them in order.
+**Enforcement is on in production.** Stage 2 set an explicit
+`ENCLII_PLATFORM_ADMIN_EMAILS` allow-list; its dry-run report showed no
+principal losing reach. Stage 3 removed the `ENCLII_TENANT_SCOPE_ENFORCE=false`
+override from both files, so the code default (on) applies. A cluster that runs
+with the flag off is now an open P0 (see [Rollback](#rollback)).
+
+Checked before the flip: an organisation-wide code search found no caller
+outside Enclii that polls `GET /v1/builds/:commit_sha/status` without a
+credential.
+
+Verified on the live API after the stage 3 rollout:
+
+- [x] Neither new `switchyard-api` pod logs the startup ERROR that enforcement
+  is off.
+- [x] An anonymous `GET /v1/builds/<sha>/status` answers with no services
+  (`.services` is `null`, i.e. 0 rows).
+- [x] A principal that holds the legacy `admin` role but not the platform rank
+  gets `403` («requires the platform_admin rank») on `/v1/admin/tenants`,
+  `/v1/admin/fleet` and `/v1/admin/drift`; a ranked operator still lists every
+  tenant.
+- [ ] **Open: the cross-tenant `404` check.** It needs a principal that
+  belongs to exactly one tenant (see
+  [Stage 3, verification](#stage-3-verification--use-a-tenant-scoped-principal)).
+  No existing principal qualifies: the existing operator principals sit in
+  every tenant that owns projects. A freshly signed-up, single-tenant account
+  is the cheapest one, and it doubles as a self-onboarding journey test.
+- [ ] **Open: the after-picture dry-run** (`enforcement_active: true`), run by
+  an operator as in [Stage 3, after](#stage-3-after--re-run-the-dry-run-report).
+
+Every step in this runbook needs production credentials or a production
+database, so an agent cannot run it end to end. Run the steps in order.
 
 ---
 
@@ -337,9 +363,10 @@ logged at WARN with the project id, so the window is auditable afterwards, and
 the API logs at ERROR on every start while it is off.
 
 A cluster running with enforcement off **after stage 3** is an open P0. Use it
-to buy the minutes until the deploy is reverted, and nothing longer. (Before
-stage 3, off is the shipped state — see the stage table at the top — but it is
-still an open item, not a finished rollout.)
+to buy the minutes until the deploy is reverted, and nothing longer. Production
+has been past stage 3 since 2026-10-18 (see the status at the top), so the
+lever is now a re-added override in both production files, with the reason
+recorded in the PR.
 
 Rolling the schema back as well (`039_platform_admin_rank.down.sql`) drops
 `users.is_platform_admin`. Do that only together with reverting the API build:

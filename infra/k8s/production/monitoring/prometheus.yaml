@@ -456,7 +456,10 @@ data:
       # JSON array (a list endpoint, `[]` when empty) is http_2xx_json_array.
       # A module whose body check the healthy answer does not meet pages
       # falsely and forever. Add it to tests/scripts/test_revenue_probe_rules.py's
-      # expectations. No client hostnames: this repo is public.
+      # expectations. This repo is public: a client hostname goes here only
+      # when the repo already publishes that client's domain (its tenant
+      # entry in apps/switchyard-api/internal/ecosystem/tenants.json), and
+      # never with any data about the client's people.
       #
       # `product` is also how Alertmanager groups these pages: the revenue
       # route in alertmanager.yaml groups by [alertname, product], so each
@@ -515,8 +518,12 @@ data:
             labels: {product: factlas, flow: api, target_namespace: factlas, check: availability, module: http_2xx_json}
           - targets: ['https://routecraft.app/api/health']
             labels: {product: routecraft, flow: web, target_namespace: routecraft, check: availability, module: http_2xx_json}
-          - targets: ['https://auth.madfam.io/health']
-            labels: {product: janua, flow: api, target_namespace: janua, check: availability, module: http_2xx_json}
+          # Janua: the readiness REPORT, not /health. Readiness answers 200
+          # while Redis or the database is down (R107/R109: it reports, it
+          # does not gate), so http_janua_ready judges the body. /health has
+          # no Redis or database field and read green through both outages.
+          - targets: ['https://auth.madfam.io/api/v1/health/ready']
+            labels: {product: janua, flow: api, target_namespace: janua, check: availability, module: http_janua_ready}
           # Trailing slash required: /api/v1/health answers 301.
           - targets: ['https://api.karafiel.mx/api/v1/health/']
             labels: {product: karafiel, flow: api, target_namespace: karafiel, check: availability, module: http_2xx_json}
@@ -528,6 +535,17 @@ data:
             labels: {product: nauta, flow: web, target_namespace: nauta, check: availability, module: http_2xx_json}
           - targets: ['https://api.forgesight.app/health']
             labels: {product: forgesight, flow: api, target_namespace: forgesight, check: availability, module: http_2xx_json}
+          # Crea Tu Mundo, the vCTO client (tenant `crea` in tenants.json).
+          # Its ERP is a Nauta workspace on its own hostname: replica alerts
+          # in `nauta` cannot see a lost tunnel route, DNS record or
+          # workspace-hostname binding, and app.nauta.quest/health does not
+          # cross the binding. The root answers 401 to a JSON request (see
+          # http_401_json in blackbox-exporter.yaml for why not http_401).
+          - targets: ['https://erp.creatumundo.mx/']
+            labels: {product: ctm-erp, flow: workspace, target_namespace: nauta, check: availability, module: http_401_json}
+          # Its MAP (crea-map-web).
+          - targets: ['https://map.creatumundo.mx/api/health']
+            labels: {product: ctm-map, flow: web, target_namespace: crea-map, check: availability, module: http_2xx_json}
         relabel_configs:
           - source_labels: [__address__]
             target_label: __param_target
@@ -1300,6 +1318,25 @@ data:
               summary: "Longhorn volume {{ $labels.volume }} is {{ $value | humanizePercentage }} full"
               description: "Volume is above 90% capacity for 1h. Expand or clean up data to prevent write failures."
 
+          # Snapshot bloat (2026-10-17). actualSize counts every snapshot in the
+          # volume's chain, so on a volume that rewrites its data (TSDB, WAL,
+          # index) it climbs far past the claim while the filesystem is fine:
+          # prometheus-rules-eval read 5.8x, prometheus-data 3.2x, loki 2.0x,
+          # the shared postgres 1.8x. That eats node disk that Longhorn then
+          # cannot schedule replicas onto. Expanding the claim does not help
+          # (a bigger volume grows bigger snapshots); the fix is the volume's
+          # recurring-job group and pruning stranded snapshots, per
+          # infra/helm/longhorn/recurring-jobs.yaml. Warning: digest only.
+          - alert: LonghornSnapshotBloat
+            expr: (longhorn_volume_actual_size_bytes / longhorn_volume_capacity_bytes) > 1.5
+            for: 6h
+            labels:
+              severity: warning
+              service: longhorn
+            annotations:
+              summary: "Longhorn volume {{ $labels.volume }} holds {{ $value | humanize }}x its size in snapshots"
+              description: "actualSize / capacity has been above 1.5 for 6h. The excess is snapshot history, not data. Move the volume to the recurring-job group that matches its churn (high-churn for TSDB/WAL/index volumes) and delete the snapshots the old group stranded: procedure in infra/helm/longhorn/recurring-jobs.yaml."
+
   chronic-restart-rules.yml: |
     # Chronic crash-loop detection across the entire MADFAM platform.
     # Existing PodWriteFailureCrashLoop catches 30m bursts; this group
@@ -1336,10 +1373,22 @@ data:
           # admin at 1,104 restarts paged every 4h. PodChronicRestart24h above
           # (warning, every namespace) still reports a staging crash loop in
           # the digest.
+          #
+          # ONLY PODS THAT STILL EXIST (infra-stability audit 2026-10-17). A 7d
+          # range keeps a deleted pod's samples for 7 days, so a pod that
+          # crash-looped and was REPLACED kept this critical firing for a week
+          # after the loop ended. The logging namespace paged 38 times that
+          # way: every fluent-bit pod was replaced on 10-14 and has 0 restarts
+          # since, while the old pods' counters stayed in the window. loki-0
+          # shows the second half: a StatefulSet pod comes back under the SAME
+          # name, so the join is on `uid` (kube-state-metrics puts it on both
+          # series), not on the name. A pod that is still restarting is still
+          # caught, under its current uid.
           - alert: PodChronicRestart7d
             expr: |
               sum by (namespace, pod) (
                 increase(kube_pod_container_status_restarts_total{namespace!~".+-staging"}[7d])
+                and on (uid) kube_pod_info
               ) > 200
             for: 30m
             labels:
@@ -1407,6 +1456,22 @@ data:
   # Deployment short of replicas paged critical exactly like production (M2 F6,
   # F13). PromQL accepts two matchers on one label; the series must satisfy
   # both. Every rule carries the pair, and the test checks that too.
+  #
+  # 2026-10-17 (infra-stability audit E3 F4): `enclii` itself, the self-serve
+  # front door (enclii.dev, app.enclii.dev, docs.enclii.dev, the API and the
+  # status pages run there). `enclii-.*` needs a dash, and `=~` is anchored at
+  # both ends, so the bare namespace was never matched and a Deployment short
+  # of replicas there paged nobody. Added as its own alternative to every
+  # rule in the group; `enclii-<app>-staging` stays excluded by the pair.
+  #
+  # Same day (infra-stability W1): `crea-map`, Crea Tu Mundo's MAP (the vCTO
+  # client). Its namespace also runs the rehearsal deployment
+  # `crea-map-ensayo-web` (Argo app crea-map-ensayo), which must never page:
+  # every rule that has a per-workload label carries
+  # `deployment|pod|service!~"crea-map-ensayo(-.*)?"`. A series without that
+  # label has it empty, which the matcher passes, so nothing else is hidden.
+  # TenantResourceQuotaNearLimit is namespace-scoped and cannot tell the two
+  # apart; the quota is shared, so ensayo usage counts toward it (warning).
   # =========================================================================
   client-slo-rules.yml: |
     groups:
@@ -1416,9 +1481,9 @@ data:
           - alert: ClientServiceErrorRate
             expr: |
               (
-                sum by (namespace) (rate(http_requests_total{code=~"5..", namespace=~"enclii-.*|project-.*|nauta|janua|karafiel|coupler|dhanam|tezca|pravara-mes|primavera3d|fortuna|forgesight|selva|voxa|digifab-quoting|yantra4d|kalya|madfam-site|avala|factlas|routecraft", namespace!~".+-staging"}[5m]))
+                sum by (namespace) (rate(http_requests_total{code=~"5..", namespace=~"enclii|enclii-.*|project-.*|nauta|janua|karafiel|coupler|dhanam|tezca|pravara-mes|primavera3d|fortuna|forgesight|selva|voxa|digifab-quoting|yantra4d|kalya|madfam-site|avala|factlas|routecraft|crea-map", namespace!~".+-staging", pod!~"crea-map-ensayo(-.*)?", service!~"crea-map-ensayo(-.*)?"}[5m]))
                 /
-                sum by (namespace) (rate(http_requests_total{namespace=~"enclii-.*|project-.*|nauta|janua|karafiel|coupler|dhanam|tezca|pravara-mes|primavera3d|fortuna|forgesight|selva|voxa|digifab-quoting|yantra4d|kalya|madfam-site|avala|factlas|routecraft", namespace!~".+-staging"}[5m]))
+                sum by (namespace) (rate(http_requests_total{namespace=~"enclii|enclii-.*|project-.*|nauta|janua|karafiel|coupler|dhanam|tezca|pravara-mes|primavera3d|fortuna|forgesight|selva|voxa|digifab-quoting|yantra4d|kalya|madfam-site|avala|factlas|routecraft|crea-map", namespace!~".+-staging", pod!~"crea-map-ensayo(-.*)?", service!~"crea-map-ensayo(-.*)?"}[5m]))
               ) > 0.01
             for: 5m
             labels:
@@ -1431,7 +1496,7 @@ data:
           - alert: ClientServiceLatencyP95
             expr: |
               histogram_quantile(0.95,
-                sum by (namespace, le) (rate(http_request_duration_seconds_bucket{namespace=~"enclii-.*|project-.*|nauta|janua|karafiel|coupler|dhanam|tezca|pravara-mes|primavera3d|fortuna|forgesight|selva|voxa|digifab-quoting|yantra4d|kalya|madfam-site|avala|factlas|routecraft", namespace!~".+-staging"}[5m]))
+                sum by (namespace, le) (rate(http_request_duration_seconds_bucket{namespace=~"enclii|enclii-.*|project-.*|nauta|janua|karafiel|coupler|dhanam|tezca|pravara-mes|primavera3d|fortuna|forgesight|selva|voxa|digifab-quoting|yantra4d|kalya|madfam-site|avala|factlas|routecraft|crea-map", namespace!~".+-staging", pod!~"crea-map-ensayo(-.*)?", service!~"crea-map-ensayo(-.*)?"}[5m]))
               ) > 2
             for: 5m
             labels:
@@ -1444,7 +1509,7 @@ data:
           - alert: ClientPodRestartRate
             expr: |
               sum by (namespace) (
-                increase(kube_pod_container_status_restarts_total{namespace=~"enclii-.*|project-.*|nauta|janua|karafiel|coupler|dhanam|tezca|pravara-mes|primavera3d|fortuna|forgesight|selva|voxa|digifab-quoting|yantra4d|kalya|madfam-site|avala|factlas|routecraft", namespace!~".+-staging"}[1h])
+                increase(kube_pod_container_status_restarts_total{namespace=~"enclii|enclii-.*|project-.*|nauta|janua|karafiel|coupler|dhanam|tezca|pravara-mes|primavera3d|fortuna|forgesight|selva|voxa|digifab-quoting|yantra4d|kalya|madfam-site|avala|factlas|routecraft|crea-map", namespace!~".+-staging", pod!~"crea-map-ensayo(-.*)?"}[1h])
               ) > 3
             for: 5m
             labels:
@@ -1456,9 +1521,9 @@ data:
 
           - alert: ClientDeploymentUnavailable
             expr: |
-              kube_deployment_status_replicas_available{namespace=~"enclii-.*|project-.*|nauta|janua|karafiel|coupler|dhanam|tezca|pravara-mes|primavera3d|fortuna|forgesight|selva|voxa|digifab-quoting|yantra4d|kalya|madfam-site|avala|factlas|routecraft", namespace!~".+-staging"}
+              kube_deployment_status_replicas_available{namespace=~"enclii|enclii-.*|project-.*|nauta|janua|karafiel|coupler|dhanam|tezca|pravara-mes|primavera3d|fortuna|forgesight|selva|voxa|digifab-quoting|yantra4d|kalya|madfam-site|avala|factlas|routecraft|crea-map", namespace!~".+-staging", deployment!~"crea-map-ensayo(-.*)?"}
               <
-              kube_deployment_spec_replicas{namespace=~"enclii-.*|project-.*|nauta|janua|karafiel|coupler|dhanam|tezca|pravara-mes|primavera3d|fortuna|forgesight|selva|voxa|digifab-quoting|yantra4d|kalya|madfam-site|avala|factlas|routecraft", namespace!~".+-staging"}
+              kube_deployment_spec_replicas{namespace=~"enclii|enclii-.*|project-.*|nauta|janua|karafiel|coupler|dhanam|tezca|pravara-mes|primavera3d|fortuna|forgesight|selva|voxa|digifab-quoting|yantra4d|kalya|madfam-site|avala|factlas|routecraft|crea-map", namespace!~".+-staging", deployment!~"crea-map-ensayo(-.*)?"}
             for: 5m
             labels:
               severity: critical
@@ -1470,9 +1535,9 @@ data:
           - alert: TenantResourceQuotaNearLimit
             expr: |
               (
-                kube_resourcequota{type="used", namespace=~"enclii-.*|project-.*|nauta|janua|karafiel|coupler|dhanam|tezca|pravara-mes|primavera3d|fortuna|forgesight|selva|voxa|digifab-quoting|yantra4d|kalya|madfam-site|avala|factlas|routecraft", namespace!~".+-staging"}
+                kube_resourcequota{type="used", namespace=~"enclii|enclii-.*|project-.*|nauta|janua|karafiel|coupler|dhanam|tezca|pravara-mes|primavera3d|fortuna|forgesight|selva|voxa|digifab-quoting|yantra4d|kalya|madfam-site|avala|factlas|routecraft|crea-map", namespace!~".+-staging"}
                 /
-                kube_resourcequota{type="hard", namespace=~"enclii-.*|project-.*|nauta|janua|karafiel|coupler|dhanam|tezca|pravara-mes|primavera3d|fortuna|forgesight|selva|voxa|digifab-quoting|yantra4d|kalya|madfam-site|avala|factlas|routecraft", namespace!~".+-staging"}
+                kube_resourcequota{type="hard", namespace=~"enclii|enclii-.*|project-.*|nauta|janua|karafiel|coupler|dhanam|tezca|pravara-mes|primavera3d|fortuna|forgesight|selva|voxa|digifab-quoting|yantra4d|kalya|madfam-site|avala|factlas|routecraft|crea-map", namespace!~".+-staging"}
               ) > 0.9
             for: 5m
             labels:
@@ -1657,12 +1722,21 @@ data:
       - name: argo-rollout-truth
         interval: 1m
         rules:
+          # WARNING, NOT CRITICAL (infra-stability audit 2026-10-17, pager
+          # noise plan). Both rollout rules below page nobody: they go to the
+          # warning email digest. Their own text says why: a failed sync
+          # leaves the previous pods serving, so nothing a client sees is down
+          # while they fire. In the 14 days to 10-17 they sent 171 of 772
+          # Telegram pages (87 + 84, the second all for a staging app), almost
+          # all for standing conditions. A real outage behind a failed rollout
+          # still pages through ClientDeploymentUnavailable, ArgoCDAppDegraded
+          # or the revenue probes, which stay critical.
           - alert: ArgoMainRolloutNotLanded
             expr: |
               argo_main_rollout_failed_sources > 0
             for: 15m
             labels:
-              severity: critical
+              severity: warning
               category: deploy-parity
             annotations:
               summary: "An ArgoCD app tracking main has not rolled out its target revision"
@@ -1691,7 +1765,7 @@ data:
               max(argo_main_rollout_stuck_seconds) by (application, repo) > 7200
             for: 10m
             labels:
-              severity: critical
+              severity: warning
               category: deploy-parity
             annotations:
               summary: "{{ $labels.application }} has had a failed sync for over 2h"
@@ -2234,12 +2308,13 @@ data:
   # `category` on each rule below, `product` on each scrape target above
   # (RevenueProbesNotRunning has no product and is one group of its own).
   # Several endpoints of ONE product failing together are still one group.
-  # LIMIT, outside this repo: Courier dedups on alertname per UTC hour
-  # (`alarm:<alertname>:<hour>`, angelia apps/api/src/courier/alertmanager.ts).
-  # A second product paging inside an hour whose RevenueEndpointDown already
-  # reached chat reaches people by email only; while both keep firing, chat
-  # carries whichever group re-sends first in each hour. Email carries every
-  # group.
+  # Courier (outside this repo) keys each page
+  # `alarm:<alertname>[:<identity>]:<hour>[:<phase>]` (angelia#40, #41;
+  # apps/api/src/courier/alertmanager.ts). For these rules the identity is
+  # the `product` label and <hour> is the UTC hour the episode began, so each
+  # failing product pages once when it starts, gets a reminder every 24h
+  # while it keeps failing, and one resolved notice. A second product failing
+  # is its own page. Email carries every group.
   #
   # Annotations use $labels and $value only: no `query` template functions.
   # =========================================================================
@@ -2473,6 +2548,13 @@ data:
   # key's own header comment for why the drift-sources approach missed the
   # 2026-08-07 avala-services incident. Porting the superseded metric
   # verbatim would double-alert on every real rollout failure.
+  #
+  # MainCIFailingForTooLong IS A WARNING since 2026-10-17 (infra-stability
+  # audit, pager noise plan). It sent 209 of the 772 Telegram pages in the 14
+  # days to 10-17, the largest single source. A red main CI means merged code
+  # is not built; the previous image keeps serving, so it is a digest item,
+  # not a 03:00 page. A client-facing outage pages through the client-slo,
+  # Argo health and revenue rules, which stay critical.
   # =========================================================================
   deploy-pipeline-freshness-rules.yml: |
     groups:
@@ -2491,13 +2573,13 @@ data:
             # repo that stays green resolves 1h later.
             keep_firing_for: 1h
             labels:
-              severity: critical
+              severity: warning
               category: deploy-pipeline
             annotations:
               summary: "{{ $labels.repo }} main CI has been failing for >30 min"
               description: |
-                Latest CI run on `{{ $labels.branch }}` of `{{ $labels.repo }}`
-                is failed. The failing commit was pushed {{ $value | humanizeDuration }}
+                Latest push CI run on `{{ $labels.branch }}` of `{{ $labels.repo }}`
+                is failed (scheduled canaries are MainCanaryFailing). The failing commit was pushed {{ $value | humanizeDuration }}
                 ago — no image has been rebuilt → no deploys are reaching ArgoCD
                 → live pods are drifting from `main`.
                 Open the Actions tab on the repo, identify the failing run,
@@ -2562,6 +2644,42 @@ data:
                 `{{ $labels.repo }}` for 30+ minutes. Likely causes: PAT scope
                 missing the repo, repo renamed, or branch deleted. The monitor
                 keeps running for the other repos.
+
+          # Scheduled production canaries, kept apart from the build signal
+          # above (infra-stability audit 2026-10-17, W1O-1). check_main_ci.py
+          # reads push runs for MainCIFailingForTooLong and schedule runs, per
+          # workflow, for this. A canary failing twice running is a production
+          # signal worth reading in the digest; it is not merged-but-unbuilt
+          # code, which is what the build alert names.
+          - alert: MainCanaryFailing
+            expr: repo_main_scheduled_failure_streak_count >= 2
+            for: 30m
+            labels:
+              severity: warning
+              category: deploy-pipeline
+            annotations:
+              summary: "{{ $labels.repo }} scheduled workflow \"{{ $labels.workflow }}\" failed {{ $value }} times running"
+              description: |
+                The scheduled workflow `{{ $labels.workflow }}` on
+                `{{ $labels.branch }}` of `{{ $labels.repo }}` has failed
+                {{ $value }} consecutive runs (cancelled and skipped runs are
+                passed over). Push CI is read separately, so this is a
+                production check failing, not a build that did not happen.
+                Open the workflow's latest run in the Actions tab.
+                Runbook: docs/runbooks/deploy-pipeline-monitor.md
+
+          - alert: DeployPipelineMonitorScheduledProbeFailing
+            expr: repo_main_scheduled_probe_ok == 0
+            for: 30m
+            labels:
+              severity: warning
+              category: deploy-pipeline
+            annotations:
+              summary: "deploy-pipeline-monitor cannot read scheduled runs of {{ $labels.repo }}"
+              description: |
+                The schedule-event runs query for `{{ $labels.repo }}` has
+                failed for 30+ minutes, so MainCanaryFailing cannot fire for
+                it. The push signal is unaffected.
 
   # =========================================================================
   # ARC pool health (added 2026-09-04)
@@ -2832,6 +2950,71 @@ data:
                 StatefulSet itself is gone: check the Prometheus CR
                 `rules-eval` and the prometheus-operator log.
 
+  # THE PAGE BUDGET (infra-stability audit 2026-10-17, pager noise plan
+  # step 5). A pager that sends more than a handful of critical pages a day
+  # is being trained to be ignored: in the 14 days to 10-17 it sent 772,
+  # 31-92 a day at every hour. Courier counts what it actually sent
+  # (angelia apps/api/src/courier/metrics.ts, `courier_alarm_pages_total`,
+  # first attempts only, never ledger replays) and this rule reads it.
+  #
+  # WARNING, NOT CRITICAL, on purpose: a page about too many pages must not be
+  # one more page. It lands in the warning digest, where the fix (clear or
+  # demote the standing causes) is read.
+  #
+  # What counts as a page: phase opened, reminder or reopened, outcome sent,
+  # severity critical. Resolved notices are not pages. The two angelia-api
+  # replicas each count their own sends; the sum is the estate's.
+  #
+  # The scrape is the kubernetes-pods annotation job (angelia-api's pod
+  # template carries prometheus.io/scrape, port 9464) through the
+  # prometheus-egress rule to angelia:9464 in network-policies.yaml.
+  # CourierPageCounterMissing fires (warning) until the angelia image that
+  # serves the counter is live: land this after angelia's Courier change is
+  # deployed.
+  courier-page-budget-rules.yml: |
+    groups:
+      - name: courier-page-budget
+        interval: 1m
+        rules:
+          - alert: CourierPageBudgetExceeded
+            expr: |
+              sum(
+                increase(courier_alarm_pages_total{severity="critical",outcome="sent",phase=~"opened|reminder|reopened"}[24h])
+              ) > 5
+            for: 10m
+            labels:
+              severity: warning
+              service: angelia
+              category: alerting-last-mile
+            annotations:
+              summary: "The pager sent {{ $value | printf \"%.0f\" }} critical pages in the last 24h (budget 5)"
+              description: |
+                Courier sent more than 5 critical pages in 24 hours. Each one
+                is a person woken or interrupted; past a handful a day the
+                pager is read as noise and a real outage is missed.
+                Find what paged: Telegram history, or the Courier ledger rows
+                with idempotency keys `alarm:*` from the last day. Then clear
+                the standing causes, or demote rules that are not client- or
+                revenue-facing (severity: warning goes to this digest).
+              runbook_url: "https://github.com/madfam-org/angelia/blob/main/docs/runbooks/courier-provisioning.md"
+
+          - alert: CourierPageCounterMissing
+            expr: absent(courier_alarm_pages_total)
+            for: 1h
+            labels:
+              severity: warning
+              service: angelia
+              category: alerting-last-mile
+            annotations:
+              summary: "Courier's page counter is not being scraped, so the page budget is unmeasured"
+              description: |
+                No `courier_alarm_pages_total` series for an hour. Either the
+                angelia-api image predates the counter, the metrics listener
+                is off (COURIER_METRICS_PORT=0), or the scrape is blocked
+                (the pod annotations, angelia-api-ingress-metrics.yaml on the
+                angelia side, or the prometheus-egress rule to angelia:9464).
+                CourierPageBudgetExceeded cannot fire while this does.
+
   # =========================================================================
   # Pager path drill. Watchdog proves rules reach Alertmanager; nothing
   # proved that a CRITICAL page reaches a person (Alertmanager route ->
@@ -2846,12 +3029,11 @@ data:
   # `category: revenue-probe`, the label the per-product revenue route in
   # alertmanager.yaml matches (it groups by [alertname, product]). With that
   # route live the drill is two Alertmanager groups: two emails
-  # "[CRITICAL] PagerPathDrill" and two Courier webhook posts, of which chat
-  # shows ONE, because Courier dedups on alertname per UTC hour
-  # (`alarm:PagerPathDrill:<hour>`, angelia). Without that route (it is a
-  # separate change and may land later) the drill falls to the generic
-  # critical route: one group, one email listing both, one chat message.
-  # Either way it pages through critical-receiver.
+  # "[CRITICAL] PagerPathDrill" and two Courier webhook posts. Chat shows TWO
+  # pages, one per product, because Courier keys each alert on its product
+  # (`alarm:PagerPathDrill:<product>:<hour>`, angelia#40), and since
+  # angelia#41 each is followed by one resolved notice after 16:05. Either
+  # way it pages through critical-receiver.
   #
   # ONE-OFF WINDOW. The second `or` branch fires once, for 5 minutes, at the
   # epoch-second constants in it (UTC). Whoever merges this sets START to
@@ -2893,8 +3075,9 @@ data:
                 product drill-a and drill-b, and resolves by itself.
 
                 Expected: two emails "[CRITICAL] PagerPathDrill" (one per
-                product; their resolved twins follow after 16:05) and one
-                chat message (Courier sends one per alertname per hour). If
+                product; their resolved twins follow after 16:05) and two
+                chat pages, one per product, each followed by one resolved
+                notice (Courier keys pages per product and episode). If
                 either never arrives, that last mile is broken: check
                 AlertmanagerEmailDeliveryFailing and CourierReceiverDown,
                 then the Alertmanager log.

@@ -17,7 +17,7 @@
 
 
 **Last Updated:** March 2026
-**Vault URL:** https://vault.madfam.io
+**Vault URL:** in-cluster only, `http://vault.vault.svc.cluster.local:8200`. Not published; for the UI use `kubectl -n vault port-forward svc/vault 8200:8200`.
 **Namespace:** vault
 **Pod:** vault-0
 
@@ -133,6 +133,21 @@ kubectl exec -n vault vault-0 -- env VAULT_TOKEN="$TOKEN" \
 ```
 
 ---
+
+## Audit device storage
+
+The file audit device writes to its own Longhorn claim, `audit-vault-0`.
+That claim is **8Gi** (it was expanded outside GitOps while git still said
+2Gi; #794 recorded the live value in `infra/argocd/apps/vault.yaml` and
+`infra/helm/vault/values.yaml` on 2026-10-18, with no restart). The Vault app
+ignores `volumeClaimTemplates`, a template change cannot resize an existing
+claim, and Kubernetes refuses to shrink one: grow the live claim first, then
+the value in git.
+
+Vault does not rotate the file audit log itself. The last rotation was by hand
+on 2026-10-17; an automatic rotation sidecar is proposed in #795 (draft, needs
+a maintenance window, because it applies when `vault-0` is recreated and
+unsealed).
 
 ## Adding Secrets for a New Namespace
 

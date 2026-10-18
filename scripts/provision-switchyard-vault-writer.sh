@@ -324,7 +324,8 @@ path "secret/data/converge-dash/*" {
 }
 # monitoring — added 2026-10-05 with the monitoring/alertmanager-smtp intake
 # target (Alertmanager's SMTP password, typed by the owner at the masked
-# prompt). secret/monitoring also holds the Grafana properties that
+# prompt); monitoring/grafana-admin (2026-10-17) writes grafana_admin_password
+# to the same path. secret/monitoring also holds the Grafana properties that
 # monitoring-secrets reads; the intake write is a read-merge-write, so READ is
 # required here too, and a denied read fails the submit rather than replacing
 # the path. Merged in git is not applied in Vault: re-apply this policy

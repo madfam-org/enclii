@@ -28,6 +28,21 @@ enclii billing show [flags]
 |------|------|---------|-------------|
 | `--project`, `-p` | string | | Project slug |
 | `--period` | string | `30d` | Period window (`7d`, `14d`, `30d`, `90d`, `1y`, `mtd`) |
+| `--json` | bool | `false` | Print `{"project", "cost", "budgets"}` as the API returned them |
+
+Spend is only printed as a figure when the API reports `metering.status: ok`.
+Otherwise `show` says why it cannot be trusted, and does not compute budget
+consumption:
+
+| Metering status | `Spend:` line |
+|---|---|
+| `ok` | `$12.34` |
+| `not_running` | `unknown — metering is not running (the Waybill aggregator has never reported)` |
+| `stale` | `at least $X — metering is stale (…)`, or `unknown — …` when nothing was aggregated |
+| `unknown`, or an API that does not report it | `unknown — …`, or `$X (unverified: …)` |
+
+With `--json`, read `cost.spend_known` and `cost.metering.status` before using
+`cost.total_cents`.
 
 ### `alerts`
 
@@ -156,7 +171,7 @@ enclii billing budgets delete bdg_abc123 --project my-api --force
 
 - Hard-throttle blocks deploys to non-production environments only. Production deploys continue (so a budget overrun never takes a paying tenant offline).
 - Threshold percentages are inclusive — a 100 alert fires the first time spend ≥ 100%.
-- Spend is computed daily; `enclii billing show` reflects the most recent rollup.
+- Spend is rolled up hourly by the Waybill aggregator (five minutes past each hour); `enclii billing show` reflects the most recent rollup and says when there is none.
 
 ## Exit Codes
 

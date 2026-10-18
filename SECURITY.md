@@ -56,8 +56,41 @@ We are working on establishing a bug bounty program. In the meantime, we offer:
 
 ### Access Control
 - **RBAC**: Role-based access control for all resources
+- **Tenant scope (ADR-003)**: a tenant administrator reaches only its own tenants; cross-tenant reach and `/v1/admin/*` need the platform rank, granted from an explicit allow-list. Enforced in production since 2026-10-18 ([rollout runbook](docs/runbooks/TENANT_SCOPE_ENFORCEMENT_ROLLOUT.md#production-status-2026-10-18-times-utc))
+- **API tokens**: a token's scopes are bounded by its owner's role (#767)
 - **Audit Logging**: All actions logged and traceable
 - **MFA Support**: Multi-factor authentication via Janua
+- **Operator consoles stay in-cluster**: the Vault UI and the Redpanda Console accept no ingress from the tunnel (#772, 2026-10-17)
+
+### Client address behind the tunnel
+
+Public traffic reaches `switchyard-api` through cloudflared, so the TCP peer
+the API sees is a cloudflared pod, not the visitor. Since #783 (2026-10-18) the
+API believes forwarded client-IP headers only from peers listed in
+`ENCLII_TRUSTED_PROXY_CIDRS` (comma-separated CIDRs or IPs); an unset value
+trusts nobody and uses the peer address.
+
+**Production (2026-10-18):** `ENCLII_TRUSTED_PROXY_CIDRS` is set to the cluster
+pod network, the range the cloudflared pods connect from (the k3s
+`cluster_cidr` in `infra/terraform/main.tf`), in
+`infra/k8s/components/environment/production.env` and
+`infra/k8s/production/environment-patch.yaml`. The per-IP rate limiter and the
+IP allow/block filters therefore key on each visitor's `CF-Connecting-IP`, not
+on the cloudflared pod.
+
+The same list drives gin's `Context.ClientIP()`, through
+`middleware.ConfigureClientIP` at router construction. That is what the audit
+row, the authentication and CSRF logs, the per-endpoint rate limiter and an API
+token's last-used address record. Before this wiring, gin's default trusted
+every peer there, so those addresses could come from a client-supplied header.
+The two readers share one parser: an entry that does not parse is dropped and
+logged, so a typo narrows trust rather than widening it. With the variable
+unset, neither reader believes any header and both record the TCP peer.
+
+Code: `apps/switchyard-api/internal/middleware/security.go` (`getClientIP`,
+`getTrustedProxies`) and `client_ip.go` (`ConfigureClientIP`). Other
+production settings:
+[`docs/reference/switchyard-api-settings.md`](docs/reference/switchyard-api-settings.md).
 
 ## Security Best Practices for Enclii Users
 
@@ -223,7 +256,15 @@ Pre-provisioned Grafana dashboards (auto-provisioned via ConfigMap):
 
 ### Incident Response Integration
 
-- **Critical alerts** (PagerDuty): API down, data loss risk, security breach indicators
-- **Warning alerts** (Slack): Degraded performance, approaching capacity limits, policy violations
-- **Repeat interval**: Critical every 1 hour, Warning every 12 hours (Alertmanager config)
-- **Escalation**: Unacknowledged critical alerts escalate after 30 minutes per [Incident Response Runbook](docs/runbooks/INCIDENT_RESPONSE.md)
+The tables above are the monitoring plan. The channels that exist in
+production today (2026-10-18) are narrower: there is no Slack or PagerDuty
+receiver. [Alert routing](docs/monitoring/ALERT_ROUTING.md) describes the live
+path:
+
+- **Critical alerts** page a phone through Angelia Courier (Telegram) and are
+  also emailed; a critical alert from a staging target is email only.
+- **Warning alerts** go to one email digest; Courier skips them.
+- **Repeat interval**: critical every 4 hours (revenue probes hourly per
+  product), warning digest every 24 hours. Alertmanager config:
+  `infra/k8s/production/monitoring/alertmanager.yaml`.
+- **Escalation**: per the [Incident Response Runbook](docs/runbooks/INCIDENT_RESPONSE.md).

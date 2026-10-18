@@ -101,6 +101,63 @@ data:
           headers:
             User-Agent: "madfam-revenue-probe/1.0 (+https://github.com/madfam-org/enclii)"
 
+      # Janua's readiness report, /api/v1/health/ready. By owner decision
+      # (2026-10-04, internal-devops R107 and R109) readiness does NOT gate on
+      # Redis or the database: it answers 200 while either is down, so every
+      # replica stays in the Service and JWKS and discovery keep serving, and
+      # it reports the state in the body. A status-code check, or a probe of
+      # /health (which carries no Redis or database field at all), stays green
+      # through exactly the outages in which refresh and revocation answer
+      # 503. So the body decides. Every regex in the first list must match:
+      #   "status":"ready"   it reads "degraded" when Redis or the database is
+      #                      not healthy;
+      #   "degraded":[]      the reported-only checks that are failing (Redis,
+      #                      the database); empty when both are healthy;
+      #   "state":"closed"   this replica's Redis circuit breaker; "open" or
+      #                      "half_open" means its Redis calls are failing.
+      # and the second list must not: "healthy":false is the database field.
+      # The breaker is per replica and the Service picks one per probe, so a
+      # single replica's open breaker fails some probes, not all;
+      # RevenueEndpointDown needs 3 minutes of consecutive failure.
+      http_janua_ready:
+        prober: http
+        timeout: 10s
+        http:
+          method: GET
+          preferred_ip_protocol: ip4
+          follow_redirects: false
+          fail_if_not_ssl: true
+          headers:
+            User-Agent: "madfam-revenue-probe/1.0 (+https://github.com/madfam-org/enclii)"
+          fail_if_body_not_matches_regexp:
+            - '"status"\s*:\s*"ready"'
+            - '"degraded"\s*:\s*\[\s*\]'
+            - '"state"\s*:\s*"closed"'
+          fail_if_body_matches_regexp:
+            - '"healthy"\s*:\s*false'
+
+      # http_401 for a session-gated web app that answers a DOCUMENT
+      # navigation with a redirect to its login page and anything else with a
+      # bare 401. Nauta's middleware (apps/web/src/middleware.ts) classifies a
+      # request with no Accept header as a document navigation, and this
+      # exporter sends none, so under plain http_401 a healthy workspace host
+      # answers 307 and fails every probe. Asking for JSON makes it answer
+      # 401. The 401 means: the hostname reaches the app through Cloudflare
+      # and the tunnel, the app resolved the host to a client workspace (an
+      # unbound host answers 404), and the session gate is on (200 fails).
+      http_401_json:
+        prober: http
+        timeout: 10s
+        http:
+          method: GET
+          preferred_ip_protocol: ip4
+          follow_redirects: false
+          fail_if_not_ssl: true
+          valid_status_codes: [401]
+          headers:
+            User-Agent: "madfam-revenue-probe/1.0 (+https://github.com/madfam-org/enclii)"
+            Accept: "application/json"
+
       # Dhanam's public billing catalog: 2xx and at least one product.
       http_dhanam_catalog:
         prober: http

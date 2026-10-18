@@ -48,15 +48,27 @@ data:
     #   //npm.madfam.io/:_auth=$(printf 'janua:%s' "$JANUA_KEY" | base64)
     #   //npm.madfam.io/:always-auth=true
     # See docs/infrastructure/npm-registry.md.
+    #
+    # allowed_org_ids: the Janua organisations whose keys this registry
+    # honours. A verified key from any other org is refused install of
+    # restricted packages and publish; so is a key without npm:install /
+    # npm:publish. An empty list refuses EVERY Janua key (htpasswd users are
+    # unaffected). Only MADFAM's own organisation is listed: client tenant
+    # orgs must never read or publish the private scopes. JANUA_ALLOWED_ORG_IDS
+    # (comma-separated) on the container is the alternative to this key.
+    #
+    # max_users: -1 disables htpasswd self-registration (`npm adduser`), even
+    # if the htpasswd file ever becomes writable.
     auth:
       auth-janua:
         janua_url: https://auth.madfam.io
         cache_ttl_ms: 300000
         key_prefixes: [jnk_, sk_live_]
         timeout_ms: 5000
+        allowed_org_ids: ["1a6233ef-185f-43ee-9181-e2591fbb2643"]  # Janua org "MADFAM Ecosystem" (slug madfam-ecosystem)
       htpasswd:
         file: /verdaccio/conf/htpasswd
-        max_users: 100
+        max_users: -1
         algorithm: bcrypt
 
     # Security settings

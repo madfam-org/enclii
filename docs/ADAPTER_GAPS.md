@@ -17,9 +17,34 @@ Track operations that still require break-glass (`kubectl`, provider CLIs, manua
 | GitOps deploy tracking has no reconcile fallback | ArgoCD Notifications push (`/v1/callbacks/argocd-sync`) is the **only** release/deployment/activity signal for externally-managed (GitOps) services; if the push channel breaks, tracking silently freezes | ArgoCD `Application` poller in switchyard-api (reads `status.sync.revision` + `status.summary.images` directly) **or** relax the K8s-poll reconciler to track image-digest changes for name/repo-matched services (not only `enclii.dev/managed-by: switchyard`) | **P1** — see progress log 2026-07-12 |
 | `ops.pods.restart` apply not wired | ~~`--apply` returned HTTP 501 `adapter_required`, so a wedged pod needed break-glass `kubectl delete pod` and a workload restart needed `kubectl rollout restart`. The common case was a StatefulSet pod crash-looping on an old revision, which `OrderedReady` never replaces (loki-0, 2026-10-14, after #736).~~ | **Closed** — `enclii ops pods restart <kind>/<name>`: a rollout restart of a Deployment, StatefulSet or DaemonSet, or the recreation of one controller-owned pod (the stuck-ordinal case, flagged by the StatefulSet dry run). Platform rank, `ENCLII_OPS_RESTART_NAMESPACES` allowlist, audit row before the mutation. See the progress log, 2026-10-14 | — |
 
+| k3s packaged addons (CoreDNS replicas) | CoreDNS is k3s's packaged `coredns` manifest, applied by the k3s server and not by GitOps; nothing in this repo manages it. It runs 1 replica, so cluster DNS lives on one node. Raising it is a break-glass `kubectl -n kube-system scale deployment coredns --replicas=2` by the owner (the packaged manifest sets no `replicas`, and already spreads by hostname with `DoNotSchedule`) | An `ops` operation for the replica count of a named kube-system addon, audited, or a GitOps-owned CoreDNS with `--disable=coredns` on the server | P1: DNS is a single-node dependency of every workload (infra-stability audit 2026-10-17, E2-04) |
+| Cloudflare tunnel route and DNS deletion | Enclii can add and reconcile tunnel routes and DNS records but cannot delete one. Retiring a public hostname (2026-10-17: two operator consoles closed to the tunnel by #772) leaves its route and record to the Cloudflare dashboard, as break-glass | An audited `providers cloudflare` delete for one route and its record, dry run first, bound to the reviewed plan like `tunnels-apply --expect-plan` | P2 |
+| Shared Postgres server settings read | No Enclii read returns `pg_settings` (for example `max_connections`, `shared_buffers`) of the shared Postgres; `enclii db wal-status` needs a local kubeconfig. #785's settings (2026-10-18) were confirmed by an operator read, not through Enclii | A read-only `ops`/`db` operation that returns named server settings and connection counts | P2 |
+| ARC runner image read | `enclii ops runners arc` returns scale-set runner counts but not the runner image, so the digest a pool actually runs is read with break-glass `kubectl` (`infra/k8s/production/arc/README.md`) | Add each scale set's runner and init-container image to the `ops.runners.arc` read | P3 |
+| Node scheduling reads (taints, allocatable, requests) | None through Enclii: node taints, conditions and allocatable-vs-requested cannot be read, so whether a constraint (`required` anti-affinity, a spread) can be satisfied is inferred from pod placement | A read in `ops` (or `admin topology`) that returns, per node ROLE, taints, conditions, allocatable and summed requests, never hostnames or IPs | P2 |
+
 When closing a gap, remove the row and link the PR that added the adapter.
 
 ## Progress log
+
+### 2026-10-17 — Longhorn replica count: drift is visible, changing it is not wired (gap open)
+
+`storageclass-apply` now asks for 2 replicas on `longhorn` and
+`longhorn-replicated`, and its dry run and apply report a live class whose
+`numberOfReplicas` differs as `drift` (status `drift_detected`) instead of
+"already present". It still never mutates an existing class. Open gaps, each
+done today by break-glass `kubectl` or the Longhorn UI:
+
+- deleting a StorageClass so `storageclass-apply` can recreate it
+  (parameters are immutable);
+- reading and patching a Longhorn volume's `spec.numberOfReplicas`
+  (`ops storage longhorn` does not return it);
+- reading StorageClass parameters (`ops storage volumes` returns only the
+  class name);
+- moving a volume between recurring-job groups (the
+  `recurring-job-group.longhorn.io/<group>` volume labels) and deleting the
+  snapshots the old group leaves behind
+  (`infra/helm/longhorn/recurring-jobs.yaml` header).
 
 ### 2026-10-14 — `ops pods restart` wired (row closed)
 

@@ -61,10 +61,21 @@ func (h *Handler) GetActivity(c *gin.Context) {
 		logs []*types.AuditLog
 		err  error
 	)
+	// Outside acting-as, only a platform admin reads the unscoped feed. Every other
+	// caller sees the rows it produced itself, rows for projects it holds a
+	// grant on, and — for a tenant admin — rows for its own tenants' projects:
+	// the same reach enforceUserProjectAccess gives it (access.go).
 	if teamID, ok := middleware.ActingTeamID(c); ok {
 		logs, err = h.repos.AuditLogs.QueryByTeam(ctx, teamID, filters, limit, offset)
-	} else {
+	} else if h.callerIsPlatformAdmin(c) {
 		logs, err = h.repos.AuditLogs.Query(ctx, filters, limit, offset)
+	} else {
+		userID, ok := authenticatedUserID(c)
+		if !ok {
+			c.JSON(http.StatusUnauthorized, gin.H{"error": "User not authenticated"})
+			return
+		}
+		logs, err = h.repos.AuditLogs.QueryVisibleTo(ctx, userID, h.callerTenantIDs(c), filters, limit, offset)
 	}
 	if err != nil {
 		h.logger.Error(ctx, "Failed to query activity logs", logging.Error("error", err))

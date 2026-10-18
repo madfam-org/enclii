@@ -27,7 +27,7 @@ For Vault operations (unseal, rotation, backup), see [Vault Operations Runbook](
 ┌─────────────────────────────────────────┐
 │    HashiCorp Vault (vault namespace)    │
 │    KV v2 engine at secret/              │
-│    UI: https://vault.madfam.io          │
+│    UI: port-forward only (not published)│
 └─────────────────────────────────────────┘
                     │
           Vault token bridge
@@ -260,6 +260,17 @@ has one writer, so the multi-writer rule does not apply. The property's only
 writer is the intake target `monitoring/alertmanager-smtp`
 ([Secret Intake](../runbooks/SECRET_INTAKE.md#alertmanager-smtp-credential-2026-10-05)).
 It replaced the hand-made `alertmanager-smtp-secret`.
+
+**Two readers of `secret/monitoring:grafana_admin_password` (2026-10-17).**
+`monitoring-secrets` names it too (key `GRAFANA_ADMIN_PASSWORD`, not deployed).
+`grafana-admin` (`infra/k8s/production/monitoring/grafana-admin.externalsecret.yaml`,
+synced by the `monitoring` Argo app) reads it into a **different** target
+Secret, key `admin-password`, which Grafana's `admin-password-sync` init
+container applies to Grafana's database at pod start. The property's only
+writer is the intake target `monitoring/grafana-admin`
+([Secret Intake](../runbooks/SECRET_INTAKE.md#grafana-admin-credential-2026-10-17)).
+It replaces the hand-made `grafana-credentials` as the source of the admin
+password.
 
 **Dhanam merge model (2026-06-16, corrected 2026-08-06):** `dhanam-secrets`
 (core), `dhanam-secrets-extended` and the platform

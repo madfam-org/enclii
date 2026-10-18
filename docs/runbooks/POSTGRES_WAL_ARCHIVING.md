@@ -417,6 +417,12 @@ Each fix landed as a separate enclii PR (193, 195, 196, 197, 198, 199,
 | 10 | "unable to verify certificate presented by R2" | Postgres minimal image has no `/etc/ssl/certs`; pgbackrest can't verify R2 TLS | Init container also copies `ca-certificates.crt`; wrapper sets `SSL_CERT_FILE` |
 | 11 | "'zstd' is not allowed for 'compress-type'" | pgbackrest 2.58 (postgres-side, glibc) only accepts `zst`; 2.55 (sidecar, musl) accepts both | Use `zst` (3-letter form) — both versions accept it |
 
+Rows 8 and 11 describe the version skew of that time. Since #785 (live
+2026-10-18) the postgres init container, the sidecar image and the restore
+drill all run pgBackRest **2.59.1**, and
+`tests/scripts/test_pgbackrest_version_parity.py` fails CI if one is bumped
+without the others.
+
 ### 9.2 Why this didn't alert
 
 - `pgbackrest-check` CronJob fired every 15 min, exited non-zero, but
@@ -434,8 +440,9 @@ Each fix landed as a separate enclii PR (193, 195, 196, 197, 198, 199,
 
 - **Monthly DR drill** (`pgbackrest-restore-drill` CronJob in
   `infra/k8s/platform-infra/postgres-pgbackrest-restore-drill.yaml`):
-  restores the latest backup plus all archived WAL to an 8 GiB Longhorn
-  PVC, starts the restored cluster with archiving off, waits for the replay
+  restores the latest backup plus all archived WAL to a 12 GiB Longhorn
+  PVC (8 GiB until #791, 2026-10-17; the drill now prints the volume's real
+  fill, because Longhorn's `actualSize` is a high-water mark), starts the restored cluster with archiving off, waits for the replay
   to finish and the cluster to promote, and fails unless no WAL fetch
   failed, it holds at least 5 databases and 500 user tables, and its last
   replayed transaction is at most 30 min older than the drill start. (Until
@@ -456,6 +463,20 @@ Each fix landed as a separate enclii PR (193, 195, 196, 197, 198, 199,
   installed pgbackrest + bundled libs + CA — keeps the binary glibc-
   matched against the running postgres image even after upstream tag
   bumps.
+- **One pgBackRest version** (#785, live 2026-10-18): the init container
+  installs a pinned `PGBACKREST_DEB_VERSION` and asserts
+  `PGBACKREST_EXPECTED_VERSION`, the sidecar image carries the same version
+  in its tag, and the restore drill pins the same pair. Bump all three in one
+  PR; `tests/scripts/test_pgbackrest_version_parity.py` enforces it.
+- **Bounded logs** (#785): `log-level-file=info`, the `pgbackrest-logs`
+  emptyDir is 1Gi, and the sidecar cuts any pgBackRest file log over 64 MiB
+  to its last 8 MiB (pgBackRest never rotates its own logs). The sidecar's
+  `pgbackrest check` loop runs every 300 s.
+- **Sizing** (#785, live 2026-10-18): `max_connections=200`,
+  `shared_buffers=1GB`; the postgres container requests 500m CPU / 2Gi and is
+  limited to 2 CPU / 4Gi. The reasoning is in
+  `infra/k8s/platform-infra/postgres.yaml`; change the settings only together
+  with the memory limit.
 - **Single-source config** — every option pgbackrest needs is either in
   the configmap (under `[global]` or `[main]` per stanza-only rules),
   or in `pgbackrest-r2-credentials` Secret as `PGBACKREST_<OPTION>` env
@@ -473,3 +494,5 @@ _Amendments_
 - 2026-10-07 / ai / §9.3: why the 2026-10-01 drill failed (no egress policy;
   `pg_ctl -w` does not wait for the replay with `hot_standby=off`) and the
   stricter pass criteria; on-demand trigger through `enclii ops jobs trigger`.
+- 2026-10-18 / ai / §9.1 note and §9.3: pgBackRest 2.59.1 everywhere, bounded
+  logs and sizing (#785); drill PVC 12 GiB (#791); version-parity test.

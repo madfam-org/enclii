@@ -86,18 +86,26 @@ type IsolatedInitialJobReceipt struct {
 	Classification string                `json:"classification"`
 }
 
+func (p IsolatedInitialJobPlan) kind() bootstrapKind { return bootstrapKindFor(p.Profile) }
+
 func (p IsolatedInitialJobPlan) jobName() string {
 	if p.retainedJobName != "" {
 		return p.retainedJobName
 	}
-	// One native object name arbitrates concurrent keys. The key hash is retained
-	// separately in the intent and must match on all subsequent POST reads.
-	sum := sha256.Sum256([]byte(p.ProjectID.String() + "/" + p.AddonID.String() + "/" + p.ServiceID.String() + "/" + p.Profile))
-	return "initial-" + hex.EncodeToString(sum[:12])
+	// An initial profile: one native object name arbitrates concurrent keys. The
+	// key hash is retained separately in the intent and must match on all
+	// subsequent POST reads. A fixed step names each key's own operation.
+	kind := p.kind()
+	material := p.ProjectID.String() + "/" + p.AddonID.String() + "/" + p.ServiceID.String() + "/" + p.Profile
+	if kind.nameIncludesKey {
+		material += "/" + p.IdempotencyKey
+	}
+	sum := sha256.Sum256([]byte(material))
+	return kind.namePrefix + hex.EncodeToString(sum[:12])
 }
 
 func (p IsolatedInitialJobPlan) jobLabels() map[string]string {
-	return map[string]string{"enclii.dev/managed-by": initialJobManager, LabelProjectNamespace: p.ProjectID.String(), "enclii.dev/addon-id": p.AddonID.String(), "enclii.dev/service-id": p.ServiceID.String(), "enclii.dev/bootstrap-profile": p.Profile, "enclii.dev/bootstrap-job": p.jobName()}
+	return map[string]string{"enclii.dev/managed-by": p.kind().manager, LabelProjectNamespace: p.ProjectID.String(), "enclii.dev/addon-id": p.AddonID.String(), "enclii.dev/service-id": p.ServiceID.String(), "enclii.dev/bootstrap-profile": p.Profile, "enclii.dev/bootstrap-job": p.jobName()}
 }
 
 func (p IsolatedInitialJobPlan) fingerprint() string {
@@ -140,6 +148,14 @@ func BuildIsolatedInitialJob(p IsolatedInitialJobPlan) (*batchv1.Job, error) {
 		}
 		command = []string{"node", "packages/entrenamiento/src/preparar-custodia-reset.ts"}
 		migration = []string{"node", "packages/entrenamiento/src/migrar.ts"}
+		allowed["CREA_SIM_MIGRATOR_DATABASE_URL"], allowed["CREA_SIM_PORTAL_DATABASE_URL"], allowed["CREA_SIM_DATABASE_NAMESPACE"] = true, true, true
+	case p.Profile == fixedStepTurnoVigenteProfile:
+		// Step 003 takes no argument and no SQL: the image's own fixed file is
+		// the only DDL, applied with the custody preparer's accounts and lock.
+		if !strings.HasPrefix(p.Image, "ghcr.io/madfam-org/crea-sim/gateway@sha256:") {
+			return nil, fmt.Errorf("fixed step portal producer mismatch")
+		}
+		command = []string{"node", "packages/entrenamiento/src/preparar-turno-vigente.ts"}
 		allowed["CREA_SIM_MIGRATOR_DATABASE_URL"], allowed["CREA_SIM_PORTAL_DATABASE_URL"], allowed["CREA_SIM_DATABASE_NAMESPACE"] = true, true, true
 	default:
 		return nil, fmt.Errorf("unsupported initial Job profile")
@@ -189,6 +205,9 @@ func BuildIsolatedInitialJob(p IsolatedInitialJobPlan) (*batchv1.Job, error) {
 		init.Command = migration
 		job.Spec.Template.Spec.InitContainers = []corev1.Container{initialNetworkReady(container, "CREA_SIM_MIGRATOR_DATABASE_URL"), *init}
 	}
+	if IsFixedStepProfile(p.Profile) {
+		job.Spec.Template.Spec.InitContainers = []corev1.Container{initialNetworkReady(container, "CREA_SIM_MIGRATOR_DATABASE_URL")}
+	}
 	return job, nil
 }
 
@@ -202,8 +221,19 @@ func initialNetworkReady(base corev1.Container, variable string) corev1.Containe
 	return *ready
 }
 
-func initialJobReceipt(job *batchv1.Job, dryRun bool) IsolatedInitialJobReceipt {
-	return IsolatedInitialJobReceipt{Name: job.Name, Namespace: job.Namespace, DryRun: dryRun, Suspended: job.Spec.Suspend != nil && *job.Spec.Suspend, Succeeded: job.Status.Succeeded, Failed: job.Status.Failed, Active: job.Status.Active, Classification: "INITIAL_ONLY_EXECUTION"}
+func initialJobReceipt(job *batchv1.Job, kind bootstrapKind, dryRun bool) IsolatedInitialJobReceipt {
+	return IsolatedInitialJobReceipt{Name: job.Name, Namespace: job.Namespace, DryRun: dryRun, Suspended: job.Spec.Suspend != nil && *job.Spec.Suspend, Succeeded: job.Status.Succeeded, Failed: job.Status.Failed, Active: job.Status.Active, Classification: kind.execution}
+}
+
+// retainedJobReceipt reports a retained typed receipt. Only a fixed step's
+// failed Job is retained as failed; every other retained receipt records a Job
+// that completed (an unclassified fixed-step output is still held, by class).
+func retainedJobReceipt(name, namespace string, native *InitialNativeReceipt, dryRun bool) IsolatedInitialJobReceipt {
+	receipt := IsolatedInitialJobReceipt{Name: name, Namespace: namespace, Succeeded: 1, Native: native, Classification: native.Classification, DryRun: dryRun}
+	if native.HeldReason == fixedStepHeldJobFailed {
+		receipt.Succeeded, receipt.Failed = 0, 1
+	}
+	return receipt
 }
 
 func (c *Client) checkInitialJobNamespace(ctx context.Context, p IsolatedInitialJobPlan) error {
@@ -302,7 +332,7 @@ func (c *Client) checkInitialJobNamespace(ctx context.Context, p IsolatedInitial
 		if rule.Name == p.jobName()+"-database" {
 			job, getErr := c.kubeClient().BatchV1().Jobs(p.Namespace).Get(ctx, p.jobName(), metav1.GetOptions{})
 			expected := initialDatabasePolicy(p, metav1.OwnerReference{})
-			if getErr != nil || job.UID == "" || rule.Labels["enclii.dev/managed-by"] != initialJobManager || rule.Labels[LabelProjectNamespace] != p.ProjectID.String() || !reflect.DeepEqual(rule.Spec, expected.Spec) || len(rule.OwnerReferences) != 1 || rule.OwnerReferences[0].UID != job.UID || rule.OwnerReferences[0].Kind != "Job" || rule.OwnerReferences[0].Name != job.Name {
+			if getErr != nil || job.UID == "" || rule.Labels["enclii.dev/managed-by"] != p.kind().manager || rule.Labels[LabelProjectNamespace] != p.ProjectID.String() || !reflect.DeepEqual(rule.Spec, expected.Spec) || len(rule.OwnerReferences) != 1 || rule.OwnerReferences[0].UID != job.UID || rule.OwnerReferences[0].Kind != "Job" || rule.OwnerReferences[0].Name != job.Name {
 				return fmt.Errorf("initial database egress ownership conflicts")
 			}
 			continue
@@ -353,9 +383,10 @@ func (c *Client) RunIsolatedInitialJob(ctx context.Context, p IsolatedInitialJob
 	if err != nil {
 		return nil, err
 	}
-	if err = c.checkInitialOperationExclusion(ctx, p); err != nil {
+	if err = c.checkOperationExclusion(ctx, p); err != nil {
 		return nil, err
 	}
+	kind := p.kind()
 	jobs := c.kubeClient().BatchV1().Jobs(p.Namespace)
 	retained, intentErr := c.readInitialIntent(ctx, p, intent)
 	existing, jobErr := jobs.Get(ctx, job.Name, metav1.GetOptions{})
@@ -365,18 +396,44 @@ func (c *Client) RunIsolatedInitialJob(ctx context.Context, p IsolatedInitialJob
 		}
 		native, receiptErr := c.readInitialReceipt(ctx, p, retained)
 		if receiptErr == nil {
-			return &IsolatedInitialJobReceipt{Name: job.Name, Namespace: p.Namespace, Succeeded: 1, Native: native, Classification: "INITIAL_ONLY", DryRun: dryRun}, nil
+			receipt := retainedJobReceipt(job.Name, p.Namespace, native, dryRun)
+			return &receipt, nil
 		}
 		if !k8serrors.IsNotFound(receiptErr) {
 			return nil, receiptErr
 		}
+		if IsFixedStepProfile(p.Profile) && k8serrors.IsNotFound(jobErr) {
+			// Its Job outlived its TTL uncollected. Nothing runs and nothing is
+			// written here; the database's own step receipt holds the outcome,
+			// and this operation no longer blocks a new key.
+			return nil, fmt.Errorf("fixed step Job no longer retained and never collected; held, no receipt")
+		}
 		if jobErr != nil || !initialJobMatches(existing, job, intent) {
 			return nil, fmt.Errorf("initial intent has no matching Job; held, no retry")
 		}
-		if existing.Spec.Suspend == nil || *existing.Spec.Suspend || existing.Status.Failed > 0 {
+		if existing.Spec.Suspend == nil || *existing.Spec.Suspend {
 			return nil, fmt.Errorf("initial Job partial or failed; held, no repair")
 		}
-		receipt := initialJobReceipt(existing, dryRun)
+		if existing.Status.Failed > 0 {
+			// An initial failure is never resumed. A fixed step's failed Job
+			// is collected once as a terminal held receipt; nothing reruns.
+			if !IsFixedStepProfile(p.Profile) {
+				return nil, fmt.Errorf("initial Job partial or failed; held, no repair")
+			}
+			receipt := initialJobReceipt(existing, kind, dryRun)
+			receipt.Classification = kind.held
+			if dryRun {
+				return &receipt, nil
+			}
+			if p.Revalidate == nil || p.Revalidate(ctx) != nil {
+				return nil, fmt.Errorf("fixed step collection authority changed")
+			}
+			if receipt.Native, err = c.collectFixedStepFailure(ctx, p, existing, job, retained, intent); err != nil {
+				return nil, err
+			}
+			return &receipt, nil
+		}
+		receipt := initialJobReceipt(existing, kind, dryRun)
 		if existing.Status.Succeeded > 0 && !dryRun {
 			if p.Revalidate == nil || p.Revalidate(ctx) != nil {
 				return nil, fmt.Errorf("initial collection authority changed")
@@ -385,7 +442,7 @@ func (c *Client) RunIsolatedInitialJob(ctx context.Context, p IsolatedInitialJob
 			if err != nil {
 				return nil, err
 			}
-			receipt.Classification = "INITIAL_ONLY"
+			receipt.Classification = receipt.Native.Classification
 		}
 		return &receipt, nil
 	}
@@ -409,7 +466,7 @@ func (c *Client) RunIsolatedInitialJob(ctx context.Context, p IsolatedInitialJob
 		return nil, fmt.Errorf("initial intent admission refused")
 	}
 	if dryRun {
-		receipt := initialJobReceipt(job, true)
+		receipt := initialJobReceipt(job, kind, true)
 		return &receipt, nil
 	}
 	if p.Revalidate == nil {
@@ -480,7 +537,7 @@ func (c *Client) RunIsolatedInitialJob(ctx context.Context, p IsolatedInitialJob
 	if err != nil {
 		return nil, err
 	}
-	receipt := initialJobReceipt(job, false)
+	receipt := initialJobReceipt(job, kind, false)
 	return &receipt, nil
 }
 
@@ -490,11 +547,21 @@ func initialDatabasePolicy(p IsolatedInitialJobPlan, owner metav1.OwnerReference
 }
 
 // Status reads do not rerun producer checks, inspect credentials or retry work.
+// The name is an initial Job's or a fixed step's: its prefix plus 24 hex.
 func (c *Client) IsolatedInitialJobStatus(ctx context.Context, namespace, name string, project, addon uuid.UUID) (*IsolatedInitialJobReceipt, map[string]string, error) {
-	if c == nil || c.kubeClient() == nil || project == uuid.Nil || addon == uuid.Nil || namespace != "project-"+project.String()[:8] || len(name) != 32 || !strings.HasPrefix(name, "initial-") {
+	if c == nil || c.kubeClient() == nil || project == uuid.Nil || addon == uuid.Nil || namespace != "project-"+project.String()[:8] {
 		return nil, nil, fmt.Errorf("initial Job status scope refused")
 	}
-	if _, err := hex.DecodeString(name[len("initial-"):]); err != nil {
+	suffix := ""
+	for _, kind := range []bootstrapKind{initialKind, fixedStepKind} {
+		if strings.HasPrefix(name, kind.namePrefix) {
+			suffix = name[len(kind.namePrefix):]
+		}
+	}
+	if len(suffix) != 24 {
+		return nil, nil, fmt.Errorf("initial Job status scope refused")
+	}
+	if _, err := hex.DecodeString(suffix); err != nil || strings.ToLower(suffix) != suffix {
 		return nil, nil, fmt.Errorf("initial Job status name refused")
 	}
 	return c.retainedInitialStatus(ctx, namespace, name, project, addon)

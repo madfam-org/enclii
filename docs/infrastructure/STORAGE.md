@@ -17,7 +17,7 @@
 
 Enclii uses Longhorn as the Container Storage Interface (CSI) driver for persistent storage.
 
-> **Current State:** Running on a single Hetzner dedicated server. Longhorn is deployed and configured for multi-node replication, but currently operates in single-replica mode. When additional nodes are added, replication will automatically activate.
+> **Current State (2026-10-17):** Longhorn runs on all 4 cluster nodes. The classes that hold data ask for **2 replicas** (`longhorn` through the chart's `persistence.defaultClassReplicaCount: 2`, `longhorn-replicated` in `infra/helm/longhorn/storageclass.yaml`); `longhorn-fast` stays at 1. A class's replica count only applies to NEW volumes: existing volumes keep their own `spec.numberOfReplicas` until patched. The single-node notes below are historical.
 
 ## Architecture
 
@@ -61,7 +61,7 @@ Enclii uses Longhorn as the Container Storage Interface (CSI) driver for persist
 
 Default storage class for all workloads.
 
-> **Note:** `numberOfReplicas: "1"` because we're on a single node. When nodes are added, update to `"2"` or `"3"` for replication.
+> **Note:** created by the Longhorn chart from `persistence.defaultClassReplicaCount` (2) in `infra/argocd/apps/storage.yaml`. The block below is the GA mirror `storageclass-apply` would create if the class were missing.
 
 ```yaml
 apiVersion: storage.k8s.io/v1
@@ -70,7 +70,7 @@ metadata:
   name: longhorn
 provisioner: driver.longhorn.io
 parameters:
-  numberOfReplicas: "1"  # Single node - no replication target
+  numberOfReplicas: "2"
   staleReplicaTimeout: "2880"
   fromBackup: ""
   fsType: "ext4"
@@ -81,14 +81,45 @@ allowVolumeExpansion: true
 
 | Parameter | Value | Description |
 |-----------|-------|-------------|
-| `numberOfReplicas` | 1 | Single replica (single-node cluster) |
+| `numberOfReplicas` | 2 | One replica on each of two nodes |
 | `staleReplicaTimeout` | 2880 | 48 hours before replica rebuilt |
 | `reclaimPolicy` | Delete | PV deleted when PVC deleted |
 | `allowVolumeExpansion` | true | Can resize volumes online |
 
-### Future: longhorn-replicated
+### longhorn-replicated and longhorn-fast
 
-When additional nodes are added, create this StorageClass for HA workloads:
+Defined in `infra/helm/longhorn/storageclass.yaml` (`longhorn-replicated`: 2
+replicas, Retain; `longhorn-fast`: 1 replica, strict locality, for caches) and
+created by `enclii ops storage storageclass-apply`.
+
+**Changing a class.** StorageClass parameters are immutable, and
+`storageclass-apply` only creates missing classes; a live class whose replica
+count differs from the manifest is reported as `drift` and left alone. To
+change one: delete the StorageClass (bound PVs are not touched), run
+`storageclass-apply` (dry run, then `--apply`), then patch each existing
+volume's `spec.numberOfReplicas`.
+
+### Snapshot bloat (2026-10-17)
+
+Longhorn's `actualSize` counts every snapshot in a volume's chain, so a
+volume that rewrites its data (Prometheus TSDB, WAL, Loki index) can hold
+several times its claim while its filesystem looks fine, and that space is
+node disk Longhorn can no longer schedule replicas onto. Expanding the claim
+does not help. Two controls (#789):
+
+- the volume's recurring-job group must match its churn: TSDB, WAL and index
+  volumes belong to `high-churn` (`infra/helm/longhorn/recurring-jobs.yaml`,
+  whose header also has the procedure for pruning snapshots a previous group
+  stranded);
+- `LonghornSnapshotBloat` (warning, email digest) fires when
+  `actualSize / capacity` stays above 1.5 for 6 hours.
+
+A volume that is wiped and refilled on every run, such as the pgBackRest
+restore-drill scratch claim, reads near its claim size for the same reason:
+`actualSize` is a high-water mark, not the fill. The drill prints its real
+fill (`df`) after each restore (#791).
+
+Historical single-node example:
 
 ```yaml
 apiVersion: storage.k8s.io/v1

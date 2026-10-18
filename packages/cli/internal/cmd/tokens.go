@@ -38,7 +38,7 @@ revoke it and create a new one.
 Examples:
   enclii tokens list
   enclii tokens create --name ci-deploy --expires-in 90d
-  enclii tokens create --name short-lived --expires-in 24h --scopes deploy,logs
+  enclii tokens create --name read-only --expires-in 24h --scopes viewer
   enclii tokens revoke <token-id> --force`,
 	}
 
@@ -298,7 +298,7 @@ Use Go duration syntax extended with 'd' for days: 24h, 30d, 90d.`,
 	}
 	cmd.Flags().StringVar(&name, "name", "", "Human-readable token name (required)")
 	cmd.Flags().StringVar(&expiresIn, "expires-in", "90d", "Token lifetime: 24h, 30d, 90d (default 90d)")
-	cmd.Flags().StringVar(&scopesCSV, "scopes", "", "Comma-separated scope list (default: full account access)")
+	cmd.Flags().StringVar(&scopesCSV, "scopes", "", "Role for the token: admin, developer or viewer (default: developer, capped at your role)")
 	cmd.Flags().BoolVar(&jsonOut, "json", false, "Emit machine-readable JSON to stdout")
 	_ = cmd.MarkFlagRequired("name")
 	return cmd

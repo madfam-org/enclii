@@ -80,7 +80,14 @@ spec:
           auditStorage:
             enabled: true
             storageClass: longhorn
-            size: 2Gi
+            # 8Gi = the LIVE claim (2026-10-17). audit-vault-0 was expanded to
+            # 8Gi outside GitOps while this said 2Gi. Argo never acted on the
+            # difference: the Vault app ignores /spec/volumeClaimTemplates
+            # (ignoreDifferences + RespectIgnoreDifferences below), a template
+            # change cannot resize an existing claim, and Kubernetes refuses to
+            # shrink a PVC. So this edit is a record, not a change: no sync, no
+            # restart. Grow the live claim by editing the PVC, then this value.
+            size: 8Gi
 
           resources:
             requests:

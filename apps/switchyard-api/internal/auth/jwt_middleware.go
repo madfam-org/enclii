@@ -26,7 +26,7 @@ func (j *JWTManager) AuthMiddleware() gin.HandlerFunc {
 
 		// Check if this is an API token (starts with "enclii_")
 		if strings.HasPrefix(tokenString, "enclii_") {
-			j.handleAPITokenAuth(c, tokenString)
+			j.handleAPITokenAuth(c, tokenString, MatchAdminEmails(j.adminEmails))
 			return
 		}
 
@@ -94,8 +94,10 @@ func (j *JWTManager) AuthMiddleware() gin.HandlerFunc {
 	}
 }
 
-// handleAPITokenAuth handles authentication via API tokens (enclii_xxx format)
-func (j *JWTManager) handleAPITokenAuth(c *gin.Context, tokenString string) {
+// handleAPITokenAuth handles authentication via API tokens (enclii_xxx format).
+// isAdminEmail is the admin-email set of the calling manager's session path,
+// so a token's owner is bounded by exactly the role a session would give it.
+func (j *JWTManager) handleAPITokenAuth(c *gin.Context, tokenString string, isAdminEmail AdminEmailMatcher) {
 	if j.apiTokenValidator == nil {
 		logrus.WithFields(logrus.Fields{
 			"path":   c.Request.URL.Path,
@@ -123,24 +125,31 @@ func (j *JWTManager) handleAPITokenAuth(c *gin.Context, tokenString string) {
 		return
 	}
 
+	// The request runs with the LOWER of the role the token's scopes name and
+	// the role its owner holds now (see api_token_scope.go). The owner is
+	// re-read on every request so a demotion takes effect immediately.
+	requested := APITokenScopeRole(apiToken.Scopes)
+	ceiling, err := ResolveAPITokenOwnerCeiling(c.Request.Context(), j.repos, isAdminEmail, apiToken.UserID, requested)
+	if err != nil {
+		logrus.WithFields(logrus.Fields{
+			"path":     c.Request.URL.Path,
+			"method":   c.Request.Method,
+			"token_id": apiToken.ID,
+			"error":    err.Error(),
+		}).Warn("API token owner could not be resolved")
+
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid or expired API token"})
+		c.Abort()
+		return
+	}
+	userRole := LowerRole(requested, ceiling)
+
 	// Set user context from API token
 	c.Set("user_id", apiToken.UserID.String())
 	c.Set("auth_type", "api_token")
 	c.Set("api_token_id", apiToken.ID)
 	c.Set("api_token_name", apiToken.Name)
-
-	// API tokens get developer role by default (scoped by token scopes if needed)
-	userRole := "developer"
-	if len(apiToken.Scopes) > 0 {
-		// Check if admin scope is present
-		for _, scope := range apiToken.Scopes {
-			if scope == "admin" {
-				userRole = "admin"
-				break
-			}
-		}
-	}
-	c.Set("user_role", userRole)
+	c.Set("user_role", string(userRole))
 
 	// Update last used timestamp (async, don't block the request)
 	go func() {

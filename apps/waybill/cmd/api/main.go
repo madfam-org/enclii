@@ -92,6 +92,15 @@ func main() {
 		StoragePerGBMonth: cfg.PriceStoragePerGBMonth,
 		BandwidthPerGB:    cfg.PriceBandwidthPerGB,
 	})
+	// The aggregator heartbeat window behind the cost response's metering
+	// status. Must stay above the aggregator's WAYBILL_ALERT_INTERVAL.
+	if v := os.Getenv("WAYBILL_METERING_STALE_AFTER"); v != "" {
+		if d, err := time.ParseDuration(v); err == nil && d > 0 {
+			costReader.SetMeteringStaleAfter(d)
+		} else {
+			logger.Warn("ignoring invalid WAYBILL_METERING_STALE_AFTER", zap.String("value", v))
+		}
+	}
 	costHandlers := api.NewCostHandlers(store, costReader, logger)
 
 	// Create API server

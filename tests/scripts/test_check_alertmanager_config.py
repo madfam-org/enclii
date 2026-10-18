@@ -18,6 +18,8 @@ import sys
 import textwrap
 from pathlib import Path
 
+import pytest
+
 REPO_ROOT = Path(__file__).resolve().parents[2]
 SCRIPT = REPO_ROOT / "scripts" / "check-alertmanager-config.py"
 LIVE_CONFIG = REPO_ROOT / "infra" / "k8s" / "production" / "monitoring"
@@ -1024,3 +1026,78 @@ def test_amtool_layer_runs_when_configured(tmp_path):
     assert code == 1
     assert "amtool check-config rejected this config" in out
     assert "bad config" in out
+
+
+# ---------------------------------------------------------------------------
+# Staging never pages (infra-stability audit 2026-10-17, pager noise plan)
+# ---------------------------------------------------------------------------
+
+STAGING_LABELS = ("namespace", "application", "name", "dest_namespace")
+
+
+def _matcher_holds(labels: dict, matcher: str) -> bool:
+    import re
+
+    m = re.fullmatch(r'(\w+)(=~|!~|!=|=)"(.*)"', matcher)
+    assert m, f"unparsed matcher {matcher!r}"
+    key, op, value = m.groups()
+    have = labels.get(key, "")
+    if op == "=":
+        return have == value
+    if op == "!=":
+        return have != value
+    if op == "=~":
+        return re.fullmatch(value, have) is not None
+    return re.fullmatch(value, have) is None
+
+
+def _first_route(cfg: dict, labels: dict) -> dict:
+    """The first child route Alertmanager would pick (every route here stops)."""
+    for route in (cfg.get("route") or {}).get("routes") or []:
+        matchers = [str(m) for m in route.get("matchers") or []]
+        matchers += [f'{k}="{v}"' for k, v in (route.get("match") or {}).items()]
+        if all(_matcher_holds(labels, m) for m in matchers):
+            return route
+    return cfg["route"]
+
+
+@pytest.mark.parametrize("label", STAGING_LABELS)
+@pytest.mark.parametrize("value", ["selva-office-staging", "enclii-karafiel-staging", "voxa-staging-services"])
+def test_staging_criticals_reach_email_only(label, value):
+    cfg = _live_alertmanager_config()
+    route = _first_route(cfg, {"alertname": "AnyCritical", "severity": "critical", label: value})
+    assert route["receiver"] == "staging-receiver"
+    by_name = {r.get("name"): r for r in (cfg.get("receivers") or [])}
+    recv = by_name["staging-receiver"]
+    assert not recv.get("webhook_configs"), "staging-receiver must not reach Courier"
+    assert recv.get("email_configs"), "staging criticals must still be visible by email"
+
+
+@pytest.mark.parametrize("value", ["enclii", "voxa", "dhanam", "staging", "crea-map-ensayo"])
+def test_production_criticals_still_page(value):
+    cfg = _live_alertmanager_config()
+    route = _first_route(cfg, {"alertname": "AnyCritical", "severity": "critical", "namespace": value})
+    assert route["receiver"] == "critical-receiver"
+
+
+def test_a_product_labelled_staging_alert_still_pages():
+    cfg = _live_alertmanager_config()
+    labels = {
+        "alertname": "RevenueEndpointDown",
+        "severity": "critical",
+        "category": "revenue-probe",
+        "product": "example",
+        "namespace": "example-staging",
+    }
+    assert _first_route(cfg, labels)["receiver"] == "critical-receiver"
+    labels.pop("category")
+    assert _first_route(cfg, labels)["receiver"] == "critical-receiver"
+
+
+def test_staging_routes_sit_between_the_revenue_and_critical_routes():
+    cfg = _live_alertmanager_config()
+    routes = (cfg.get("route") or {}).get("routes") or []
+    staging = [i for i, r in enumerate(routes) if r.get("receiver") == "staging-receiver"]
+    assert len(staging) == len(STAGING_LABELS)
+    crit_idx = next(i for i, r in enumerate(routes) if (r.get("match") or {}).get("severity") == "critical")
+    assert all(_first_severity_route_index(cfg) < i < crit_idx for i in staging)

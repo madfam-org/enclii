@@ -69,7 +69,8 @@ server:
   auditStorage:
     enabled: true
     storageClass: longhorn
-    size: 2Gi
+    # 8Gi = the live claim (2026-10-17); see infra/argocd/apps/vault.yaml.
+    size: 8Gi
 
   # Resource limits — HA mode is slightly heavier than standalone.
   resources:
@@ -80,7 +81,8 @@ server:
       memory: 512Mi
       cpu: 500m
 
-  # Ingress disabled — access via Cloudflare Tunnel (vault.madfam.io)
+  # Ingress disabled. Vault is in-cluster only (no tunnel route); operators
+  # use `kubectl exec`, the SSH policy script or a port-forward.
   ingress:
     enabled: false
 
@@ -153,7 +155,7 @@ server:
     # The Helm chart creates a ClusterRoleBinding automatically when
     # auth.kubernetes is enabled server-side (vault-bootstrap.md step 4).
 
-# Vault UI enabled (reachable via Cloudflare Tunnel → vault.madfam.io)
+# Vault UI enabled for port-forward use only; it is not published.
 ui:
   enabled: true
 

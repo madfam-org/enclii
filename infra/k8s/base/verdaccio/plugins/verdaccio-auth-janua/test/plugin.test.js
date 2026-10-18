@@ -19,6 +19,7 @@ const KEY_PUBLISH = 'jnk_publisher_key';
 const KEY_INSTALL = 'jnk_installer_key';
 const KEY_NOSCOPE = 'jnk_no_scope_key';
 const KEY_INVALID = 'jnk_revoked_key';
+const KEY_OTHER_ORG = 'jnk_other_org_publisher';
 // The format POST /api/v1/api-keys mints today: sk_live_ + 64 hex characters.
 const KEY_SKLIVE_INSTALL = `sk_live_${'a1'.repeat(32)}`;
 const KEY_SKLIVE_PUBLISH = `sk_live_${'b2'.repeat(32)}`;
@@ -50,7 +51,16 @@ const KEYS = {
     scopes: ['read:users'],
     key_id: 'key-noscope-1',
   },
+  // A key minted in some other Janua organisation, with registry scopes.
+  [KEY_OTHER_ORG]: {
+    org_id: 'org-other',
+    scopes: ['npm:install', 'npm:publish'],
+    key_id: 'key-other-1',
+  },
 };
+
+// The marker groups the plugin adds to every verified key of org-madfam.
+const JANUA = ['janua:key', 'janua:org:org-madfam'];
 
 const silentLogger = {
   info() {}, warn() {}, error() {}, debug() {}, trace() {},
@@ -124,6 +134,9 @@ const allowPublish = (plugin, user, pkg) =>
 
 // Verdaccio builds the remote user itself: createRemoteUser(username, groups).
 const remoteUser = (name, groups) => ({ name, groups, real_groups: groups });
+// A remote user as Verdaccio builds it from a verified org-madfam key.
+const januaUser = (name, scopes, org = 'org-madfam') =>
+  remoteUser(name, [...scopes, 'janua:key', `janua:org:${org}`, '$authenticated']);
 
 const tests = [];
 const test = (name, fn) => tests.push({ name, fn });
@@ -148,9 +161,9 @@ test('groups never contain undefined (Janua has no owner/name field)', async (p)
   );
 });
 
-test('groups carry only npm:* scopes plus $authenticated', async (p) => {
+test('groups carry only npm:* scopes, the Janua markers and $authenticated', async (p) => {
   const groups = await authenticate(p, 'anyuser', KEY_NOSCOPE);
-  assert.deepStrictEqual(groups, ['$authenticated']);
+  assert.deepStrictEqual(groups, [...JANUA, '$authenticated']);
 });
 
 test('invalid key falls through (false), so htpasswd can try', async (p) => {
@@ -172,7 +185,7 @@ test('no password falls through (false)', async (p) => {
 
 test('current-format sk_live_ key authenticates (what Janua mints today)', async (p) => {
   const groups = await authenticate(p, 'janua', KEY_SKLIVE_INSTALL);
-  assert.deepStrictEqual(groups, ['npm:install', '$authenticated']);
+  assert.deepStrictEqual(groups, ['npm:install', ...JANUA, '$authenticated']);
 });
 
 test('current-format sk_live_ key with npm:publish yields both scopes', async (p) => {
@@ -196,7 +209,7 @@ test('no prefix setting: both formats are claimed (the default)', async () => {
   assert.deepStrictEqual(plugin.keyPrefixes, ['jnk_', 'sk_live_']);
   assert.deepStrictEqual(
     await authenticate(plugin, 'janua', KEY_SKLIVE_INSTALL),
-    ['npm:install', '$authenticated']
+    ['npm:install', ...JANUA, '$authenticated']
   );
   assert.ok((await authenticate(plugin, 'janua', KEY_INSTALL)).includes('npm:install'));
 });
@@ -234,7 +247,7 @@ test('repeated auth with the same key is served from cache', async (p) => {
 // ---------------------------------------------------------------------
 
 test('install scope allows access to a restricted package', async (p) => {
-  const user = remoteUser('janua-key:key-install-1', ['npm:install', '$authenticated']);
+  const user = januaUser('janua-key:key-install-1', ['npm:install']);
   const { err, ok } = await allowAccess(p, user, {
     name: '@madfam/thing',
     access: ['$authenticated'],
@@ -244,7 +257,7 @@ test('install scope allows access to a restricted package', async (p) => {
 });
 
 test('missing npm:install denies access', async (p) => {
-  const user = remoteUser('janua-key:key-publish-1', ['npm:publish', '$authenticated']);
+  const user = januaUser('janua-key:key-publish-1', ['npm:publish']);
   const { err } = await allowAccess(p, user, {
     name: '@madfam/thing',
     access: ['$authenticated'],
@@ -277,9 +290,7 @@ test('htpasswd user (no npm:* groups) falls through to Verdaccio', async (p) => 
 // ---------------------------------------------------------------------
 
 test('publish scope allows publishing', async (p) => {
-  const user = remoteUser('janua-key:key-publish-1', [
-    'npm:install', 'npm:publish', '$authenticated',
-  ]);
+  const user = januaUser('janua-key:key-publish-1', ['npm:install', 'npm:publish']);
   const { err, ok } = await allowPublish(p, user, {
     name: '@madfam/thing',
     publish: ['$authenticated'],
@@ -289,7 +300,7 @@ test('publish scope allows publishing', async (p) => {
 });
 
 test('install-only key is DENIED publish but allowed install', async (p) => {
-  const user = remoteUser('janua-key:key-install-1', ['npm:install', '$authenticated']);
+  const user = januaUser('janua-key:key-install-1', ['npm:install']);
 
   const pub = await allowPublish(p, user, {
     name: '@madfam/thing',
@@ -314,6 +325,100 @@ test('htpasswd user falls through on publish too', async (p) => {
   });
   assert.strictEqual(err, null);
   assert.strictEqual(ok, false);
+});
+
+// ---------------------------------------------------------------------
+// Janua users are always decided by the plugin (never by the package ACL)
+// ---------------------------------------------------------------------
+
+// What Verdaccio does: authenticate, then build the remote user from groups.
+const userFromKey = async (p, key) => {
+  const groups = await authenticate(p, 'janua', key);
+  assert.ok(Array.isArray(groups), 'key must authenticate');
+  return remoteUser('janua', groups);
+};
+
+test('verified key with no npm:* scope is DENIED publish (no fall-through)', async (p) => {
+  const user = await userFromKey(p, KEY_NOSCOPE);
+  const { err, ok } = await allowPublish(p, user, { name: '@madfam/thing', publish: ['$authenticated'] });
+  assert.ok(err instanceof Error, 'must be an explicit denial');
+  assert.notStrictEqual(ok, false, 'must not fall through to the $authenticated ACL');
+  assert.match(err.message, /npm:publish/);
+});
+
+test('verified key with no npm:* scope is DENIED restricted access', async (p) => {
+  const user = await userFromKey(p, KEY_NOSCOPE);
+  const { err } = await allowAccess(p, user, { name: '@madfam/thing', access: ['$authenticated'] });
+  assert.ok(err instanceof Error);
+  assert.match(err.message, /npm:install/);
+});
+
+test('key from an org outside the allow-list is DENIED publish and access', async (p) => {
+  const user = await userFromKey(p, KEY_OTHER_ORG);
+  assert.ok(user.groups.includes('npm:publish'), 'fixture carries npm:publish');
+  const pub = await allowPublish(p, user, { name: '@madfam/thing', publish: ['$authenticated'] });
+  assert.ok(pub.err instanceof Error);
+  assert.match(pub.err.message, /allowed Janua organisation/);
+  const acc = await allowAccess(p, user, { name: '@madfam/thing', access: ['$authenticated'] });
+  assert.ok(acc.err instanceof Error);
+});
+
+test('allowed org with npm:publish publishes end to end', async (p) => {
+  const user = await userFromKey(p, KEY_SKLIVE_PUBLISH);
+  const { err, ok } = await allowPublish(p, user, { name: '@madfam/thing', publish: ['$authenticated'] });
+  assert.strictEqual(err, null);
+  assert.strictEqual(ok, true);
+});
+
+test('$all packages stay readable for any verified key', async (p) => {
+  const user = await userFromKey(p, KEY_OTHER_ORG);
+  const { err, ok } = await allowAccess(p, user, { name: '@janua/sdk', access: ['$all'] });
+  assert.strictEqual(err, null);
+  assert.strictEqual(ok, true);
+});
+
+test('an npm:* group without the org marker is denied, not granted', async (p) => {
+  // e.g. an htpasswd account whose NAME is "npm:publish" (htpasswd groups are
+  // the username): it must never be treated as a publish-scoped Janua key.
+  const user = remoteUser('npm:publish', ['npm:publish', '$authenticated']);
+  const { err } = await allowPublish(p, user, { name: '@madfam/thing', publish: ['$authenticated'] });
+  assert.ok(err instanceof Error);
+});
+
+test('no allowed org configured: every Janua key is refused', async () => {
+  const plugin = createPlugin({ janua_url: mockJanuaUrl, cache_ttl_ms: 1000 }, { logger: silentLogger, env: {} });
+  assert.deepStrictEqual(plugin.allowedOrgIds, []);
+  const user = await userFromKey(plugin, KEY_PUBLISH);
+  const { err } = await allowPublish(plugin, user, { name: '@madfam/thing', publish: ['$authenticated'] });
+  assert.ok(err instanceof Error);
+});
+
+test('an unfilled <PLACEHOLDER> allows no org', async () => {
+  const plugin = createPlugin(
+    { janua_url: mockJanuaUrl, cache_ttl_ms: 1000, allowed_org_ids: ['<MADFAM_ORG_ID>'] },
+    { logger: silentLogger, env: {} }
+  );
+  assert.deepStrictEqual(plugin.allowedOrgIds, []);
+});
+
+test('JANUA_ALLOWED_ORG_IDS is read when the config sets none', async () => {
+  const plugin = createPlugin(
+    { janua_url: mockJanuaUrl, cache_ttl_ms: 1000 },
+    { logger: silentLogger, env: { JANUA_ALLOWED_ORG_IDS: ' org-madfam , org-two ' } }
+  );
+  assert.deepStrictEqual(plugin.allowedOrgIds, ['org-madfam', 'org-two']);
+  const user = await userFromKey(plugin, KEY_PUBLISH);
+  const { err, ok } = await allowPublish(plugin, user, { name: '@madfam/thing', publish: ['$authenticated'] });
+  assert.strictEqual(err, null);
+  assert.strictEqual(ok, true);
+});
+
+test('config allowed_org_ids wins over the environment', async () => {
+  const plugin = createPlugin(
+    { janua_url: mockJanuaUrl, cache_ttl_ms: 1000, allowed_org_ids: ['org-madfam'] },
+    { logger: silentLogger, env: { JANUA_ALLOWED_ORG_IDS: 'org-other' } }
+  );
+  assert.deepStrictEqual(plugin.allowedOrgIds, ['org-madfam']);
 });
 
 // ---------------------------------------------------------------------
@@ -342,8 +447,9 @@ test('Janua unreachable falls through instead of 500ing', async () => {
       janua_url: mockJanuaUrl,
       cache_ttl_ms: 300000,
       key_prefixes: ['jnk_', 'sk_live_'],
+      allowed_org_ids: ['org-madfam'],
     },
-    { logger: silentLogger }
+    { logger: silentLogger, env: {} }
   );
 
   let passed = 0;

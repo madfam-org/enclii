@@ -253,42 +253,134 @@ func TestServiceRepository_GetByID(t *testing.T) {
 	})
 }
 
-// --- GetByName ---
+// --- GetByName / ListByName / GetByProjectAndName ---
 
+func serviceByNameRow(rows *sqlmock.Rows, t *testing.T, project uuid.UUID, name, repo string) *sqlmock.Rows {
+	t.Helper()
+	now := time.Now().Truncate(time.Microsecond)
+	return rows.AddRow(uuid.New(), project, name, repo, "", mustMarshalBuildConfig(t, defaultBuildConfig()),
+		false, "main", "production", nil, now, now, []byte(`[]`), "web", "default")
+}
+
+// TestServiceRepository_GetByName pins the rule that a bare name resolves only
+// when exactly one project uses it (enclii#404). Two projects that both run a
+// service called "web" must produce ErrAmbiguousServiceName, never a row.
 func TestServiceRepository_GetByName(t *testing.T) {
-	t.Run("found", func(t *testing.T) {
-		repo, mock, cleanup := newServiceMockDB(t)
-		defer cleanup()
+	projectA, projectB := uuid.New(), uuid.New()
+	tests := []struct {
+		name        string
+		rows        func(t *testing.T) *sqlmock.Rows
+		queryErr    error
+		wantProject uuid.UUID
+		wantErrIs   error
+	}{
+		{
+			name: "unique name resolves",
+			rows: func(t *testing.T) *sqlmock.Rows {
+				return serviceByNameRow(sqlmock.NewRows(serviceListAllColumns), t, projectA, "web", "https://github.com/org-a/site")
+			},
+			wantProject: projectA,
+		},
+		{
+			name:      "no row is sql.ErrNoRows",
+			rows:      func(t *testing.T) *sqlmock.Rows { return sqlmock.NewRows(serviceListAllColumns) },
+			wantErrIs: sql.ErrNoRows,
+		},
+		{
+			name: "same name in two projects is ambiguous",
+			rows: func(t *testing.T) *sqlmock.Rows {
+				r := serviceByNameRow(sqlmock.NewRows(serviceListAllColumns), t, projectA, "web", "https://github.com/org-a/site")
+				return serviceByNameRow(r, t, projectB, "web", "https://github.com/org-b/site")
+			},
+			wantErrIs: ErrAmbiguousServiceName,
+		},
+		{
+			name:      "query error is returned",
+			queryErr:  fmt.Errorf("connection reset"),
+			wantErrIs: nil,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			repo, mock, cleanup := newServiceMockDB(t)
+			defer cleanup()
 
-		id := uuid.New()
-		now := time.Now().Truncate(time.Microsecond)
-		bc := mustMarshalBuildConfig(t, defaultBuildConfig())
+			q := mock.ExpectQuery(`SELECT id, project_id, name, git_repo.*FROM services WHERE name = \$1 ORDER BY created_at, id LIMIT \$2`).
+				WithArgs("web", 2)
+			if tt.queryErr != nil {
+				q.WillReturnError(tt.queryErr)
+			} else {
+				q.WillReturnRows(tt.rows(t))
+			}
 
-		mock.ExpectQuery(`SELECT id, project_id, name, git_repo.*FROM services WHERE name = \$1`).
-			WithArgs("my-service").
-			WillReturnRows(sqlmock.NewRows(serviceBasicColumns).
-				AddRow(id, uuid.New(), "my-service", "https://github.com/org/repo", "", bc,
-					false, "main", "production", now, now, []byte(`[]`), "web", "default"))
+			got, err := repo.GetByName("web")
+			switch {
+			case tt.queryErr != nil:
+				assert.Nil(t, got)
+				assert.ErrorContains(t, err, "connection reset")
+			case tt.wantErrIs != nil:
+				assert.Nil(t, got)
+				assert.ErrorIs(t, err, tt.wantErrIs)
+			default:
+				require.NoError(t, err)
+				assert.Equal(t, tt.wantProject, got.ProjectID)
+				assert.Equal(t, "web", got.Name)
+			}
+			assert.NoError(t, mock.ExpectationsWereMet())
+		})
+	}
+}
 
-		result, err := repo.GetByName("my-service")
-		assert.NoError(t, err)
-		assert.Equal(t, "my-service", result.Name)
-		assert.NoError(t, mock.ExpectationsWereMet())
-	})
+func TestServiceRepository_ListByName(t *testing.T) {
+	repo, mock, cleanup := newServiceMockDB(t)
+	defer cleanup()
+	projectA, projectB := uuid.New(), uuid.New()
 
-	t.Run("not found", func(t *testing.T) {
-		repo, mock, cleanup := newServiceMockDB(t)
-		defer cleanup()
+	r := serviceByNameRow(sqlmock.NewRows(serviceListAllColumns), t, projectA, "web", "https://github.com/org-a/site")
+	r = serviceByNameRow(r, t, projectB, "web", "https://github.com/org-b/site")
+	mock.ExpectQuery(`FROM services WHERE name = \$1 ORDER BY created_at, id$`).WithArgs("web").WillReturnRows(r)
 
-		mock.ExpectQuery(`SELECT id, project_id, name, git_repo.*FROM services WHERE name = \$1`).
-			WithArgs("missing").
-			WillReturnError(sql.ErrNoRows)
+	got, err := repo.ListByName("web")
+	require.NoError(t, err)
+	require.Len(t, got, 2)
+	assert.Equal(t, projectA, got[0].ProjectID)
+	assert.Equal(t, projectB, got[1].ProjectID)
+	assert.NoError(t, mock.ExpectationsWereMet())
+}
 
-		result, err := repo.GetByName("missing")
-		assert.Nil(t, result)
-		assert.ErrorIs(t, err, sql.ErrNoRows)
-		assert.NoError(t, mock.ExpectationsWereMet())
-	})
+func TestServiceRepository_GetByProjectAndName(t *testing.T) {
+	projectA, projectB := uuid.New(), uuid.New()
+	tests := []struct {
+		name      string
+		project   uuid.UUID
+		found     bool
+		wantErrIs error
+	}{
+		{name: "project A gets its own web", project: projectA, found: true},
+		{name: "project B gets its own web", project: projectB, found: true},
+		{name: "a project without that service gets ErrNoRows", project: uuid.New(), wantErrIs: sql.ErrNoRows},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			repo, mock, cleanup := newServiceMockDB(t)
+			defer cleanup()
+			q := mock.ExpectQuery(`FROM services WHERE project_id = \$1 AND name = \$2`).WithArgs(tt.project, "web")
+			if tt.found {
+				q.WillReturnRows(serviceByNameRow(sqlmock.NewRows(serviceListAllColumns), t, tt.project, "web", "https://github.com/org/site"))
+			} else {
+				q.WillReturnError(sql.ErrNoRows)
+			}
+			got, err := repo.GetByProjectAndName(tt.project, "web")
+			if tt.wantErrIs != nil {
+				assert.Nil(t, got)
+				assert.ErrorIs(t, err, tt.wantErrIs)
+			} else {
+				require.NoError(t, err)
+				assert.Equal(t, tt.project, got.ProjectID)
+			}
+			assert.NoError(t, mock.ExpectationsWereMet())
+		})
+	}
 }
 
 // --- ListAll ---

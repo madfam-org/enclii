@@ -640,9 +640,15 @@ spec:
         - protocol: TCP
           port: 6443
 
-# Allow Cloudflare tunnel -> Redpanda Console (port 8080)
-# Console is the only data-ns workload exposed externally; the Kafka
-# brokers themselves stay internal-only.
+# Redpanda Console is in-cluster only: no Cloudflare tunnel rule.
+#
+# The console has no login of its own (the brokers run without SASL), so it is
+# not published. Operators reach it with a port-forward for break-glass work:
+#   kubectl -n data port-forward svc/redpanda-console 8080:8080
+#
+# This object is kept, with an empty allow-list, rather than deleted: the
+# network-policies Argo app does not prune, so deleting the document would
+# leave the old tunnel rule live.
 ---
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
@@ -659,11 +665,4 @@ spec:
       app.kubernetes.io/instance: redpanda
   policyTypes:
     - Ingress
-  ingress:
-    - from:
-        - namespaceSelector:
-            matchLabels:
-              kubernetes.io/metadata.name: cloudflare-tunnel
-      ports:
-        - protocol: TCP
-          port: 8080
+  ingress: []  # Admits nothing: the console is not published through the tunnel.

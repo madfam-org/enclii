@@ -497,12 +497,30 @@ export interface UpdateProjectBudgetRequest {
   hard_throttle?: boolean;
 }
 
+/**
+ * Whether a spend total is a measurement. `total_cents` is 0 both for a real
+ * zero and when nothing was metered; only `status: 'ok'` makes it a fact.
+ */
+export interface MeteringStatus {
+  status: 'ok' | 'not_running' | 'stale' | 'unknown';
+  detail: string;
+  last_heartbeat_at: ISODateTime | null;
+  last_aggregated_hour: ISODateTime | null;
+  project_usage_rows: number;
+  unaggregated_events: number;
+  stale_after_seconds: number;
+  checked_at: ISODateTime;
+}
+
 /** Aggregated cost for a project over a billing period. */
 export interface ProjectCostResponse {
   project_id: UUID;
   period_start: ISODateTime;
   period_end: ISODateTime;
   total_cents: number;
+  /** False unless metering.status is 'ok'. Absent on older Waybill builds. */
+  spend_known?: boolean;
+  metering?: MeteringStatus;
   group_by: string;
   series?: Array<{
     bucket: string;

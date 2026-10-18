@@ -180,9 +180,10 @@ data:
         cache_ttl_ms: 300000
         key_prefixes: [jnk_, sk_live_]
         timeout_ms: 5000
+        allowed_org_ids: ["<MADFAM_ORG_ID>"]   # or env JANUA_ALLOWED_ORG_IDS
       htpasswd:
         file: /verdaccio/conf/htpasswd
-        max_users: 100
+        max_users: -1        # no self-registration
         algorithm: bcrypt
 
     security:
@@ -638,14 +639,21 @@ Verified against production on 2026-09-07:
 
 ### Scope enforcement
 
-Once a key is verified, its Janua scopes become Verdaccio groups:
+Once a key is verified, its Janua scopes become Verdaccio groups, plus the
+markers `janua:key` and `janua:org:<org_id>`. The plugin decides every request
+from such a user itself and never falls through to the package rules (whose
+`$authenticated` would admit any verified key):
 
-- `npm:install` missing → package access denied.
+- key's org not in `allowed_org_ids` (or `JANUA_ALLOWED_ORG_IDS`) → restricted
+  package access and publish denied. An empty list or the unfilled
+  `<MADFAM_ORG_ID>` placeholder refuses every Janua key.
+- `npm:install` missing → restricted package access denied.
 - `npm:publish` missing → publish denied (install still works).
-- A key with neither is authenticated but has `$authenticated` only.
+- `$all` packages stay readable.
 
-htpasswd users carry no `npm:*` groups, so the plugin falls through for them
-and Verdaccio's own package rules apply — unchanged from before.
+htpasswd users carry no Janua markers, so the plugin falls through for them
+and Verdaccio's own package rules apply — unchanged from before. htpasswd
+self-registration is off (`max_users: -1`).
 
 ### CI service users (htpasswd, unchanged)
 

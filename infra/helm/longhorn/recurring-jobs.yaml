@@ -70,7 +70,22 @@
 # ---------------------------------------------------------------------------
 #
 # Put a volume in high-churn when it rewrites rather than appends. Today that is
-# at least: loki, redpanda, tezca-es, prometheus, and every postgres data volume.
+# at least: loki, redpanda, tezca-es, prometheus (BOTH prometheus-data and
+# prometheus-rules-eval), and every postgres data volume.
+#
+# prometheus-rules-eval (2026-10-17) was still in `default`: 115 GiB actual on
+# a 20Gi claim, 5.8x, the largest volume in the cluster. Its claim template now
+# carries the labels below, so a RE-CREATED claim joins high-churn by itself:
+#   recurring-job.longhorn.io/source: enabled          (the PVC is the source)
+#   recurring-job-group.longhorn.io/high-churn: enabled
+# With the source label, Longhorn copies the PVC's recurring-job labels onto
+# the volume and drops the ones the PVC does not carry (so `default` goes).
+# The EXISTING claim needs the same two labels set once (owner step; Enclii has
+# no adapter for it), and then the stranding procedure above: keep the latest
+# backup anchor, delete the daily-snapshot snapshots, wait for purge.
+# High-churn still leaves prometheus-data at 3.2x (2 snapshots + 1 backup
+# anchor of a TSDB that rewrites itself). If that stays too large, the next
+# step is a group with no local snapshots for TSDB volumes, not a bigger disk.
 # Offsite BACKUPS are unchanged for both groups -- backups live in R2, not on the
 # volume, so they carry no local space cost. Only local SNAPSHOT retention drops.
 #

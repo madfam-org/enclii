@@ -11,11 +11,13 @@ package api
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net/http"
 	"strings"
 	"time"
 
+	"github.com/madfam-org/enclii/apps/switchyard-api/internal/db"
 	"github.com/madfam-org/enclii/apps/switchyard-api/internal/logging"
 )
 
@@ -52,8 +54,15 @@ func (h *Handler) resolveKalyaOrigin() string {
 	if h == nil || h.repos == nil || h.repos.CustomDomains == nil || h.repos.Services == nil {
 		return defaultKalyaOrigin
 	}
+	// GetByName resolves only a platform-unique name. If another project also
+	// registers a service called "kalya", its domains are not kalya's, so the
+	// compiled-in default is used instead (enclii#404).
 	service, err := h.repos.Services.GetByName("kalya")
 	if err != nil || service == nil {
+		if errors.Is(err, db.ErrAmbiguousServiceName) && h.logger != nil {
+			h.logger.Warn(context.Background(), "kalya origin: service name is registered in more than one project; using the default origin",
+				logging.Error("error", err))
+		}
 		return defaultKalyaOrigin
 	}
 	domains, err := h.repos.CustomDomains.GetByServiceID(context.Background(), service.ID.String())

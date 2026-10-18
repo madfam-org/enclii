@@ -45,6 +45,8 @@ func TestAPITokenMiddlewareOwnerState(t *testing.T) {
 				q := mock.ExpectQuery(`AND EXISTS \(SELECT 1 FROM users WHERE users.id = api_tokens.user_id AND users.active = true\)`)
 				if state == "active" {
 					q.WillReturnRows(sqlmock.NewRows([]string{"id", "user_id", "name", "prefix", "token_hash", "scopes", "expires_at", "last_used_at", "last_used_ip", "revoked", "revoked_at", "created_at", "updated_at"}).AddRow(id, owner, "fixture", "enclii_", "hash", pq.Array([]string{"admin", "read"}), nil, nil, nil, false, nil, time.Now(), time.Now()))
+					// The token's role is bounded by the owner's current role.
+					mock.ExpectQuery(`FROM users WHERE id = \$1`).WithArgs(owner).WillReturnRows(ownerRow(owner, "admin", true))
 				} else if state == "database error" {
 					q.WillReturnError(errors.New("database unavailable"))
 				} else {

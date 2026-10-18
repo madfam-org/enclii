@@ -149,7 +149,18 @@ spec:
         - protocol: TCP
           port: 8200
 
-# Allow cloudflare-tunnel namespace -> Vault API (Vault UI access)
+# Vault is in-cluster only: no Cloudflare tunnel rule.
+#
+# Vault's UI and API are not published. Workloads use
+# http://vault.vault.svc.cluster.local:8200 (ESO, Switchyard's writer, the
+# token-renewal jobs); operators use `enclii vault status`, the SSH-based
+# scripts/apply-switchyard-vault-policy-remote.sh, `kubectl exec` into vault-0,
+# or a port-forward for break-glass UI work.
+#
+# This object is kept, with an empty allow-list, rather than deleted: the
+# network-policies Argo app does not prune, so deleting the document would
+# leave the old tunnel rule live. NetworkPolicies are additive, so an empty
+# `ingress` here admits nothing and changes no other policy above.
 ---
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
@@ -165,14 +176,7 @@ spec:
       app.kubernetes.io/name: vault
   policyTypes:
     - Ingress
-  ingress:
-    - from:
-        - namespaceSelector:
-            matchLabels:
-              kubernetes.io/metadata.name: cloudflare-tunnel
-      ports:
-        - protocol: TCP
-          port: 8200
+  ingress: []  # Admits nothing: Vault is not published through the tunnel.
 
 # Allow vault egress.
 #
