@@ -2822,6 +2822,71 @@ data:
                 StatefulSet itself is gone: check the Prometheus CR
                 `rules-eval` and the prometheus-operator log.
 
+  # THE PAGE BUDGET (infra-stability audit 2026-10-17, pager noise plan
+  # step 5). A pager that sends more than a handful of critical pages a day
+  # is being trained to be ignored: in the 14 days to 10-17 it sent 772,
+  # 31-92 a day at every hour. Courier counts what it actually sent
+  # (angelia apps/api/src/courier/metrics.ts, `courier_alarm_pages_total`,
+  # first attempts only, never ledger replays) and this rule reads it.
+  #
+  # WARNING, NOT CRITICAL, on purpose: a page about too many pages must not be
+  # one more page. It lands in the warning digest, where the fix (clear or
+  # demote the standing causes) is read.
+  #
+  # What counts as a page: phase opened, reminder or reopened, outcome sent,
+  # severity critical. Resolved notices are not pages. The two angelia-api
+  # replicas each count their own sends; the sum is the estate's.
+  #
+  # The scrape is the kubernetes-pods annotation job (angelia-api's pod
+  # template carries prometheus.io/scrape, port 9464) through the
+  # prometheus-egress rule to angelia:9464 in network-policies.yaml.
+  # CourierPageCounterMissing fires (warning) until the angelia image that
+  # serves the counter is live: land this after angelia's Courier change is
+  # deployed.
+  courier-page-budget-rules.yml: |
+    groups:
+      - name: courier-page-budget
+        interval: 1m
+        rules:
+          - alert: CourierPageBudgetExceeded
+            expr: |
+              sum(
+                increase(courier_alarm_pages_total{severity="critical",outcome="sent",phase=~"opened|reminder|reopened"}[24h])
+              ) > 5
+            for: 10m
+            labels:
+              severity: warning
+              service: angelia
+              category: alerting-last-mile
+            annotations:
+              summary: "The pager sent {{ $value | printf \"%.0f\" }} critical pages in the last 24h (budget 5)"
+              description: |
+                Courier sent more than 5 critical pages in 24 hours. Each one
+                is a person woken or interrupted; past a handful a day the
+                pager is read as noise and a real outage is missed.
+                Find what paged: Telegram history, or the Courier ledger rows
+                with idempotency keys `alarm:*` from the last day. Then clear
+                the standing causes, or demote rules that are not client- or
+                revenue-facing (severity: warning goes to this digest).
+              runbook_url: "https://github.com/madfam-org/angelia/blob/main/docs/runbooks/courier-provisioning.md"
+
+          - alert: CourierPageCounterMissing
+            expr: absent(courier_alarm_pages_total)
+            for: 1h
+            labels:
+              severity: warning
+              service: angelia
+              category: alerting-last-mile
+            annotations:
+              summary: "Courier's page counter is not being scraped, so the page budget is unmeasured"
+              description: |
+                No `courier_alarm_pages_total` series for an hour. Either the
+                angelia-api image predates the counter, the metrics listener
+                is off (COURIER_METRICS_PORT=0), or the scrape is blocked
+                (the pod annotations, angelia-api-ingress-metrics.yaml on the
+                angelia side, or the prometheus-egress rule to angelia:9464).
+                CourierPageBudgetExceeded cannot fire while this does.
+
   # =========================================================================
   # Pager path drill. Watchdog proves rules reach Alertmanager; nothing
   # proved that a CRITICAL page reaches a person (Alertmanager route ->
