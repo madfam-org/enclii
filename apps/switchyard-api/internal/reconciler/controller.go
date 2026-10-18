@@ -13,12 +13,10 @@ import (
 	"github.com/madfam-org/enclii/apps/switchyard-api/internal/monitoring"
 	"github.com/madfam-org/enclii/apps/switchyard-api/internal/notifications"
 	"github.com/madfam-org/enclii/apps/switchyard-api/internal/workloadtargets"
-	"github.com/madfam-org/enclii/packages/sdk-go/pkg/types"
 	"github.com/sirupsen/logrus"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/codes"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
 // tracer — reconciler package emits spans under this name so Tempo can
@@ -327,115 +325,29 @@ func (c *Controller) processWork(ctx context.Context, work *ReconcileWork, logge
 	// This prevents the reconciler from overwriting manually-managed deployments like Janua
 	// The annotation check in syncDeploymentToDatabase only applies during K8s→DB sync,
 	// this check applies during actual reconciliation of existing DB records
-	if c.k8sClient != nil {
-		existing, err := c.k8sClient.Clientset.AppsV1().Deployments(environment.KubeNamespace).Get(
-			ctx, service.Name, metav1.GetOptions{},
-		)
-		if err == nil {
-			if val, ok := existing.Annotations["enclii.dev/reconcile"]; ok && val == "disabled" {
-				logger.WithFields(logrus.Fields{
-					"deployment": service.Name,
-					"namespace":  environment.KubeNamespace,
-				}).Info("Skipping reconciliation - disabled via annotation")
-				return &ReconcileResult{
-					Success: true,
-					Message: "Reconciliation disabled via annotation",
-				}
-			}
-		}
-		// If the deployment doesn't exist yet, or we can't fetch it, proceed with reconciliation
-	}
-
-	// Get environment variables (decrypted) for this service and environment
-	// Use GetDecryptedWithMeta to properly separate secrets from regular env vars
-	var envVars map[string]string
-	var envVarsWithMeta []EnvVarWithMeta
-	if repositories.EnvVars != nil {
-		// Try the new metadata-aware method first
-		dbEnvVars, err := repositories.EnvVars.GetDecryptedWithMeta(ctx, service.ID, deployment.EnvironmentID)
-		if err != nil {
-			logger.WithError(err).Warn("Failed to get environment variables with metadata, falling back to legacy")
-			var legacyErr error
-			envVars, legacyErr = repositories.EnvVars.GetDecrypted(ctx, service.ID, deployment.EnvironmentID)
-			if legacyErr != nil {
-				logger.WithError(legacyErr).Warn("Failed to get environment variables via legacy method, continuing without env vars")
-				envVars = make(map[string]string)
-			}
-		} else {
-			// Convert db.EnvVarWithMeta to reconciler.EnvVarWithMeta
-			envVarsWithMeta = make([]EnvVarWithMeta, len(dbEnvVars))
-			envVars = make(map[string]string) // Also populate legacy map for backwards compatibility
-			for i, ev := range dbEnvVars {
-				envVarsWithMeta[i] = EnvVarWithMeta{
-					Key:      ev.Key,
-					Value:    ev.Value,
-					IsSecret: ev.IsSecret,
-				}
-				envVars[ev.Key] = ev.Value
-			}
-		}
-	} else {
-		envVars = make(map[string]string)
-	}
-
-	// Get database addon bindings for this service
-	var addonBindings []AddonBinding
-	if repositories.DatabaseAddons != nil {
-		bindings, err := repositories.DatabaseAddons.GetBindingsByService(ctx, service.ID)
-		if err != nil {
-			logger.WithError(err).Warn("Failed to get addon bindings, continuing without them")
-		} else {
-			for _, binding := range bindings {
-				// Get the addon details
-				addon, err := repositories.DatabaseAddons.GetByID(ctx, binding.AddonID)
-				if err != nil {
-					logger.WithError(err).WithField("addon_id", binding.AddonID).Warn("Failed to get addon for binding")
-					continue
-				}
-				// Only include ready addons
-				if addon.Status != types.DatabaseAddonStatusReady {
-					logger.WithFields(logrus.Fields{
-						"addon_id": addon.ID,
-						"status":   addon.Status,
-					}).Debug("Skipping non-ready addon binding")
-					continue
-				}
-				addonBindings = append(addonBindings, AddonBinding{
-					EnvVarName:       binding.EnvVarName,
-					AddonType:        addon.Type,
-					K8sNamespace:     addon.K8sNamespace,
-					K8sResourceName:  addon.K8sResourceName,
-					ConnectionSecret: addon.ConnectionSecret,
-				})
-			}
-		}
-	}
-
-	// Mount gitops-managed project secrets when present in the target namespace.
-	var optionalProjectSecret string
-	if repositories.Projects != nil && c.k8sClient != nil {
-		project, projErr := repositories.Projects.GetByID(ctx, service.ProjectID)
-		if projErr == nil && project.Slug != "" {
-			secretName := project.Slug + "-secrets"
-			if _, secErr := c.k8sClient.Clientset.CoreV1().Secrets(environment.KubeNamespace).Get(
-				ctx, secretName, metav1.GetOptions{},
-			); secErr == nil {
-				optionalProjectSecret = secretName
-			}
+	if c.reconcileDisabledByAnnotation(ctx, environment.KubeNamespace, service.Name) {
+		logger.WithFields(logrus.Fields{
+			"deployment": service.Name,
+			"namespace":  environment.KubeNamespace,
+		}).Info("Skipping reconciliation - disabled via annotation")
+		return &ReconcileResult{
+			Success: true,
+			Message: "Reconciliation disabled via annotation",
 		}
 	}
 
 	// Create reconcile request
 	req := &ReconcileRequest{
-		targetSession:         session,
-		Service:               service,
-		Release:               release,
-		Deployment:            deployment,
-		Environment:           environment,
-		EnvVars:               envVars,
-		EnvVarsWithMeta:       envVarsWithMeta,
-		AddonBindings:         addonBindings,
-		OptionalProjectSecret: optionalProjectSecret,
+		targetSession: session,
+		Service:       service,
+		Release:       release,
+		Deployment:    deployment,
+		Environment:   environment,
+	}
+	// Lenient on read errors: the deploy path keeps its long-standing
+	// behaviour of continuing without what it could not read.
+	if err := c.loadWorkloadInputs(ctx, logger, repositories, service, environment, deployment, false, req); err != nil {
+		return &ReconcileResult{Success: false, Message: "Failed to load workload inputs", Error: err}
 	}
 
 	// Perform reconciliation

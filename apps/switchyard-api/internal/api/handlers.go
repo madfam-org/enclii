@@ -66,8 +66,10 @@ type Handler struct {
 	kalyaFeedMinter   kalyaFeedTokenMinter
 	reconciler        *reconciler.Controller
 	serviceReconciler *reconciler.ServiceReconciler
-	metrics           *monitoring.MetricsCollector
-	logger            logging.Logger
+	// domainReconcilerOverride replaces reconciler.ReconcileDomains in tests.
+	domainReconcilerOverride domainReconciler
+	metrics                  *monitoring.MetricsCollector
+	logger                   logging.Logger
 	// Tests may substitute metadata readers; nil uses exact supported native
 	// reads. Locked request copies alone receive the mutation session.
 	workloadTargetSession        *workloadtargets.Session
