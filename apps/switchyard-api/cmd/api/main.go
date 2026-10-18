@@ -120,8 +120,9 @@ func main() {
 	database.SetConnMaxLifetime(30 * time.Minute)
 	database.SetConnMaxIdleTime(5 * time.Minute)
 
-	// Verify database connection
-	if err := database.Ping(); err != nil {
+	// Verify database connection. Bounded retry: during a rollout PgBouncer
+	// can refuse the first connects, and a fatal first Ping restarted the pod.
+	if err := pingDatabaseWithRetry(context.Background(), database, defaultDBPingRetryPolicy, sleepContext); err != nil {
 		logrus.Fatal("Failed to ping database:", err)
 	}
 	logrus.WithFields(logrus.Fields{
