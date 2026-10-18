@@ -2304,12 +2304,13 @@ data:
   # `category` on each rule below, `product` on each scrape target above
   # (RevenueProbesNotRunning has no product and is one group of its own).
   # Several endpoints of ONE product failing together are still one group.
-  # LIMIT, outside this repo: Courier dedups on alertname per UTC hour
-  # (`alarm:<alertname>:<hour>`, angelia apps/api/src/courier/alertmanager.ts).
-  # A second product paging inside an hour whose RevenueEndpointDown already
-  # reached chat reaches people by email only; while both keep firing, chat
-  # carries whichever group re-sends first in each hour. Email carries every
-  # group.
+  # Courier (outside this repo) keys each page
+  # `alarm:<alertname>[:<identity>]:<hour>[:<phase>]` (angelia#40, #41;
+  # apps/api/src/courier/alertmanager.ts). For these rules the identity is
+  # the `product` label and <hour> is the UTC hour the episode began, so each
+  # failing product pages once when it starts, gets a reminder every 24h
+  # while it keeps failing, and one resolved notice. A second product failing
+  # is its own page. Email carries every group.
   #
   # Annotations use $labels and $value only: no `query` template functions.
   # =========================================================================
@@ -2901,12 +2902,11 @@ data:
   # `category: revenue-probe`, the label the per-product revenue route in
   # alertmanager.yaml matches (it groups by [alertname, product]). With that
   # route live the drill is two Alertmanager groups: two emails
-  # "[CRITICAL] PagerPathDrill" and two Courier webhook posts, of which chat
-  # shows ONE, because Courier dedups on alertname per UTC hour
-  # (`alarm:PagerPathDrill:<hour>`, angelia). Without that route (it is a
-  # separate change and may land later) the drill falls to the generic
-  # critical route: one group, one email listing both, one chat message.
-  # Either way it pages through critical-receiver.
+  # "[CRITICAL] PagerPathDrill" and two Courier webhook posts. Chat shows TWO
+  # pages, one per product, because Courier keys each alert on its product
+  # (`alarm:PagerPathDrill:<product>:<hour>`, angelia#40), and since
+  # angelia#41 each is followed by one resolved notice after 16:05. Either
+  # way it pages through critical-receiver.
   #
   # ONE-OFF WINDOW. The second `or` branch fires once, for 5 minutes, at the
   # epoch-second constants in it (UTC). Whoever merges this sets START to
@@ -2948,8 +2948,9 @@ data:
                 product drill-a and drill-b, and resolves by itself.
 
                 Expected: two emails "[CRITICAL] PagerPathDrill" (one per
-                product; their resolved twins follow after 16:05) and one
-                chat message (Courier sends one per alertname per hour). If
+                product; their resolved twins follow after 16:05) and two
+                chat pages, one per product, each followed by one resolved
+                notice (Courier keys pages per product and episode). If
                 either never arrives, that last mile is broken: check
                 AlertmanagerEmailDeliveryFailing and CourierReceiverDown,
                 then the Alertmanager log.

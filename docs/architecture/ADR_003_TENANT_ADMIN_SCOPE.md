@@ -1,6 +1,7 @@
 # ADR-003: `platform_admin` is strictly above `tenant_admin`
 
-> **Status**: Accepted — enforcement landed PR #499 and PR #504 (2026-09-05)
+> **Status**: Accepted — enforcement landed PR #499 and PR #504 (2026-09-05);
+> **enforced in production since 2026-10-18** (stage 2 #798, stage 3 #800)
 > **Decision id**: `decision.tenant-admin-scope`
 > **Date**: 2026-09-05
 > **Authors**: Platform / control-plane
@@ -175,10 +176,19 @@ project slug, belongs to the tenant that owns it, and stays on the
 tenant-scoped guard. The per-route table is in
 [the rollout runbook](../runbooks/TENANT_SCOPE_ENFORCEMENT_ROLLOUT.md).
 
-### What is still not enforced in production
+### Production rollout
 
-**Production is in stage 1.** Nothing in this section is refusing anything
-there yet, and that is the only remaining gap — but it is the one that matters.
+**Production is in stage 3 (enforcing) since 2026-10-18.** Stage 2 (#798,
+merged 00:54 UTC) set the explicit `ENCLII_PLATFORM_ADMIN_EMAILS` allow-list
+after a dry-run report with no principal losing reach; stage 3 (#800, merged
+01:28 UTC) removed the `ENCLII_TENANT_SCOPE_ENFORCE=false` override from both
+production files. What was verified live, and the one check still open (the
+cross-tenant `404`, which needs a principal in exactly one tenant), is recorded
+in [the rollout runbook](../runbooks/TENANT_SCOPE_ENFORCEMENT_ROLLOUT.md#production-status-2026-10-18-times-utc).
+
+Until that date production sat in stage 1, and the paragraphs below describe
+why the flag stood the new gates down while it was off. They still describe
+the rollback lever.
 
 The gates PR #504 added are inert while `ENCLII_TENANT_SCOPE_ENFORCE=false`,
 deliberately and by a different mechanism than PR #499's. The routes PR #499
@@ -190,16 +200,16 @@ no per-project grant, or the anonymous caller of the commit-status route. The
 flag therefore stands those gates down entirely, and stage 1 remains
 byte-for-byte pre-ADR-003 `main` on all of them.
 
-**Tenant #2 is now gated on stage 3 alone.** The backlog condition is
-discharged; the rollout condition is not.
+**Tenant #2 was gated on stage 3 alone.** The backlog condition was
+discharged by PR #504; the rollout condition was discharged on 2026-10-18.
 
 ## Consequences
 
 - **It gates tenant #2.** No second Enclii Depot or Publica tenant is onboarded
   before the enforcement lands, because onboarding one is what turns the
   conflation into a live cross-tenant write. The route backlog condition is
-  discharged (PR #504); the remaining condition is the rollout reaching stage
-  3 in production.
+  discharged (PR #504), and the rollout reached stage 3 in production on
+  2026-10-18 (#800).
 - **Tests, not review, are the evidence.** The follow-up is complete when a
   `tenant_admin` of tenant A is refused, at the API, on every tenant-scoped
   verb against tenant B — and a test says so for each verb. A route inventory

@@ -99,6 +99,26 @@ change one: delete the StorageClass (bound PVs are not touched), run
 `storageclass-apply` (dry run, then `--apply`), then patch each existing
 volume's `spec.numberOfReplicas`.
 
+### Snapshot bloat (2026-10-17)
+
+Longhorn's `actualSize` counts every snapshot in a volume's chain, so a
+volume that rewrites its data (Prometheus TSDB, WAL, Loki index) can hold
+several times its claim while its filesystem looks fine, and that space is
+node disk Longhorn can no longer schedule replicas onto. Expanding the claim
+does not help. Two controls (#789):
+
+- the volume's recurring-job group must match its churn: TSDB, WAL and index
+  volumes belong to `high-churn` (`infra/helm/longhorn/recurring-jobs.yaml`,
+  whose header also has the procedure for pruning snapshots a previous group
+  stranded);
+- `LonghornSnapshotBloat` (warning, email digest) fires when
+  `actualSize / capacity` stays above 1.5 for 6 hours.
+
+A volume that is wiped and refilled on every run, such as the pgBackRest
+restore-drill scratch claim, reads near its claim size for the same reason:
+`actualSize` is a high-water mark, not the fill. The drill prints its real
+fill (`df`) after each restore (#791).
+
 Historical single-node example:
 
 ```yaml

@@ -122,7 +122,7 @@ kubectl delete job github-backup-manual cloudflare-backup-manual -n data
 
 **Pre-conditions:**
 - ArgoCD vault app synced (PR #64 merged)
-- Longhorn CSI operational (provides `longhorn` StorageClass for Vault's 5Gi data + 2Gi audit PVCs)
+- Longhorn CSI operational (provides `longhorn` StorageClass for Vault's 5Gi data + audit PVCs; the audit claim is 8Gi since its live expansion, recorded in git by #794 on 2026-10-18)
 - ESO operator running (`external-secrets` namespace)
 - Backup credentials created (Section 2) -- recommended before Vault deployment so you can immediately back up Vault init keys
 

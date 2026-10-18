@@ -284,6 +284,13 @@ signs.
 See [`infra/k8s/production/arc/README.md`](../../k8s/production/arc/README.md)
 for the four references that must move together and the rollback pin.
 
+**A merged repin deploys through Argo.** The auto-sync Applications
+`arc-runners-blue` and `arc-runners-deploy` apply the two `rendered.yaml`
+files from `main`. `arc-self-deploy.yml` does not: on a push it only
+validates, and its dispatch-only Deploy job applies the top-level
+`infra/k8s/production/arc/*.yaml` files, not the runner templates
+([details](../../k8s/production/arc/README.md#how-a-merged-pin-reaches-the-pools)).
+
 ## Rebuild cadence
 
 Rebuild happens automatically when this directory changes, via

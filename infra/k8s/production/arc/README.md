@@ -85,6 +85,40 @@ log's `pushing manifest for …` line. Both are valid digest pins for the
 pools' `linux/amd64` nodes. Read both from `git log -p` on the two
 `rendered.yaml` files rather than from this paragraph if they ever disagree.
 
+### How a merged pin reaches the pools
+
+Through Argo, not through `arc-self-deploy.yml`. The Applications
+`arc-runners-blue` and `arc-runners-deploy`
+([`infra/argocd/apps/arc-runners.yaml`](../../../argocd/apps/arc-runners.yaml),
+[`infra/argocd/apps/arc-runners-deploy.yaml`](../../../argocd/apps/arc-runners-deploy.yaml))
+auto-sync `runner-blue/` and `runner-deploy/` from `main` (automated, prune,
+self-heal). The controller comes the same way from `controller/` through
+`arc-runners`.
+
+`arc-self-deploy.yml` ("ARC Configuration and Bootstrap") is not that path.
+On a push to `main` it runs only its Validate job (client-side dry runs). Its
+Deploy job runs only on a non-dry-run `workflow_dispatch`, for bootstrap or
+recovery, and even then it applies `infra/k8s/base/arc/` and the
+**top-level** `infra/k8s/production/arc/*.yaml` files, never
+`runner-*/rendered.yaml` or `controller/rendered.yaml`, before the Helm
+blue/green switch. A green run of it after a pin merge is not evidence that
+the pools moved.
+
+Observed with #780 (2026-10-18, times UTC): merged 04:11; `arc-runners-deploy`
+synced the new revision at 04:15 and `arc-runners-blue` right after; jobs
+already running finished on their old pods, new jobs got 2.338.0. Check the
+synced revision and the runner counts through Enclii:
+
+```bash
+enclii ops apps status arc-runners-blue -n argocd --json
+enclii ops apps status arc-runners-deploy -n argocd --json
+enclii ops runners arc -n arc-runners --json   # counts per scale set, no image
+```
+
+`ops runners arc` does not report the runner image (adapter gap, checked
+2026-10-18), so the image pin itself is read with the break-glass command
+below.
+
 The pools never follow the `:stable` tag; moving or rolling back `:stable`
 changes no running runner. The `:stable` rollback command lives in
 [`../../../docker/arc-runner/README.md`](../../../docker/arc-runner/README.md#rolling-stable-back).
