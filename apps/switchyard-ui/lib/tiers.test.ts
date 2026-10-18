@@ -14,6 +14,8 @@ import {
   hasReachedServiceLimit,
   getUpgradeMessage,
   getCheckoutUrl,
+  getDhanamCheckoutUrl,
+  getUpgradeReturnUrl,
 } from './tiers';
 
 // ---------------------------------------------------------------------------
@@ -296,5 +298,52 @@ describe('getCheckoutUrl', () => {
     const parsed = new URL(url);
     const returnUrl = parsed.searchParams.get('return_url');
     expect(returnUrl).toBe('https://app.enclii.dev/settings?tab=billing&ref=upgrade');
+  });
+});
+
+describe('getDhanamCheckoutUrl', () => {
+  const original = process.env.NEXT_PUBLIC_DHANAM_CHECKOUT_URL;
+  afterEach(() => {
+    if (original === undefined) delete process.env.NEXT_PUBLIC_DHANAM_CHECKOUT_URL;
+    else process.env.NEXT_PUBLIC_DHANAM_CHECKOUT_URL = original;
+  });
+
+  it('links to Dhanam hosted checkout with the catalog plan id and product', () => {
+    delete process.env.NEXT_PUBLIC_DHANAM_CHECKOUT_URL;
+    const url = new URL(getDhanamCheckoutUrl('https://app.enclii.dev/settings'));
+    expect(url.origin + url.pathname).toBe('https://app.dhan.am/checkout');
+    expect(url.searchParams.get('plan')).toBe('enclii_pro');
+    expect(url.searchParams.get('product')).toBe('enclii');
+    expect(url.searchParams.get('return_url')).toBe('https://app.enclii.dev/settings');
+  });
+
+  it('never carries an identity in the link', () => {
+    const url = new URL(getDhanamCheckoutUrl('https://app.enclii.dev/settings'));
+    expect([...url.searchParams.keys()].sort()).toEqual(['plan', 'product', 'return_url']);
+  });
+
+  it('drops a return_url that is not an http(s) URL', () => {
+    expect(new URL(getDhanamCheckoutUrl('javascript:alert(1)')).searchParams.has('return_url')).toBe(false);
+    expect(new URL(getDhanamCheckoutUrl('not a url')).searchParams.has('return_url')).toBe(false);
+  });
+
+  it('honours NEXT_PUBLIC_DHANAM_CHECKOUT_URL (e.g. staging)', () => {
+    process.env.NEXT_PUBLIC_DHANAM_CHECKOUT_URL = 'https://staging.dhan.am/checkout';
+    expect(getDhanamCheckoutUrl()).toBe('https://staging.dhan.am/checkout?plan=enclii_pro&product=enclii');
+  });
+});
+
+describe('getUpgradeReturnUrl', () => {
+  it('keeps a return target on the console', () => {
+    expect(getUpgradeReturnUrl('https://app.enclii.dev/projects/web?tab=billing')).toBe(
+      'https://app.enclii.dev/projects/web?tab=billing',
+    );
+  });
+
+  it('falls back to console settings for other hosts, garbage or nothing', () => {
+    expect(getUpgradeReturnUrl('https://evil.example/phish')).toBe('https://app.enclii.dev/settings');
+    expect(getUpgradeReturnUrl('/relative')).toBe('https://app.enclii.dev/settings');
+    expect(getUpgradeReturnUrl(null)).toBe('https://app.enclii.dev/settings');
+    expect(getUpgradeReturnUrl()).toBe('https://app.enclii.dev/settings');
   });
 });
