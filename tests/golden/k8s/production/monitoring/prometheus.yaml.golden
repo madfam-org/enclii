@@ -2954,6 +2954,182 @@ data:
                 either never arrives, that last mile is broken: check
                 AlertmanagerEmailDeliveryFailing and CourierReceiverDown,
                 then the Alertmanager log.
+  # =========================================================================
+  # The vCTO retainer billing cycle (money-engine wave 2, 2026-10-18).
+  #
+  # WAITING ON nauta#351. These rules read the `nauta_retainer_cycle_*` and
+  # `nauta_retainer_status_*` gauges that nauta#351 publishes on the nauta
+  # worker's /metrics (port 3001, scraped by the annotation-based
+  # `kubernetes-pods` job; Prometheus reaches the `nauta` namespace through
+  # its `enclii.dev/data-access` egress rule). Land this AFTER nauta#351 is
+  # deployed and its first scrape is in: before that, RetainerMetricsMissing
+  # fires (a warning, the digest) and nothing else can.
+  #
+  # The gauges (unix seconds, 0 = not yet; labels workspace_id, cycle):
+  #   ..._corte_timestamp_seconds, ..._cfdi_deadline_timestamp_seconds (the
+  #   end of the 3rd business day from the corte, computed by nauta),
+  #   ..._cfdi_stamped_timestamp_seconds, ..._cfdi_sent_timestamp_seconds,
+  #   ..._cfdi_delivery_failed (0/1), ..._payment_due_timestamp_seconds,
+  #   ..._payment_recorded_timestamp_seconds, ..._paid_in_full (0/1).
+  # Status (no labels): nauta_retainer_status_last_success_timestamp_seconds,
+  #   nauta_retainer_status_read_ok, nauta_retainer_status_workspaces.
+  #
+  # WHY CRITICAL: the retainer is the money path that pays the bills today,
+  # and its CFDI is a promise to the client with a date on it (3 business
+  # days from the corte). The other retainer rules are warnings: a late
+  # payment or a stuck mail needs a person this week, not at 03:00.
+  #
+  # Every cycle rule is a join on (workspace_id, cycle), so it is empty, and
+  # cannot fire, while the gauges are absent. Absence is its own warning.
+  # `product` is written as retainer-<workspace_id>-<cycle> so Courier pages
+  # once per cycle and episode, and two cycles are two pages. `keep_firing_for`
+  # bridges a worker restart (the gauges return at the next hourly read)
+  # without a resolve and a second page.
+  # =========================================================================
+  retainer-cycle-rules.yml: |
+    groups:
+      - name: retainer-cycle
+        interval: 1m
+        rules:
+          - alert: RetainerCfdiOverdue
+            expr: |
+              label_replace(label_join(
+                (
+                  nauta_retainer_cycle_cfdi_deadline_timestamp_seconds > 0
+                  and nauta_retainer_cycle_cfdi_deadline_timestamp_seconds < time()
+                )
+                and on (workspace_id, cycle)
+                (nauta_retainer_cycle_cfdi_stamped_timestamp_seconds == 0),
+                "retainer_key", "-", "workspace_id", "cycle"),
+                "product", "retainer-$1", "retainer_key", "(.+)")
+            for: 30m
+            keep_firing_for: 90m
+            labels:
+              severity: critical
+              category: retainer
+            annotations:
+              summary: "Retainer CFDI overdue: cycle {{ $labels.cycle }} is past its deadline with no stamp"
+              description: |
+                Retainer cycle {{ $labels.cycle }} of workspace
+                {{ $labels.workspace_id }} passed its CFDI deadline (3 business
+                days from the corte) and nauta has no stamped CFDI for it. The
+                client was promised the comprobante by that date.
+
+                Next:
+                  1. Read the cycle: python3 scripts/money-engine-status.py --cluster
+                     (enclii checkout), or the nauta worker's
+                     `retainer-cycle-status` log line (nauta OPERATOR_CHECKLIST E3d).
+                  2. Stamp from the Nauta cockpit (Timbrar), per the cycle's
+                     billing runbook in internal-devops. A late client payment
+                     can delay the stamp by ruling; if so, this page is the
+                     reminder to record it.
+                  3. If the cockpit cannot stamp: Karafiel
+                     (enclii ops pods diagnose -n karafiel) and the PAC.
+
+          - alert: RetainerCfdiStampedNotSent
+            expr: |
+              label_replace(label_join(
+                (nauta_retainer_cycle_cfdi_stamped_timestamp_seconds > 0)
+                and on (workspace_id, cycle)
+                (nauta_retainer_cycle_cfdi_sent_timestamp_seconds == 0)
+                and on (workspace_id, cycle)
+                (time() - nauta_retainer_cycle_cfdi_stamped_timestamp_seconds > 3600),
+                "retainer_key", "-", "workspace_id", "cycle"),
+                "product", "retainer-$1", "retainer_key", "(.+)")
+            for: 15m
+            keep_firing_for: 90m
+            labels:
+              severity: warning
+              category: retainer
+            annotations:
+              summary: "Retainer CFDI stamped but not sent: cycle {{ $labels.cycle }}"
+              description: |
+                Cycle {{ $labels.cycle }} of workspace {{ $labels.workspace_id }}
+                has a stamped CFDI and, an hour later, no record of the mail
+                that delivers it. Check the cycle's delivery in the Nauta
+                cockpit and Janua's transactional mail.
+
+          - alert: RetainerCfdiDeliveryFailed
+            expr: |
+              label_replace(label_join(
+                nauta_retainer_cycle_cfdi_delivery_failed == 1,
+                "retainer_key", "-", "workspace_id", "cycle"),
+                "product", "retainer-$1", "retainer_key", "(.+)")
+            for: 5m
+            keep_firing_for: 90m
+            labels:
+              severity: warning
+              category: retainer
+            annotations:
+              summary: "Retainer CFDI delivery failed: cycle {{ $labels.cycle }}"
+              description: |
+                nauta recorded a FAILED delivery of cycle {{ $labels.cycle }}'s
+                CFDI (workspace {{ $labels.workspace_id }}). Resend it from the
+                Nauta cockpit after fixing the cause (Janua mail).
+
+          - alert: RetainerPaymentOverdue
+            expr: |
+              label_replace(label_join(
+                (
+                  nauta_retainer_cycle_payment_due_timestamp_seconds > 0
+                  and nauta_retainer_cycle_payment_due_timestamp_seconds + 86400 < time()
+                )
+                and on (workspace_id, cycle)
+                (nauta_retainer_cycle_payment_recorded_timestamp_seconds == 0),
+                "retainer_key", "-", "workspace_id", "cycle"),
+                "product", "retainer-$1", "retainer_key", "(.+)")
+            for: 30m
+            keep_firing_for: 90m
+            labels:
+              severity: warning
+              category: retainer
+            annotations:
+              summary: "Retainer payment overdue: cycle {{ $labels.cycle }} is a day past due with no payment recorded"
+              description: |
+                Cycle {{ $labels.cycle }} of workspace {{ $labels.workspace_id }}
+                was due a day ago and nauta has no payment record for it. Either
+                the client has not paid (follow up) or the payment arrived and
+                was not captured in the cockpit («pago recibido»).
+
+          - alert: RetainerMetricsMissing
+            expr: |
+              absent(nauta_retainer_status_last_success_timestamp_seconds)
+            for: 2h
+            labels:
+              severity: warning
+              category: retainer
+            annotations:
+              summary: "Retainer cycle metrics are missing: the retainer rules cannot fire"
+              description: |
+                Prometheus has no nauta_retainer_status_* series for 2 hours.
+                Until they return, RetainerCfdiOverdue and the other retainer
+                rules cannot fire, so an overdue CFDI would go unnoticed.
+
+                Triage:
+                  1. enclii ops pods diagnose -n nauta (is nauta-worker running,
+                     on an image with nauta#351?).
+                  2. Its prometheus.io scrape annotations and the
+                     allow-monitoring-ingress-worker NetworkPolicy (nauta repo).
+
+          - alert: RetainerStatusNotRead
+            expr: |
+              (
+                time() - nauta_retainer_status_last_success_timestamp_seconds > 7200
+              )
+              or (nauta_retainer_status_read_ok == 0)
+              or (nauta_retainer_status_workspaces == 0)
+            for: 75m
+            labels:
+              severity: warning
+              category: retainer
+            annotations:
+              summary: "The nauta worker is not reading the retainer cycles (gauges are stale or empty)"
+              description: |
+                The nauta worker's hourly retainer read has not succeeded for
+                two hours, reports a failure, or found no retainer workspace.
+                The cycle gauges are stale or empty, so the retainer rules see
+                nothing. Read the worker's log (retainer-cycle-status job).
+
 ---
 # Prometheus PVC
 apiVersion: v1

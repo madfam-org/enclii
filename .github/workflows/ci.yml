@@ -524,7 +524,7 @@ jobs:
             docker run --rm --entrypoint /bin/promtool -v {dir}:/w:ro
             docker.io/prom/prometheus:v2.53.3
             test rules /w/{name}
-        run: pytest tests/scripts/test_alert_noise_rules.py tests/scripts/test_pager_path_drill.py -v -rs
+        run: pytest tests/scripts/test_alert_noise_rules.py tests/scripts/test_pager_path_drill.py tests/scripts/test_retainer_cycle_rules.py -v -rs
 
   client-slo-rules-test:
     name: Client SLO rule coverage
