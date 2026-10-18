@@ -1,5 +1,5 @@
 # Build stage
-FROM public.ecr.aws/docker/library/golang:1.26.9-alpine AS builder
+FROM mirror.gcr.io/library/golang:1.26.9-alpine AS builder
 
 WORKDIR /app
 
@@ -27,7 +27,7 @@ RUN CGO_ENABLED=0 GOOS=linux go build -o /waybill-aggregator ./cmd/aggregator
 RUN CGO_ENABLED=0 GOOS=linux go build -o /weighbridge ./cmd/weighbridge
 
 # Aggregator runtime stage (for background jobs)
-FROM public.ecr.aws/docker/library/alpine:3.20 AS aggregator
+FROM mirror.gcr.io/library/alpine:3.20 AS aggregator
 
 # apk upgrade first: pull pending 3.20.x security patches — the trivy gate
 # blocks digest pins on fixable HIGH/CRITICAL CVEs in base packages (same
@@ -46,7 +46,7 @@ ENTRYPOINT ["/usr/local/bin/waybill-aggregator"]
 # rather than a second entrypoint on the api image, so that a meter rollout and
 # a biller rollout are independent events: repinning one must not restart the
 # other.
-FROM public.ecr.aws/docker/library/alpine:3.20 AS weighbridge
+FROM mirror.gcr.io/library/alpine:3.20 AS weighbridge
 
 RUN apk upgrade --no-cache && apk add --no-cache ca-certificates tzdata && \
     addgroup -g 65532 -S nonroot && adduser -u 65532 -S nonroot -G nonroot
@@ -64,7 +64,7 @@ ENTRYPOINT ["/usr/local/bin/weighbridge"]
 # KEEP THIS STAGE LAST. `docker build` with no `--target` builds the final
 # stage, and services.json's `waybill` entry names no target — so moving a
 # stage below this one silently changes which binary the `waybill` image runs.
-FROM public.ecr.aws/docker/library/alpine:3.20 AS api
+FROM mirror.gcr.io/library/alpine:3.20 AS api
 
 # apk upgrade first: pull pending 3.20.x security patches — the trivy gate
 # blocks digest pins on fixable HIGH/CRITICAL CVEs in base packages (same
