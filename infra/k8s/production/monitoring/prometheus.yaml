@@ -2530,6 +2530,56 @@ data:
                      pushgateway lost its state.
                 In Grafana: synthetic_journey_last_run_timestamp_seconds{job="journeys"}.
 
+      # The weekly PRODUCTION pre-session pass (synthetics/
+      # cronjob-production-weekly.yaml; journeys plan decisions 7 and 9).
+      # WARNING ONLY, by decision 6's recommendation: the money paths that
+      # work today page through the blackbox revenue probes every minute; a
+      # weekly browser pass is for the Monday digest. A journey whose failure
+      # is a recorded known issue also pushes success=0 (the runner has no
+      # "known" label yet), so these count failing journeys, not new ones;
+      # the run's summary in the pod log separates them.
+      - name: synthetic-journeys-production
+        interval: 5m
+        rules:
+          - alert: ProductionJourneysFailing
+            expr: |
+              count(synthetic_journey_consecutive_failures{job="journeys", env="production"} >= 2) > 0
+            for: 5m
+            labels:
+              severity: warning
+              category: synthetic-journeys
+            annotations:
+              summary: "{{ $value }} production journeys failed two weekly runs in a row"
+              description: |
+                {{ $value }} production visitor journeys (pre-session: GET only,
+                no forms, stop before any checkout session) failed in each of
+                the last two weekly runs. Known issues count too.
+
+                Read the last run: enclii ops jobs list -n synthetics --json,
+                then enclii ops pods logs <journeys-production-weekly pod>
+                -n synthetics (the summary is printed at the end of the log).
+
+          - alert: ProductionJourneysNotRunning
+            expr: |
+              (time() - max(synthetic_journey_last_run_timestamp_seconds{job="journeys", env="production"})) > 691200
+              or
+              (
+                absent(synthetic_journey_last_run_timestamp_seconds{job="journeys", env="production"})
+                and on ()
+                (time() - max(kube_cronjob_created{namespace="synthetics", cronjob="journeys-production-weekly"})) > 691200
+              )
+            for: 1h
+            labels:
+              severity: warning
+              category: synthetic-journeys
+            annotations:
+              summary: "The weekly production journeys pass has not reported for 8 days"
+              description: |
+                No production journey run has pushed metrics for 8 days, so
+                the Monday report has no visitor's-eye data. Check the
+                journeys-production-weekly CronJob (enclii ops jobs list -n
+                synthetics --json) and its last pod's log.
+
   # =========================================================================
   # Resurrected 2026-08-26 (availability remediation Tier 0.3): the 5 of 8
   # "decoration" rules from deploy-pipeline-monitor.yaml's PrometheusRule

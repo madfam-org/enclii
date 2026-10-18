@@ -626,7 +626,7 @@ jobs:
             docker run --rm --entrypoint /bin/promtool -v {dir}:/w:ro
             docker.io/prom/prometheus:v2.53.3
             test rules /w/{name}
-        run: pytest tests/scripts/test_synthetic_journeys.py -v -rs
+        run: pytest tests/scripts/test_synthetic_journeys.py tests/scripts/test_synthetic_journeys_production.py -v -rs
 
   courier-envelope-lint:
     name: Courier envelope shape (ops scripts)

@@ -20,6 +20,8 @@ resources:
   - serviceaccount.yaml
   - journeys-identity.externalsecret.yaml
   - cronjob.yaml
+  # The weekly production pre-session pass (decisions 7 and 9).
+  - cronjob-production-weekly.yaml
 
 labels:
   - pairs:
