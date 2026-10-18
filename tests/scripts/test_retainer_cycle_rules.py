@@ -104,6 +104,11 @@ def test_cycle_rules_join_per_cycle_and_page_per_cycle():
         assert '"product", "retainer-$1", "retainer_key", "(.+)"' in expr, name
         assert "absent(" not in expr, f"{name}: absence is RetainerMetricsMissing's job"
         assert _rules()[name]["keep_firing_for"] == "90m", name
+        # Every gauge read drops the scrape's pod labels, so a worker restart
+        # (a new `pod`) never becomes a second alert and a second page.
+        for gauge in re.findall(r"\bnauta_retainer_cycle_[a-z_]*[a-z]\b", expr):
+            assert f"max by (workspace_id, cycle) ({gauge})" in expr, (name, gauge)
+        assert len(re.findall(r"\bnauta_retainer_cycle_[a-z_]*[a-z]\b", expr)) == expr.count("max by (workspace_id, cycle) ("), name
 
 
 def test_absence_is_a_warning_of_its_own():
@@ -133,7 +138,7 @@ def test_no_client_name_in_the_public_rule_text():
 # ---------------------------------------------------------------------------
 
 WS = "00000000-0000-4000-8000-000000000000"
-L = f'workspace_id="{WS}",cycle="4",namespace="nauta"'
+L = f'workspace_id="{WS}",cycle="4",namespace="nauta",pod="nauta-worker-a"'
 
 PROMTOOL_TEST = textwrap.dedent(
     f"""
@@ -165,7 +170,6 @@ PROMTOOL_TEST = textwrap.dedent(
                   category: retainer
                   workspace_id: "{WS}"
                   cycle: "4"
-                  namespace: nauta
                   retainer_key: "{WS}-4"
                   product: "retainer-{WS}-4"
                 exp_annotations:
@@ -179,6 +183,32 @@ PROMTOOL_TEST = textwrap.dedent(
           - eval_time: 155m
             alertname: RetainerMetricsMissing
             exp_alerts: []
+
+      # 1b. The worker restarts at 50m (new pod): still ONE alert, with no
+      #     pod label, firing throughout.
+      - interval: 1m
+        input_series:
+          - series: 'nauta_retainer_cycle_cfdi_deadline_timestamp_seconds{{workspace_id="{WS}",cycle="4",pod="nauta-worker-a"}}'
+            values: '600x50'
+          - series: 'nauta_retainer_cycle_cfdi_stamped_timestamp_seconds{{workspace_id="{WS}",cycle="4",pod="nauta-worker-a"}}'
+            values: '0x50'
+          - series: 'nauta_retainer_cycle_cfdi_deadline_timestamp_seconds{{workspace_id="{WS}",cycle="4",pod="nauta-worker-b"}}'
+            values: '_x52 600x100'
+          - series: 'nauta_retainer_cycle_cfdi_stamped_timestamp_seconds{{workspace_id="{WS}",cycle="4",pod="nauta-worker-b"}}'
+            values: '_x52 0x100'
+        alert_rule_test:
+          - eval_time: 70m
+            alertname: RetainerCfdiOverdue
+            exp_alerts:
+              - exp_labels:
+                  severity: critical
+                  category: retainer
+                  workspace_id: "{WS}"
+                  cycle: "4"
+                  retainer_key: "{WS}-4"
+                  product: "retainer-{WS}-4"
+                exp_annotations:
+                  summary: "Retainer CFDI overdue: cycle 4 is past its deadline with no stamp"
 
       # 2. Stamped, never sent: a warning an hour after the stamp (+15m).
       - interval: 1m
@@ -201,7 +231,6 @@ PROMTOOL_TEST = textwrap.dedent(
                   category: retainer
                   workspace_id: "{WS}"
                   cycle: "4"
-                  namespace: nauta
                   retainer_key: "{WS}-4"
                   product: "retainer-{WS}-4"
                 exp_annotations:
@@ -252,7 +281,6 @@ PROMTOOL_TEST = textwrap.dedent(
                   category: retainer
                   workspace_id: "{WS}"
                   cycle: "4"
-                  namespace: nauta
                   retainer_key: "{WS}-4"
                   product: "retainer-{WS}-4"
                 exp_annotations:

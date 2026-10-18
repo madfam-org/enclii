@@ -2995,11 +2995,11 @@ data:
             expr: |
               label_replace(label_join(
                 (
-                  nauta_retainer_cycle_cfdi_deadline_timestamp_seconds > 0
-                  and nauta_retainer_cycle_cfdi_deadline_timestamp_seconds < time()
+                  max by (workspace_id, cycle) (nauta_retainer_cycle_cfdi_deadline_timestamp_seconds) > 0
+                  and max by (workspace_id, cycle) (nauta_retainer_cycle_cfdi_deadline_timestamp_seconds) < time()
                 )
                 and on (workspace_id, cycle)
-                (nauta_retainer_cycle_cfdi_stamped_timestamp_seconds == 0),
+                (max by (workspace_id, cycle) (nauta_retainer_cycle_cfdi_stamped_timestamp_seconds) == 0),
                 "retainer_key", "-", "workspace_id", "cycle"),
                 "product", "retainer-$1", "retainer_key", "(.+)")
             for: 30m
@@ -3029,11 +3029,11 @@ data:
           - alert: RetainerCfdiStampedNotSent
             expr: |
               label_replace(label_join(
-                (nauta_retainer_cycle_cfdi_stamped_timestamp_seconds > 0)
+                (max by (workspace_id, cycle) (nauta_retainer_cycle_cfdi_stamped_timestamp_seconds) > 0)
                 and on (workspace_id, cycle)
-                (nauta_retainer_cycle_cfdi_sent_timestamp_seconds == 0)
+                (max by (workspace_id, cycle) (nauta_retainer_cycle_cfdi_sent_timestamp_seconds) == 0)
                 and on (workspace_id, cycle)
-                (time() - nauta_retainer_cycle_cfdi_stamped_timestamp_seconds > 3600),
+                (time() - max by (workspace_id, cycle) (nauta_retainer_cycle_cfdi_stamped_timestamp_seconds) > 3600),
                 "retainer_key", "-", "workspace_id", "cycle"),
                 "product", "retainer-$1", "retainer_key", "(.+)")
             for: 15m
@@ -3052,7 +3052,7 @@ data:
           - alert: RetainerCfdiDeliveryFailed
             expr: |
               label_replace(label_join(
-                nauta_retainer_cycle_cfdi_delivery_failed == 1,
+                max by (workspace_id, cycle) (nauta_retainer_cycle_cfdi_delivery_failed) == 1,
                 "retainer_key", "-", "workspace_id", "cycle"),
                 "product", "retainer-$1", "retainer_key", "(.+)")
             for: 5m
@@ -3071,11 +3071,11 @@ data:
             expr: |
               label_replace(label_join(
                 (
-                  nauta_retainer_cycle_payment_due_timestamp_seconds > 0
-                  and nauta_retainer_cycle_payment_due_timestamp_seconds + 86400 < time()
+                  max by (workspace_id, cycle) (nauta_retainer_cycle_payment_due_timestamp_seconds) > 0
+                  and max by (workspace_id, cycle) (nauta_retainer_cycle_payment_due_timestamp_seconds) + 86400 < time()
                 )
                 and on (workspace_id, cycle)
-                (nauta_retainer_cycle_payment_recorded_timestamp_seconds == 0),
+                (max by (workspace_id, cycle) (nauta_retainer_cycle_payment_recorded_timestamp_seconds) == 0),
                 "retainer_key", "-", "workspace_id", "cycle"),
                 "product", "retainer-$1", "retainer_key", "(.+)")
             for: 30m
@@ -3114,10 +3114,10 @@ data:
           - alert: RetainerStatusNotRead
             expr: |
               (
-                time() - nauta_retainer_status_last_success_timestamp_seconds > 7200
+                time() - max(nauta_retainer_status_last_success_timestamp_seconds) > 7200
               )
-              or (nauta_retainer_status_read_ok == 0)
-              or (nauta_retainer_status_workspaces == 0)
+              or (max(nauta_retainer_status_read_ok) == 0)
+              or (max(nauta_retainer_status_workspaces) == 0)
             for: 75m
             labels:
               severity: warning
