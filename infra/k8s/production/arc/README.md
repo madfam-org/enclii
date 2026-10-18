@@ -71,12 +71,15 @@ So a base-image bump is **three** steps, not two:
 3. repin **all four** image references — both files, two each.
 
 Both pools currently run
-`ghcr.io/madfam-org/enclii/arc-runner:stable@sha256:2f5876c2b29d4fb42640fae93579f488b11aa7ee17935ddd2dc1091c89784230`
-(#656, the image built on `main` on 2026-09-29; it is the single-platform
-manifest digest). Rollback digest:
-`sha256:c35966ed277acedf16953c1e8075a2c9d92509be488b4de48b9487605da5a162`,
-the pin #656 replaced (#521, the image built from #520 — the render-library
-parity fix that added `libcomerr2` and `libgpg-error0`). That one is a
+`ghcr.io/madfam-org/enclii/arc-runner:stable@sha256:d12ef5e0f5314a878970d079b3e64e85ee9837f23ea8ad4538f5db9ac38e2cb3`
+(#771, actions-runner 2.338.0, the image built and promoted on `main` on
+2026-10-17 in run 39072135012; it is the single-platform manifest digest).
+Rollback digest:
+`sha256:2f5876c2b29d4fb42640fae93579f488b11aa7ee17935ddd2dc1091c89784230`,
+the pin this one replaced (#656, actions-runner 2.337.0, built on 2026-09-29).
+Before that: `sha256:c35966ed277acedf16953c1e8075a2c9d92509be488b4de48b9487605da5a162`
+(#521, the image built from #520 — the render-library parity fix that added
+`libcomerr2` and `libgpg-error0`). That one is a
 **manifest list** digest: pins before #656 took the list digest from the build
 log's `pushing manifest for …` line. Both are valid digest pins for the
 pools' `linux/amd64` nodes. Read both from `git log -p` on the two

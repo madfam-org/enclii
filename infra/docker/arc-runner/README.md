@@ -272,8 +272,9 @@ not touch the pools; to roll **them** back, repin the rendered manifests
 
 **What the pools run today.** Both `madfam-runners-blue` and
 `madfam-runners-deploy` are pinned to
-`…/arc-runner:stable@sha256:2f5876c2b29d4fb42640fae93579f488b11aa7ee17935ddd2dc1091c89784230`
-(#656 — the image built on `main` on 2026-09-29). That is the build step's
+`…/arc-runner:stable@sha256:d12ef5e0f5314a878970d079b3e64e85ee9837f23ea8ad4538f5db9ac38e2cb3`
+(#771 — actions-runner 2.338.0, built and promoted on `main` on 2026-10-17;
+it replaced #656's `2f5876c2…`). That is the build step's
 `digest` output, i.e. the signed single-platform manifest, and it is what a
 promoted `:stable` resolves to from now on. Pins before #656 (for example
 `c35966ed…`, from #521) used the **manifest list** digest from the build log's
