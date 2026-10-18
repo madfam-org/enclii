@@ -151,6 +151,34 @@ def test_chronic_restart_7d_excludes_staging():
     assert 'namespace!~".+-staging"' in rule["expr"]
 
 
+def test_chronic_restart_7d_counts_only_pods_that_still_exist():
+    """A replaced pod's restarts must not keep the 7d critical firing.
+
+    The 7d range keeps a deleted pod's samples for a week; the join on `uid`
+    (not on the pod name, which a StatefulSet reuses) drops them.
+    """
+    rule = _by_alert(_group(_rules_key("chronic-restart-rules.yml"), "chronic-restart"))["PodChronicRestart7d"]
+    assert "and on (uid) kube_pod_info" in rule["expr"]
+
+
+@pytest.mark.parametrize(
+    "key,group,alert",
+    [
+        ("deploy-parity-alerts.yml", "argo-rollout-truth", "ArgoMainRolloutNotLanded"),
+        ("deploy-parity-alerts.yml", "argo-rollout-truth", "ArgoMainRolloutStuckForTooLong"),
+        ("deploy-pipeline-freshness-rules.yml", "deploy-pipeline-monitor", "MainCIFailingForTooLong"),
+    ],
+)
+def test_rollout_and_main_ci_rules_page_nobody(key, group, alert):
+    """Pager noise plan 2026-10-17: these go to the warning digest, never Telegram.
+
+    The previous image keeps serving while they fire; the client-facing
+    outage rules (client-slo, Argo health, revenue probes) stay critical.
+    """
+    rule = _by_alert(_group(_rules_key(key), group))[alert]
+    assert rule["labels"]["severity"] == "warning"
+
+
 # ---------------------------------------------------------------------------
 # Structural: CNPG
 # ---------------------------------------------------------------------------
@@ -242,10 +270,30 @@ ARGO_TEST = textwrap.dedent(
           - series: 'argocd_app_info{name="selva-office-staging",dest_namespace="selva-staging",health_status="Missing"}'
             values: '1x450'
           # Restarts: 300 in the window, production and staging.
-          - series: 'kube_pod_container_status_restarts_total{namespace="logging",pod="loki-0",container="loki"}'
+          - series: 'kube_pod_container_status_restarts_total{namespace="logging",pod="loki-0",uid="u-loki-0",container="loki"}'
             values: '0+1x450'
-          - series: 'kube_pod_container_status_restarts_total{namespace="enclii-karafiel-staging",pod="karafiel-admin-x",container="admin"}'
+          - series: 'kube_pod_info{namespace="logging",pod="loki-0",uid="u-loki-0"}'
+            values: '1x450'
+          - series: 'kube_pod_container_status_restarts_total{namespace="enclii-karafiel-staging",pod="karafiel-admin-x",uid="u-admin-x",container="admin"}'
             values: '0+1x450'
+          - series: 'kube_pod_info{namespace="enclii-karafiel-staging",pod="karafiel-admin-x",uid="u-admin-x"}'
+            values: '1x450'
+          # A REPLACED pod: 240 restarts, then deleted at 4h (its series end).
+          # Its samples stay inside the 7d range; it must not page.
+          - series: 'kube_pod_container_status_restarts_total{namespace="logging",pod="fluent-bit-old",uid="u-fb-old",container="fluent-bit"}'
+            values: '0+1x240'
+          - series: 'kube_pod_info{namespace="logging",pod="fluent-bit-old",uid="u-fb-old"}'
+            values: '1x240'
+          # A StatefulSet pod recreated under the SAME name at 4h: the old uid
+          # carries the restarts, the new one is healthy. Must not page.
+          - series: 'kube_pod_container_status_restarts_total{namespace="data",pod="redis-0",uid="u-redis-old",container="redis"}'
+            values: '0+1x240'
+          - series: 'kube_pod_info{namespace="data",pod="redis-0",uid="u-redis-old"}'
+            values: '1x240'
+          - series: 'kube_pod_container_status_restarts_total{namespace="data",pod="redis-0",uid="u-redis-new",container="redis"}'
+            values: '_x240 0x210'
+          - series: 'kube_pod_info{namespace="data",pod="redis-0",uid="u-redis-new"}'
+            values: '_x240 1x210'
         alert_rule_test:
           - eval_time: 10m
             alertname: ArgoCDAppDegraded
@@ -293,7 +341,8 @@ ARGO_TEST = textwrap.dedent(
             exp_alerts:
               - exp_labels: {severity: warning, service: argocd, name: karafiel-staging, dest_namespace: enclii-karafiel-staging, health_status: Degraded}
                 exp_annotations: {summary: "ArgoCD staging application degraded"}
-          # 300 restarts by 5h: production pages, staging does not.
+          # 300 restarts by 5h: production pages, staging does not, and
+          # neither do the replaced fluent-bit pod or redis-0's old uid.
           - eval_time: 5h
             alertname: PodChronicRestart7d
             exp_alerts:

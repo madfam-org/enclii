@@ -1373,10 +1373,22 @@ data:
           # admin at 1,104 restarts paged every 4h. PodChronicRestart24h above
           # (warning, every namespace) still reports a staging crash loop in
           # the digest.
+          #
+          # ONLY PODS THAT STILL EXIST (infra-stability audit 2026-10-17). A 7d
+          # range keeps a deleted pod's samples for 7 days, so a pod that
+          # crash-looped and was REPLACED kept this critical firing for a week
+          # after the loop ended. The logging namespace paged 38 times that
+          # way: every fluent-bit pod was replaced on 10-14 and has 0 restarts
+          # since, while the old pods' counters stayed in the window. loki-0
+          # shows the second half: a StatefulSet pod comes back under the SAME
+          # name, so the join is on `uid` (kube-state-metrics puts it on both
+          # series), not on the name. A pod that is still restarting is still
+          # caught, under its current uid.
           - alert: PodChronicRestart7d
             expr: |
               sum by (namespace, pod) (
                 increase(kube_pod_container_status_restarts_total{namespace!~".+-staging"}[7d])
+                and on (uid) kube_pod_info
               ) > 200
             for: 30m
             labels:
@@ -1710,12 +1722,21 @@ data:
       - name: argo-rollout-truth
         interval: 1m
         rules:
+          # WARNING, NOT CRITICAL (infra-stability audit 2026-10-17, pager
+          # noise plan). Both rollout rules below page nobody: they go to the
+          # warning email digest. Their own text says why: a failed sync
+          # leaves the previous pods serving, so nothing a client sees is down
+          # while they fire. In the 14 days to 10-17 they sent 171 of 772
+          # Telegram pages (87 + 84, the second all for a staging app), almost
+          # all for standing conditions. A real outage behind a failed rollout
+          # still pages through ClientDeploymentUnavailable, ArgoCDAppDegraded
+          # or the revenue probes, which stay critical.
           - alert: ArgoMainRolloutNotLanded
             expr: |
               argo_main_rollout_failed_sources > 0
             for: 15m
             labels:
-              severity: critical
+              severity: warning
               category: deploy-parity
             annotations:
               summary: "An ArgoCD app tracking main has not rolled out its target revision"
@@ -1744,7 +1765,7 @@ data:
               max(argo_main_rollout_stuck_seconds) by (application, repo) > 7200
             for: 10m
             labels:
-              severity: critical
+              severity: warning
               category: deploy-parity
             annotations:
               summary: "{{ $labels.application }} has had a failed sync for over 2h"
@@ -2399,6 +2420,13 @@ data:
   # key's own header comment for why the drift-sources approach missed the
   # 2026-08-07 avala-services incident. Porting the superseded metric
   # verbatim would double-alert on every real rollout failure.
+  #
+  # MainCIFailingForTooLong IS A WARNING since 2026-10-17 (infra-stability
+  # audit, pager noise plan). It sent 209 of the 772 Telegram pages in the 14
+  # days to 10-17, the largest single source. A red main CI means merged code
+  # is not built; the previous image keeps serving, so it is a digest item,
+  # not a 03:00 page. A client-facing outage pages through the client-slo,
+  # Argo health and revenue rules, which stay critical.
   # =========================================================================
   deploy-pipeline-freshness-rules.yml: |
     groups:
@@ -2417,7 +2445,7 @@ data:
             # repo that stays green resolves 1h later.
             keep_firing_for: 1h
             labels:
-              severity: critical
+              severity: warning
               category: deploy-pipeline
             annotations:
               summary: "{{ $labels.repo }} main CI has been failing for >30 min"

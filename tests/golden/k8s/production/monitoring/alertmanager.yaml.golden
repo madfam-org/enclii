@@ -136,6 +136,67 @@ data:
           group_interval: 5m
           repeat_interval: 1h
 
+        # STAGING NEVER PAGES (infra-stability audit 2026-10-17, pager noise
+        # plan). A `severity: critical` alert whose target is a staging
+        # namespace or application goes to staging-receiver: email only, one
+        # digest group, the warning digest's timings. No Courier webhook, so
+        # it can never reach Telegram whatever its severity label says.
+        #
+        # The rule-side exclusions (`namespace!~".+-staging"` and friends)
+        # stay; this is the net under them, for every rule at once, including
+        # the operator-managed rules-eval PrometheusRules that this repo does
+        # not write. Before it, the parity monitor paged critical 84 times in
+        # 14 days for selva-office-staging (ArgoMainRolloutStuckForTooLong,
+        # `application`), and karafiel-staging paged through
+        # PodChronicRestart7d (`namespace`) until #717.
+        #
+        # One route per label, because matchers inside one route AND. Each
+        # also requires `product=""` (absent): anything a revenue probe
+        # labels with a product keeps paging, and the revenue route above
+        # already took those first. The regex is the Argo rules' staging
+        # regex (tests/scripts/test_alert_noise_rules.py STAGING_APP);
+        # Alertmanager anchors it.
+        - matchers:
+            - severity="critical"
+            - product=""
+            - namespace=~".+-staging(-.+)?"
+          receiver: 'staging-receiver'
+          continue: false
+          group_by: ['severity']
+          group_wait: 1m
+          group_interval: 3h
+          repeat_interval: 24h
+        - matchers:
+            - severity="critical"
+            - product=""
+            - application=~".+-staging(-.+)?"
+          receiver: 'staging-receiver'
+          continue: false
+          group_by: ['severity']
+          group_wait: 1m
+          group_interval: 3h
+          repeat_interval: 24h
+        - matchers:
+            - severity="critical"
+            - product=""
+            - name=~".+-staging(-.+)?"
+          receiver: 'staging-receiver'
+          continue: false
+          group_by: ['severity']
+          group_wait: 1m
+          group_interval: 3h
+          repeat_interval: 24h
+        - matchers:
+            - severity="critical"
+            - product=""
+            - dest_namespace=~".+-staging(-.+)?"
+          receiver: 'staging-receiver'
+          continue: false
+          group_by: ['severity']
+          group_wait: 1m
+          group_interval: 3h
+          repeat_interval: 24h
+
         # Critical alerts - every one pages (email + Courier).
         # A NEW alertname opens its own group and goes out after group_wait
         # (10s). group_interval only paces further instances of an alertname
@@ -279,6 +340,16 @@ data:
               authorization:
                 type: Bearer
                 credentials_file: /etc/alertmanager/courier/courier-alertmanager-secret
+
+      # Carries critical alerts about staging targets (the staging routes
+      # above). Email only, on purpose: no webhook_configs, so nothing here
+      # can reach Courier and Telegram. One digest group, like warnings.
+      - name: 'staging-receiver'
+        email_configs:
+          - to: 'admin@madfam.io'
+            send_resolved: true
+            headers:
+              Subject: '[STAGING] digest: {{ .Alerts.Firing | len }} firing, {{ .Alerts.Resolved | len }} resolved - Enclii'
 
       # Carries AlertmanagerEmailDeliveryFailing only. Webhook and NO email,
       # the exact inverse of default-receiver carrying CourierReceiverDown.
