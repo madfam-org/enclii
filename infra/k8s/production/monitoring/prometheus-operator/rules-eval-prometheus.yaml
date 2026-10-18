@@ -87,8 +87,25 @@ spec:
   # step) because a StatefulSet can't resize an existing claim. This keeps
   # the template in step, so a re-created claim also gets 20Gi. retentionSize
   # (above) caps usage well under it.
+  #
+  # SNAPSHOT GROUP (2026-10-17). This volume was in Longhorn's `default`
+  # recurring-job group (7 daily snapshots). A TSDB rewrites its blocks, so
+  # each snapshot approached a full copy: 115 GiB actual on a 20Gi claim,
+  # the largest volume in the cluster. It belongs in `high-churn` (2
+  # snapshots; offsite backups unchanged), per
+  # infra/helm/longhorn/recurring-jobs.yaml. The labels below make the CLAIM
+  # the source of the volume's recurring-job labels
+  # (recurring-job.longhorn.io/source), so a re-created claim lands in
+  # high-churn by itself. They do NOT relabel the existing claim (a template
+  # applies only when a claim is created): that, and deleting the snapshots
+  # the default group leaves behind, is the owner procedure in the
+  # recurring-jobs.yaml header.
   storage:
     volumeClaimTemplate:
+      metadata:
+        labels:
+          recurring-job.longhorn.io/source: enabled
+          recurring-job-group.longhorn.io/high-churn: enabled
       spec:
         storageClassName: longhorn
         accessModes:
