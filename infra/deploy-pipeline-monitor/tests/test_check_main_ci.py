@@ -310,3 +310,150 @@ def test_run_once_isolates_per_repo_failures(monkeypatch):
     assert ok_c == 1.0
     broken = next(s for s in snapshots if s.repo == "madfam-org/broken")
     assert broken.error and "RuntimeError" in broken.error
+
+
+# ---------------------------------------------------------------------------
+# Push-only build signal and scheduled canaries (infra-stability W1O-1)
+# ---------------------------------------------------------------------------
+
+_GREEN_BRANCH = {
+    "commit": {"sha": "abc1234567", "commit": {"committer": {"date": "2026-10-17T08:00:00Z"}}}
+}
+_GREEN_PUSH_RUNS = {
+    "workflow_runs": [
+        {
+            "name": "CI",
+            "event": "push",
+            "conclusion": "success",
+            "head_sha": "abc1234567",
+            "updated_at": "2026-10-17T08:10:00Z",
+            "head_commit": {"timestamp": "2026-10-17T08:00:00Z"},
+        }
+    ]
+}
+
+
+def _scheduled(name: str, conclusion: str, updated_at: str) -> dict[str, Any]:
+    return {
+        "name": name,
+        "path": f".github/workflows/{name.lower().replace(' ', '-')}.yml",
+        "event": "schedule",
+        "conclusion": conclusion,
+        "head_sha": "abc1234567",
+        "updated_at": updated_at,
+        "head_commit": {"timestamp": "2026-10-17T08:00:00Z"},
+    }
+
+
+def test_build_signal_reads_push_runs_only():
+    """The runs query is filtered server-side to event=push."""
+    session = _FakeSession(
+        {"branches/main": _FakeResponse(_GREEN_BRANCH), "actions/runs": _FakeResponse(_GREEN_PUSH_RUNS)}
+    )
+    fetch_repo_snapshot(RepoSpec("madfam-org/forgesight"), session, timeout=1.0)
+    runs_calls = [c for c in session.calls if "actions/runs" in c]
+    assert len(runs_calls) == 1
+    assert "event=push" in runs_calls[0]
+    assert "status=completed" in runs_calls[0]
+
+
+def test_scheduled_fetch_reads_schedule_runs_only():
+    session = _FakeSession({"actions/runs": _FakeResponse({"workflow_runs": []})})
+    assert mod.fetch_scheduled_states(RepoSpec("madfam-org/forgesight"), session, timeout=1.0) == []
+    assert len(session.calls) == 1
+    assert "event=schedule" in session.calls[0]
+    assert "event=push" not in session.calls[0]
+
+
+def test_summarise_scheduled_runs_is_per_workflow_and_passes_over_cancelled():
+    runs = [
+        _scheduled("Production Smoke", "failure", "2026-10-17T12:00:00Z"),
+        _scheduled("Nightly Backup Check", "success", "2026-10-17T11:30:00Z"),
+        _scheduled("Production Smoke", "cancelled", "2026-10-17T11:00:00Z"),
+        _scheduled("Production Smoke", "failure", "2026-10-17T10:00:00Z"),
+        _scheduled("Production Smoke", "success", "2026-10-17T09:00:00Z"),
+        _scheduled("Production Smoke", "failure", "2026-10-17T08:00:00Z"),
+    ]
+    states = {s.workflow: s for s in mod.summarise_scheduled_runs(runs)}
+    assert sorted(states) == ["Nightly Backup Check", "Production Smoke"]
+    smoke = states["Production Smoke"]
+    # failure, (cancelled passed over), failure, then success stops the streak.
+    assert smoke.failure_streak == 2
+    assert smoke.latest_conclusion == "failure"
+    assert states["Nightly Backup Check"].failure_streak == 0
+
+
+def test_summarise_scheduled_runs_falls_back_to_path_when_name_is_blank():
+    run = _scheduled("x", "failure", "2026-10-17T12:00:00Z")
+    run["name"] = "  "
+    (state,) = mod.summarise_scheduled_runs([run])
+    assert state.workflow == ".github/workflows/x.yml"
+
+
+def test_green_push_and_red_canary_is_not_a_build_failure():
+    """The forgesight shape: push CI green, the scheduled canary red.
+
+    The build signal (which MainCIFailingForTooLong reads) stays clear, and the
+    canary signal (which MainCanaryFailing reads) carries the failure.
+    """
+    schedule_runs = {
+        "workflow_runs": [
+            _scheduled("Production Smoke", "failure", "2026-10-17T12:00:00Z"),
+            _scheduled("Production Smoke", "failure", "2026-10-17T11:00:00Z"),
+            _scheduled("Production Smoke", "failure", "2026-10-17T10:00:00Z"),
+        ]
+    }
+    session = _FakeSession(
+        {
+            "branches/main": _FakeResponse(_GREEN_BRANCH),
+            "event=push": _FakeResponse(_GREEN_PUSH_RUNS),
+            "event=schedule": _FakeResponse(schedule_runs),
+        }
+    )
+    metrics = Metrics()
+    run_once([RepoSpec("madfam-org/forgesight")], metrics, session, timeout=1.0, now=1_792_000_000.0)
+
+    labels = {"repo": "madfam-org/forgesight", "branch": "main"}
+    assert _gauge_sample(metrics.registry, "repo_main_blocked_seconds", labels) == 0.0
+    assert _gauge_sample(metrics.registry, "repo_main_ci_failure_streak_count", labels) == 0.0
+    wf = {**labels, "workflow": "Production Smoke"}
+    assert _gauge_sample(metrics.registry, "repo_main_scheduled_failure_streak_count", wf) == 3.0
+    assert _gauge_sample(metrics.registry, "repo_main_scheduled_latest_failed", wf) == 1.0
+    assert _gauge_sample(metrics.registry, "repo_main_scheduled_probe_ok", labels) == 1.0
+
+
+def test_scheduled_fetch_failure_is_isolated_from_the_build_signal():
+    """A failing schedule query marks only the canary probe, never the push one."""
+    session = _FakeSession(
+        {
+            "branches/main": _FakeResponse(_GREEN_BRANCH),
+            "event=push": _FakeResponse(_GREEN_PUSH_RUNS),
+            "event=schedule": _FakeResponse({}, status_code=502),
+        }
+    )
+    metrics = Metrics()
+    snaps = run_once([RepoSpec("madfam-org/rondelio")], metrics, session, timeout=1.0, now=1_792_000_000.0)
+
+    labels = {"repo": "madfam-org/rondelio", "branch": "main"}
+    assert snaps[0].error is None
+    assert _gauge_sample(metrics.registry, "repo_main_probe_ok", labels) == 1.0
+    assert _gauge_sample(metrics.registry, "repo_main_scheduled_probe_ok", labels) == 0.0
+
+
+def test_repo_without_scheduled_workflows_emits_no_canary_series():
+    session = _FakeSession(
+        {
+            "branches/main": _FakeResponse(_GREEN_BRANCH),
+            "event=push": _FakeResponse(_GREEN_PUSH_RUNS),
+            "event=schedule": _FakeResponse({"workflow_runs": []}),
+        }
+    )
+    metrics = Metrics()
+    run_once([RepoSpec("madfam-org/karafiel")], metrics, session, timeout=1.0, now=1_792_000_000.0)
+    names = {
+        s.name
+        for fam in metrics.registry.collect()
+        for s in fam.samples
+        if s.name.startswith("repo_main_scheduled_") and s.name != "repo_main_scheduled_probe_ok"
+    }
+    assert names == set()

@@ -445,3 +445,66 @@ def test_promtool_argo_and_chronic_restart_rules():
 
 def test_promtool_cnpg_rules():
     _run_promtool({"postgres-ha-rules.yml": _cnpg_rules_text()}, "cnpg.test.yml", CNPG_TEST)
+
+
+# ---------------------------------------------------------------------------
+# Main CI vs scheduled canaries (infra-stability audit 2026-10-17, W1O-1)
+# ---------------------------------------------------------------------------
+
+
+def _freshness_rules() -> dict[str, dict]:
+    return _by_alert(_group(_rules_key("deploy-pipeline-freshness-rules.yml"), "deploy-pipeline-monitor"))
+
+
+def test_main_ci_alert_reads_the_push_build_signal_only():
+    """MainCIFailingForTooLong reads the push metric, never the canary one."""
+    rule = _freshness_rules()["MainCIFailingForTooLong"]
+    assert "repo_main_blocked_seconds" in rule["expr"]
+    assert "scheduled" not in rule["expr"]
+
+
+def test_canary_failure_has_its_own_warning_alert():
+    rules = _freshness_rules()
+    canary = rules["MainCanaryFailing"]
+    assert canary["labels"]["severity"] == "warning"
+    assert canary["expr"].strip() == "repo_main_scheduled_failure_streak_count >= 2"
+    probe = rules["DeployPipelineMonitorScheduledProbeFailing"]
+    assert probe["labels"]["severity"] == "warning"
+    assert "repo_main_scheduled_probe_ok == 0" in probe["expr"]
+
+
+CANARY_TEST = textwrap.dedent(
+    """
+    rule_files:
+      - deploy-pipeline-freshness-rules.yml
+    evaluation_interval: 30s
+    tests:
+      - interval: 1m
+        input_series:
+          # forgesight: push CI green, the scheduled canary red 3 runs running.
+          - series: 'repo_main_blocked_seconds{repo="madfam-org/forgesight",branch="main"}'
+            values: '0x60'
+          - series: 'repo_main_scheduled_failure_streak_count{repo="madfam-org/forgesight",branch="main",workflow="Production Smoke"}'
+            values: '3x60'
+          # karafiel: one canary failure is a flake, not a page.
+          - series: 'repo_main_scheduled_failure_streak_count{repo="madfam-org/karafiel",branch="main",workflow="Nightly"}'
+            values: '1x60'
+        alert_rule_test:
+          - eval_time: 45m
+            alertname: MainCIFailingForTooLong
+            exp_alerts: []
+          - eval_time: 45m
+            alertname: MainCanaryFailing
+            exp_alerts:
+              - exp_labels: {severity: warning, category: deploy-pipeline, repo: madfam-org/forgesight, branch: main, workflow: Production Smoke}
+                exp_annotations: {summary: 'madfam-org/forgesight scheduled workflow "Production Smoke" failed 3 times running'}
+    """
+).lstrip()
+
+
+def test_promtool_canary_is_a_warning_and_not_a_build_failure():
+    _run_promtool(
+        {"deploy-pipeline-freshness-rules.yml": _rules_key("deploy-pipeline-freshness-rules.yml")},
+        "canary.test.yml",
+        CANARY_TEST,
+    )

@@ -2422,8 +2422,8 @@ data:
             annotations:
               summary: "{{ $labels.repo }} main CI has been failing for >30 min"
               description: |
-                Latest CI run on `{{ $labels.branch }}` of `{{ $labels.repo }}`
-                is failed. The failing commit was pushed {{ $value | humanizeDuration }}
+                Latest push CI run on `{{ $labels.branch }}` of `{{ $labels.repo }}`
+                is failed (scheduled canaries are MainCanaryFailing). The failing commit was pushed {{ $value | humanizeDuration }}
                 ago — no image has been rebuilt → no deploys are reaching ArgoCD
                 → live pods are drifting from `main`.
                 Open the Actions tab on the repo, identify the failing run,
@@ -2488,6 +2488,42 @@ data:
                 `{{ $labels.repo }}` for 30+ minutes. Likely causes: PAT scope
                 missing the repo, repo renamed, or branch deleted. The monitor
                 keeps running for the other repos.
+
+          # Scheduled production canaries, kept apart from the build signal
+          # above (infra-stability audit 2026-10-17, W1O-1). check_main_ci.py
+          # reads push runs for MainCIFailingForTooLong and schedule runs, per
+          # workflow, for this. A canary failing twice running is a production
+          # signal worth reading in the digest; it is not merged-but-unbuilt
+          # code, which is what the build alert names.
+          - alert: MainCanaryFailing
+            expr: repo_main_scheduled_failure_streak_count >= 2
+            for: 30m
+            labels:
+              severity: warning
+              category: deploy-pipeline
+            annotations:
+              summary: "{{ $labels.repo }} scheduled workflow \"{{ $labels.workflow }}\" failed {{ $value }} times running"
+              description: |
+                The scheduled workflow `{{ $labels.workflow }}` on
+                `{{ $labels.branch }}` of `{{ $labels.repo }}` has failed
+                {{ $value }} consecutive runs (cancelled and skipped runs are
+                passed over). Push CI is read separately, so this is a
+                production check failing, not a build that did not happen.
+                Open the workflow's latest run in the Actions tab.
+                Runbook: docs/runbooks/deploy-pipeline-monitor.md
+
+          - alert: DeployPipelineMonitorScheduledProbeFailing
+            expr: repo_main_scheduled_probe_ok == 0
+            for: 30m
+            labels:
+              severity: warning
+              category: deploy-pipeline
+            annotations:
+              summary: "deploy-pipeline-monitor cannot read scheduled runs of {{ $labels.repo }}"
+              description: |
+                The schedule-event runs query for `{{ $labels.repo }}` has
+                failed for 30+ minutes, so MainCanaryFailing cannot fire for
+                it. The push signal is unaffected.
 
   # =========================================================================
   # ARC pool health (added 2026-09-04)

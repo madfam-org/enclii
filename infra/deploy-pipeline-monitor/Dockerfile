@@ -2,10 +2,15 @@
 # Sibling pattern to infra/cloudflared-probe/Dockerfile. Runs once per
 # CronJob invocation (every 5 min) and exits — no long-running daemon.
 #
-# Base image follows the ecosystem norm: public.ecr.aws mirror to sidestep
-# Docker Hub rate limits on ARC self-hosted runners.
+# Base image: mirror.gcr.io, Google's pull-through mirror of the Docker Hub
+# official images (same digests). This image is built on a GitHub-HOSTED
+# runner (.github/workflows/deploy-pipeline-monitor.yml, ubuntu-24.04), where
+# public.ecr.aws fails with "toomanyrequests: Data limit exceeded": ECR
+# Public's 500 GB/month anonymous cap is shared across every GitHub customer
+# on the runner's egress IP (PR verify of this change, 2026-10-18). Docker Hub
+# itself rate-limits those IPs too, which is why it was never used here.
 
-FROM public.ecr.aws/docker/library/python:3.12-alpine
+FROM mirror.gcr.io/library/python:3.12-alpine
 
 LABEL org.opencontainers.image.title="deploy-pipeline-monitor" \
       org.opencontainers.image.description="GitHub/Argo deploy health probes; pushes to Prometheus Pushgateway" \

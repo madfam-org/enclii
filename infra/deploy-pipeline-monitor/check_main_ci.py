@@ -7,9 +7,23 @@ stayed 8h-old, undetected for 3h.
 
 For each `(repo, branch)` in /etc/deploy-pipeline-monitor/repos.json:
     1. Query GitHub for the latest commit on `branch`.
-    2. Query GitHub for the latest 5 completed Actions runs on `branch`.
-    3. Compute freshness + failure metrics.
-    4. Push to Prometheus Pushgateway (single batch per run).
+    2. Query GitHub for the latest 5 completed PUSH-event Actions runs on
+       `branch`: the repo's CI for what was merged.
+    3. Query GitHub for the latest completed SCHEDULE-event runs on `branch`:
+       the repo's scheduled canaries, tracked per workflow.
+    4. Compute freshness + failure metrics.
+    5. Push to Prometheus Pushgateway (single batch per run).
+
+WHY PUSH AND SCHEDULE ARE SEPARATE (infra-stability audit 2026-10-17, W1O-1).
+Until then step 2 read the latest completed run of ANY event. A repo whose
+push CI was green but whose scheduled production canary was red (forgesight
+`Production Smoke`, rondelio `Production Canaries`) read as "main CI failing"
+and paged MainCIFailingForTooLong, the alert for merged-but-not-built code.
+A cancelled merge-bot run (`workflow_run`) and Dependabot jobs (`dynamic`) did
+the same. The push signal now counts only `event=push`, and a red canary is
+its own signal (`repo_main_scheduled_*`, alert MainCanaryFailing): a
+production check failing is worth knowing, but it is not a build failure, and
+naming it as one sends the reader to the wrong place.
 
 Per-repo failures are isolated — one repo's API hiccup must not block the
 other 13. Sibling pattern: infra/cloudflared-probe/probe.py.
@@ -42,6 +56,20 @@ DEFAULT_GITHUB_API = "https://api.github.com"
 # failing commit doesn't briefly mask the failure.
 TERMINAL_CONCLUSIONS = ("success", "failure", "cancelled", "timed_out", "skipped")
 ALERTING_CONCLUSIONS = ("success", "failure", "cancelled")
+
+# The GitHub `event` of a run that counts as the repo's CI for what was merged.
+PUSH_EVENT = "push"
+# The `event` of a scheduled canary run.
+SCHEDULE_EVENT = "schedule"
+# How many completed scheduled runs to read per repo. Runs of every scheduled
+# workflow share this page, newest first, so it must cover a few runs of each:
+# 30 is three runs each for ten workflows, and costs one API call either way.
+SCHEDULED_RUNS_PER_PAGE = 30
+# A canary run that FAILED. `cancelled` and `skipped` are neither a pass nor a
+# failure for a canary (a superseded or condition-skipped run says nothing
+# about production), so they are passed over: they neither count towards nor
+# break a failure streak.
+CANARY_FAILING_CONCLUSIONS = ("failure", "timed_out")
 
 
 @dataclass(frozen=True)
@@ -114,14 +142,16 @@ def fetch_repo_snapshot(
 ) -> RepoSnapshot:
     """Query GitHub for one repo's main-branch state.
 
-    Two API calls: branch HEAD + latest 5 workflow runs. We deliberately
-    pull 5 (not 1) so we can compute `failure_streak` without a second
-    paginated call.
+    Two API calls: branch HEAD + latest 5 PUSH-event workflow runs. We
+    deliberately pull 5 (not 1) so we can compute `failure_streak` without a
+    second paginated call. `event=push` keeps scheduled canaries, merge-bot
+    `workflow_run` runs and Dependabot `dynamic` runs out of the build signal;
+    canaries are read separately by `fetch_scheduled_states`.
     """
     branch_url = f"{api_base}/repos/{spec.repo}/branches/{spec.branch}"
     runs_url = (
         f"{api_base}/repos/{spec.repo}/actions/runs"
-        f"?branch={spec.branch}&status=completed&per_page=5"
+        f"?branch={spec.branch}&status=completed&event={PUSH_EVENT}&per_page=5"
     )
 
     branch_data = _gh_get(session, branch_url, timeout)
@@ -185,6 +215,90 @@ def fetch_repo_snapshot(
     )
 
 
+@dataclass(frozen=True)
+class ScheduledWorkflowState:
+    """One scheduled workflow's (a canary's) latest state on the tracked branch."""
+
+    workflow: str
+    latest_conclusion: str | None  # newest completed run's conclusion
+    latest_completed_at: float | None  # epoch seconds
+    failure_streak: int  # consecutive failed runs from newest, cancelled/skipped passed over
+
+
+def _workflow_name(run: dict[str, Any]) -> str:
+    """The workflow a run belongs to, as a human reads it in the Actions tab.
+
+    `name` is the workflow's name; the workflow file path is the fallback
+    because two workflows may share a name and a path cannot. Never empty, so
+    a metric label is never blank.
+    """
+    name = run.get("name")
+    if isinstance(name, str) and name.strip():
+        return name.strip()
+    path = run.get("path")
+    if isinstance(path, str) and path.strip():
+        return path.strip()
+    return f"workflow-{run.get('workflow_id', 'unknown')}"
+
+
+def summarise_scheduled_runs(runs: list[dict[str, Any]]) -> list[ScheduledWorkflowState]:
+    """PURE. Newest-first completed scheduled runs -> one state per workflow.
+
+    The streak counts consecutive FAILED runs (`CANARY_FAILING_CONCLUSIONS`)
+    from the newest backwards and stops at the first success. `cancelled` and
+    `skipped` runs are passed over: they are not evidence either way. Sorted by
+    workflow name so the metric order is stable between runs.
+    """
+    by_workflow: dict[str, list[dict[str, Any]]] = {}
+    for run in runs:
+        if run.get("conclusion") not in TERMINAL_CONCLUSIONS:
+            continue
+        by_workflow.setdefault(_workflow_name(run), []).append(run)
+
+    states: list[ScheduledWorkflowState] = []
+    for workflow in sorted(by_workflow):
+        wf_runs = by_workflow[workflow]
+        latest = wf_runs[0]
+        streak = 0
+        for run in wf_runs:
+            conclusion = run.get("conclusion")
+            if conclusion == "success":
+                break
+            if conclusion in CANARY_FAILING_CONCLUSIONS:
+                streak += 1
+        states.append(
+            ScheduledWorkflowState(
+                workflow=workflow,
+                latest_conclusion=latest.get("conclusion"),
+                latest_completed_at=_parse_iso8601(
+                    latest.get("updated_at") or latest.get("run_started_at")
+                ),
+                failure_streak=streak,
+            )
+        )
+    return states
+
+
+def fetch_scheduled_states(
+    spec: RepoSpec,
+    session: requests.Session,
+    timeout: float,
+    api_base: str = DEFAULT_GITHUB_API,
+) -> list[ScheduledWorkflowState]:
+    """Query GitHub for the repo's scheduled (canary) runs on the tracked branch.
+
+    One API call. A repo with no scheduled workflow returns [] and emits no
+    canary series, which is the truth: there is nothing scheduled to fail.
+    """
+    runs_url = (
+        f"{api_base}/repos/{spec.repo}/actions/runs"
+        f"?branch={spec.branch}&status=completed&event={SCHEDULE_EVENT}"
+        f"&per_page={SCHEDULED_RUNS_PER_PAGE}"
+    )
+    runs_data = _gh_get(session, runs_url, timeout)
+    return summarise_scheduled_runs(runs_data.get("workflow_runs", []) or [])
+
+
 class Metrics:
     """Bundle the prometheus_client metric handles for one CronJob run."""
 
@@ -235,6 +349,27 @@ class Metrics:
             "Unix timestamp of the last completed deploy-pipeline-monitor CronJob run.",
             registry=self.registry,
         )
+        # Scheduled canaries, per workflow. Separate from the push metrics above
+        # on purpose: a red canary is a production signal, not a build failure.
+        canary_labels = ("repo", "branch", "workflow")
+        self.scheduled_failure_streak = Gauge(
+            "repo_main_scheduled_failure_streak_count",
+            "Consecutive failed runs of one scheduled workflow on the tracked branch (newest first; cancelled/skipped passed over).",
+            canary_labels,
+            registry=self.registry,
+        )
+        self.scheduled_latest_failed = Gauge(
+            "repo_main_scheduled_latest_failed",
+            "1 if the newest completed run of this scheduled workflow failed or timed out, else 0.",
+            canary_labels,
+            registry=self.registry,
+        )
+        self.scheduled_probe_ok = Gauge(
+            "repo_main_scheduled_probe_ok",
+            "1 if this run fetched the repo's scheduled runs from GitHub, else 0.",
+            repo_labels,
+            registry=self.registry,
+        )
 
     def record(self, snap: RepoSnapshot, now: float) -> None:
         labels = {"repo": snap.repo, "branch": snap.branch}
@@ -260,6 +395,24 @@ class Metrics:
         else:
             self.blocked_seconds.labels(**labels).set(
                 max(0.0, now - snap.failing_commit_pushed_at)
+            )
+
+    def record_scheduled(
+        self,
+        spec: RepoSpec,
+        states: list[ScheduledWorkflowState] | None,
+    ) -> None:
+        """Record one repo's canary states. `None` means the fetch failed."""
+        labels = {"repo": spec.repo, "branch": spec.branch}
+        if states is None:
+            self.scheduled_probe_ok.labels(**labels).set(0)
+            return
+        self.scheduled_probe_ok.labels(**labels).set(1)
+        for state in states:
+            wf = {**labels, "workflow": state.workflow}
+            self.scheduled_failure_streak.labels(**wf).set(state.failure_streak)
+            self.scheduled_latest_failed.labels(**wf).set(
+                1 if state.latest_conclusion in CANARY_FAILING_CONCLUSIONS else 0
             )
 
 
@@ -316,6 +469,43 @@ def run_once(
             )
         metrics.record(snap, now=now)
         snapshots.append(snap)
+
+        # Canaries are read after, and isolated from, the push snapshot: a
+        # failed schedule fetch must not blank the build signal, and vice versa.
+        try:
+            scheduled: list[ScheduledWorkflowState] | None = fetch_scheduled_states(
+                spec, session, timeout=timeout, api_base=api_base
+            )
+        except Exception as exc:  # noqa: BLE001 — per-repo isolation is the point
+            LOG.warning(
+                json.dumps(
+                    {
+                        "event": "repo_scheduled_probe_failed",
+                        "repo": spec.repo,
+                        "branch": spec.branch,
+                        "error": f"{type(exc).__name__}: {exc}",
+                    }
+                )
+            )
+            scheduled = None
+        metrics.record_scheduled(spec, scheduled)
+        if scheduled:
+            LOG.info(
+                json.dumps(
+                    {
+                        "event": "repo_scheduled_probed",
+                        "repo": spec.repo,
+                        "branch": spec.branch,
+                        "workflows": {
+                            st.workflow: {
+                                "latest": st.latest_conclusion,
+                                "failure_streak": st.failure_streak,
+                            }
+                            for st in scheduled
+                        },
+                    }
+                )
+            )
         if snap.error is None:
             LOG.info(
                 json.dumps(
