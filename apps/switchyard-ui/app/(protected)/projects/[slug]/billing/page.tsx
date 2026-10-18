@@ -27,6 +27,7 @@ import {
   DialogTitle,
 } from "@enclii/ui-components/dialog";
 import { apiDelete, apiGet, apiPatch, apiPost } from '@/lib/api';
+import { spendState, spendUnknownLabel } from '@/lib/billing-spend';
 import { cn } from '@/lib/utils';
 import type {
   BudgetAlertEvent,
@@ -110,6 +111,8 @@ export default function ProjectBillingPage() {
   }, [slug, refresh]);
 
   const primaryBudget = budgets[0] ?? null;
+  const spend = spendState(cost);
+  const spendUnknown = spendUnknownLabel(spend);
   const pct = primaryBudget
     ? percentConsumed(cost?.total_cents ?? 0, primaryBudget.amount_cents)
     : 0;
@@ -229,9 +232,23 @@ export default function ProjectBillingPage() {
         <div className="flex items-center justify-between">
           <div>
             <p className="text-sm text-muted-foreground">Current-period spend</p>
-            <p className="text-3xl font-bold">
-              {formatCurrencyCents(cost?.total_cents ?? 0, primaryBudget?.currency ?? 'USD')}
-            </p>
+            {spendUnknown ? (
+              <>
+                <p className="text-3xl font-bold" data-testid="spend-unknown">
+                  Unknown
+                </p>
+                <p className="text-sm text-status-warning mt-1">
+                  {spendUnknown}
+                  {!spend.known && spend.status === 'stale' && (cost?.total_cents ?? 0) > 0
+                    ? ` (${formatCurrencyCents(cost?.total_cents ?? 0, primaryBudget?.currency ?? 'USD')} so far)`
+                    : ''}
+                </p>
+              </>
+            ) : (
+              <p className="text-3xl font-bold">
+                {formatCurrencyCents(cost?.total_cents ?? 0, primaryBudget?.currency ?? 'USD')}
+              </p>
+            )}
           </div>
           {primaryBudget && (
             <div className="text-right">
@@ -239,7 +256,9 @@ export default function ProjectBillingPage() {
               <p className="text-xl font-semibold">
                 {formatCurrencyCents(primaryBudget.amount_cents, primaryBudget.currency)}
               </p>
-              <p className="text-sm text-muted-foreground mt-1">{pct}% consumed</p>
+              <p className="text-sm text-muted-foreground mt-1">
+                {spendUnknown ? 'Consumption unknown' : `${pct}% consumed`}
+              </p>
             </div>
           )}
         </div>
