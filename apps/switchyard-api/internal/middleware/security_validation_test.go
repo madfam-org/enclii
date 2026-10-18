@@ -397,10 +397,12 @@ func TestUserAgentValidationMiddleware(t *testing.T) {
 // =============================================================================
 
 func TestGetClientIP(t *testing.T) {
+	cluster := []string{"10.0.0.0/8"}
 	tests := []struct {
 		name           string
 		trustedProxies []string
 		remoteAddr     string
+		cfConnectingIP string
 		xForwardedFor  string
 		xRealIP        string
 		expectedIP     string
@@ -411,29 +413,105 @@ func TestGetClientIP(t *testing.T) {
 			expectedIP: "192.168.1.100",
 		},
 		{
-			name:       "X-Real-IP header",
-			remoteAddr: "10.0.0.1:12345",
-			xRealIP:    "192.168.1.100",
+			name:       "no port in remote addr",
+			remoteAddr: "192.168.1.100",
 			expectedIP: "192.168.1.100",
 		},
+		// No trusted proxies configured (the default): every forwarded
+		// header is client-controlled and ignored.
 		{
-			name:           "X-Forwarded-For with trusted proxy",
-			trustedProxies: []string{"10.0.0.0/8"},
+			name:       "X-Real-IP from an untrusted peer is ignored",
+			remoteAddr: "203.0.113.7:12345",
+			xRealIP:    "192.168.1.100",
+			expectedIP: "203.0.113.7",
+		},
+		{
+			name:          "X-Forwarded-For and X-Real-IP without trusted proxies are ignored",
+			remoteAddr:    "10.0.0.1:12345",
+			xForwardedFor: "192.168.1.100",
+			xRealIP:       "192.168.1.200",
+			expectedIP:    "10.0.0.1",
+		},
+		{
+			name:           "CF-Connecting-IP without trusted proxies is ignored",
+			remoteAddr:     "10.0.0.1:12345",
+			cfConnectingIP: "198.51.100.9",
+			expectedIP:     "10.0.0.1",
+		},
+		{
+			name:           "headers from a peer outside the trusted range are ignored",
+			trustedProxies: cluster,
+			remoteAddr:     "203.0.113.7:443",
+			cfConnectingIP: "198.51.100.9",
+			xForwardedFor:  "198.51.100.10",
+			xRealIP:        "198.51.100.11",
+			expectedIP:     "203.0.113.7",
+		},
+		// Trusted peer (cloudflared inside the cluster).
+		{
+			name:           "trusted peer: CF-Connecting-IP wins",
+			trustedProxies: cluster,
+			remoteAddr:     "10.42.3.4:5555",
+			cfConnectingIP: "198.51.100.9",
+			xForwardedFor:  "1.2.3.4, 198.51.100.9",
+			expectedIP:     "198.51.100.9",
+		},
+		{
+			name:           "trusted peer: invalid CF-Connecting-IP falls through to X-Forwarded-For",
+			trustedProxies: cluster,
+			remoteAddr:     "10.42.3.4:5555",
+			cfConnectingIP: "not-an-ip",
+			xForwardedFor:  "198.51.100.9",
+			expectedIP:     "198.51.100.9",
+		},
+		{
+			name:           "trusted peer: X-Forwarded-For walks right to left past trusted hops",
+			trustedProxies: cluster,
 			remoteAddr:     "10.0.0.1:12345",
 			xForwardedFor:  "192.168.1.100, 10.0.0.2",
 			expectedIP:     "192.168.1.100",
 		},
 		{
-			name:          "X-Forwarded-For without trusted proxy",
-			remoteAddr:    "10.0.0.1:12345",
-			xForwardedFor: "192.168.1.100",
-			xRealIP:       "192.168.1.200",
-			expectedIP:    "192.168.1.200",
+			name:           "trusted peer: a forged left-most X-Forwarded-For entry is not believed",
+			trustedProxies: cluster,
+			remoteAddr:     "10.0.0.1:12345",
+			xForwardedFor:  "6.6.6.6, 198.51.100.9, 10.0.0.2",
+			expectedIP:     "198.51.100.9",
 		},
 		{
-			name:       "no port in remote addr",
-			remoteAddr: "192.168.1.100",
-			expectedIP: "192.168.1.100",
+			name:           "trusted peer: malformed X-Forwarded-For falls through to X-Real-IP",
+			trustedProxies: cluster,
+			remoteAddr:     "10.0.0.1:12345",
+			xForwardedFor:  "garbage",
+			xRealIP:        "198.51.100.11",
+			expectedIP:     "198.51.100.11",
+		},
+		{
+			name:           "trusted peer: no headers falls back to the peer",
+			trustedProxies: cluster,
+			remoteAddr:     "10.0.0.1:12345",
+			expectedIP:     "10.0.0.1",
+		},
+		{
+			name:           "bare IP trusted proxy entry",
+			trustedProxies: []string{"10.0.0.1"},
+			remoteAddr:     "10.0.0.1:12345",
+			cfConnectingIP: "198.51.100.9",
+			expectedIP:     "198.51.100.9",
+		},
+		{
+			name:           "invalid trusted proxy entries are dropped, not widened",
+			trustedProxies: []string{"not-a-cidr", "10.0.0.0/99"},
+			remoteAddr:     "10.0.0.1:12345",
+			cfConnectingIP: "198.51.100.9",
+			expectedIP:     "10.0.0.1",
+		},
+		{
+			name:           "IPv6 trusted peer",
+			trustedProxies: []string{"fd00::/8"},
+			remoteAddr:     "[fd00::1]:443",
+			cfConnectingIP: "2001:db8::5",
+			expectedIP:     "2001:db8::5",
 		},
 	}
 
@@ -443,6 +521,7 @@ func TestGetClientIP(t *testing.T) {
 				TrustedProxies: tt.trustedProxies,
 			}
 			middleware := NewSecurityMiddleware(config)
+			defer middleware.Stop()
 
 			router := gin.New()
 			var capturedIP string
@@ -454,6 +533,9 @@ func TestGetClientIP(t *testing.T) {
 			w := httptest.NewRecorder()
 			req, _ := http.NewRequest("GET", "/test", nil)
 			req.RemoteAddr = tt.remoteAddr
+			if tt.cfConnectingIP != "" {
+				req.Header.Set("CF-Connecting-IP", tt.cfConnectingIP)
+			}
 			if tt.xForwardedFor != "" {
 				req.Header.Set("X-Forwarded-For", tt.xForwardedFor)
 			}
@@ -464,6 +546,28 @@ func TestGetClientIP(t *testing.T) {
 
 			if capturedIP != tt.expectedIP {
 				t.Errorf("getClientIP() = %s, want %s", capturedIP, tt.expectedIP)
+			}
+		})
+	}
+}
+
+func TestGetTrustedProxiesFromEnv(t *testing.T) {
+	tests := []struct {
+		name string
+		env  string
+		want int
+	}{
+		{"unset trusts nobody", "", 0},
+		{"whitespace trusts nobody", "  ", 0},
+		{"one CIDR", "10.42.0.0/16", 1},
+		{"list with spaces and a blank", "10.42.0.0/16, 10.43.0.0/16,", 2},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Setenv("ENCLII_TRUSTED_PROXY_CIDRS", tt.env)
+			got := parseTrustedProxies(getTrustedProxies())
+			if len(got) != tt.want {
+				t.Fatalf("parsed %d trusted prefixes from %q, want %d", len(got), tt.env, tt.want)
 			}
 		})
 	}
