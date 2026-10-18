@@ -288,11 +288,10 @@ ALLOWED_DEPLOY_MONITOR_REPOS=(
     madfam-org/sim4d
     madfam-org/tezca
     # Bounded exception, 2026-10-17 (infra-stability E3-F13): the vCTO client
-    # repos, the pager (angelia) and the selling products. Each was green on
+    # repos, the pager (angelia) and selling products. Each was green on
     # main and at Argo parity when added. Do not grow this list further;
     # derive CI-freshness targets from Argo state instead.
     madfam-org/angelia
-    madfam-org/avala
     madfam-org/crea-map
     madfam-org/kalya
     madfam-org/nauta
