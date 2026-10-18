@@ -125,7 +125,10 @@ data:
         storage.path    /var/fluent-bit/state
         storage.sync    normal
         storage.checksum off
-        storage.max_chunks_up 128
+        # FILESYSTEM BUFFERING (2026-10-17). Chunks in memory at once; the rest
+        # wait on disk. 32 x ~2 MB = ~64 MB, inside the 256Mi limit below.
+        storage.max_chunks_up 32
+        storage.backlog.mem_limit 16M
 
     # Tail all pod logs from the standard K8s log path
     [INPUT]
@@ -143,7 +146,13 @@ data:
         Parser            cri
         DB                /var/fluent-bit/state/tail-pods.db
         DB.locking        true
-        Mem_Buf_Limit     5MB
+        # Buffer to disk, not memory (2026-10-17). With a 5MB memory buffer the
+        # tail PAUSED whenever Loki was slow or rate-limiting: one node logged
+        # "mem buf overlimit" 450 times in 6h, and a paused tail plus kubelet
+        # log rotation drops lines silently. With filesystem storage the input
+        # keeps reading and chunks queue under storage.path, bounded by the
+        # output's storage.total_limit_size.
+        storage.type      filesystem
         Skip_Long_Lines   On
         Refresh_Interval  10
         Rotate_Wait       30
@@ -194,6 +203,10 @@ data:
         Line_Format          json
         Retry_Limit          5
         Workers              2
+        # Disk queue bound for this output. Past it, the OLDEST queued chunks
+        # are dropped (fluent-bit logs it). Sized inside the 512Mi state volume
+        # with room for the tail DB.
+        storage.total_limit_size 256M
 ---
 apiVersion: apps/v1
 kind: DaemonSet
@@ -222,8 +235,9 @@ spec:
         # Trigger rolling restart when config changes. NOTE: these are literal
         # strings, not real checksums — a ConfigMap edit does NOT roll pods by
         # itself. Bump the rev suffix in the same commit as any config change
-        # (2026-07-28: r2 Inotify_Watcher false; r3 containers path + tag prefix).
-        checksum/config: "fluent-bit-config-r3"
+        # (2026-07-28: r2 Inotify_Watcher false; r3 containers path + tag prefix;
+        # 2026-10-17: r4 filesystem buffering).
+        checksum/config: "fluent-bit-config-r4"
         checksum/parsers: "fluent-bit-parsers"
     spec:
       serviceAccountName: fluent-bit
@@ -262,13 +276,15 @@ spec:
             capabilities:
               drop:
                 - ALL
+          # Memory limit 128Mi -> 256Mi for up to 32 chunks in memory
+          # (storage.max_chunks_up). Requests unchanged.
           resources:
             requests:
               cpu: 50m
               memory: 64Mi
             limits:
               cpu: 100m
-              memory: 128Mi
+              memory: 256Mi
           volumeMounts:
             - name: config
               mountPath: /fluent-bit/etc/fluent-bit.conf
@@ -322,7 +338,11 @@ spec:
           hostPath:
             path: /var/log
             type: Directory
-        # Ephemeral state for tail DB and buffering
+        # Ephemeral state for the tail DB and the filesystem buffer: up to 256M
+        # of queued chunks (storage.total_limit_size) plus the DB. It survives
+        # container restarts but not pod replacement, so a rollout of this
+        # DaemonSet still loses the lines written while a node's pod is
+        # swapped (the new pod starts at the end of each file).
         - name: state
           emptyDir:
-            sizeLimit: 128Mi
+            sizeLimit: 512Mi
