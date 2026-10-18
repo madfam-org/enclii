@@ -16,6 +16,17 @@ The `domains` command manages custom domains for your services. Each domain requ
 
 The command reads service context from `service.yaml` in the current directory. You can override this with the `--service` and `--file` flags.
 
+After a custom-domain change (add, update, remove, or a zero-trust toggle), the
+API re-applies the service's running deployment so the change reaches the
+workload. Since #796 (2026-10-18) that reconcile runs on its own background
+context with a 2-minute bound, so it is no longer cut short when the request
+returns. It re-applies the latest deployment in that domain's **environment**,
+with the same inputs a deploy uses (environment variables, addon bindings,
+project secret), and it stops on any failed read instead of re-applying from
+empty data. A GitOps-bound service is skipped (its domains are applied through
+GitOps). The command's answer does not wait for the reconcile; check
+the result with `enclii domains list` and `enclii ops pods diagnose`.
+
 > **`-f`/`--file` does not change the working directory.** The manifest parser
 > resolves manifest-relative paths — `spec.build.dockerfile` above all — against
 > `os.Getwd()`, not against the directory the `-f` file lives in

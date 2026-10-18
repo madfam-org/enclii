@@ -120,12 +120,12 @@ Self-hosted infrastructure is significantly cheaper than equivalent SaaS platfor
 
 **Access Control:**
 - ✅ **RBAC** - Admin/Developer/Viewer roles with granular permissions
-- ✅ **Multi-Tenant Organizations** - Namespace isolation per tenant
+- ✅ **Multi-Tenant Organizations** - Namespace isolation per tenant; tenant administrators reach only their own tenants (ADR-003, enforced in production since 2026-10-18)
 - ✅ **API Keys** - Service accounts for CI/CD pipelines
 - ✅ **Session Management** - Redis-backed with secure cookies
 
 **Security Hardening:**
-- ✅ **Rate Limiting** - 1,000-10,000 req/min tiers
+- ✅ **Rate Limiting** - 1,000-10,000 req/min tiers (behind the tunnel the per-IP limiter needs `ENCLII_TRUSTED_PROXY_CIDRS`, still an operator TODO in production; see [SECURITY.md](SECURITY.md#client-address-behind-the-tunnel))
 - ✅ **Security Headers** - HSTS, CSP, X-Frame-Options
 - ✅ **Audit Logging** - Immutable security event trail
 - ✅ **RP-Initiated Logout** - Full SSO session termination
@@ -588,6 +588,12 @@ Keep implementation guidance public-safe. If a detail is private/sensitive, plac
 - **Next.js 16.3.8** in every Next app: `apps/switchyard-ui`, `apps/admin-console` (the `dispatch` image), `apps/status` and `apps/landing`. GHSA-vcvr-r3jv-pc5j is a critical RCE in `next/og` `ImageResponse` (`>=16.2.0 <16.3.6`); `apps/admin-console/app/icon.tsx` uses `ImageResponse`. Bumped in #659 (`eslint-config-next` to ^16.3.8 as well).
 - **`apps/status` has its own lockfile.** `apps/status/Dockerfile` installs from `apps/status/pnpm-lock.yaml` with `--frozen-lockfile`, so a Next bump must regenerate it as well as the root `pnpm-lock.yaml` (pnpm 9.15.9, the Dockerfile's pin). #659 missed it and the status image failed to build until #660.
 - **The Node runner images carry no npm.** The runner stage of `status`, `dispatch` and `switchyard-ui` deletes `npm` and `npx` (#660). Trivy failed those images on HIGH CVEs that lived only in npm's own vendored tree (brace-expansion 5.0.9, undici 6.28.0), no npm release bundled the fixes, and the runtimes only execute `node server.js` (healthchecks use `wget`). CI job `runner-npm-lint` (`scripts/check-runner-no-npm.py`) keeps the deletion in place and rejects a runner `CMD`/`HEALTHCHECK` that calls npm. To add npm back to a runtime, follow the steps in that script's header: allowlist the service with a reason, and pin an npm whose bundled dependencies pass Trivy.
+
+**Security baseline (2026-10-18):**
+- **libexpat 2.9.0-r0 floor** in the `switchyard-api` and `docs-site` images (CVE-2026-77214, #770): the scan gate had stopped their pins until the floor landed.
+- **API-token scopes are bounded by the owner's role** (#767), and **ADR-003 tenant scope is enforced in production** (#800; [runbook](docs/runbooks/TENANT_SCOPE_ENFORCEMENT_ROLLOUT.md#production-status-2026-10-18-times-utc)).
+- **Operator consoles stay in-cluster**: the Vault UI and the Redpanda Console accept no ingress from the tunnel (#772).
+- **Forwarded client-IP headers are believed only from `ENCLII_TRUSTED_PROXY_CIDRS`** (#783); that variable is not set in production yet.
 
 **Responsible Disclosure:**
 Email: [security@madfam.io](mailto:security@madfam.io)

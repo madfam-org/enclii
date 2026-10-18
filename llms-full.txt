@@ -242,6 +242,36 @@ enforces it and documents how to add npm back. Baseline: `README.md` ->
   `sdk-py.yml` triggers on the spec paths and fails on drift (#663).
 - Skipped tests and known flakes: `docs/testing/SKIPPED_TESTS.md`.
 
+## Stability wave (2026-10-17/18, live state)
+
+- ADR-003 tenant scope is **enforced in production** since 2026-10-18 (stage 2
+  #798, stage 3 #800). `ENCLII_TENANT_SCOPE_ENFORCE=false` is a rollback lever
+  only. The cross-tenant 404 check still needs a single-tenant principal:
+  `docs/runbooks/TENANT_SCOPE_ENFORCEMENT_ROLLOUT.md`.
+- `ENCLII_TRUSTED_PROXY_CIDRS` (#783) is **unset in production** (operator
+  TODO): forwarded client-IP headers are ignored and the per-IP limiter keys on
+  the cloudflared pod. `SECURITY.md` ("Client address behind the tunnel").
+- Alerting: critical pages go through Angelia Courier, once per episode with a
+  24h reminder and one resolved notice; staging criticals and warnings are
+  email only; `MainCanaryFailing` and main-CI alerts are warnings; a page
+  budget warns above 5 critical pages a day. `docs/monitoring/ALERT_ROUTING.md`.
+- Grafana rolls `RollingUpdate` maxSurge 0 / maxUnavailable 1 (RWO volume).
+  Never switch an existing Deployment to `type: Recreate` under server-side
+  apply: the sync never lands (#799 -> #804).
+  `tests/scripts/test_deployment_strategy_switch.py` guards it.
+- Shared Postgres: `max_connections=200`, `shared_buffers=1GB`, pgBackRest
+  2.59.1 in the init container, sidecar and drill (#785, live 2026-10-18);
+  `tests/scripts/test_pgbackrest_version_parity.py` keeps the pins together.
+- ARC pools are pinned to the actions-runner 2.338.0 digest and deploy through
+  the auto-sync Argo apps `arc-runners-blue` / `arc-runners-deploy`, not through
+  `arc-self-deploy.yml`: `infra/k8s/production/arc/README.md`.
+- The `ci.yml` pin job fails red when a built service is not pinned (#787).
+- `enclii ops pods restart --expect-uid` needs a CLI built after #754
+  (2026-10-14); the tagged `v1.0.0-alpha.14` rejects it.
+- Service names resolve within one project (#793): an ambiguous bare name asks
+  for `--project`. Domain changes reconcile on a detached, strict 2-minute
+  context (#796).
+
 ## Boundary
 
 This is not a full repository ingest. It is a compact context pointer; task-specific work must still read the relevant source documents listed below.

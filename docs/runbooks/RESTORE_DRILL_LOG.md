@@ -10,7 +10,7 @@
 
 **Owner:** Platform Team
 **Cadence:** Monthly (1st of each month, 5 AM UTC)
-**Last Updated:** 2026-10-07
+**Last Updated:** 2026-10-18
 
 > **Boundary checkpoint (2026-09-24, platform on-call):** Public-safe runbook:
 > drill procedure and pass/fail semantics only, no node identity, secrets or
@@ -93,7 +93,12 @@ at least 5 databases and 500 user tables, and its last replayed transaction is
 at most 30 minutes older than the drill start. It reaches R2 through its own
 egress policy (`pgbackrest-restore-drill-egress` in
 [`data-network-policies.yaml`](../../infra/k8s/policies/data-network-policies.yaml)),
-which allows DNS, 80 and 443 only. Run it on demand with
+which allows DNS, 80 and 443 only. It restores into a 12Gi scratch claim
+(8Gi until #791, 2026-10-17: the data had outgrown it) and prints that
+volume's real fill after the restore; Longhorn's `actualSize` for the claim is
+a high-water mark, not the fill. It reads the repository with the same
+pgBackRest version that writes it (2.59.1 since #785, enforced by
+`tests/scripts/test_pgbackrest_version_parity.py`). Run it on demand with
 `enclii ops jobs trigger pgbackrest-restore-drill -n data --api-endpoint https://api.enclii.dev --apply --reason "<why>"`.
 
 ---

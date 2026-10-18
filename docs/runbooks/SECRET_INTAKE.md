@@ -549,6 +549,13 @@ created by hand with `kubectl create secret`
 (`infra/k8s/production/monitoring/grafana-credentials.yaml.template`). It had no
 writer of record and no rotation path. It now goes through intake.
 
+**Status: LIVE since 2026-10-18 (times UTC).** #779 merged 2026-10-17 23:32;
+#804 let the rollout land at 02:16; the first submit synced the
+ExternalSecret at 02:26, and after the restart the pod logged
+`stored admin password set from Secret grafana-admin`, `/api/health` answered
+200 and anonymous `/api/org`, `/api/admin/settings` and `/api/users` answered
+401. The `monitoring` Argo app was Healthy again at 02:34.
+
 | Property in `secret/monitoring` | Target | Written by | ExternalSecret → Secret | Read by |
 |---|---|---|---|---|
 | `grafana_admin_password` | `monitoring/grafana-admin` | Switchyard (`--generate`) or the owner at the masked prompt | `grafana-admin` → `grafana-admin` (key `admin-password`) | the `admin-password-sync` init container of `deployment/grafana` |
@@ -570,9 +577,20 @@ writer of record and no rotation path. It now goes through intake.
 - **Before the first submit** the ExternalSecret reports `SecretSyncedError`, the
   optional Secret volume is empty, and the init container exits 0 without
   touching the database. Grafana keeps the password it has.
+- **Rollouts stop the old pod first.** `grafana-data` is ReadWriteOnce, so a
+  new pod on another node cannot start while the old one holds it. The
+  Deployment keeps `RollingUpdate` with `maxSurge: 0` and `maxUnavailable: 1`
+  (#804): with one replica the old pod stops, the volume detaches, and the new
+  pod attaches it, at the cost of a few minutes of Grafana downtime per
+  rollout (about 4 minutes on 2026-10-18). Do **not** switch it to
+  `type: Recreate`: the `monitoring` app applies server-side, the live object
+  keeps its defaulted `rollingUpdate` block, and the API refuses the pair, so
+  the sync never lands (#799). `tests/scripts/test_deployment_strategy_switch.py`
+  fails on that edit.
 - **If a submitted password fails to apply**, the init container exits non-zero.
-  The new pod stays in `Init`, the old pod keeps serving, and the rollout
-  stalls where Argo shows it. Read the reason with
+  Because the old pod is already gone (above), Grafana is **down** until the
+  value is fixed and the pod restarted; Argo shows the rollout stalled. Read
+  the reason with
   `enclii ops pods logs <pod> -n monitoring --container admin-password-sync`.
 - **`--generate` or typed.** Nothing outside Grafana holds this password, so
   `--generate grafana_admin_password` mints it (32 bytes, 43 base64url
@@ -604,6 +622,11 @@ enclii ops pods restart deployment/grafana -n monitoring
 enclii ops pods restart deployment/grafana -n monitoring --expect-uid <reviewed-uid> \
   --apply --reason "apply the intake-submitted Grafana admin password"
 ```
+
+`--expect-uid` on `ops pods restart` needs a CLI built from `main` at or after
+#754 (2026-10-14); the last tagged release, `v1.0.0-alpha.14` (2026-10-01),
+rejects the flag. With an older CLI, run the same apply without it (see
+[ops pods restart](../cli/commands/ops.md#ops-pods-restart)).
 
 Then verify read-only: `enclii ops pods logs <new-grafana-pod> -n monitoring --container admin-password-sync`
 prints `stored admin password set from Secret grafana-admin`, and the pod is

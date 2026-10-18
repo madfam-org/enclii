@@ -128,8 +128,10 @@ Rules:
 - **Runtime roles only.** `--app-role` must start with `<db>_`. An existing
   role that is a superuser, has `BYPASSRLS` or owns the database is refused
   and left unchanged. Table grants stay with the application's migrations.
-- **Connection budget.** The shared Postgres has 100 connections, so every
-  role carries a `CONNECTION LIMIT` of 1–20. Size it to the pools that use it.
+- **Connection budget.** The shared Postgres has `max_connections=200`
+  (raised from the initdb default of 100 by #785, live 2026-10-18), shared by
+  every database on it, so every role carries a `CONNECTION LIMIT` of 1–20.
+  Size it to the pools that use it.
 - **Validated first.** Bad flags (both password modes, a foreign role name, an
   out-of-range size or limit, two writers for one key, a secrets-file key that
   shadows a generated one) fail before any network call, and the server

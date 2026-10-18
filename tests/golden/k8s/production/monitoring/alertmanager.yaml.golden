@@ -123,11 +123,13 @@ data:
         # before adding products or shortening these.
         #
         # Courier keys each alert `alarm:<alertname>[:<identity>]:<hour>`
-        # (angelia#39, #40; <hour> is the UTC hour), and for these alerts the
-        # identity is the `product` label. So chat carries one
-        # RevenueEndpointDown per failing product per hour, and email carries
-        # every group. Above the generic critical route, which would
-        # otherwise match these first; below the alertname and info routes.
+        # (angelia#39, #40; <hour> is the UTC hour the alert's episode began,
+        # angelia#41), and for these alerts the identity is the `product`
+        # label. So chat carries one RevenueEndpointDown page per failing
+        # product per episode, a reminder every 24h while it still fails and
+        # one resolved notice; email carries every group. Above the generic
+        # critical route, which would otherwise match these first; below the
+        # alertname and info routes.
         - matchers:
             - category="revenue-probe"
             - severity="critical"
@@ -207,8 +209,9 @@ data:
         # keys each alert `alarm:<alertname>[:<identity>]:<hour>`, where the
         # identity names the target (see the receivers note below), so it is
         # not masked by the first. repeat_interval 4h re-sends a still-broken
-        # condition; Courier's hourly idempotency window is compatible with
-        # any repeat of 1h or more.
+        # condition to email; Courier pages once per episode and turns the
+        # re-sends into one reminder per 24h (angelia#41), which needs a
+        # repeat of 24h or less.
         - match:
             severity: critical
           receiver: 'critical-receiver'
@@ -259,9 +262,16 @@ data:
       # nothing and means the day Angelia widens that env var, warnings arrive
       # with no change here. Until then warnings reach people by email only.
       #
-      # Courier dedups on `alarm:<alertname>[:<identity>]:<hour>`, an hourly
-      # (UTC) idempotency window per alert and target (angelia#40, merged
-      # 2026-10-17). The identity is the first that exists of:
+      # Courier dedups on `alarm:<alertname>[:<identity>]:<hour>[:<phase>]`
+      # (angelia#40 and #41, live 2026-10-18 03:00 UTC). <hour> is the UTC
+      # hour the alert's EPISODE began (its startsAt), not the current hour,
+      # so a condition pages once when it starts; <phase> is empty for that
+      # page, `day<N>` for the reminder sent every 24h while it still fires,
+      # `resolved` for the one resolved notice
+      # (COURIER_ALERTMANAGER_INCLUDE_RESOLVED, default true), and `reopened`
+      # when it fires again within the hour of its resolved notice. A target
+      # that flaps inside one hour shares the stamp and does not page again.
+      # The identity is the first that exists of:
       #   1. the `product` label;
       #   2. `<namespace>/<object>`, the object being the first label present
       #      among name, application, repo, deployment, statefulset,
@@ -269,13 +279,16 @@ data:
       #   3. `namespace`;
       #   4. `job`;
       #   5. none, which keeps the legacy `alarm:<alertname>:<hour>` key.
-      # So a standing `ArgoCDAppDegraded` no longer masks a second app going
-      # Degraded: each target pages once an hour. Labels that churn on a
+      # So a standing `ArgoCDAppDegraded` does not mask a second app going
+      # Degraded: each target pages once per episode. Labels that churn on a
       # restart (pod, instance, job_name) are never part of the identity.
-      # A critical repeat_interval under 1h would not page more
-      # often, it would just POST more. The critical route repeats every 4h
-      # (the shared email budget, see the note above `route:`), so a condition
-      # that stays broken re-pages the phone every 4h.
+      # A shorter repeat_interval would not page more often, it would just
+      # POST more. The critical route repeats every 4h (the shared email
+      # budget, see the note above `route:`): a condition that stays broken
+      # re-sends email every 4h, and the phone gets one reminder a day.
+      # Source of truth: angelia apps/api/src/courier/alertmanager.ts
+      # (`alertIdempotencyKey`); operator doc: angelia
+      # docs/runbooks/courier-provisioning.md, Step 4-bis.
       #
       # PROVISIONED. `secret/angelia:courier_alertmanager_secret` (intake
       # target `angelia/courier-alertmanager`) is populated and the webhook
@@ -314,7 +327,7 @@ data:
       # Alertmanager sends the first 100 alerts of the group (ordered by job,
       # instance, then labels, not by status) and reports the rest in
       # `truncatedAlerts`, which Courier's schema accepts. Courier pages once
-      # per alertname and target per hour (`alarm:<alertname>[:<identity>]:<hour>`,
+      # per alertname, target and episode (`alarm:<alertname>[:<identity>]:<hour>`,
       # above), so a target whose alert falls past the first 100 of its batch
       # is not paged by that batch; it pages from a later batch that carries
       # it. Warnings are skipped by severity. One corner remains: a critical

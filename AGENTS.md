@@ -6,7 +6,7 @@
 > `kubectl`, `helm`, SSH, provider CLI/API, `docker exec`, and direct container
 > access as platform bootstrap or documented break-glass only, and record any
 > missing Enclii adapter gap.
-> Last Updated: 2026-09-04
+> Last Updated: 2026-10-18
 
 
 <!-- MADFAM-AGENTS-CANONICAL v1 -->
@@ -57,6 +57,23 @@ redirect and should not become the source of truth again.
 - **`arc-runner-image.yml` moves `:stable` only after** both smoke checks and
   the cosign signature, and never from a pull request. Tested by
   `tests/scripts/test_arc_runner_image_promotion.py`.
+- **Never switch an existing Deployment to `strategy.type: Recreate`.** Most
+  Argo apps apply server-side; the live object keeps its defaulted
+  `rollingUpdate` block and the API refuses the pair, so the sync never lands
+  (#799). For a single-replica Deployment on a ReadWriteOnce volume use
+  `RollingUpdate` with `maxSurge: 0` / `maxUnavailable: 1` (#804, Grafana).
+  Guarded by `tests/scripts/test_deployment_strategy_switch.py`.
+- **The `ci.yml` pin job (`commit-digests`) fails red when a built service is
+  not pinned** (#787): a skipped scan, a missing digest artifact or an
+  unverifiable signature. Other services' pins still land first. A main run
+  red only on "Fail when a built service was not pinned" means that service's
+  change is NOT deployed. Tested by
+  `tests/scripts/test_commit_digests_unpinned_gate.py`.
+- **ARC runner pins deploy through Argo** (`arc-runners-blue`,
+  `arc-runners-deploy`), not through `arc-self-deploy.yml`, which on a push
+  only validates: [`infra/k8s/production/arc/README.md`](infra/k8s/production/arc/README.md#how-a-merged-pin-reaches-the-pools).
+- **pgBackRest versions move together** (postgres init container, sidecar
+  image, restore drill); `tests/scripts/test_pgbackrest_version_parity.py`.
 - **`packages/sdk-py` models** are generated from `docs/api/openapi.yaml` with
   `datamodel-code-generator==0.83.0`; CI fails on drift. Regenerate in the
   same PR as a spec change.

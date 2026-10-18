@@ -375,6 +375,13 @@ jobs:
       - name: Run ArgoCD ignoreDifferences lint
         run: python3 scripts/check-argocd-ignore-differences.py infra/argocd/
 
+      # Most Argo apps apply server-side. Switching an existing Deployment to
+      # `strategy.type: Recreate` then never syncs: the live object keeps the
+      # defaulted rollingUpdate block and the API refuses the pair (#799; the
+      # fix that landed was RollingUpdate maxSurge 0 / maxUnavailable 1, #804).
+      - name: Run Deployment strategy-switch guard
+        run: pytest tests/scripts/test_deployment_strategy_switch.py -v
+
   probe-target-lint:
     name: Probe target consistency
     runs-on: ubuntu-24.04
@@ -429,9 +436,11 @@ jobs:
       # manifest against stubs of a server that refuses connections until it
       # has replayed and promoted (hot_standby=off). It must wait for the
       # replay, fail on any archive-get error, and keep its safety invariants
-      # (no live volume, archiving off, egress only to DNS/80/443).
+      # (no live volume, archiving off, egress only to DNS/80/443). The parity
+      # test keeps the postgres init container, the sidecar image and the
+      # drill on one pgBackRest version (#785).
       - name: Run pgBackRest restore drill tests
-        run: pytest tests/scripts/test_pgbackrest_restore_drill.py -v
+        run: pytest tests/scripts/test_pgbackrest_restore_drill.py tests/scripts/test_pgbackrest_version_parity.py -v
 
       # Runs scripts/commercial-ga-proof.sh against a local stub. A 404/5xx on
       # signup or checkout must fail; a checkout that lands on the sales
