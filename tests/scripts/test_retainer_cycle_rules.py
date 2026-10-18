@@ -124,11 +124,14 @@ def test_annotations_use_only_labels_and_value():
                 assert re.fullmatch(r"\s*\$(labels\.[a-z_]+|value)\s*", expr), (name, key, expr)
 
 
-def test_no_client_name_in_the_public_rule_text():
-    """enclii is public: rules name a workspace id at runtime, never a client."""
-    text = _rules_text().lower()
-    for word in ("crea tu mundo", "creatumundo", "tablaco"):
-        assert word not in text
+def test_rule_text_carries_no_hostname_or_literal_identity():
+    """enclii is public: the rules identify a cycle only through templated
+    labels (workspace_id, cycle) at runtime, never through a literal value.
+    Real client names are checked by MADFAM's private estate scan."""
+    text = _rules_text()
+    assert not re.search(r"\b[a-z0-9-]+\.(mx|com|io|app|dev|quest)\b", text, flags=re.I), "hostname in rule text"
+    assert not re.search(r"workspace_id\s*=\s*[\"'][^\"']+[\"']", text), "literal workspace_id in a selector"
+    assert "{{ $labels.workspace_id }}" in text
 
 
 # ---------------------------------------------------------------------------
