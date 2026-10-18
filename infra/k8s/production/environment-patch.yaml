@@ -86,8 +86,8 @@ spec:
         # because merging to main deploys immediately, so the enforcing build
         # lands in production before the pre-deploy dry-run report can be run
         # against it. Off reproduces pre-ADR-003 behaviour exactly.
-        #   stage 1 (now) deploy with false — behaviour unchanged
-        #   stage 2       operator runs GET /v1/admin/tenant-scope/dry-run and
+        #   stage 1       deploy with false — behaviour unchanged
+        #   stage 2 (now) operator runs GET /v1/admin/tenant-scope/dry-run and
         #                 sets ENCLII_PLATFORM_ADMIN_EMAILS
         #   stage 3       a one-line PR flips this to "true"
         # While this reads false every tenant admin reaches every tenant, which
@@ -95,11 +95,11 @@ spec:
         # Procedure: docs/runbooks/TENANT_SCOPE_ENFORCEMENT_ROLLOUT.md
         - name: ENCLII_TENANT_SCOPE_ENFORCE
           value: "false"
-        # Set in stage 2 from the dry-run report. Until then the API falls back
-        # to ENCLII_ADMIN_EMAILS, so users.is_platform_admin is still populated
-        # at stage 1 and the report is meaningful.
-        # - name: ENCLII_PLATFORM_ADMIN_EMAILS
-        #   value: ""
+        # Stage 2 (2026-10-17), from the dry-run report: the only cross-tenant
+        # platform admin. Other operators keep reach through team membership
+        # (the 55 team-less projects were re-parented first). Read at pod start.
+        - name: ENCLII_PLATFORM_ADMIN_EMAILS
+          value: "aldo@madfam.io"
         # Container Registry Credentials (for pushing built images)
         - name: ENCLII_REGISTRY
           value: "ghcr.io/madfam-org"
