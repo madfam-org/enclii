@@ -164,3 +164,101 @@ def test_prober_log_counts_probe_failures_per_target():
 def test_cluster_read_without_the_cli_says_so(monkeypatch):
     monkeypatch.setattr(mes.shutil, "which", lambda name: None)
     assert mes.read_cluster_prober(100) == (None, "enclii CLI not on PATH")
+
+
+# ---------------------------------------------------------------------------
+# The retainer cycle, from the nauta worker's `retainer-cycle-status` lines
+# (nauta#351: one JSON log line per cycle, `line` = space-separated k=v, `-`
+# for not yet). The workspace id below is made up.
+# ---------------------------------------------------------------------------
+
+WS = "00000000-0000-4000-8000-000000000000"
+
+
+def _nauta_line(**kv) -> str:
+    base = {
+        "ws": WS, "cycle": "3", "corte": "2026-10-16T06:00:00Z", "cfdi_deadline": "2026-10-21T06:00:00Z",
+        "stamped": "-", "sent": "-", "delivery": "PENDING", "payment_due": "2026-10-23T06:00:00Z",
+        "payment_recorded": "-", "paid_in_full": "no",
+    }
+    base.update(kv)
+    line = " ".join(f"{k}={v}" for k, v in base.items())
+    return '{"level":"info","msg":"retainer-cycle-status","line":"%s"}' % line
+
+
+def _ts(iso: str) -> float:
+    return mes._iso(iso)
+
+
+def test_retainer_lines_keep_the_latest_per_cycle():
+    text = "\n".join([
+        "not json",
+        _nauta_line(cycle="2", stamped="2026-09-16T14:00:00Z", sent="2026-09-16T14:05:00Z"),
+        _nauta_line(),
+        _nauta_line(stamped="2026-10-16T14:00:00Z", sent="2026-10-16T14:05:00Z"),
+        '{"msg":"something else","line":"ws=x cycle=9"}',
+    ])
+    parsed = mes.parse_retainer_lines(text)
+    assert set(parsed) == {(WS, "2"), (WS, "3")}
+    assert parsed[(WS, "3")]["stamped"] == "2026-10-16T14:00:00Z"
+
+
+@pytest.mark.parametrize(
+    "fields,now,cfdi,payment",
+    [
+        # Ciclo 3 as it really went: stamped and sent 10-16, payment recorded.
+        ({"stamped": "2026-10-16T14:00:00Z", "sent": "2026-10-16T14:05:00Z", "payment_recorded": "2026-10-15T18:00:00Z", "paid_in_full": "yes"},
+         "2026-10-18T17:00:00Z", "stamped", "recorded"),
+        # Not stamped, before the deadline: due, not overdue.
+        ({}, "2026-10-20T12:00:00Z", "due", "due"),
+        # Not stamped, past the deadline: what RetainerCfdiOverdue pages on.
+        ({}, "2026-10-21T07:00:00Z", "OVERDUE", "due"),
+        # Stamped but the mail never left.
+        ({"stamped": "2026-10-16T14:00:00Z"}, "2026-10-18T17:00:00Z", "stamped, NOT SENT", "due"),
+        # Payment a day past due with no record.
+        ({"stamped": "2026-10-16T14:00:00Z", "sent": "2026-10-16T14:05:00Z"}, "2026-10-24T07:00:00Z", "stamped", "OVERDUE"),
+    ],
+)
+def test_retainer_judgement(fields, now, cfdi, payment):
+    base = mes.parse_retainer_lines(_nauta_line(**fields))[(WS, "3")]
+    assert mes.judge_retainer(base, _ts(now)) == {"cfdi": cfdi, "payment": payment}
+
+
+def test_iso_reads_utc_and_dash():
+    assert mes._iso("1970-01-01T00:01:00Z") == 60.0
+    assert mes._iso("-") is None and mes._iso("") is None and mes._iso("soon") is None
+
+
+def test_render_shows_the_cycle_and_an_empty_log_says_why():
+    retainer = mes.parse_retainer_lines(_nauta_line())
+    screen = mes.render([], None, "", retainer, "pod nauta-worker-x", _ts("2026-10-21T07:00:00Z"))
+    assert "cycle 3: CFDI OVERDUE" in screen and WS[:8] in screen and WS not in screen
+    empty = mes.render([], None, "", {}, "pod nauta-worker-x")
+    assert "nauta#351 not deployed" in empty
+
+
+# ---------------------------------------------------------------------------
+# The Grafana "Money engine" dashboard: the same view for a signed-in human.
+# ---------------------------------------------------------------------------
+
+DASHBOARDS = REPO_ROOT / "infra" / "k8s" / "production" / "monitoring" / "dashboards"
+
+
+def test_money_engine_dashboard_is_wired_and_reads_every_money_path():
+    import json
+
+    kust = yaml.safe_load((DASHBOARDS / "kustomization.yaml").read_text(encoding="utf-8"))
+    gens = {g["name"]: g for g in kust["configMapGenerator"]}
+    gen = gens["grafana-dashboard-money-engine"]
+    assert gen["files"] == ["money-engine.json"]
+    assert gen["options"]["labels"] == {"grafana_dashboard": "true"}
+    dash = json.loads((DASHBOARDS / "money-engine.json").read_text(encoding="utf-8"))
+    uids = [json.loads(p.read_text(encoding="utf-8")).get("uid") for p in DASHBOARDS.glob("*.json")]
+    assert uids.count("money-engine") == 1
+    exprs = " ".join(t["expr"] for p in dash["panels"] for t in p.get("targets", []))
+    paths = {p for t in mes.load_targets() for p in t.paths}
+    for path in paths:
+        assert f',{path},' in exprs, path
+    assert 'job="blackbox-revenue"' in exprs
+    assert "nauta_retainer_cycle_cfdi_deadline_timestamp_seconds" in exprs
+    assert "nauta_retainer_cycle_cfdi_stamped_timestamp_seconds" in exprs

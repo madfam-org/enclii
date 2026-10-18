@@ -17,18 +17,24 @@ status code, body regexes, header regexes. So an agent or the owner can read
 the money engine's state with one command, without a Grafana sign-in and
 without a Prometheus read path (Enclii has none today).
 
-With --cluster it also reads what the in-cluster prober saw, through Enclii's
-audited read layer: `enclii ops pods logs` of the blackbox-exporter pod,
-which logs every failed probe ("Probe failed ... target=..."). Outside and
-inside can differ (the cluster's egress, Cloudflare's view of it).
+With --cluster it also reads, through Enclii's audited read layer
+(`enclii ops pods diagnose|logs`, no kubectl):
+
+  * what the in-cluster prober saw: the blackbox-exporter pod logs every
+    failed probe ("Probe failed ... target=..."). Outside and inside can
+    differ (the cluster's egress, Cloudflare's view of it);
+  * the vCTO retainer billing cycle: the nauta worker logs one
+    `retainer-cycle-status` line per cycle every hour (nauta#351), with the
+    corte, the CFDI deadline, stamped, sent, the payment due date and the
+    payment record. The same values are the `nauta_retainer_cycle_*` gauges
+    the RetainerCfdiOverdue rule reads.
 
 WHAT IT DOES NOT READ
 =====================
   * Prometheus's alert state (no Enclii read path to Alertmanager either).
-  * The retainer billing cycle (CFDI stamped/sent, payment recorded): those
-    are Prometheus gauges, readable in Grafana's "Money engine" dashboard
-    once they exist; there is no agent read for them yet.
   * Anything behind a sign-in. Every request is an anonymous GET.
+  * Which client a retainer workspace is: the log names a workspace id only
+    (map it in the Nauta cockpit).
 
 USAGE
 =====
@@ -36,13 +42,15 @@ USAGE
     python3 scripts/money-engine-status.py --cluster  # + the prober's failures (enclii)
     python3 scripts/money-engine-status.py --json     # machine-readable
 
-Exit code: 0 when every money path is OK, 1 when any money path is broken,
+Exit code: 0 when every money path is OK, 1 when any money path is broken
+or (with --cluster) a retainer cycle's CFDI is past its deadline unstamped,
 2 when the definitions cannot be read. Warning-only targets never change the
 exit code.
 """
 from __future__ import annotations
 
 import argparse
+import calendar
 import json
 import re
 import shutil
@@ -231,7 +239,76 @@ def read_cluster_prober(tail: int) -> tuple[dict[str, dict] | None, str]:
     )
 
 
-def render(results: list[Result], cluster: dict[str, dict] | None, cluster_note: str) -> str:
+def _iso(value: str) -> float | None:
+    """The nauta line's timestamps: ISO-8601 `...Z`, or `-` for not yet."""
+    if not value or value == "-":
+        return None
+    try:
+        return float(calendar.timegm(time.strptime(value, "%Y-%m-%dT%H:%M:%SZ")))
+    except ValueError:
+        return None
+
+
+def parse_retainer_lines(text: str) -> dict[tuple[str, str], dict]:
+    """The latest `retainer-cycle-status` line per (workspace, cycle)."""
+    out: dict[tuple[str, str], dict] = {}
+    for raw in text.splitlines():
+        if '"retainer-cycle-status"' not in raw:
+            continue
+        try:
+            line = json.loads(raw)["line"]
+        except (ValueError, KeyError, TypeError):
+            continue
+        fields = dict(tok.split("=", 1) for tok in str(line).split() if "=" in tok)
+        if "ws" in fields and "cycle" in fields:
+            out[(fields["ws"], fields["cycle"])] = fields
+    return out
+
+
+def judge_retainer(fields: dict, now: float) -> dict:
+    """CFDI: stamped / OVERDUE (past cfdi_deadline, the RetainerCfdiOverdue
+    condition) / due. Payment: recorded / OVERDUE (a day past payment_due) / due."""
+    stamped, sent = _iso(fields.get("stamped", "-")), _iso(fields.get("sent", "-"))
+    deadline = _iso(fields.get("cfdi_deadline", "-"))
+    due, paid = _iso(fields.get("payment_due", "-")), _iso(fields.get("payment_recorded", "-"))
+    if stamped:
+        cfdi = "stamped" + ("" if sent else ", NOT SENT")
+    elif deadline and deadline < now:
+        cfdi = "OVERDUE"
+    else:
+        cfdi = "due"
+    if paid:
+        payment = "recorded" + ("" if fields.get("paid_in_full") == "yes" else " (partial)")
+    elif due and due + 86400 < now:
+        payment = "OVERDUE"
+    else:
+        payment = "due"
+    return {"cfdi": cfdi, "payment": payment}
+
+
+def read_retainer_cycles(tail: int) -> tuple[dict | None, str]:
+    """The retainer cycles from the nauta worker's log, through `enclii ops pods` reads."""
+    if not shutil.which("enclii"):
+        return None, "enclii CLI not on PATH"
+    try:
+        diag = subprocess.run(
+            ["enclii", "ops", "pods", "diagnose", "-n", "nauta", "--json"],
+            capture_output=True, text=True, timeout=90, stdin=subprocess.DEVNULL,
+        )
+        pods = json.loads(diag.stdout)["data"]["pods"]
+        name = next(p["name"] for p in pods if p["name"].startswith("nauta-worker-") and p.get("phase") == "Running")
+        logs = subprocess.run(
+            ["enclii", "ops", "pods", "logs", name, "-n", "nauta", "--tail", str(tail), "--json"],
+            capture_output=True, text=True, timeout=90, stdin=subprocess.DEVNULL,
+        )
+        text = json.loads(logs.stdout)["data"]["logs"]
+    except (subprocess.SubprocessError, ValueError, KeyError, StopIteration) as exc:
+        return None, f"could not read the nauta worker: {type(exc).__name__}"
+    return parse_retainer_lines(text), f"pod {name}, last {tail} lines"
+
+
+def render(results: list[Result], cluster: dict[str, dict] | None, cluster_note: str,
+           retainer: dict | None = None, retainer_note: str = "", now: float | None = None) -> str:
     lines = [f"Money engine status  {time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime())}  (public GETs, probe rules)"]
     paths = money_paths(results)
     lines.append("")
@@ -260,12 +337,26 @@ def render(results: list[Result], cluster: dict[str, dict] | None, cluster_note:
         else:
             for target, e in sorted(cluster.items(), key=lambda kv: kv[1]["last"], reverse=True):
                 lines.append(f"  {e['failures']:>4} failed  last {e['last']}  {target}")
+    if retainer is not None or retainer_note:
+        lines.append("")
+        lines.append(f"RETAINER CYCLES ({retainer_note})")
+        if retainer is None:
+            lines.append("  not read")
+        elif not retainer:
+            lines.append("  no retainer-cycle-status line in the log (nauta#351 not deployed, or the worker just restarted)")
+        else:
+            for (ws, cycle), f in sorted(retainer.items(), key=lambda kv: (kv[0][0], int(kv[0][1]) if kv[0][1].isdigit() else 0)):
+                j = judge_retainer(f, now if now is not None else time.time())
+                lines.append(
+                    f"  ws {ws[:8]} cycle {cycle}: CFDI {j['cfdi']} (deadline {f.get('cfdi_deadline', '-')}, stamped {f.get('stamped', '-')},"
+                    f" sent {f.get('sent', '-')}); payment {j['payment']} (due {f.get('payment_due', '-')})"
+                )
     lines.append("")
     lines.append(
         f"read-proof: listed={len(results)} checked={len(results)} failing={sum(not r.ok for r in results)}"
         f" (money-path steps failing={sum(1 for r in results if r.paths and not r.ok)})"
     )
-    lines.append("not read here: alert state, the retainer billing cycle (Grafana 'Money engine'), signed-in flows")
+    lines.append("not read here: alert state, signed-in flows" + ("" if retainer_note else ", the retainer cycle (use --cluster)"))
     return "\n".join(lines)
 
 
@@ -281,16 +372,22 @@ def main(argv: list[str] | None = None) -> int:
         return 2
     results = [probe(t, modules) for t in targets]
     cluster, note = (read_cluster_prober(args.tail) if args.cluster else (None, ""))
+    retainer, rnote = (read_retainer_cycles(args.tail) if args.cluster else (None, ""))
+    now = time.time()
+    retainer_states = {f"{ws}/{c}": judge_retainer(f, now) for (ws, c), f in (retainer or {}).items()}
     if args.json:
         print(json.dumps({
             "results": [asdict(r) for r in results],
             "money_paths": {k: all(s.ok for s in v) for k, v in money_paths(results).items()},
             "cluster": cluster,
             "cluster_note": note,
+            "retainer": retainer_states,
+            "retainer_note": rnote,
         }, indent=2))
     else:
-        print(render(results, cluster, note))
-    return 1 if any(not r.ok for r in results if r.paths) else 0
+        print(render(results, cluster, note, retainer, rnote, now))
+    cfdi_overdue = any(v["cfdi"] == "OVERDUE" for v in retainer_states.values())
+    return 1 if cfdi_overdue or any(not r.ok for r in results if r.paths) else 0
 
 
 if __name__ == "__main__":
