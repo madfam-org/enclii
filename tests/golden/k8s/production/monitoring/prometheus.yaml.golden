@@ -496,9 +496,9 @@ data:
           # the FX rail. The FX probe fails on `"source":"emergency_fallback"`
           # (the hardcoded table, never authoritative), F2.
           - targets: ['https://api.dhan.am/health']
-            labels: {product: dhanam, flow: api, target_namespace: dhanam, check: availability, module: http_2xx_json}
+            labels: {product: dhanam, flow: api, target_namespace: dhanam, check: availability, module: http_2xx_json, money_path: ',dhanam-self-serve,'}
           - targets: ['https://api.dhan.am/v1/billing/catalog']
-            labels: {product: dhanam, flow: billing-catalog, target_namespace: dhanam, check: availability, module: http_dhanam_catalog}
+            labels: {product: dhanam, flow: billing-catalog, target_namespace: dhanam, check: availability, module: http_dhanam_catalog, money_path: ',dhanam-self-serve,'}
           - targets: ['https://api.dhan.am/v1/fx-rates/health']
             labels: {product: dhanam, flow: fx, target_namespace: dhanam, check: fx-source, module: http_dhanam_fx}
           # The other revenue products' health endpoints. Where a product's
@@ -507,9 +507,9 @@ data:
           - targets: ['https://api.yantra4d.com/api/health']
             labels: {product: yantra4d, flow: api, target_namespace: yantra4d, check: availability, module: http_2xx_json}
           - targets: ['https://kalya.app/api/health']
-            labels: {product: kalya, flow: web, target_namespace: kalya, check: availability, module: http_2xx_json}
+            labels: {product: kalya, flow: web, target_namespace: kalya, check: availability, module: http_2xx_json, money_path: ',sales-booking,'}
           - targets: ['https://madfam.io/api/health']
-            labels: {product: madfam-site, flow: web, target_namespace: madfam-site, check: availability, module: http_2xx_json}
+            labels: {product: madfam-site, flow: web, target_namespace: madfam-site, check: availability, module: http_2xx_json, money_path: ',sales-booking,'}
           - targets: ['https://api.avala.studio/v1/health']
             labels: {product: avala, flow: api, target_namespace: avala, check: availability, module: http_2xx_json}
           - targets: ['https://app.avala.studio/api/health']
@@ -523,16 +523,16 @@ data:
           # does not gate), so http_janua_ready judges the body. /health has
           # no Redis or database field and read green through both outages.
           - targets: ['https://auth.madfam.io/api/v1/health/ready']
-            labels: {product: janua, flow: api, target_namespace: janua, check: availability, module: http_janua_ready}
+            labels: {product: janua, flow: api, target_namespace: janua, check: availability, module: http_janua_ready, money_path: ',retainer,dhanam-self-serve,'}
           # Trailing slash required: /api/v1/health answers 301.
           - targets: ['https://api.karafiel.mx/api/v1/health/']
-            labels: {product: karafiel, flow: api, target_namespace: karafiel, check: availability, module: http_2xx_json}
+            labels: {product: karafiel, flow: api, target_namespace: karafiel, check: availability, module: http_2xx_json, money_path: ',retainer,'}
           - targets: ['https://api.selva.town/health']
             labels: {product: selva, flow: api, target_namespace: selva, check: availability, module: http_2xx_json}
           - targets: ['https://api.tezca.mx/health']
             labels: {product: tezca, flow: api, target_namespace: tezca, check: availability, module: http_2xx_json}
           - targets: ['https://app.nauta.quest/health']
-            labels: {product: nauta, flow: web, target_namespace: nauta, check: availability, module: http_2xx_json}
+            labels: {product: nauta, flow: web, target_namespace: nauta, check: availability, module: http_2xx_json, money_path: ',retainer,'}
           - targets: ['https://api.forgesight.app/health']
             labels: {product: forgesight, flow: api, target_namespace: forgesight, check: availability, module: http_2xx_json}
           # Crea Tu Mundo, the vCTO client (tenant `crea` in tenants.json).
@@ -546,6 +546,90 @@ data:
           # Its MAP (crea-map-web).
           - targets: ['https://map.creatumundo.mx/api/health']
             labels: {product: ctm-map, flow: web, target_namespace: crea-map, check: availability, module: http_2xx_json}
+
+          # ---- Money paths (money-engine wave 2, 2026-10-18) -------------
+          # Two more labels, read by the `money-paths` rule group below:
+          #
+          #   money_path  the money paths a target is a STEP of, comma-wrapped
+          #               (`,retainer,dhanam-self-serve,`) so one target can
+          #               belong to several. A target on a money path pages as
+          #               MoneyPathDown (one page per broken PATH, critical);
+          #               its own failure is the MoneyPathStepFailing warning
+          #               (the digest names the step). The paths are the ones
+          #               that take money TODAY:
+          #                 retainer           the vCTO retainer: the Nauta
+          #                                    cockpit, Karafiel (the CFDI),
+          #                                    Janua (staff sign-in, email)
+          #                 dhanam-self-serve  Dhanam Essentials: dhan.am
+          #                                    pricing, app.dhan.am sign-up,
+          #                                    Janua sign-in, the catalog, the
+          #                                    API (then Stripe, not probed)
+          #                 sales-booking      every other product's buy link
+          #                                    ends at the Kalya booking page
+          #                                    (HOSTED_CHECKOUT_ENABLED is off
+          #                                    in production): madfam.io and
+          #                                    kalya.app
+          #   paging      `warning` for a target whose failure must NOT page
+          #               (RevenueEndpointDegraded, the digest). Absent means
+          #               the target pages as before.
+          #
+          # SEVERITY follows the journeys plan's decision 6 RECOMMENDATION
+          # (UNRULED at the time of writing): Telegram pages only for a broken
+          # money path on SKUs that work today; everything else warns. Only
+          # NEW targets are placed by it here. The existing targets of products
+          # that cannot be bought self-serve today keep paging critical until
+          # the owner rules decision 6.
+          #
+          # Dhanam Essentials, the one self-serve SKU that works end to end.
+          # Both pages render their prices and form in the browser, so the
+          # server HTML only proves the page is served without a redirect.
+          - targets: ['https://dhan.am/pricing']
+            labels: {product: dhanam, flow: pricing-page, target_namespace: dhanam, check: availability, module: http_page_2xx, money_path: ',dhanam-self-serve,'}
+          - targets: ['https://app.dhan.am/register']
+            labels: {product: dhanam, flow: signup-page, target_namespace: dhanam, check: availability, module: http_page_2xx, money_path: ',dhanam-self-serve,'}
+          # Janua, the sign-in rail of both money paths: discovery, signing
+          # keys, and the browser's own call from Dhanam's origin (CORS).
+          - targets: ['https://auth.madfam.io/.well-known/openid-configuration']
+            labels: {product: janua, flow: oidc-discovery, target_namespace: janua, check: availability, module: http_oidc_discovery, money_path: ',retainer,dhanam-self-serve,'}
+          - targets: ['https://auth.madfam.io/.well-known/jwks.json']
+            labels: {product: janua, flow: jwks, target_namespace: janua, check: availability, module: http_jwks, money_path: ',retainer,dhanam-self-serve,'}
+          - targets: ['https://auth.madfam.io/api/v1/auth/me']
+            labels: {product: janua, flow: cors-dhanam, target_namespace: janua, check: availability, module: http_janua_cors_dhanam, money_path: ',dhanam-self-serve,'}
+          # The booking page every product's buy link lands on today.
+          - targets: ['https://kalya.app/madfam']
+            labels: {product: kalya, flow: booking-page, target_namespace: kalya, check: availability, module: http_page_2xx, money_path: ',sales-booking,'}
+
+          # Warning only (decision 6 recommendation): these SKUs cannot be
+          # bought self-serve today (their buy links end at the Kalya booking
+          # page), so a broken page loses a lead, not a sale. It goes to the
+          # digest; it does not page.
+          - targets: ['https://selva.town/pricing']
+            labels: {product: selva, flow: pricing-page, target_namespace: selva, check: availability, module: http_pricing_page, paging: warning}
+          - targets: ['https://karafiel.mx/precios']
+            labels: {product: karafiel, flow: pricing-page, target_namespace: karafiel, check: availability, module: http_pricing_page, paging: warning}
+          - targets: ['https://avala.studio/precios']
+            labels: {product: avala, flow: pricing-page, target_namespace: avala, check: availability, module: http_pricing_page, paging: warning}
+          - targets: ['https://tezca.mx/precios']
+            labels: {product: tezca, flow: pricing-page, target_namespace: tezca, check: availability, module: http_page_2xx, paging: warning}
+          - targets: ['https://routecraft.app/pricing']
+            labels: {product: routecraft, flow: pricing-page, target_namespace: routecraft, check: availability, module: http_page_2xx, paging: warning}
+          - targets: ['https://janua.dev/pricing']
+            labels: {product: janua, flow: pricing-page, target_namespace: janua, check: availability, module: http_page_2xx, paging: warning}
+          # Enclii's prices are on its landing; enclii.dev/pricing is not a
+          # route (the landing answers 200 for any path).
+          - targets: ['https://enclii.dev/']
+            labels: {product: enclii, flow: pricing-landing, target_namespace: enclii, check: availability, module: http_pricing_page, paging: warning}
+          # Dhanam FX degraded (a real but non-provider rate). The query string
+          # only makes the URL distinct from the fx-source probe's (one
+          # instance per target); the endpoint ignores it.
+          - targets: ['https://api.dhan.am/v1/fx-rates/health?probe=fx-degraded']
+            labels: {product: dhanam, flow: fx-degraded, target_namespace: dhanam, check: availability, module: http_dhanam_fx_degraded, paging: warning}
+          # Karafiel's task broker (Redis), which /api/v1/health/ does not
+          # gate on. Warning until it is known whether the retainer's CFDI
+          # stamping is synchronous (API) or queued (worker); the stamping
+          # itself is watched by the retainer-cycle rules, not by a probe.
+          - targets: ['https://api.karafiel.mx/api/v1/health/?probe=cfdi-broker']
+            labels: {product: karafiel, flow: cfdi-broker, target_namespace: karafiel, check: availability, module: http_karafiel_broker, paging: warning}
         relabel_configs:
           - source_labels: [__address__]
             target_label: __param_target
@@ -2324,9 +2408,12 @@ data:
           # (e.g. 200 where 401 is expected) or a body that fails its check.
           # The FX source probe's REGEX failure is excluded here because it
           # has its own alert below; that probe's HTTP failure still counts.
+          # Steps of a money path (`money_path` set) page as MoneyPathDown in
+          # the `money-paths` group instead, once per broken path, and
+          # `paging: warning` targets go to RevenueEndpointDegraded.
           - alert: RevenueEndpointDown
             expr: |
-              probe_success{job="blackbox-revenue"} == 0
+              probe_success{job="blackbox-revenue", paging!="warning", money_path=""} == 0
               unless on (instance)
               (probe_failed_due_to_regex{job="blackbox-revenue", check="fx-source"} == 1)
             for: 3m
@@ -2351,6 +2438,39 @@ data:
                   3. If many products fail at once, check CloudflaredTunnelDown
                      first: the probes share the public edge path.
                 In Grafana: probe_http_status_code{instance="{{ $labels.instance }}"}.
+
+          # A `paging: warning` target failing for 10 minutes. These are the
+          # pages and checks of SKUs that cannot be bought self-serve today
+          # (their buy links end at the Kalya booking page), plus Dhanam FX
+          # degraded and Karafiel's broker. Warning, so it reaches the
+          # digest and not Telegram: the journeys plan's decision 6
+          # recommendation (UNRULED at the time of writing) pages only for
+          # money paths that work today.
+          - alert: RevenueEndpointDegraded
+            expr: |
+              probe_success{job="blackbox-revenue", paging="warning"} == 0
+            for: 10m
+            labels:
+              severity: warning
+              category: revenue-probe
+            annotations:
+              summary: "{{ $labels.product }} {{ $labels.flow }} is failing (warning only): {{ $labels.instance }}"
+              description: |
+                The synthetic probe of {{ $labels.instance }} (product
+                {{ $labels.product }}, flow {{ $labels.flow }}, blackbox module
+                {{ $labels.module }}) has failed for 10 minutes.
+
+                WHY THIS IS A WARNING AND NOT A PAGE: this target is not a step
+                of a money path that takes money today. Its SKU's buy link ends
+                at the Kalya booking page, so a broken page here loses a lead,
+                not a sale (decision 6 of the money-engine journeys plan, as
+                recommended; promote the target to a money path when its
+                checkout works).
+
+                Triage:
+                  1. curl -sS -o /dev/null -w '%{http_code}\n' '{{ $labels.instance }}'
+                     (the module's pass condition is in blackbox-exporter.yaml).
+                  2. enclii ops pods diagnose -n {{ $labels.target_namespace }}
 
           # Dhanam is pricing off its hardcoded emergency FX table. The
           # endpoint is up (HTTP 2xx), so nothing else pages, but every
@@ -2402,6 +2522,80 @@ data:
                      job is not loaded (prometheus-config ConfigMap, reload);
                      0 means Prometheus cannot reach blackbox-exporter:9115
                      (blackbox-exporter-ingress NetworkPolicy, Service).
+
+      # One page per broken MONEY PATH (money-engine wave 2, 2026-10-18).
+      # A money path is the chain of public steps a payment goes through
+      # today; its steps are the blackbox-revenue targets whose `money_path`
+      # label names it (prometheus-config, scrape job blackbox-revenue).
+      # Any step failing for 3 minutes breaks the path. The page carries
+      # `money_path` and, as `product`, the same name: Alertmanager's revenue
+      # route groups by [alertname, product] and Courier keys its
+      # once-per-episode page on `product`, so two broken paths are two
+      # pages and one broken path is one page however many steps fail.
+      # Which steps: the MoneyPathStepFailing warnings, or
+      # `python3 scripts/money-engine-status.py`.
+      - name: money-paths
+        interval: 30s
+        rules:
+          - alert: MoneyPathDown
+            expr: |
+              label_replace(label_replace(
+                count(probe_success{job="blackbox-revenue", money_path=~".*,retainer,.*"} == 0),
+                "money_path", "retainer", "", ""), "product", "retainer", "", "")
+              or
+              label_replace(label_replace(
+                count(probe_success{job="blackbox-revenue", money_path=~".*,dhanam-self-serve,.*"} == 0),
+                "money_path", "dhanam-self-serve", "", ""), "product", "dhanam-self-serve", "", "")
+              or
+              label_replace(label_replace(
+                count(probe_success{job="blackbox-revenue", money_path=~".*,sales-booking,.*"} == 0),
+                "money_path", "sales-booking", "", ""), "product", "sales-booking", "", "")
+            for: 3m
+            labels:
+              severity: critical
+              category: revenue-probe
+            annotations:
+              summary: "Money path {{ $labels.money_path }} is broken: {{ $value }} step(s) failing"
+              description: |
+                {{ $value }} step(s) of the {{ $labels.money_path }} money path
+                have failed their synthetic probe for 3 minutes. A customer or
+                the retainer cycle cannot complete this path right now.
+
+                  retainer           Nauta cockpit, Karafiel API (CFDI), Janua
+                  dhanam-self-serve  dhan.am/pricing, app.dhan.am/register,
+                                     Janua sign-in (discovery, keys, CORS),
+                                     the Dhanam catalog and API
+                  sales-booking      madfam.io, kalya.app and its booking page
+
+                Triage:
+                  1. Which step: python3 scripts/money-engine-status.py (from an
+                     enclii checkout; public GETs, the same pass conditions), or
+                     the MoneyPathStepFailing warnings in Alertmanager.
+                  2. If several paths break at once, check CloudflaredTunnelDown
+                     and Janua first: they are shared by every path.
+                In Grafana: the "Money engine" dashboard.
+
+          # Each failing step of a money path, for the digest and the status
+          # read: it names the step that MoneyPathDown counts. Warning, so the
+          # path pages once (MoneyPathDown) and the steps do not page again.
+          - alert: MoneyPathStepFailing
+            expr: |
+              probe_success{job="blackbox-revenue", money_path!=""} == 0
+            for: 3m
+            labels:
+              severity: warning
+              category: revenue-probe
+            annotations:
+              summary: "Money path step failing ({{ $labels.money_path }}): {{ $labels.product }} {{ $labels.flow }} {{ $labels.instance }}"
+              description: |
+                {{ $labels.instance }} (product {{ $labels.product }}, flow
+                {{ $labels.flow }}, module {{ $labels.module }}) is a step of the
+                money paths {{ $labels.money_path }} and has failed its probe for
+                3 minutes. MoneyPathDown pages for the path; this names the step.
+
+                Triage:
+                  1. curl -sS -o /dev/null -w '%{http_code}\n' '{{ $labels.instance }}'
+                  2. enclii ops pods diagnose -n {{ $labels.target_namespace }}
 
   # =========================================================================
   # Resurrected 2026-08-26 (availability remediation Tier 0.3): the 5 of 8
