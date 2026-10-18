@@ -336,6 +336,12 @@ metadata:
     app.kubernetes.io/part-of: enclii
 spec:
   replicas: 1
+  # grafana-data is ReadWriteOnce. Under the default RollingUpdate the new
+  # pod waits forever for a volume the old pod still holds (seen 2026-10-17
+  # after #779: PodInitializing for over an hour on another node). Recreate
+  # stops the old pod first: about a minute of Grafana downtime per rollout.
+  strategy:
+    type: Recreate
   selector:
     matchLabels:
       app: grafana
