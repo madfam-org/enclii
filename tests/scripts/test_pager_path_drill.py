@@ -305,3 +305,132 @@ def test_promtool_evaluates_the_drill():
         pytest.skip(f"promtool could not run: {output[-500:]}")
     assert proc.returncode == 0, f"promtool rejected the rule test:\n{output}"
     assert "SUCCESS" in output, output
+
+
+# ---------------------------------------------------------------------------
+# The page budget (infra-stability audit 2026-10-17, pager noise plan step 5)
+# ---------------------------------------------------------------------------
+
+BUDGET_KEY = "courier-page-budget-rules.yml"
+
+
+def _budget_rules() -> dict[str, dict]:
+    text = _configmap(PROMETHEUS, "prometheus-rules")["data"][BUDGET_KEY]
+    (group,) = [g for g in yaml.safe_load(text)["groups"] if g["name"] == "courier-page-budget"]
+    return {r["alert"]: r for r in group["rules"]}
+
+
+def test_page_budget_is_a_warning_and_counts_only_sent_critical_pages():
+    """A page about too many pages must not be one more page."""
+    rule = _budget_rules()["CourierPageBudgetExceeded"]
+    assert rule["labels"]["severity"] == "warning"
+    expr = rule["expr"]
+    assert "courier_alarm_pages_total" in expr
+    assert 'severity="critical"' in expr and 'outcome="sent"' in expr
+    # Resolved notices are not pages.
+    assert 'phase=~"opened|reminder|reopened"' in expr
+    assert "[24h]" in expr and expr.strip().endswith("> 5")
+
+
+def test_page_budget_has_an_absence_twin():
+    rule = _budget_rules()["CourierPageCounterMissing"]
+    assert rule["labels"]["severity"] == "warning"
+    assert rule["expr"].strip() == "absent(courier_alarm_pages_total)"
+
+
+def test_prometheus_may_reach_the_counter_port_in_angelia():
+    docs = _docs(MONITORING / "network-policies.yaml")
+    (egress,) = [d for d in docs if d.get("kind") == "NetworkPolicy" and d["metadata"]["name"] == "prometheus-egress"]
+    rules = [
+        r for r in egress["spec"]["egress"]
+        if any(
+            (t.get("namespaceSelector") or {}).get("matchLabels", {}).get("kubernetes.io/metadata.name") == "angelia"
+            for t in r.get("to") or []
+        )
+    ]
+    assert len(rules) == 1
+    assert rules[0]["ports"] == [{"protocol": "TCP", "port": 9464}]
+
+
+BUDGET_TEST = textwrap.dedent(
+    """
+    rule_files:
+      - courier-page-budget-rules.yml
+    evaluation_interval: 30s
+    tests:
+      # 6 pages across two replicas: over budget. Resolved notices and failed
+      # sends do not count.
+      - interval: 1m
+        input_series:
+          - series: 'courier_alarm_pages_total{phase="opened",severity="critical",outcome="sent",pod="api-a"}'
+            values: '0 1 2 3x60'
+          - series: 'courier_alarm_pages_total{phase="reminder",severity="critical",outcome="sent",pod="api-b"}'
+            values: '0 0 1 2 3x60'
+          - series: 'courier_alarm_pages_total{phase="resolved",severity="critical",outcome="sent",pod="api-a"}'
+            values: '0+1x63'
+          - series: 'courier_alarm_pages_total{phase="opened",severity="critical",outcome="failed",pod="api-b"}'
+            values: '0+1x63'
+        alert_rule_test:
+          - eval_time: 30m
+            alertname: CourierPageBudgetExceeded
+            exp_alerts:
+              - exp_labels: {severity: warning, service: angelia, category: alerting-last-mile}
+                exp_annotations: {summary: "The pager sent 6 critical pages in the last 24h (budget 5)"}
+          - eval_time: 30m
+            alertname: CourierPageCounterMissing
+            exp_alerts: []
+      # Exactly 5: within budget.
+      - interval: 1m
+        input_series:
+          - series: 'courier_alarm_pages_total{phase="opened",severity="critical",outcome="sent",pod="api-a"}'
+            values: '0 1 2 3 4 5x60'
+        alert_rule_test:
+          - eval_time: 30m
+            alertname: CourierPageBudgetExceeded
+            exp_alerts: []
+      # No counter at all: the budget is unmeasured, and says so.
+      - interval: 1m
+        input_series:
+          - series: 'up{job="other"}'
+            values: '1x90'
+        alert_rule_test:
+          - eval_time: 70m
+            alertname: CourierPageCounterMissing
+            exp_alerts:
+              - exp_labels: {severity: warning, service: angelia, category: alerting-last-mile}
+                exp_annotations: {summary: "Courier's page counter is not being scraped, so the page budget is unmeasured"}
+    """
+).lstrip()
+
+
+def test_promtool_evaluates_the_page_budget():
+    template = os.environ.get("ENCLII_PROMTOOL")
+    if not template and not shutil.which("promtool"):
+        pytest.skip("promtool not on PATH and ENCLII_PROMTOOL not set; the structural tests above still ran")
+    doc = yaml.safe_load(_configmap(PROMETHEUS, "prometheus-rules")["data"][BUDGET_KEY])
+    for group in doc["groups"]:
+        for rule in group["rules"]:
+            for key in ("description", "runbook_url"):
+                rule.get("annotations", {}).pop(key, None)
+    with tempfile.TemporaryDirectory() as tmp:
+        (Path(tmp) / BUDGET_KEY).write_text(yaml.safe_dump(doc, sort_keys=False), encoding="utf-8")
+        name = "page-budget.test.yml"
+        (Path(tmp) / name).write_text(BUDGET_TEST, encoding="utf-8")
+        os.chmod(tmp, 0o755)
+        for p in Path(tmp).iterdir():
+            os.chmod(p, 0o644)
+        if template:
+            cmd: str | list[str] = template.format(dir=tmp, name=name)
+            shell = True
+        else:
+            cmd = ["promtool", "test", "rules", str(Path(tmp) / name)]
+            shell = False
+        try:
+            proc = subprocess.run(cmd, shell=shell, capture_output=True, text=True, timeout=PROMTOOL_TIMEOUT_SECONDS)
+        except subprocess.TimeoutExpired:
+            pytest.skip(f"promtool did not finish within {PROMTOOL_TIMEOUT_SECONDS}s")
+    output = (proc.stdout + proc.stderr).strip()
+    if proc.returncode != 0 and "FAILED" not in output and "SUCCESS" not in output:
+        pytest.skip(f"promtool could not run: {output[-500:]}")
+    assert proc.returncode == 0, f"promtool rejected the rule test:\n{output}"
+    assert "SUCCESS" in output, output
