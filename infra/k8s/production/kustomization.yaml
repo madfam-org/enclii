@@ -56,7 +56,7 @@ configMapGenerator:
 # (commit-digests runs `kustomize edit set image roundhouse-worker=...`,
 # which rewrites both newName and digest). Do not hand-edit.
 images:
-- digest: sha256:fef6d4a993c30d5373678050198eb7589388e313b8ec44acb4de6099be1dad7a
+- digest: sha256:5c30eda75b7ca57cb6c69cf1f0323fc043f25fd6dc1ad38b4de79d9cd94dcab0
   name: docs-site
   newName: ghcr.io/madfam-org/enclii/docs-site
 - digest: sha256:82608d611dd839eb2f4efeda643e4510bd4f559a13c2d6213da3f4c952c76404
@@ -74,7 +74,7 @@ images:
 - digest: sha256:377b1d93110e1d67471627d211ab5300e3eff2c942e5bad93242fa6e188c81f8
   name: switchyard-ui
   newName: ghcr.io/madfam-org/enclii/switchyard-ui
-- digest: sha256:c2bc1c80dd0e35242985e9641347a0d9fef4cfb740bd7f602fe92a98012b7c8e
+- digest: sha256:68a23209f7a37443f90d87ce127535a39ef981f8db689c35f9435d83c7a09ef1
   name: waybill
   newName: ghcr.io/madfam-org/enclii/waybill
 # Note: commonLabels removed - it adds to selectors which are immutable.
