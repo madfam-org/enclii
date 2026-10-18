@@ -12,7 +12,7 @@ import (
 func TestLoadRegistry(t *testing.T) {
 	reg, err := LoadRegistry()
 	require.NoError(t, err)
-	assert.Len(t, reg, 90)
+	assert.Len(t, reg, 91)
 	assert.Contains(t, reg, "ceq/vast-api-key")
 	assert.Contains(t, reg, "karafiel/web-oidc-janua")
 	adminSession := reg["karafiel/admin-session"]
@@ -37,7 +37,7 @@ func TestGetTarget(t *testing.T) {
 func TestListTargetsSorted(t *testing.T) {
 	list, err := ListTargets()
 	require.NoError(t, err)
-	require.Len(t, list, 90)
+	require.Len(t, list, 91)
 	for i := 1; i < len(list); i++ {
 		assert.Less(t, list[i-1].ID, list[i].ID, "targets should be sorted by id")
 	}
@@ -90,6 +90,7 @@ func TestListTargetsSorted(t *testing.T) {
 		"lexidrop/selva-inference",
 		"monitoring/alertmanager-heartbeat",
 		"monitoring/alertmanager-smtp",
+		"monitoring/grafana-admin",
 		"nauta/internal-probe-key",
 		"nauta/kalya-feed-tokens",
 		"nauta/oidc-janua",

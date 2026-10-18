@@ -280,7 +280,7 @@ func TestArgocdPollerReconcile(t *testing.T) {
 	) *ArgocdPoller {
 		return &ArgocdPoller{
 			lister:         fakeArgoLister{apps: apps},
-			resolveService: resolve,
+			resolveService: func(ctx context.Context, _ string, image string) *types.Service { return resolve(ctx, image) },
 			latestTracked:  tracked,
 			apply:          apply,
 			interval:       time.Minute,

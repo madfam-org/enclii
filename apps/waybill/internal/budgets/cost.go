@@ -16,6 +16,9 @@ import (
 type CostReader struct {
 	db      *sql.DB
 	pricing PricingCents
+	// staleAfter is the aggregator heartbeat window used by Metering; zero
+	// means DefaultMeteringStaleAfter.
+	staleAfter time.Duration
 }
 
 // PricingCents holds per-unit prices expressed in cents (USD). Using cents

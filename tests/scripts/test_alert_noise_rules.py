@@ -151,6 +151,34 @@ def test_chronic_restart_7d_excludes_staging():
     assert 'namespace!~".+-staging"' in rule["expr"]
 
 
+def test_chronic_restart_7d_counts_only_pods_that_still_exist():
+    """A replaced pod's restarts must not keep the 7d critical firing.
+
+    The 7d range keeps a deleted pod's samples for a week; the join on `uid`
+    (not on the pod name, which a StatefulSet reuses) drops them.
+    """
+    rule = _by_alert(_group(_rules_key("chronic-restart-rules.yml"), "chronic-restart"))["PodChronicRestart7d"]
+    assert "and on (uid) kube_pod_info" in rule["expr"]
+
+
+@pytest.mark.parametrize(
+    "key,group,alert",
+    [
+        ("deploy-parity-alerts.yml", "argo-rollout-truth", "ArgoMainRolloutNotLanded"),
+        ("deploy-parity-alerts.yml", "argo-rollout-truth", "ArgoMainRolloutStuckForTooLong"),
+        ("deploy-pipeline-freshness-rules.yml", "deploy-pipeline-monitor", "MainCIFailingForTooLong"),
+    ],
+)
+def test_rollout_and_main_ci_rules_page_nobody(key, group, alert):
+    """Pager noise plan 2026-10-17: these go to the warning digest, never Telegram.
+
+    The previous image keeps serving while they fire; the client-facing
+    outage rules (client-slo, Argo health, revenue probes) stay critical.
+    """
+    rule = _by_alert(_group(_rules_key(key), group))[alert]
+    assert rule["labels"]["severity"] == "warning"
+
+
 # ---------------------------------------------------------------------------
 # Structural: CNPG
 # ---------------------------------------------------------------------------
@@ -242,10 +270,30 @@ ARGO_TEST = textwrap.dedent(
           - series: 'argocd_app_info{name="selva-office-staging",dest_namespace="selva-staging",health_status="Missing"}'
             values: '1x450'
           # Restarts: 300 in the window, production and staging.
-          - series: 'kube_pod_container_status_restarts_total{namespace="logging",pod="loki-0",container="loki"}'
+          - series: 'kube_pod_container_status_restarts_total{namespace="logging",pod="loki-0",uid="u-loki-0",container="loki"}'
             values: '0+1x450'
-          - series: 'kube_pod_container_status_restarts_total{namespace="enclii-karafiel-staging",pod="karafiel-admin-x",container="admin"}'
+          - series: 'kube_pod_info{namespace="logging",pod="loki-0",uid="u-loki-0"}'
+            values: '1x450'
+          - series: 'kube_pod_container_status_restarts_total{namespace="enclii-karafiel-staging",pod="karafiel-admin-x",uid="u-admin-x",container="admin"}'
             values: '0+1x450'
+          - series: 'kube_pod_info{namespace="enclii-karafiel-staging",pod="karafiel-admin-x",uid="u-admin-x"}'
+            values: '1x450'
+          # A REPLACED pod: 240 restarts, then deleted at 4h (its series end).
+          # Its samples stay inside the 7d range; it must not page.
+          - series: 'kube_pod_container_status_restarts_total{namespace="logging",pod="fluent-bit-old",uid="u-fb-old",container="fluent-bit"}'
+            values: '0+1x240'
+          - series: 'kube_pod_info{namespace="logging",pod="fluent-bit-old",uid="u-fb-old"}'
+            values: '1x240'
+          # A StatefulSet pod recreated under the SAME name at 4h: the old uid
+          # carries the restarts, the new one is healthy. Must not page.
+          - series: 'kube_pod_container_status_restarts_total{namespace="data",pod="redis-0",uid="u-redis-old",container="redis"}'
+            values: '0+1x240'
+          - series: 'kube_pod_info{namespace="data",pod="redis-0",uid="u-redis-old"}'
+            values: '1x240'
+          - series: 'kube_pod_container_status_restarts_total{namespace="data",pod="redis-0",uid="u-redis-new",container="redis"}'
+            values: '_x240 0x210'
+          - series: 'kube_pod_info{namespace="data",pod="redis-0",uid="u-redis-new"}'
+            values: '_x240 1x210'
         alert_rule_test:
           - eval_time: 10m
             alertname: ArgoCDAppDegraded
@@ -293,7 +341,8 @@ ARGO_TEST = textwrap.dedent(
             exp_alerts:
               - exp_labels: {severity: warning, service: argocd, name: karafiel-staging, dest_namespace: enclii-karafiel-staging, health_status: Degraded}
                 exp_annotations: {summary: "ArgoCD staging application degraded"}
-          # 300 restarts by 5h: production pages, staging does not.
+          # 300 restarts by 5h: production pages, staging does not, and
+          # neither do the replaced fluent-bit pod or redis-0's old uid.
           - eval_time: 5h
             alertname: PodChronicRestart7d
             exp_alerts:
@@ -445,3 +494,66 @@ def test_promtool_argo_and_chronic_restart_rules():
 
 def test_promtool_cnpg_rules():
     _run_promtool({"postgres-ha-rules.yml": _cnpg_rules_text()}, "cnpg.test.yml", CNPG_TEST)
+
+
+# ---------------------------------------------------------------------------
+# Main CI vs scheduled canaries (infra-stability audit 2026-10-17, W1O-1)
+# ---------------------------------------------------------------------------
+
+
+def _freshness_rules() -> dict[str, dict]:
+    return _by_alert(_group(_rules_key("deploy-pipeline-freshness-rules.yml"), "deploy-pipeline-monitor"))
+
+
+def test_main_ci_alert_reads_the_push_build_signal_only():
+    """MainCIFailingForTooLong reads the push metric, never the canary one."""
+    rule = _freshness_rules()["MainCIFailingForTooLong"]
+    assert "repo_main_blocked_seconds" in rule["expr"]
+    assert "scheduled" not in rule["expr"]
+
+
+def test_canary_failure_has_its_own_warning_alert():
+    rules = _freshness_rules()
+    canary = rules["MainCanaryFailing"]
+    assert canary["labels"]["severity"] == "warning"
+    assert canary["expr"].strip() == "repo_main_scheduled_failure_streak_count >= 2"
+    probe = rules["DeployPipelineMonitorScheduledProbeFailing"]
+    assert probe["labels"]["severity"] == "warning"
+    assert "repo_main_scheduled_probe_ok == 0" in probe["expr"]
+
+
+CANARY_TEST = textwrap.dedent(
+    """
+    rule_files:
+      - deploy-pipeline-freshness-rules.yml
+    evaluation_interval: 30s
+    tests:
+      - interval: 1m
+        input_series:
+          # forgesight: push CI green, the scheduled canary red 3 runs running.
+          - series: 'repo_main_blocked_seconds{repo="madfam-org/forgesight",branch="main"}'
+            values: '0x60'
+          - series: 'repo_main_scheduled_failure_streak_count{repo="madfam-org/forgesight",branch="main",workflow="Production Smoke"}'
+            values: '3x60'
+          # karafiel: one canary failure is a flake, not a page.
+          - series: 'repo_main_scheduled_failure_streak_count{repo="madfam-org/karafiel",branch="main",workflow="Nightly"}'
+            values: '1x60'
+        alert_rule_test:
+          - eval_time: 45m
+            alertname: MainCIFailingForTooLong
+            exp_alerts: []
+          - eval_time: 45m
+            alertname: MainCanaryFailing
+            exp_alerts:
+              - exp_labels: {severity: warning, category: deploy-pipeline, repo: madfam-org/forgesight, branch: main, workflow: Production Smoke}
+                exp_annotations: {summary: 'madfam-org/forgesight scheduled workflow "Production Smoke" failed 3 times running'}
+    """
+).lstrip()
+
+
+def test_promtool_canary_is_a_warning_and_not_a_build_failure():
+    _run_promtool(
+        {"deploy-pipeline-freshness-rules.yml": _rules_key("deploy-pipeline-freshness-rules.yml")},
+        "canary.test.yml",
+        CANARY_TEST,
+    )

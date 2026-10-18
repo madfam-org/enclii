@@ -195,7 +195,11 @@ Guards, all enforced by the API:
 - **Reviewed object.** The dry run prints the object's UID. Pass it back with
   `--expect-uid`; the apply is refused (HTTP 409) when the object was replaced
   since. Without `--expect-uid` a pod delete still binds to the UID it reads
-  just before deleting.
+  just before deleting. **CLI version:** the flag arrived with #754
+  (2026-10-14), after the last tagged release `v1.0.0-alpha.14` (2026-10-01);
+  a CLI built before #754 rejects it as an unknown flag. Check with
+  `enclii ops pods restart --help`; with an older CLI, build from `main` or run
+  the apply without the flag.
 - **Audit.** `--apply` requires `--reason`. Before the mutation the API writes
   an `ops.pods.restart` audit row with outcome `requested`: actor, time,
   namespace, kind, name, UID, reason and the patch. If that row cannot be
@@ -258,6 +262,10 @@ enclii ops domains reconcile nauta-web --ref 1a2b3c4 --apply --reason "..."
 ```
 
 Besides the shared contract flags (`--apply`, `--reason`, `--idempotency-key`, `--json`, `--namespace`, `--project`, `--service`), it accepts `--domain` (reconcile only this hostname) and `--ref` (git ref to read `enclii.yaml` from; default: the repository's default branch head).
+
+**Service names are unique per project, not platform-wide** (#793,
+2026-10-18). A bare service name registered in more than one project is
+refused as ambiguous; pass `--project <slug>` (or `scope.project`) to choose.
 
 `--domain` is the safe form when only one hostname needs attention. Unlike
 `providers cloudflare tunnels-apply --project X`, which reconciles every

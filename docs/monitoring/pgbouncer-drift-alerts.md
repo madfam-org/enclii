@@ -21,6 +21,8 @@ Courier only (internal-devops
 `decisions/2026-09-05-third-party-messaging-via-angelia-courier.md`), and the
 earlier `telegram_configs` blocks were removed 2026-08-26 after their
 `chat_id: 0` sentinel crashlooped Alertmanager v0.26.0 at config load.
+The current routes, severities and Courier's paging contract are summarised in
+[`ALERT_ROUTING.md`](ALERT_ROUTING.md).
 
 ## What this closes
 

@@ -226,6 +226,19 @@ spec:
     ports:
     - protocol: TCP
       port: 5000
+  # angelia (Courier's alarm page counter, angelia-api's metrics listener on
+  # its pod port 9464, scraped by the kubernetes-pods annotation job). Not
+  # labelled data-access: angelia runs its own database and must not be
+  # admitted to the shared data services. The angelia side admits the
+  # monitoring namespace on 9464 only (angelia-api-ingress-metrics.yaml). Feeds
+  # CourierPageBudgetExceeded (prometheus.yaml).
+  - to:
+    - namespaceSelector:
+        matchLabels:
+          kubernetes.io/metadata.name: angelia
+    ports:
+    - protocol: TCP
+      port: 9464
   # Kubernetes API server
   - to: []
     ports:

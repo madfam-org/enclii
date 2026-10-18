@@ -186,44 +186,6 @@ func (r *ServiceRepository) GetByID(id uuid.UUID) (*types.Service, error) {
 	return service, nil
 }
 
-// GetByName retrieves a service by its name (used for K8s→DB reconciliation)
-func (r *ServiceRepository) GetByName(name string) (*types.Service, error) {
-	service := &types.Service{}
-	var buildConfigJSON []byte
-	var jobsJSON []byte
-	var appPath sql.NullString
-
-	query := `SELECT id, project_id, name, git_repo, COALESCE(app_path, '') as app_path, build_config,
-		auto_deploy, auto_deploy_branch, auto_deploy_env, created_at, updated_at, COALESCE(jobs, '[]'::jsonb) as jobs, type, region
-		FROM services WHERE name = $1`
-
-	err := r.db.QueryRow(query, name).Scan(
-		&service.ID, &service.ProjectID, &service.Name, &service.GitRepo,
-		&appPath, &buildConfigJSON, &service.AutoDeploy, &service.AutoDeployBranch,
-		&service.AutoDeployEnv, &service.CreatedAt, &service.UpdatedAt, &jobsJSON,
-		&service.Type, &service.Region,
-	)
-	if err != nil {
-		return nil, err
-	}
-
-	if appPath.Valid {
-		service.AppPath = appPath.String
-	}
-
-	if err := json.Unmarshal(buildConfigJSON, &service.BuildConfig); err != nil {
-		return nil, fmt.Errorf("failed to unmarshal build config: %w", err)
-	}
-
-	if len(jobsJSON) > 0 {
-		if err := json.Unmarshal(jobsJSON, &service.Jobs); err != nil {
-			return nil, fmt.Errorf("failed to unmarshal jobs: %w", err)
-		}
-	}
-
-	return service, nil
-}
-
 // ListByTeam returns every service whose parent project belongs to the given
 // team. Mirror of ListAll's column shape — no per-service release/health
 // subqueries, callers that need those use ListByProject. Used by the master-

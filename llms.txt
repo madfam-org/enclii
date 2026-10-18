@@ -158,6 +158,15 @@ Compact LLM context index for this repository.
   on drift (#663). Contract tests: `tests/scripts/test_digest_pin_push_retry.py`,
   `tests/scripts/test_arc_runner_image_promotion.py` (CI job
   `workflow-contracts`). Skip inventory: `docs/testing/SKIPPED_TESTS.md`.
+- Stability wave (2026-10-17/18): tenant scope enforced in production (#800);
+  `ENCLII_TRUSTED_PROXY_CIDRS` unset (operator TODO, `SECURITY.md`); alert
+  routing and Courier's once-per-episode paging in
+  `docs/monitoring/ALERT_ROUTING.md`; never switch an existing Deployment to
+  `Recreate` under server-side apply (#799 -> #804, guarded by
+  `tests/scripts/test_deployment_strategy_switch.py`); Postgres 200
+  connections + pgBackRest 2.59.1 everywhere (#785); ARC pins deploy through
+  Argo (`infra/k8s/production/arc/README.md`); the pin job fails red on an
+  unpinned build (#787). Details: `llms-full.txt` "Stability wave".
 
 ## Production operations
 

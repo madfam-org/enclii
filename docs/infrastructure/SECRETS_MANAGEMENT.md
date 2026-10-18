@@ -2,14 +2,14 @@
 
 **Last Updated:** 2026-06-15
 **Current Approach:** HashiCorp Vault (self-hosted) + ESO vault-store
-**Provider:** Self-hosted HashiCorp Vault (Community Edition) at vault.madfam.io
+**Provider:** Self-hosted HashiCorp Vault (Community Edition), in-cluster at `vault.vault.svc.cluster.local:8200` (not published)
 **Coverage:** ~160 secrets across 16 namespaces via 19 ExternalSecret resources
 
 ---
 
 ## Current State
 
-All production secrets are stored in self-hosted HashiCorp Vault (KV v2 engine) and synced to Kubernetes namespaces via the External Secrets Operator (ESO) with a `vault-store` ClusterSecretStore. The Vault UI is accessible at `https://vault.madfam.io`.
+All production secrets are stored in self-hosted HashiCorp Vault (KV v2 engine) and synced to Kubernetes namespaces via the External Secrets Operator (ESO) with a `vault-store` ClusterSecretStore. Vault is not published through the tunnel: reach its UI with `kubectl -n vault port-forward svc/vault 8200:8200` for break-glass work.
 
 **Architecture:**
 - Vault pod runs in the `vault` namespace (Helm chart)

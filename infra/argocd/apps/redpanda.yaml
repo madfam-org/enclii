@@ -112,9 +112,10 @@ spec:
           # Redpanda Console UI for browsing topics, partitions, and
           # consumer groups. Bundled as an inner Helm sub-chart; enabling
           # it here creates a `redpanda-console` Deployment + ClusterIP
-          # Service on port 8080 in the data namespace. Cloudflared routes
-          # `redpanda.enclii.dev` → this service (see
-          # infra/k8s/production/redpanda-console-tunnel-route.md).
+          # Service on port 8080 in the data namespace. In-cluster only:
+          # it is not published through the tunnel (the console has no login
+          # of its own); port-forward for break-glass work. See
+          # `redpanda-console-ingress` in infra/k8s/policies/data-network-policies.yaml.
           enabled: true
           # Kyverno's restrict-capabilities + restrict-image-registries
           # rules block the default console pod spec. Override with

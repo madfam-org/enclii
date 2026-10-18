@@ -317,9 +317,12 @@ spec:
       storage: 5Gi
   storageClassName: longhorn
 ---
-# Grafana Secret — NOT committed to git.
-# Create manually before deploying Grafana.
-# See grafana-credentials.yaml.template for schema and kubectl commands.
+# Grafana Secrets — NOT committed to git.
+# grafana-credentials: created by hand before the first deploy; it seeds the
+#   first run on an empty database only (see grafana-credentials.yaml.template).
+# grafana-admin: projected from Vault by grafana-admin.externalsecret.yaml
+#   (intake target monitoring/grafana-admin); the admin-password-sync init
+#   container below applies it at every pod start.
 ---
 # Grafana Deployment
 apiVersion: apps/v1
@@ -333,6 +336,20 @@ metadata:
     app.kubernetes.io/part-of: enclii
 spec:
   replicas: 1
+  # grafana-data is ReadWriteOnce. Under the default RollingUpdate (25% surge)
+  # the new pod waits forever for a volume the old pod still holds (seen
+  # 2026-10-17 after #779: PodInitializing for hours on another node).
+  # maxSurge 0 / maxUnavailable 1 stops the old pod first: about a minute of
+  # Grafana downtime per rollout.
+  #
+  # Not `type: Recreate`: Argo applies server-side, the live object keeps the
+  # defaulted rollingUpdate block, and the API refuses Recreate alongside it
+  # ("spec.strategy.rollingUpdate: Forbidden"), so the sync never lands (#799).
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 0
+      maxUnavailable: 1
   selector:
     matchLabels:
       app: grafana
@@ -350,6 +367,58 @@ spec:
         runAsNonRoot: true
         seccompProfile:
           type: RuntimeDefault
+      # admin-password-sync: makes the intake-managed password authoritative.
+      # Grafana reads GF_SECURITY_ADMIN_PASSWORD only when it creates its
+      # database, and the database persists on the grafana-data PVC, so a new
+      # Secret value alone never changes the stored admin password. When the
+      # grafana-admin Secret (grafana-admin.externalsecret.yaml, intake target
+      # monitoring/grafana-admin) is present, this sets the stored password
+      # from it before Grafana starts. When it is absent (before the first
+      # submit) it exits 0 and touches nothing, so Grafana keeps the password
+      # it has. A present password that fails to apply exits non-zero: the new
+      # pod stays in Init and the rollout stalls visibly instead of Grafana
+      # starting with a credential nobody submitted.
+      # The password reaches grafana-cli on stdin, never in argv.
+      initContainers:
+        - name: admin-password-sync
+          image: docker.io/grafana/grafana:10.2.2@sha256:e3e9c2b5776fe3657f4954dfa91579224f98a0316f51d431989b15425e95530f
+          command:
+            - /bin/sh
+            - -c
+            - |
+              set -eu
+              f=/etc/grafana-admin/admin-password
+              if [ ! -s "$f" ]; then
+                echo "admin-password-sync: Secret grafana-admin not present; stored admin password left unchanged"
+                exit 0
+              fi
+              { cat "$f"; echo; } | grafana-cli \
+                --homepath /usr/share/grafana \
+                --config /etc/grafana/grafana.ini \
+                admin reset-admin-password --password-from-stdin
+              echo "admin-password-sync: stored admin password set from Secret grafana-admin"
+          securityContext:
+            allowPrivilegeEscalation: false
+            privileged: false
+            capabilities:
+              drop:
+                - ALL
+          resources:
+            requests:
+              memory: "64Mi"
+              cpu: "50m"
+            limits:
+              memory: "256Mi"
+              cpu: "250m"
+          volumeMounts:
+            - name: data
+              mountPath: /var/lib/grafana
+            - name: config
+              mountPath: /etc/grafana/grafana.ini
+              subPath: grafana.ini
+            - name: grafana-admin
+              mountPath: /etc/grafana-admin
+              readOnly: true
       containers:
         - name: grafana
           image: docker.io/grafana/grafana:10.2.2@sha256:e3e9c2b5776fe3657f4954dfa91579224f98a0316f51d431989b15425e95530f
@@ -427,6 +496,11 @@ spec:
         - name: data
           persistentVolumeClaim:
             claimName: grafana-data
+        # Directory mount, optional: absent until the first intake submit.
+        - name: grafana-admin
+          secret:
+            secretName: grafana-admin  # pragma: allowlist secret
+            optional: true
 ---
 # Grafana Service
 apiVersion: v1

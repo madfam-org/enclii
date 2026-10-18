@@ -18,6 +18,7 @@ const https = require('https');
  *       janua_url: https://auth.madfam.io
  *       cache_ttl_ms: 300000
  *       key_prefixes: [jnk_, sk_live_]
+ *       allowed_org_ids: [<MADFAM_ORG_ID>]   # or env JANUA_ALLOWED_ORG_IDS
  *     htpasswd:
  *       file: /verdaccio/conf/htpasswd
  *
@@ -79,6 +80,30 @@ const MAX_CACHE_ENTRIES = 500;
 const SCOPE_INSTALL = 'npm:install';
 const SCOPE_PUBLISH = 'npm:publish';
 const GROUP_AUTHENTICATED = '$authenticated';
+// Marks every user this plugin authenticated. allow_access/allow_publish
+// decide for these users themselves and never fall through to the package
+// ACL, whose `$authenticated` rule would otherwise admit any verified key.
+const GROUP_JANUA_KEY = 'janua:key';
+// Carries the verified Janua org of the key: `janua:org:<org_id>`.
+const GROUP_JANUA_ORG_PREFIX = 'janua:org:';
+
+/**
+ * The Janua organisations whose keys this registry honours. `allowed_org_ids`
+ * (a list, or a comma-separated string) is the setting; when it is absent the
+ * JANUA_ALLOWED_ORG_IDS environment variable (comma-separated) is read.
+ * Entries that are empty or still an unfilled `<PLACEHOLDER>` are dropped. An
+ * empty result refuses every Janua key (fail closed).
+ */
+function allowedOrgIdsFrom(config, env) {
+  let raw = config.allowed_org_ids;
+  if (raw === undefined || raw === null || raw === '') {
+    raw = (env && env.JANUA_ALLOWED_ORG_IDS) || '';
+  }
+  const list = Array.isArray(raw) ? raw : String(raw).split(',');
+  return list
+    .map((id) => (typeof id === 'string' ? id.trim() : ''))
+    .filter((id) => id.length > 0 && !/^<.*>$/.test(id));
+}
 
 /**
  * The key prefixes this plugin claims. `key_prefixes` (a list) is the
@@ -105,6 +130,8 @@ class JanuaAuthPlugin {
     this.cacheTtlMs = config.cache_ttl_ms || DEFAULT_CACHE_TTL_MS;
     this.keyPrefixes = keyPrefixesFrom(config);
     this.timeoutMs = config.timeout_ms || DEFAULT_TIMEOUT_MS;
+    // `options.env` is injected in tests; defaults to the process environment.
+    this.allowedOrgIds = allowedOrgIdsFrom(config, options.env || process.env);
     this.logger = options.logger || {
       info() {}, warn() {}, error() {}, debug() {}, trace() {},
     };
@@ -120,9 +147,16 @@ class JanuaAuthPlugin {
         janua_url: this.januaUrl,
         cache_ttl_ms: this.cacheTtlMs,
         key_prefixes: this.keyPrefixes,
+        allowed_org_count: this.allowedOrgIds.length,
       },
       'verdaccio-auth-janua: plugin loaded'
     );
+    if (this.allowedOrgIds.length === 0) {
+      this.logger.error(
+        'verdaccio-auth-janua: no allowed Janua org configured (allowed_org_ids / ' +
+          'JANUA_ALLOWED_ORG_IDS); every Janua key will be refused install and publish'
+      );
+    }
   }
 
   // -----------------------------------------------------------------
@@ -144,13 +178,21 @@ class JanuaAuthPlugin {
    * groups must carry only real group strings; pushing a resolved username (or
    * `undefined`, as an earlier draft did when Janua's response had no `owner`
    * field) corrupts package-access matching.
+   *
+   * Every verified key also carries GROUP_JANUA_KEY and its org as
+   * `janua:org:<org_id>`, so the allow_* hooks can recognise a Janua user even
+   * when the key has no npm:* scope at all.
    */
-  _groupsFor(scopes) {
+  _groupsFor(scopes, orgId) {
     const groups = [];
     for (const scope of scopes) {
       if (typeof scope === 'string' && scope.indexOf('npm:') === 0) {
         groups.push(scope);
       }
+    }
+    groups.push(GROUP_JANUA_KEY);
+    if (typeof orgId === 'string' && orgId.length > 0) {
+      groups.push(GROUP_JANUA_ORG_PREFIX + orgId);
     }
     groups.push(GROUP_AUTHENTICATED);
     return groups;
@@ -278,7 +320,7 @@ class JanuaAuthPlugin {
         const entry = {
           user: this._usernameFor(data),
           scopes,
-          groups: this._groupsFor(scopes),
+          groups: this._groupsFor(scopes, data.org_id),
           orgId: data.org_id || null,
           keyId: data.key_id || null,
           expiresAt: Date.now() + this.cacheTtlMs,
@@ -350,53 +392,86 @@ class JanuaAuthPlugin {
 
     // Not a Janua-authenticated request: let the next plugin / Verdaccio's
     // default group matching decide (this is how htpasswd users keep working).
-    if (!this._hasJanuaScopes(groups)) {
+    if (!this._isJanuaUser(groups)) {
       return callback(null, false);
     }
 
-    if (groups.indexOf(SCOPE_INSTALL) === -1) {
+    const denial = this._denialFor(groups, SCOPE_INSTALL);
+    if (denial) {
       this.logger.warn(
-        { user: user && user.name, pkg: pkg && pkg.name },
-        'verdaccio-auth-janua: access denied, missing npm:install scope'
+        { user: user && user.name, pkg: pkg && pkg.name, reason: denial },
+        'verdaccio-auth-janua: access denied'
       );
-      return callback(
-        new Error('npm:install scope required for package access')
-      );
+      return callback(new Error(`${denial} for package access`));
     }
 
     return callback(null, true);
   }
 
   // -----------------------------------------------------------------
-  // allow_publish -- requires npm:publish on Janua-authenticated users
+  // allow_publish -- requires npm:publish and an allowed org on
+  // Janua-authenticated users. A Janua user is always decided HERE: it never
+  // falls through to the package ACL, whose `publish: $authenticated` would
+  // admit any verified key.
   // -----------------------------------------------------------------
   allow_publish(user, pkg, callback) {
     const groups = (user && user.groups) || [];
 
-    if (!this._hasJanuaScopes(groups)) {
+    if (!this._isJanuaUser(groups)) {
       return callback(null, false);
     }
 
-    if (groups.indexOf(SCOPE_PUBLISH) === -1) {
+    const denial = this._denialFor(groups, SCOPE_PUBLISH);
+    if (denial) {
       this.logger.warn(
-        { user: user && user.name, pkg: pkg && pkg.name },
-        'verdaccio-auth-janua: publish denied, missing npm:publish scope'
+        { user: user && user.name, pkg: pkg && pkg.name, reason: denial },
+        'verdaccio-auth-janua: publish denied'
       );
-      return callback(
-        new Error('npm:publish scope required for package publishing')
-      );
+      return callback(new Error(`${denial} for package publishing`));
     }
 
     return callback(null, true);
   }
 
-  _hasJanuaScopes(groups) {
+  /**
+   * A user this plugin authenticated. GROUP_JANUA_KEY is the marker; npm:*
+   * groups are accepted too so a session cached before the marker existed is
+   * still decided here rather than by the package ACL.
+   */
+  _isJanuaUser(groups) {
     for (const group of groups) {
-      if (typeof group === 'string' && group.indexOf('npm:') === 0) {
+      if (
+        typeof group === 'string' &&
+        (group === GROUP_JANUA_KEY || group.indexOf('npm:') === 0)
+      ) {
         return true;
       }
     }
     return false;
+  }
+
+  _orgAllowed(groups) {
+    for (const group of groups) {
+      if (
+        typeof group === 'string' &&
+        group.indexOf(GROUP_JANUA_ORG_PREFIX) === 0 &&
+        this.allowedOrgIds.indexOf(group.slice(GROUP_JANUA_ORG_PREFIX.length)) !== -1
+      ) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  /** The reason a Janua user is refused, or null when it is allowed. */
+  _denialFor(groups, requiredScope) {
+    if (!this._orgAllowed(groups)) {
+      return 'a key from an allowed Janua organisation is required';
+    }
+    if (groups.indexOf(requiredScope) === -1) {
+      return `${requiredScope} scope required`;
+    }
+    return null;
   }
 }
 

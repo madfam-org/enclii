@@ -402,7 +402,7 @@ func (h *Handler) AddServiceDomain(c *gin.Context) {
 
 	// Trigger reconciliation for platform domains
 	if req.IsPlatformDomain {
-		go h.triggerDomainReconciliation(ctx, serviceUUID, envUUID)
+		go h.triggerDomainReconciliation(serviceUUID, envUUID)
 	}
 
 	// Establish the edge NOW — tunnel ingress rule plus the DNS record (zone
@@ -512,7 +512,7 @@ func (h *Handler) ToggleZeroTrust(c *gin.Context) {
 	}
 
 	// Trigger reconciliation
-	go h.triggerDomainReconciliation(ctx, domain.ServiceID, domain.EnvironmentID)
+	go h.triggerDomainReconciliation(domain.ServiceID, domain.EnvironmentID)
 
 	c.JSON(http.StatusOK, gin.H{
 		"domain":  domain,

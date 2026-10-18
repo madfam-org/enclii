@@ -95,9 +95,9 @@ _Last Updated: 2026-07-26_
 - **Self-hosted PostgreSQL** - In-cluster with persistent storage
 - **Self-hosted Redis** - In-cluster caching (Sentinel ready for multi-node)
 
-> **Builder Node Targeting**: Build workloads are isolated on "The Forge" via Kubernetes taints (`builder=true:NoSchedule`). Production apps run exclusively on "The Sanctuary".
+> **Builder Node Targeting**: Build workloads are steered to builder-role nodes with Kubernetes taints (`builder=true:NoSchedule`). Not every builder-role node is tainted yet, so production workloads can still land on one; tightening that placement is open work.
 
-> **Infrastructure Audit (Jan 2026)**: Evaluated Ubicloud managed PostgreSQL and Redis Sentinel. **Decision: NOT NEEDED** for 99.5% SLA / 24-hour RPO. Sentinel manifests staged for future multi-node deployment.
+> **Infrastructure Audit (Jan 2026)**: Evaluated Ubicloud managed PostgreSQL and Redis Sentinel. **Decision: NOT NEEDED** at this stage. Sentinel manifests staged for future multi-node deployment.
 
 Self-hosted infrastructure is significantly cheaper than equivalent SaaS platforms, but the platform is still a production-running beta until the remaining blockers below are closed.
 
@@ -120,12 +120,12 @@ Self-hosted infrastructure is significantly cheaper than equivalent SaaS platfor
 
 **Access Control:**
 - ✅ **RBAC** - Admin/Developer/Viewer roles with granular permissions
-- ✅ **Multi-Tenant Organizations** - Namespace isolation per tenant
+- ✅ **Multi-Tenant Organizations** - Namespace isolation per tenant; tenant administrators reach only their own tenants (ADR-003, enforced in production since 2026-10-18)
 - ✅ **API Keys** - Service accounts for CI/CD pipelines
 - ✅ **Session Management** - Redis-backed with secure cookies
 
 **Security Hardening:**
-- ✅ **Rate Limiting** - 1,000-10,000 req/min tiers
+- ✅ **Rate Limiting** - 1,000-10,000 req/min tiers (behind the tunnel the per-IP limiter needs `ENCLII_TRUSTED_PROXY_CIDRS`, still an operator TODO in production; see [SECURITY.md](SECURITY.md#client-address-behind-the-tunnel))
 - ✅ **Security Headers** - HSTS, CSP, X-Frame-Options
 - ✅ **Audit Logging** - Immutable security event trail
 - ✅ **RP-Initiated Logout** - Full SSO session termination
@@ -589,6 +589,12 @@ Keep implementation guidance public-safe. If a detail is private/sensitive, plac
 - **`apps/status` has its own lockfile.** `apps/status/Dockerfile` installs from `apps/status/pnpm-lock.yaml` with `--frozen-lockfile`, so a Next bump must regenerate it as well as the root `pnpm-lock.yaml` (pnpm 9.15.9, the Dockerfile's pin). #659 missed it and the status image failed to build until #660.
 - **The Node runner images carry no npm.** The runner stage of `status`, `dispatch` and `switchyard-ui` deletes `npm` and `npx` (#660). Trivy failed those images on HIGH CVEs that lived only in npm's own vendored tree (brace-expansion 5.0.9, undici 6.28.0), no npm release bundled the fixes, and the runtimes only execute `node server.js` (healthchecks use `wget`). CI job `runner-npm-lint` (`scripts/check-runner-no-npm.py`) keeps the deletion in place and rejects a runner `CMD`/`HEALTHCHECK` that calls npm. To add npm back to a runtime, follow the steps in that script's header: allowlist the service with a reason, and pin an npm whose bundled dependencies pass Trivy.
 
+**Security baseline (2026-10-18):**
+- **libexpat 2.9.0-r0 floor** in the `switchyard-api` and `docs-site` images (CVE-2026-77214, #770): the scan gate had stopped their pins until the floor landed.
+- **API-token scopes are bounded by the owner's role** (#767), and **ADR-003 tenant scope is enforced in production** (#800; [runbook](docs/runbooks/TENANT_SCOPE_ENFORCEMENT_ROLLOUT.md#production-status-2026-10-18-times-utc)).
+- **Operator consoles stay in-cluster**: the Vault UI and the Redpanda Console accept no ingress from the tunnel (#772).
+- **Forwarded client-IP headers are believed only from `ENCLII_TRUSTED_PROXY_CIDRS`** (#783); that variable is not set in production yet.
+
 **Responsible Disclosure:**
 Email: [security@madfam.io](mailto:security@madfam.io)
 
@@ -599,7 +605,7 @@ Email: [security@madfam.io](mailto:security@madfam.io)
 We run our entire production infrastructure on Enclii, authenticated by Janua.
 
 When prospects ask **"Can Enclii handle production?"** — we answer with verifiable proof:
-> "We run our entire production on Enclii. Here's our status page showing 99.95% uptime. We deploy 10-20 times per day with zero downtime using our own platform."
+> "We run our entire production on Enclii, deployed with our own platform."
 
 **Production services running today:**
 - Control Plane API at api.enclii.dev

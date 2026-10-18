@@ -990,6 +990,30 @@ targets:
     keys:
       - alertmanager_smtp_password
 
+  # monitoring (2026-10-17) — Grafana's local admin password, until now a
+  # hand-made Secret (grafana-credentials) with no writer of record. Same path
+  # as alertmanager-smtp: grafana_admin_password is the property the git-only
+  # monitoring-secrets ExternalSecret has always named, so there is one copy;
+  # the intake write is a merge, so the other monitoring properties survive.
+  # The DEDICATED grafana-admin ExternalSecret (synced by the monitoring Argo
+  # app) projects it; intake force-syncs that one. Grafana keeps its admin
+  # password in its own database, so the value takes effect at the next Grafana
+  # pod start, when the admin-password-sync init container applies it
+  # (infra/k8s/production/monitoring/grafana.yaml).
+  #
+  # Generatable: nothing outside Grafana holds this password. --generate
+  # grafana_admin_password mints it at the default 32 bytes (43 characters of
+  # base64url), so no operator handles the value. A value typed at the masked
+  # prompt also works, for an operator who keeps it in a password manager.
+  monitoring/grafana-admin:
+    label: Grafana local admin password
+    description: Password of Grafana's built-in admin user (break-glass login at grafana.enclii.dev). Mint server-side with --generate grafana_admin_password, or type one at the masked prompt. Projected to the grafana-admin Secret by the grafana-admin ExternalSecret; the admin-password-sync init container sets it in Grafana's database at the next pod start, so restart Grafana after the submit.
+    vault_path: secret/monitoring
+    namespace: monitoring
+    external_secret: grafana-admin  # pragma: allowlist secret
+    keys:
+      - grafana_admin_password
+
   # monitoring (2026-10-14) — the outside heartbeat's bearer token (enclii PR
   # "send the Watchdog heartbeat outside the cluster"; internal-devops
   # ops/cloudflare/alerting-heartbeat, runbooks/alerting-heartbeat.md).

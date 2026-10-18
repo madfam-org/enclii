@@ -133,6 +133,9 @@ capabilities to a tenant administrator; unset retains the existing enforcement
 default. Other legacy route policies and the global rollout flag are unchanged.
 The active bound addon must be the exact Ready isolated PostgreSQL profile;
 the owned application stays at zero replicas throughout initial preparation.
+The fixed step `portal-sim-turno-vigente` is the one exception: it runs
+against the live portal database, so the gateway may serve, but its rollout
+must have converged on its pinned image.
 
 | Profile | Workload | Fixed operation |
 | --- | --- | --- |
@@ -140,6 +143,7 @@ the owned application stays at zero replicas throughout initial preparation.
 | `map02-sim-initial` | `crea-sim-map02` | Same fixed MAP operation, on kernel 02's own database and runtime role |
 | `map03-sim-initial` | `crea-sim-map03` | Same fixed MAP operation, on kernel 03's own database and runtime role |
 | `portal-sim-initial` | `crea-sim-gateway` | Bundled `001-portal.sql` through the fixed owner-only initial migrator |
+| `portal-sim-turno-vigente` | `crea-sim-gateway` | Fixed step 003 (`003-turno-vigente-por-persona.sql`) on the database `portal-sim-initial` prepared; re-runnable under a new key; answers `APLICADO` or `YA_APLICADO` |
 
 The three MAP profiles share one definition. The profile name alone selects
 the kernel's service, database and runtime role from a closed list. Each
@@ -152,7 +156,8 @@ exposed. A partial MAP migration failure requires governed recovery review; it
 cannot be retried as a populated initial database. The portal accepts its exact
 existing immutable migration receipt and rejects a different/unknown schema.
 
-The image must match its canonical producer's current immutable pin, actual OCI
+The image must match its canonical producer's current immutable pin (a MAP
+kernel may match a recent one; see below), actual OCI
 source/revision labels, exact revision tag and successful main caller workflow
 and closed source CI. MAP requires all fifteen named CI checks to complete with
 `success`; skipped jobs cannot replace a required check. The portal requires
@@ -164,6 +169,15 @@ MAP's existing producer supplies this signed build/pin contract; it does not
 publish an image SBOM/scan attestation. That producer-library improvement is a
 separate follow-up and is not claimed by this receipt. No fictitious platform
 Release row substitutes for GitOps producer evidence.
+
+A MAP kernel's image may trail crea-map's current pin, because crea-map
+re-pins on every deploy. It is still admitted when crea-map pinned that digest
+on `main` within its last 30 pin revisions and 14 days. The dry run then shows
+`producer.pin_match=historical` and the crea-map commit in
+`producer.pin_revision`. Outside that window the preflight answers 409
+`owned image is not among the producer's recent main pins`: re-pin crea-sim's
+MAP image to crea-map's current pin and roll it out first. The portal profiles
+still require the current pin.
 
 The server verifies actual namespace/project and CNPG Cluster/owner/runtime/CA
 UID custody and current runtime-role reconciliation. Owner credentials appear
@@ -185,6 +199,31 @@ owner UID, source UID, project labels and credential bytes must remain exact;
 foreign/existing conflicts and rotation refuse activation without adoption.
 Dry run only submits server-side dry-run copies; ordinary credentials remain
 separate from application/migrator custody.
+
+### Fixed step 003 (`portal-sim-turno-vigente`)
+
+The contract is in
+[Fixed initial custody](../architecture/INITIAL_BOOTSTRAP_CUSTODY.md#fixed-step-portal-sim-turno-vigente).
+Run it only after the crea-sim gateway image that carries step 003 is merged,
+pinned on main and rolled out; the request refuses otherwise. The owner runs it
+with an operator login, in three steps, against the portal addon and the
+`crea-sim-gateway` service:
+
+1. **Dry run.** POST the profile and `service_id` with no `dry_run` field.
+   Expect HTTP 200, `job.dry_run=true`, `job.classification=FIXED_STEP_EXECUTION`
+   and `producer.verified_sources` naming both step files. A 409 names its
+   refusal stage; nothing was created.
+2. **Apply once.** POST again with `dry_run=false`, a new `idempotency_key`
+   and a `reason`. Expect HTTP 200 and `job.name` beginning `step-`. Poll the
+   GET route with that name until `succeeded` or `failed` is non-zero.
+3. **Collect with the same key.** Repeat the step 2 body exactly, within the
+   Job's one-hour TTL. Expect `FIXED_STEP_APPLIED` with
+   `native_receipt.turno_vigente.estado` `APLICADO`, or `YA_APLICADO` when 003
+   was already applied. `FIXED_STEP_HELD` names its `held_reason`; read the
+   Job's logs through Enclii before choosing a new key.
+
+A re-run uses a new key, once the earlier Job has finished. It never reuses
+or rewrites an earlier key's records.
 
 Inspect the same operation with
 `GET /v1/admin/projects/:slug/addons/:id/initial-bootstrap/:job_name`. It returns

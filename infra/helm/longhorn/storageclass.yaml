@@ -1,13 +1,24 @@
-# Longhorn StorageClass for replicated storage
-# Apply after Longhorn is installed: kubectl apply -f storageclass.yaml
+# Longhorn StorageClasses beyond the chart's default `longhorn` class.
+# Created by `enclii ops storage storageclass-apply` (dry run first; it mirrors
+# this file in apps/switchyard-api/internal/api/operator_storage_storageclass_handlers.go).
 #
 # Usage in PVCs:
 #   storageClassName: longhorn-replicated
 #
 # Features:
-# - 1 replica on single-node (increase to 2+ when storage nodes added)
+# - 2 replicas (2026-10-17; was 1 from the single-node era). The cluster has
+#   4 Longhorn nodes, so a second replica lands on another node.
 # - Retain policy (data preserved on PVC deletion)
 # - Immediate binding (volume created immediately)
+#
+# CHANGING A CLASS. StorageClass parameters are immutable in Kubernetes, and
+# storageclass-apply only CREATES missing classes (it reports a class whose
+# parameters differ as drift and leaves it alone). To change a live class:
+#   1. delete the StorageClass object (bound PVs and their volumes are not
+#      touched; only NEW claims read the class);
+#   2. `enclii ops storage storageclass-apply` (dry run), then `--apply`;
+#   3. existing volumes keep their replica count: patch each Longhorn volume's
+#      spec.numberOfReplicas (owner step; Enclii has no adapter for it yet).
 ---
 apiVersion: storage.k8s.io/v1
 kind: StorageClass
@@ -20,15 +31,15 @@ allowVolumeExpansion: true
 reclaimPolicy: Retain
 volumeBindingMode: Immediate
 parameters:
-  numberOfReplicas: "1"
+  numberOfReplicas: "2"
   staleReplicaTimeout: "30"
   fromBackup: ""
   fsType: "ext4"
-  # Single-node: 1 replica (both on same disk = zero HA). Increase when storage nodes added.
   dataLocality: "disabled"  # Allow replicas on any node
 ---
 # High-performance StorageClass for local-only workloads (build caches)
-# Use when data loss is acceptable (caches, temp storage)
+# Use when data loss is acceptable (caches, temp storage). Stays at 1 replica
+# on purpose: strict data locality, and nothing here needs to survive a node.
 apiVersion: storage.k8s.io/v1
 kind: StorageClass
 metadata:

@@ -131,6 +131,7 @@ tags: [production, deployment, checklist, operations]
 ### Authentication & Authorization Hardening
 - [x] CSRF stateless double-submit cookie (multi-replica safe)
 - [x] Global IP-based rate limiter on all public endpoints
+- [x] Set `ENCLII_TRUSTED_PROXY_CIDRS` on switchyard-api to the range cloudflared connects from (the cluster pod CIDR). Done 2026-10-18: both production env files carry the pod CIDR, and gin's `ClientIP` uses the same list ([SECURITY.md](../../SECURITY.md#client-address-behind-the-tunnel); settings: [switchyard-api-settings.md](../reference/switchyard-api-settings.md)).
 - [x] CORS startup validation (fatal if ENCLII_ALLOWED_ORIGINS empty in production, SEC-003)
 - [x] Admin email RBAC restricted to configured OIDC issuer only (SEC-007)
 - [x] Dispatch admin JWT verification via Janua JWKS (replaces cookie trust)

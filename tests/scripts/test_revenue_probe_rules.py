@@ -83,6 +83,12 @@ REQUIRED_FLOWS = {
     ("routecraft", "web"),
     # Added after the audit: Forgesight's API.
     ("forgesight", "api"),
+    # Janua, judged by its readiness REPORT (R107/R109); see below.
+    ("janua", "api"),
+    # Crea Tu Mundo's ERP workspace host and MAP (infra-stability 2026-10-17,
+    # E3 F3): the only vCTO client's hosts were watched by replica counts only.
+    ("ctm-erp", "workspace"),
+    ("ctm-map", "web"),
 }
 
 # The label the Alertmanager revenue route matches on (alertmanager.yaml).
@@ -244,12 +250,120 @@ def test_cotiza_guest_quote_list_is_judged_as_an_array():
     ]
 
 
+# ---------------------------------------------------------------------------
+# Janua: the readiness report decides, not the status code
+# ---------------------------------------------------------------------------
+# Janua's readiness answers 200 while Redis or the database is down and
+# reports the state in its body (internal-devops R107 and R109, 2026-10-04:
+# readiness reports, it does not gate). A status-code check, or /health, which
+# carries no Redis or database field, stays green through both outages. The
+# module must fail on every body below that reports one of them down.
+
+JANUA_READY_URL = "https://auth.madfam.io/api/v1/health/ready"
+
+# The live answer, 2026-10-17T20:32Z (timestamp shortened).
+JANUA_READY_OK = (
+    '{"status":"ready","timestamp":"2026-10-17T20:32:18","database":{"healthy":true,'
+    '"status":"healthy"},"redis":"healthy","redis_circuit":{"state":"closed",'
+    '"last_failure_time":null,"fallback_calls":0,"strict_failures":0,'
+    '"client_initialized":true},"degraded":[]}'
+)
+JANUA_READY_DOWN = {
+    "redis-down": JANUA_READY_OK.replace('"status":"ready"', '"status":"degraded"')
+    .replace('"redis":"healthy"', '"redis":"unhealthy"')
+    .replace('"degraded":[]', '"degraded":["redis"]'),
+    "database-down": JANUA_READY_OK.replace('"status":"ready"', '"status":"degraded"')
+    .replace('"healthy":true,"status":"healthy"', '"healthy":false,"status":"unhealthy"')
+    .replace('"degraded":[]', '"degraded":["database"]'),
+    "both-down": JANUA_READY_OK.replace('"status":"ready"', '"status":"degraded"')
+    .replace('"degraded":[]', '"degraded":["database","redis"]'),
+    "breaker-open": JANUA_READY_OK.replace('"state":"closed"', '"state":"open"'),
+    "breaker-half-open": JANUA_READY_OK.replace('"state":"closed"', '"state":"half_open"'),
+    "database-flag-only": JANUA_READY_OK.replace('"healthy":true', '"healthy":false'),
+    # /health's own answer: 200, and no readiness fields at all.
+    "health-endpoint-body": '{"status":"healthy","version":"0.1.0","environment":"production"}',
+    "empty": "",
+}
+
+
+def _blackbox_body_passes(module: str, body: str) -> bool:
+    """blackbox_exporter's body rules: every not-match regex must match, and
+    no match regex may. Go's regexp and Python's re agree on these patterns."""
+    http = _modules()[module]["http"]
+    must = http.get("fail_if_body_not_matches_regexp") or []
+    must_not = http.get("fail_if_body_matches_regexp") or []
+    return all(re.search(p, body) for p in must) and not any(re.search(p, body) for p in must_not)
+
+
+def test_janua_is_probed_on_its_readiness_report():
+    by_url = dict(_targets())
+    labels = by_url[JANUA_READY_URL]
+    assert labels["module"] == "http_janua_ready"
+    assert (labels["product"], labels["flow"], labels["target_namespace"]) == ("janua", "api", "janua")
+    janua = [u for u, l in _targets() if l["product"] == "janua"]
+    assert janua == [JANUA_READY_URL], f"a Janua probe that cannot see Redis or the database: {janua}"
+
+
+def test_janua_module_passes_the_healthy_report():
+    assert _blackbox_body_passes("http_janua_ready", JANUA_READY_OK)
+
+
+@pytest.mark.parametrize("case", sorted(JANUA_READY_DOWN))
+def test_janua_module_fails_when_redis_or_the_database_is_reported_down(case):
+    assert not _blackbox_body_passes("http_janua_ready", JANUA_READY_DOWN[case]), case
+
+
+def test_janua_module_keeps_the_common_conventions():
+    http = _modules()["http_janua_ready"]["http"]
+    assert not http.get("valid_status_codes"), "2xx: readiness answers 200 while degraded"
+    assert http["headers"] == _modules()["http_2xx_json"]["http"]["headers"]
+    assert http["preferred_ip_protocol"] == "ip4"
+    assert http["method"] == "GET"
+
+
+def test_json_401_module_differs_from_http_401_only_by_accept():
+    """Nauta answers a request with no Accept header as a document navigation
+    (307 to /login); the exporter sends no Accept, so a workspace host on plain
+    http_401 fails every probe while healthy. Asking for JSON gets the 401."""
+    plain = _modules()["http_401"]["http"]
+    json_ = _modules()["http_401_json"]["http"]
+    assert json_["valid_status_codes"] == [401]
+    assert json_["headers"] == {**plain["headers"], "Accept": "application/json"}
+    assert {k: v for k, v in json_.items() if k != "headers"} == {
+        k: v for k, v in plain.items() if k != "headers"
+    }
+
+
+def test_client_workspace_host_is_probed_with_the_json_401_module():
+    by_url = dict(_targets())
+    labels = by_url["https://erp.creatumundo.mx/"]
+    assert labels["module"] == "http_401_json"
+    assert (labels["product"], labels["flow"], labels["target_namespace"]) == (
+        "ctm-erp",
+        "workspace",
+        "nauta",
+    )
+    # The only target on it today; a second one belongs here, with a curl of
+    # its no-Accept and JSON answers in review.
+    assert [u for u, l in _targets() if l["module"] == "http_401_json"] == ["https://erp.creatumundo.mx/"]
+
+
 def test_every_module_is_checked_below():
     """A new module must be added to the parametrized checks, not skip them."""
     assert set(_modules()) == set(MODULES)
 
 
-MODULES = ["http_2xx_json", "http_2xx_json_array", "http_401", "http_dhanam_catalog", "http_dhanam_fx"]
+MODULES = [
+    "http_2xx_json",
+    "http_2xx_json_array",
+    "http_401",
+    "http_dhanam_catalog",
+    "http_dhanam_fx",
+    "http_janua_ready",
+    "http_401_json",
+    "http_dhanam_catalog",
+    "http_dhanam_fx",
+]
 
 
 @pytest.mark.parametrize("name", MODULES)

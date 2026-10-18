@@ -42,6 +42,7 @@ func TestGetActivity_ResponseShape(t *testing.T) {
 	w := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(w)
 	c.Request = httptest.NewRequest(http.MethodGet, "/v1/activity?limit=2", nil)
+	c.Set("is_platform_admin", true) // unscoped feed; scoping is covered in activity_scope_test.go
 	h.GetActivity(c)
 	require.Equal(t, http.StatusOK, w.Code, w.Body.String())
 	require.NoError(t, mock.ExpectationsWereMet())
