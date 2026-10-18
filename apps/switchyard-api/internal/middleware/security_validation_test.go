@@ -396,17 +396,22 @@ func TestUserAgentValidationMiddleware(t *testing.T) {
 // Client IP Detection Tests
 // =============================================================================
 
-func TestGetClientIP(t *testing.T) {
+// clientIPCase is one forwarded-header scenario. TestGetClientIP checks the
+// security middleware's reader against it, and TestConfigureClientIPMatchesGetClientIP
+// checks that gin's Context.ClientIP gives the same answer.
+type clientIPCase struct {
+	name           string
+	trustedProxies []string
+	remoteAddr     string
+	cfConnectingIP string
+	xForwardedFor  string
+	xRealIP        string
+	expectedIP     string
+}
+
+func clientIPCases() []clientIPCase {
 	cluster := []string{"10.0.0.0/8"}
-	tests := []struct {
-		name           string
-		trustedProxies []string
-		remoteAddr     string
-		cfConnectingIP string
-		xForwardedFor  string
-		xRealIP        string
-		expectedIP     string
-	}{
+	return []clientIPCase{
 		{
 			name:       "direct connection",
 			remoteAddr: "192.168.1.100:12345",
@@ -514,6 +519,10 @@ func TestGetClientIP(t *testing.T) {
 			expectedIP:     "2001:db8::5",
 		},
 	}
+}
+
+func TestGetClientIP(t *testing.T) {
+	tests := clientIPCases()
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

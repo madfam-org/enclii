@@ -485,6 +485,17 @@ func main() {
 	}
 
 	router := gin.New()
+	// c.ClientIP() must believe forwarded headers only from trusted proxies,
+	// exactly like the security middleware (ENCLII_TRUSTED_PROXY_CIDRS).
+	trustedProxies := middleware.TrustedProxiesFromEnv()
+	if err := middleware.ConfigureClientIP(router, trustedProxies); err != nil {
+		logrus.Fatal("Failed to configure trusted proxies: ", err)
+	}
+	if len(trustedProxies) == 0 {
+		logrus.Warn("ENCLII_TRUSTED_PROXY_CIDRS is unset: client IPs are the TCP peer (behind the tunnel, the cloudflared pod)")
+	} else {
+		logrus.WithField("trusted_proxies", trustedProxies).Info("✓ Client IP: forwarded headers believed only from trusted proxies")
+	}
 	router.Use(gin.Logger())
 	// Use custom recovery middleware that logs panics with full stack trace
 	// and returns proper JSON error responses instead of empty body
