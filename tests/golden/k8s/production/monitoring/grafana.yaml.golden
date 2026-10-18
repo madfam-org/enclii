@@ -336,12 +336,20 @@ metadata:
     app.kubernetes.io/part-of: enclii
 spec:
   replicas: 1
-  # grafana-data is ReadWriteOnce. Under the default RollingUpdate the new
-  # pod waits forever for a volume the old pod still holds (seen 2026-10-17
-  # after #779: PodInitializing for over an hour on another node). Recreate
-  # stops the old pod first: about a minute of Grafana downtime per rollout.
+  # grafana-data is ReadWriteOnce. Under the default RollingUpdate (25% surge)
+  # the new pod waits forever for a volume the old pod still holds (seen
+  # 2026-10-17 after #779: PodInitializing for hours on another node).
+  # maxSurge 0 / maxUnavailable 1 stops the old pod first: about a minute of
+  # Grafana downtime per rollout.
+  #
+  # Not `type: Recreate`: Argo applies server-side, the live object keeps the
+  # defaulted rollingUpdate block, and the API refuses Recreate alongside it
+  # ("spec.strategy.rollingUpdate: Forbidden"), so the sync never lands (#799).
   strategy:
-    type: Recreate
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 0
+      maxUnavailable: 1
   selector:
     matchLabels:
       app: grafana
