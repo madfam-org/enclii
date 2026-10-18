@@ -585,6 +585,16 @@ jobs:
             test rules /w/{name}
         run: pytest tests/scripts/test_revenue_probe_rules.py tests/scripts/test_money_engine_status.py -v -rs
 
+      # The geometry-factory probes (blackbox-geometry job, geometry-probes
+      # rule group) share the exporter and its modules; same layers.
+      - name: Run geometry probe rule tests
+        env:
+          ENCLII_PROMTOOL: >-
+            docker run --rm --entrypoint /bin/promtool -v {dir}:/w:ro
+            docker.io/prom/prometheus:v2.53.3
+            test rules /w/{name}
+        run: pytest tests/scripts/test_geometry_probe_rules.py -v -rs
+
       - name: Validate blackbox modules with the pinned exporter
         run: |
           set -euo pipefail

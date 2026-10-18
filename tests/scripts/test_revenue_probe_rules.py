@@ -410,6 +410,9 @@ MODULES = [
     "http_janua_cors_dhanam",
     "http_dhanam_fx_degraded",
     "http_karafiel_broker",
+    # Used by the blackbox-geometry job; its targets and body check are
+    # pinned in tests/scripts/test_geometry_probe_rules.py.
+    "http_200_html",
 ]
 
 
