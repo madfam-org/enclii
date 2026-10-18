@@ -157,13 +157,15 @@ def test_kustomize_renders_the_namespace_and_pins_the_image():
     out = subprocess.run(["kustomize", "build", str(SYNTHETICS)], capture_output=True, text=True, check=True).stdout
     docs = [d for d in yaml.safe_load_all(out) if d]
     kinds = sorted(d["kind"] for d in docs)
-    assert kinds == sorted(["Namespace", "ResourceQuota", "NetworkPolicy", "NetworkPolicy", "ServiceAccount", "ExternalSecret", "CronJob"])
+    # Two CronJobs: the staging buyer and the weekly production pass
+    # (cronjob-production-weekly.yaml).
+    assert kinds == sorted(["Namespace", "ResourceQuota", "NetworkPolicy", "NetworkPolicy", "ServiceAccount", "ExternalSecret", "CronJob", "CronJob"])
     for d in docs:
         if d["kind"] != "Namespace":
             assert d["metadata"]["namespace"] == "synthetics", d["metadata"]["name"]
-    (cj,) = [d for d in docs if d["kind"] == "CronJob"]
-    image = cj["spec"]["jobTemplate"]["spec"]["template"]["spec"]["containers"][0]["image"]
-    assert re.fullmatch(r"ghcr\.io/madfam-org/[a-z0-9/_-]+@sha256:[0-9a-f]{64}", image), image
+    for cj in [d for d in docs if d["kind"] == "CronJob"]:
+        image = cj["spec"]["jobTemplate"]["spec"]["template"]["spec"]["containers"][0]["image"]
+        assert re.fullmatch(r"ghcr\.io/madfam-org/[a-z0-9/_-]+@sha256:[0-9a-f]{64}", image), image
 
 
 def test_the_image_entry_is_a_ghcr_digest_pin():
@@ -592,7 +594,8 @@ def test_promtool_checks_the_full_rule_text():
     body = _rules_cm()["data"][RULES_KEY]
     code, output = _promtool({RULES_KEY: body}, RULES_KEY, "check rules")
     assert code == 0, f"promtool rejected {RULES_KEY}:\n{output}"
-    assert "SUCCESS: 2 rules found" in output, output
+    # 2 staging rules + 2 production-pass rules (synthetic-journeys-production).
+    assert "SUCCESS: 4 rules found" in output, output
 
 
 def test_promtool_evaluates_the_synthetic_journey_rules():
