@@ -129,7 +129,10 @@ def test_rule_text_carries_no_hostname_or_literal_identity():
     labels (workspace_id, cycle) at runtime, never through a literal value.
     Real client names are checked by MADFAM's private estate scan."""
     text = _rules_text()
-    assert not re.search(r"\b[a-z0-9-]+\.(mx|com|io|app|dev|quest)\b", text, flags=re.I), "hostname in rule text"
+    # Prometheus's own vocabulary (prometheus.io/*) and MADFAM's platform
+    # docs hosts are not identities; anything else that looks like a host is.
+    hosts = {h.lower() for h in re.findall(r"\b[a-z0-9-]+\.(?:mx|com|io|app|dev|quest)\b", text, flags=re.I)}
+    assert hosts <= {"prometheus.io", "enclii.dev", "madfam.io", "github.com"}, f"hostname in rule text: {sorted(hosts)}"
     assert not re.search(r"workspace_id\s*=\s*[\"'][^\"']+[\"']", text), "literal workspace_id in a selector"
     assert "{{ $labels.workspace_id }}" in text
 
