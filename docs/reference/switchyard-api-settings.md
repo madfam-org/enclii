@@ -15,7 +15,7 @@ State as of 2026-10-18.
 |----------|---------|------------|--------------|
 | `ENCLII_TENANT_SCOPE_ENFORCE` | on | default (enforced) since 2026-10-18 | ADR-003 tenant scope. `false` is a rollback lever only, and an open P0 while set ([runbook](../runbooks/TENANT_SCOPE_ENFORCEMENT_ROLLOUT.md)) |
 | `ENCLII_PLATFORM_ADMIN_EMAILS` | falls back to `ENCLII_ADMIN_EMAILS` | set explicitly (stage 2, #798) | Allow-list for the cross-tenant platform rank, reconciled at pod start; an address grants nothing until its user has logged in once |
-| `ENCLII_TRUSTED_PROXY_CIDRS` | unset (trust no proxy) | **unset — operator TODO** | Peers whose forwarded client-IP headers are believed (#783). Unset, the per-IP rate limiter and IP filters key on the cloudflared pod ([SECURITY.md](../../SECURITY.md#client-address-behind-the-tunnel)) |
+| `ENCLII_TRUSTED_PROXY_CIDRS` | unset (trust no proxy) | the cluster pod CIDR (set 2026-10-18) | Peers whose forwarded client-IP headers are believed, by the security middleware's limiter and filters (#783) and by gin's `ClientIP` for audit rows and logs ([SECURITY.md](../../SECURITY.md#client-address-behind-the-tunnel)) |
 | `ENCLII_OPS_RESTART_NAMESPACES` | empty (refuse all) | set in `infra/k8s/base/switchyard-api.yaml` | Namespaces `enclii ops pods restart` may act in; `kube-*` is always refused ([ops](../cli/commands/ops.md#ops-pods-restart)) |
 
 ## Startup

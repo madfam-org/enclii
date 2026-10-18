@@ -70,17 +70,26 @@ API believes forwarded client-IP headers only from peers listed in
 `ENCLII_TRUSTED_PROXY_CIDRS` (comma-separated CIDRs or IPs); an unset value
 trusts nobody and uses the peer address.
 
-**Operator TODO (production, 2026-10-18): `ENCLII_TRUSTED_PROXY_CIDRS` is not
-set yet.** Until it is, the per-IP rate limiter and the IP allow/block filters
-key on the cloudflared pod, so every visitor behind one pod shares one bucket,
-and the client address those filters log is the pod's. Set it in
+**Production (2026-10-18):** `ENCLII_TRUSTED_PROXY_CIDRS` is set to the cluster
+pod network, the range the cloudflared pods connect from (the k3s
+`cluster_cidr` in `infra/terraform/main.tf`), in
 `infra/k8s/components/environment/production.env` and
-`infra/k8s/production/environment-patch.yaml` to the range the cloudflared
-pods connect from (the cluster pod CIDR), after confirming that range. The
-item is also on the
-[production checklist](docs/production/PRODUCTION_CHECKLIST.md#authentication--authorization-hardening).
-Code: `apps/switchyard-api/internal/middleware/security.go`
-(`getTrustedProxies`). Other production settings:
+`infra/k8s/production/environment-patch.yaml`. The per-IP rate limiter and the
+IP allow/block filters therefore key on each visitor's `CF-Connecting-IP`, not
+on the cloudflared pod.
+
+The same list drives gin's `Context.ClientIP()`, through
+`middleware.ConfigureClientIP` at router construction. That is what the audit
+row, the authentication and CSRF logs, the per-endpoint rate limiter and an API
+token's last-used address record. Before this wiring, gin's default trusted
+every peer there, so those addresses could come from a client-supplied header.
+The two readers share one parser: an entry that does not parse is dropped and
+logged, so a typo narrows trust rather than widening it. With the variable
+unset, neither reader believes any header and both record the TCP peer.
+
+Code: `apps/switchyard-api/internal/middleware/security.go` (`getClientIP`,
+`getTrustedProxies`) and `client_ip.go` (`ConfigureClientIP`). Other
+production settings:
 [`docs/reference/switchyard-api-settings.md`](docs/reference/switchyard-api-settings.md).
 
 ## Security Best Practices for Enclii Users

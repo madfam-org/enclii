@@ -92,12 +92,13 @@ spec:
         # (the 55 team-less projects were re-parented first). Read at pod start.
         - name: ENCLII_PLATFORM_ADMIN_EMAILS
           value: "aldo@madfam.io"
-        # ENCLII_TRUSTED_PROXY_CIDRS (#783) is NOT set yet — operator TODO
-        # (2026-10-18). Unset, forwarded client-IP headers are ignored and the
-        # per-IP rate limiter and IP filters key on the cloudflared pod. Set it
-        # here and in production.env to the range cloudflared connects from
-        # (the cluster pod CIDR) once that range is confirmed. SECURITY.md,
-        # "Client address behind the tunnel".
+        # Forwarded client-IP headers are believed only from peers in these
+        # ranges (#783): the cluster pod network, where cloudflared runs
+        # (k3s cluster_cidr, infra/terraform/main.tf). Set 2026-10-18 by the
+        # owner. Keep production.env in step. SECURITY.md, "Client address
+        # behind the tunnel".
+        - name: ENCLII_TRUSTED_PROXY_CIDRS
+          value: "10.42.0.0/16"
         # Container Registry Credentials (for pushing built images)
         - name: ENCLII_REGISTRY
           value: "ghcr.io/madfam-org"
