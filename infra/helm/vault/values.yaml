@@ -69,7 +69,8 @@ server:
   auditStorage:
     enabled: true
     storageClass: longhorn
-    size: 2Gi
+    # 8Gi = the live claim (2026-10-17); see infra/argocd/apps/vault.yaml.
+    size: 8Gi
 
   # Resource limits — HA mode is slightly heavier than standalone.
   resources:
