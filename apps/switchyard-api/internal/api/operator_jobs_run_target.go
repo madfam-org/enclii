@@ -167,8 +167,10 @@ func runTargetSpec(r runTargetRequest, s workloadtargets.Snapshot) (batchv1.JobS
 	return batchv1.JobSpec{BackoffLimit: &zero, ActiveDeadlineSeconds: &r.Args.Timeout, TTLSecondsAfterFinished: &ttl,
 		Template: corev1.PodTemplateSpec{ObjectMeta: metav1.ObjectMeta{Labels: map[string]string{"app.kubernetes.io/managed-by": "enclii-ops"}}, Spec: corev1.PodSpec{
 			Containers: []corev1.Container{c}, RestartPolicy: corev1.RestartPolicyNever, AutomountServiceAccountToken: &no,
-			ServiceAccountName: p.ServiceAccountName, ImagePullSecrets: p.ImagePullSecrets, SecurityContext: p.SecurityContext,
-			NodeSelector: p.NodeSelector, Tolerations: p.Tolerations, Affinity: p.Affinity, SchedulerName: p.SchedulerName,
+			ServiceAccountName: p.ServiceAccountName,
+			ImagePullSecrets:   p.ImagePullSecrets, // pragma: allowlist secret (runtime references only, no credential values)
+			SecurityContext:    p.SecurityContext,
+			NodeSelector:       p.NodeSelector, Tolerations: p.Tolerations, Affinity: p.Affinity, SchedulerName: p.SchedulerName,
 			TopologySpreadConstraints: p.TopologySpreadConstraints, PriorityClassName: p.PriorityClassName, PreemptionPolicy: p.PreemptionPolicy,
 			RuntimeClassName: p.RuntimeClassName, DNSPolicy: p.DNSPolicy, DNSConfig: p.DNSConfig,
 		}}}, nil
