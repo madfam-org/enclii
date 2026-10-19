@@ -1,0 +1,37 @@
+# TEMPORARY, this branch only: regenerate pnpm-lock.yaml with the registry
+# credential CI already holds (org secret NPM_MADFAM_TOKEN) and publish the
+# result as an artifact. No node_modules is kept, no secret leaves the job.
+# Removed in the commit that lands the lockfile.
+name: tmp lockfile refresh
+on:
+  pull_request:
+    paths:
+      - package.json
+      - .github/workflows/tmp-lockfile-refresh.yml
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  refresh:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    env:
+      NPM_MADFAM_TOKEN: ${{ secrets.NPM_MADFAM_TOKEN }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: pnpm/action-setup@v6
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 20
+      - name: Regenerate the lockfile only
+        run: |
+          set -euo pipefail
+          test -n "$NPM_MADFAM_TOKEN" || { echo "::error::NPM_MADFAM_TOKEN is empty in this run"; exit 1; }
+          pnpm install --lockfile-only --ignore-scripts
+          git diff --stat -- pnpm-lock.yaml
+          git diff -U0 -- pnpm-lock.yaml | grep -E '^[-+]' | grep -vE '^(\+\+\+|---)' | grep -vcE 'sharp' || true
+      - uses: actions/upload-artifact@v4
+        with:
+          name: pnpm-lock-sharp-0.35.5
+          path: pnpm-lock.yaml
+          retention-days: 1
