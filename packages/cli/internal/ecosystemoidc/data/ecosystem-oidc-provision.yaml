@@ -908,6 +908,8 @@ platforms:
         - profile
         - email
         - offline_access
+        # UI-only first-party SSO consent opt-in; MCP remains independent.
+        - madfam:silent_auth
       grant_types:
         - authorization_code
         - refresh_token

@@ -176,6 +176,7 @@ Examples:
 	oidc.Flags().BoolVar(&dryRun, "dry-run", false, "Plan Janua reconcile without Vault intake")
 	oidc.Flags().BoolVar(&jsonOut, "json", false, "JSON output (no secret values)")
 	oidc.Flags().IntVar(&graceHours, "grace-hours", 0, fmt.Sprintf("Grace period (0-%d hours) for previous secrets when a secret is rotated; 0 retires them immediately. Unset keeps Janua's default", ecosystemoidc.MaxGraceHours))
+	oidc.AddCommand(newOIDCInspectCommand(cfg))
 	cmd.AddCommand(oidc)
 	cmd.AddCommand(newSecretsProvisionKalyaFeedCommand(cfg))
 	return cmd
