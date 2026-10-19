@@ -70,6 +70,9 @@
 # pgBackRest commands it runs (info, restore, archive-get) only read the repo.
 # tests/scripts/test_pgbackrest_restore_drill.py pins all of this.
 #
+# Cleanup is part of the verdict: stop and verified empty scratch must succeed
+# before the success receipt is emitted. Failures retain a nonzero exit status.
+#
 # PASS/FAIL SIGNAL: the Job's exit code. kube-state-metrics publishes
 # kube_cronjob_status_last_successful_time for this CronJob, and the
 # pgbackrest-health-rules in monitoring/prometheus.yaml alert when it is
@@ -327,10 +330,37 @@ spec:
                     exit 1
                   }
                   remaining() { echo $(( START_EPOCH + DRILL_DEADLINE_SECONDS - $(date +%s) )); }
+                  PASSED=no
                   cleanup() {
-                    pg_ctl -D "${PGDATA_DIR}" stop -m immediate >/dev/null 2>&1 || true
-                    # Never leave restored tenant data at rest on the PVC.
-                    find "${PGDATA_DIR}" -mindepth 1 -delete 2>/dev/null || true
+                    ORIGINAL_EXIT=$?
+                    trap - EXIT
+                    STOPPED=yes; CLEARED=no
+                    if pg_ctl -D "${PGDATA_DIR}" status >/dev/null 2>&1; then
+                      pg_ctl -D "${PGDATA_DIR}" stop -m immediate >/dev/null 2>&1 || STOPPED=no
+                    fi
+                    if pg_ctl -D "${PGDATA_DIR}" status >/dev/null 2>&1; then STOPPED=no; fi
+                    # Do not delete files under a server that failed to stop.
+                    # A failed removal (or a successful no-op) cannot pass.
+                    if [ "${STOPPED}" = yes ]; then
+                      if find "${PGDATA_DIR}" -mindepth 1 -delete 2>/dev/null; then
+                        if REMAINING=$(find "${PGDATA_DIR}" -mindepth 1 -print -quit 2>/dev/null) && [ -z "${REMAINING}" ]; then
+                          CLEARED=yes
+                        fi
+                      fi
+                    fi
+                    if [ "${STOPPED}" != yes ] || [ "${CLEARED}" != yes ]; then
+                      echo "[$(date -Iseconds)] RESTORE DRILL FAILED: cleanup incomplete (server_stopped=${STOPPED} scratch_empty=${CLEARED})" >&2
+                      exit 1
+                    fi
+                    if [ "${ORIGINAL_EXIT}" -eq 0 ] && [ "${PASSED}" != yes ]; then
+                      echo "[$(date -Iseconds)] RESTORE DRILL FAILED: verification did not complete" >&2
+                      exit 1
+                    fi
+                    if [ "${ORIGINAL_EXIT}" -eq 0 ] && [ "${PASSED}" = yes ]; then
+                      echo "RESTORE CLEANUP PASSED: server_stopped=true scratch_empty=true"
+                      echo "[$(date -Iseconds)] RESTORE DRILL PASSED in $(( $(date +%s) - START_EPOCH ))s: databases=${DB_COUNT} user_tables=${TABLES} wal_segments=${WAL_SEGMENTS} replay_age=${REPLAY_AGE}s"
+                    fi
+                    exit "${ORIGINAL_EXIT}"
                   }
                   trap cleanup EXIT
 
@@ -414,7 +444,8 @@ spec:
                   echo "  last replayed transaction: ${LAST_TX} (${REPLAY_AGE}s before drill start)"
                   [ "${REPLAY_AGE}" -le "${MAX_REPLAY_AGE_SECONDS}" ] || fail "restored data is ${REPLAY_AGE}s old (> ${MAX_REPLAY_AGE_SECONDS}s): WAL chain incomplete"
 
-                  echo "[$(date -Iseconds)] RESTORE DRILL PASSED in $(( $(date +%s) - START_EPOCH ))s: databases=${DB_COUNT} user_tables=${TABLES} wal_segments=${WAL_SEGMENTS} replay_age=${REPLAY_AGE}s"
+                  # EXIT cleanup publishes success only after stop + empty verification.
+                  PASSED=yes
               volumeMounts:
                 - name: pgbackrest-binary
                   mountPath: /opt/pgbackrest
