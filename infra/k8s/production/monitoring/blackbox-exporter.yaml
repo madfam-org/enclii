@@ -158,7 +158,15 @@ data:
             User-Agent: "madfam-revenue-probe/1.0 (+https://github.com/madfam-org/enclii)"
             Accept: "application/json"
 
-      # Dhanam's public billing catalog: 2xx and at least one product.
+      # Dhanam's public billing catalog: 2xx, at least one product, and at
+      # least one tier carrying an IVA-inclusive MXN price (`grossPrices`),
+      # the figure every pricing page displays and the checkout charges. A
+      # catalog that still lists products but lost its gross prices would
+      # render price-less tier cards on every product's pricing page.
+      # FRESHNESS is not checkable here: the response's `updatedAt` is the
+      # time of the response, not of the last Tulana-to-Dhanam sync, so a
+      # stale catalog looks identical to a fresh one (recorded as a Dhanam
+      # gap in the PR that added the grossPrices check).
       http_dhanam_catalog:
         prober: http
         timeout: 10s
@@ -171,6 +179,7 @@ data:
             User-Agent: "madfam-revenue-probe/1.0 (+https://github.com/madfam-org/enclii)"
           fail_if_body_not_matches_regexp:
             - '"products"\s*:\s*\[\s*\{'
+            - '"grossPrices"\s*:\s*\{\s*"MXN"\s*:\s*\{\s*"monthly"\s*:\s*[1-9]'
 
       # Dhanam FX health: 2xx, and the test rate must NOT come from the
       # hardcoded emergency table. A body match sets
@@ -190,6 +199,150 @@ data:
             User-Agent: "madfam-revenue-probe/1.0 (+https://github.com/madfam-org/enclii)"
           fail_if_body_matches_regexp:
             - '"source"\s*:\s*"emergency_fallback"'
+
+      # ---- Money paths (money-engine wave 2, 2026-10-18) ----------------
+      # The modules below probe the PAGES and the sign-in rail a buyer goes
+      # through, not only the APIs behind them. Each answers today exactly as
+      # its pass condition says (the curl evidence is in the PR that added
+      # them, enclii "money-path probes").
+
+      # A public HTML page answering 2xx without a redirect. For pricing,
+      # sign-up and booking pages whose prices or forms render in the browser
+      # (dhan.am/pricing, app.dhan.am/register, kalya.app/madfam): the server
+      # HTML carries no price to check, so the body check only proves an HTML
+      # document came back. What it catches: 5xx, 404 (route gone), a
+      # redirect (to a login wall or a locale), a JSON error with 200. What it
+      # cannot: a page that renders broken in the browser; that is the
+      # journeys runner's job (internal-devops tools/journeys).
+      http_page_2xx:
+        prober: http
+        timeout: 10s
+        http:
+          method: GET
+          preferred_ip_protocol: ip4
+          follow_redirects: false
+          fail_if_not_ssl: true
+          headers:
+            User-Agent: "madfam-revenue-probe/1.0 (+https://github.com/madfam-org/enclii)"
+          fail_if_body_not_matches_regexp:
+            - '(?i)<html'
+
+      # http_page_2xx for a pricing page that renders its prices on the
+      # server: the HTML must also name the currency and IVA. On these pages
+      # the tier cards are rendered from the Dhanam catalog (gross MXN,
+      # «IVA incluido»), so a page whose catalog read failed and fell back to
+      # an empty or price-less shell fails here. No price VALUE is checked:
+      # prices belong to Tulana and Dhanam, and a probe that pins one would
+      # page on every legitimate price change.
+      http_pricing_page:
+        prober: http
+        timeout: 10s
+        http:
+          method: GET
+          preferred_ip_protocol: ip4
+          follow_redirects: false
+          fail_if_not_ssl: true
+          headers:
+            User-Agent: "madfam-revenue-probe/1.0 (+https://github.com/madfam-org/enclii)"
+          fail_if_body_not_matches_regexp:
+            - '(?i)<html'
+            - 'MXN'
+            - 'IVA'
+
+      # Janua's OpenID discovery document: the issuer every product's
+      # sign-in redirect and token check starts from. It must name the
+      # production issuer and a JWKS URI.
+      http_oidc_discovery:
+        prober: http
+        timeout: 10s
+        http:
+          method: GET
+          preferred_ip_protocol: ip4
+          follow_redirects: false
+          fail_if_not_ssl: true
+          headers:
+            User-Agent: "madfam-revenue-probe/1.0 (+https://github.com/madfam-org/enclii)"
+          fail_if_body_not_matches_regexp:
+            - '"issuer"\s*:\s*"https://auth\.madfam\.io"'
+            - '"jwks_uri"\s*:\s*"https://'
+
+      # Janua's signing keys: at least one key. Every API that verifies a
+      # Janua token (Dhanam's checkout and billing routes among them) reads
+      # this; an empty key set fails every signed-in request.
+      http_jwks:
+        prober: http
+        timeout: 10s
+        http:
+          method: GET
+          preferred_ip_protocol: ip4
+          follow_redirects: false
+          fail_if_not_ssl: true
+          headers:
+            User-Agent: "madfam-revenue-probe/1.0 (+https://github.com/madfam-org/enclii)"
+          fail_if_body_not_matches_regexp:
+            - '"keys"\s*:\s*\[\s*\{'
+
+      # The sign-in call a Dhanam buyer's browser makes, from Dhanam's
+      # origin: an anonymous GET of Janua's session route with
+      # `Origin: https://app.dhan.am` must answer 401 AND allow that origin.
+      # This is the failure that blocked the synthetic buyer's sign-up on
+      # 2026-10-17 (Janua's CORS list lacked a Dhanam origin; janua#727):
+      # every Janua health check was green while the browser's sign-up call
+      # was refused.
+      http_janua_cors_dhanam:
+        prober: http
+        timeout: 10s
+        http:
+          method: GET
+          preferred_ip_protocol: ip4
+          follow_redirects: false
+          fail_if_not_ssl: true
+          valid_status_codes: [401]
+          headers:
+            User-Agent: "madfam-revenue-probe/1.0 (+https://github.com/madfam-org/enclii)"
+            Accept: "application/json"
+            Origin: "https://app.dhan.am"
+          fail_if_header_not_matches:
+            - header: Access-Control-Allow-Origin
+              regexp: '^https://app\.dhan\.am$'
+
+      # Dhanam FX served but DEGRADED (a stored or spot rate instead of the
+      # provider's): `"degraded":true` in the test rate. Separate from
+      # http_dhanam_fx on purpose, so that module's one regex keeps meaning
+      # "emergency_fallback" and nothing else. A warning, not a page: a
+      # degraded rate is a real rate.
+      http_dhanam_fx_degraded:
+        prober: http
+        timeout: 10s
+        http:
+          method: GET
+          preferred_ip_protocol: ip4
+          follow_redirects: false
+          fail_if_not_ssl: true
+          headers:
+            User-Agent: "madfam-revenue-probe/1.0 (+https://github.com/madfam-org/enclii)"
+          fail_if_body_matches_regexp:
+            - '"degraded"\s*:\s*true'
+
+      # Karafiel's full health report with its task broker. /api/v1/health/
+      # answers 200 while Redis (the Celery broker the worker and beat read)
+      # is down, because only the database decides its status code. Asynchronous
+      # CFDI work (the worker's queue) stops in that state, so this module also
+      # requires "redis":"connected". Karafiel has no endpoint that reports the
+      # PAC (Facturapi) itself; that gap is recorded in the PR.
+      http_karafiel_broker:
+        prober: http
+        timeout: 10s
+        http:
+          method: GET
+          preferred_ip_protocol: ip4
+          follow_redirects: false
+          fail_if_not_ssl: true
+          headers:
+            User-Agent: "madfam-revenue-probe/1.0 (+https://github.com/madfam-org/enclii)"
+          fail_if_body_not_matches_regexp:
+            - '"database"\s*:\s*"connected"'
+            - '"redis"\s*:\s*"connected"'
 ---
 apiVersion: apps/v1
 kind: Deployment

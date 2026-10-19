@@ -89,6 +89,35 @@ REQUIRED_FLOWS = {
     # E3 F3): the only vCTO client's hosts were watched by replica counts only.
     ("ctm-erp", "workspace"),
     ("ctm-map", "web"),
+    # Money paths (money-engine wave 2, 2026-10-18): the pages and the
+    # sign-in rail a buyer goes through, not only the APIs behind them.
+    ("dhanam", "pricing-page"),
+    ("dhanam", "signup-page"),
+    ("janua", "oidc-discovery"),
+    ("janua", "jwks"),
+    ("janua", "cors-dhanam"),
+    ("kalya", "booking-page"),
+    ("selva", "pricing-page"),
+    ("karafiel", "pricing-page"),
+    ("dhanam", "fx-degraded"),
+    ("karafiel", "cfdi-broker"),
+}
+
+# The money paths that take money today, and the steps each must contain.
+# A path is a page (MoneyPathDown); removing a step needs a reason in review.
+MONEY_PATHS = {
+    "retainer": {("nauta", "web"), ("karafiel", "api"), ("janua", "api"), ("janua", "jwks"), ("janua", "oidc-discovery")},
+    "dhanam-self-serve": {
+        ("dhanam", "pricing-page"),
+        ("dhanam", "signup-page"),
+        ("dhanam", "api"),
+        ("dhanam", "billing-catalog"),
+        ("janua", "api"),
+        ("janua", "oidc-discovery"),
+        ("janua", "jwks"),
+        ("janua", "cors-dhanam"),
+    },
+    "sales-booking": {("kalya", "web"), ("kalya", "booking-page"), ("madfam-site", "web")},
 }
 
 # The label the Alertmanager revenue route matches on (alertmanager.yaml).
@@ -134,11 +163,19 @@ def _rules_text() -> str:
     return _configmap(PROMETHEUS, "prometheus-rules")["data"][RULES_KEY]
 
 
-def _rules() -> dict[str, dict]:
+def _group_rules(name: str) -> dict[str, dict]:
     groups = yaml.safe_load(_rules_text())["groups"]
-    group = [g for g in groups if g.get("name") == "revenue-probes"]
-    assert len(group) == 1, "expected exactly one `revenue-probes` group"
+    group = [g for g in groups if g.get("name") == name]
+    assert len(group) == 1, f"expected exactly one `{name}` group"
     return {r["alert"]: r for r in group[0]["rules"]}
+
+
+def _rules() -> dict[str, dict]:
+    return _group_rules("revenue-probes")
+
+
+def _money_rules() -> dict[str, dict]:
+    return _group_rules("money-paths")
 
 
 # ---------------------------------------------------------------------------
@@ -300,8 +337,13 @@ def test_janua_is_probed_on_its_readiness_report():
     labels = by_url[JANUA_READY_URL]
     assert labels["module"] == "http_janua_ready"
     assert (labels["product"], labels["flow"], labels["target_namespace"]) == ("janua", "api", "janua")
-    janua = [u for u, l in _targets() if l["product"] == "janua"]
-    assert janua == [JANUA_READY_URL], f"a Janua probe that cannot see Redis or the database: {janua}"
+    # Janua's API health is judged ONLY by the readiness report; the other
+    # Janua targets are the sign-in rail (discovery, keys, the browser's CORS
+    # call) and the public pricing page, never a second "is the API up" probe
+    # that cannot see Redis or the database.
+    janua = {l["flow"]: u for u, l in _targets() if l["product"] == "janua"}
+    assert janua["api"] == JANUA_READY_URL
+    assert set(janua) == {"api", "oidc-discovery", "jwks", "cors-dhanam", "pricing-page"}, janua
 
 
 def test_janua_module_passes_the_healthy_report():
@@ -361,8 +403,13 @@ MODULES = [
     "http_dhanam_fx",
     "http_janua_ready",
     "http_401_json",
-    "http_dhanam_catalog",
-    "http_dhanam_fx",
+    "http_page_2xx",
+    "http_pricing_page",
+    "http_oidc_discovery",
+    "http_jwks",
+    "http_janua_cors_dhanam",
+    "http_dhanam_fx_degraded",
+    "http_karafiel_broker",
 ]
 
 
@@ -407,12 +454,28 @@ def test_network_policy_admits_prometheus_on_the_probe_port():
 
 def test_rules_page_and_fx_regex_is_not_double_paged():
     rules = _rules()
-    assert set(rules) == {"RevenueEndpointDown", "DhanamFXEmergencyFallback", "RevenueProbesNotRunning"}
+    assert set(rules) == {
+        "RevenueEndpointDown",
+        "RevenueEndpointDegraded",
+        "DhanamFXEmergencyFallback",
+        "RevenueProbesNotRunning",
+    }
+    severities = {name: rule["labels"]["severity"] for name, rule in rules.items()}
+    assert severities == {
+        "RevenueEndpointDown": "critical",
+        "RevenueEndpointDegraded": "warning",
+        "DhanamFXEmergencyFallback": "critical",
+        "RevenueProbesNotRunning": "critical",
+    }
     for name, rule in rules.items():
-        assert rule["labels"]["severity"] == "critical", name
         assert f'job="{JOB}"' in rule["expr"], name
     assert 'check="fx-source"' in rules["RevenueEndpointDown"]["expr"]
     assert "unless" in rules["RevenueEndpointDown"]["expr"]
+    # A money-path step pages once, as its path (MoneyPathDown), and a
+    # warning target never pages: RevenueEndpointDown must exclude both.
+    assert 'paging!="warning"' in rules["RevenueEndpointDown"]["expr"]
+    assert 'money_path=""' in rules["RevenueEndpointDown"]["expr"]
+    assert 'paging="warning"' in rules["RevenueEndpointDegraded"]["expr"]
 
 
 def _alertmanager_revenue_route() -> dict:
@@ -452,6 +515,195 @@ def test_every_product_pages_as_its_own_group():
     for _, labels in _targets():
         ns.setdefault(labels["product"], set()).add(labels["target_namespace"])
     assert all(len(v) == 1 for v in ns.values()), ns
+
+
+# ---------------------------------------------------------------------------
+# Money paths (money-engine wave 2, 2026-10-18)
+# ---------------------------------------------------------------------------
+# A money path is the chain of public steps a payment goes through TODAY. A
+# step failing pages once for its path (MoneyPathDown); the step itself is a
+# warning (MoneyPathStepFailing). Targets of SKUs that cannot be bought
+# self-serve today carry `paging: warning` (decision 6 of the journeys plan,
+# as recommended; unruled when this was written) and never page.
+
+
+def _money_path_members() -> dict[str, set[tuple[str, str]]]:
+    out: dict[str, set[tuple[str, str]]] = {}
+    for _, labels in _targets():
+        for path in [p for p in labels.get("money_path", "").split(",") if p]:
+            out.setdefault(path, set()).add((labels["product"], labels["flow"]))
+    return out
+
+
+def test_money_path_labels_are_comma_wrapped_names():
+    for url, labels in _targets():
+        mp = labels.get("money_path")
+        if mp is None:
+            continue
+        assert re.fullmatch(r",([a-z0-9][a-z0-9-]*,)+", mp), (url, mp)
+
+
+def test_money_paths_have_exactly_their_steps():
+    assert _money_path_members() == MONEY_PATHS
+
+
+def test_money_path_rule_counts_every_path_and_names_it():
+    expr = _money_rules()["MoneyPathDown"]["expr"]
+    for path in MONEY_PATHS:
+        assert f'money_path=~".*,{path},.*"' in expr, path
+        # The page is keyed by `product` (Alertmanager's revenue route groups
+        # by it; Courier's once-per-episode key reads it), so the path's name
+        # must be written into both labels.
+        assert f'"money_path", "{path}", "", ""' in expr, path
+        assert f'"product", "{path}", "", ""' in expr, path
+    named = set(re.findall(r'money_path=~"\.\*,([a-z0-9-]+),\.\*"', expr))
+    assert named == set(MONEY_PATHS), named
+
+
+def test_money_path_names_do_not_collide_with_products():
+    products = {l["product"] for _, l in _targets()}
+    assert not products & set(MONEY_PATHS)
+
+
+def test_money_path_rules():
+    rules = _money_rules()
+    assert set(rules) == {"MoneyPathDown", "MoneyPathStepFailing"}
+    assert rules["MoneyPathDown"]["labels"] == {"severity": "critical", "category": CATEGORY}
+    assert rules["MoneyPathStepFailing"]["labels"] == {"severity": "warning", "category": CATEGORY}
+    assert rules["MoneyPathDown"]["for"] == "3m"
+    assert 'money_path!=""' in rules["MoneyPathStepFailing"]["expr"]
+    for name, rule in rules.items():
+        for key, text in rule["annotations"].items():
+            for expr in re.findall(r"{{(.*?)}}", text, flags=re.S):
+                assert re.fullmatch(r"\s*\$(labels\.[a-z_]+|value)\s*", expr), (name, key, expr)
+
+
+def test_warning_targets_are_not_money_path_steps():
+    for url, labels in _targets():
+        if "paging" in labels:
+            assert labels["paging"] == "warning", (url, labels["paging"])
+            assert "money_path" not in labels, f"{url}: a warning target cannot be a step of a paging path"
+
+
+def test_every_target_either_pages_or_warns_on_purpose():
+    """Every NEW target is placed explicitly: on a money path, or warning."""
+    for url, labels in _targets():
+        if (labels["product"], labels["flow"]) in {
+            ("dhanam", "pricing-page"),
+            ("dhanam", "signup-page"),
+            ("janua", "oidc-discovery"),
+            ("janua", "jwks"),
+            ("janua", "cors-dhanam"),
+            ("kalya", "booking-page"),
+            ("selva", "pricing-page"),
+            ("karafiel", "pricing-page"),
+            ("avala", "pricing-page"),
+            ("tezca", "pricing-page"),
+            ("routecraft", "pricing-page"),
+            ("janua", "pricing-page"),
+            ("enclii", "pricing-landing"),
+            ("dhanam", "fx-degraded"),
+            ("karafiel", "cfdi-broker"),
+        }:
+            assert ("money_path" in labels) != ("paging" in labels), url
+
+
+# Bodies recorded from the live endpoints on 2026-10-18 (17:20–17:31Z),
+# shortened, and the failures each module exists to catch.
+PAGE_OK = '<!DOCTYPE html><html lang="es"><head><title>Dhanam</title></head><body><div id="__next"></div></body></html>'
+PRICING_OK = '<!DOCTYPE html><html lang="es"><body><h3>Developer</h3><p>$1,159 MXN / mes</p><p>IVA incluido</p></body></html>'
+OIDC_OK = (
+    '{"issuer":"https://auth.madfam.io","authorization_endpoint":"https://auth.madfam.io/api/v1/oauth/authorize",'
+    '"jwks_uri":"https://auth.madfam.io/.well-known/jwks.json"}'
+)
+JWKS_OK = '{"keys":[{"kty":"RSA","use":"sig","alg":"RS256","kid":"janua-primary-key","n":"x","e":"AQAB"}]}'
+FX_OK = (
+    '{"service":"fx-rates","status":"healthy","testRate":{"from":"USD","to":"MXN","rate":18.493,'
+    '"source":"banxico","degraded":false,"asOf":null}}'
+)
+KARAFIEL_OK = (
+    '{"status": "healthy", "service": "karafiel-api", "services": {"database": "connected", '
+    '"redis": "connected"}, "timestamp": "2026-10-18T17:31:29.453643+00:00"}'
+)
+CATALOG_OK = (
+    '{"products":[{"slug":"dhanam","tiers":[{"slug":"free","grossPrices":{}},{"slug":"essentials",'
+    '"grossPrices":{"MXN":{"monthly":15000,"yearly":143700,"ivaRate":0.16}}}]}],'
+    '"updatedAt":"2026-10-18T17:20:36.633Z"}'
+)
+
+MODULE_CASES = {
+    "http_page_2xx": ([PAGE_OK, PRICING_OK], ['{"error":"not found"}', "", "Service Unavailable"]),
+    "http_pricing_page": (
+        [PRICING_OK],
+        [PAGE_OK, '<html><body>Precios</body></html>', '<html><body>IVA</body></html>', '{"products":[]}'],
+    ),
+    "http_oidc_discovery": (
+        [OIDC_OK],
+        [
+            OIDC_OK.replace("https://auth.madfam.io", "http://localhost:8000"),
+            '{"issuer":"https://auth.madfam.io"}',
+            "<html></html>",
+        ],
+    ),
+    "http_jwks": ([JWKS_OK], ['{"keys":[]}', '{"keys": [ ]}', "", "<html></html>"]),
+    "http_dhanam_fx_degraded": (
+        [FX_OK, FX_OK.replace('"source":"banxico"', '"source":"database"')],
+        [FX_OK.replace('"degraded":false', '"degraded":true')],
+    ),
+    "http_karafiel_broker": (
+        [KARAFIEL_OK],
+        [
+            KARAFIEL_OK.replace('"redis": "connected"', '"redis": "error"'),
+            KARAFIEL_OK.replace('"database": "connected"', '"database": "error"'),
+            '{"status": "alive"}',
+        ],
+    ),
+    "http_dhanam_catalog": (
+        [CATALOG_OK],
+        [
+            '{"products":[],"updatedAt":"x"}',
+            CATALOG_OK.replace('"MXN":{"monthly":15000', '"MXN":{"monthly":0'),
+            '{"products":[{"slug":"dhanam","tiers":[{"slug":"free","grossPrices":{}}]}]}',
+        ],
+    ),
+}
+
+
+@pytest.mark.parametrize("module", sorted(MODULE_CASES))
+def test_new_modules_pass_the_live_answer_and_fail_the_broken_ones(module):
+    good, bad = MODULE_CASES[module]
+    for body in good:
+        assert _blackbox_body_passes(module, body), (module, body[:80])
+    for body in bad:
+        assert not _blackbox_body_passes(module, body), (module, body[:80])
+
+
+def test_fx_degraded_module_has_one_regex_and_fx_source_keeps_its_own():
+    http = _modules()["http_dhanam_fx_degraded"]["http"]
+    assert http.get("fail_if_body_matches_regexp") == ['"degraded"\\s*:\\s*true']
+    assert not http.get("fail_if_body_not_matches_regexp")
+    by_url = dict(_targets())
+    assert by_url["https://api.dhan.am/v1/fx-rates/health?probe=fx-degraded"]["paging"] == "warning"
+
+
+def test_janua_cors_probe_sends_dhanams_origin_and_requires_it_back():
+    http = _modules()["http_janua_cors_dhanam"]["http"]
+    assert http["valid_status_codes"] == [401]
+    assert http["headers"]["Origin"] == "https://app.dhan.am"
+    (match,) = http["fail_if_header_not_matches"]
+    assert match["header"].lower() == "access-control-allow-origin"
+    assert re.search(match["regexp"], "https://app.dhan.am")
+    assert not re.search(match["regexp"], "*")
+    assert not re.search(match["regexp"], "https://app.dhan.am.evil.example")
+    assert not match.get("allow_missing"), "a missing header must fail"
+
+
+def test_pricing_modules_never_pin_a_price_value():
+    """Prices belong to Tulana and Dhanam; a probe that pins one pages on
+    every legitimate price change."""
+    for name in ("http_page_2xx", "http_pricing_page"):
+        for pattern in _modules()[name]["http"].get("fail_if_body_not_matches_regexp", []):
+            assert not re.search(r"\d", pattern), (name, pattern)
 
 
 # ---------------------------------------------------------------------------
@@ -610,6 +862,95 @@ PROMTOOL_TEST = textwrap.dedent(
                   module: http_2xx_json
                 exp_annotations:
                   summary: "forgesight api is failing: https://api.forgesight.app/health"
+
+      # 5. Money paths. Janua's readiness (a step of two paths) and
+      #    dhan.am/pricing fail; a warning-only pricing page fails; Nauta is
+      #    fine. One page per broken PATH, none per step; the steps and the
+      #    warning page go to the digest.
+      - interval: 1m
+        input_series:
+          - series: 'probe_success{job="blackbox-revenue",instance="https://auth.madfam.io/api/v1/health/ready",product="janua",flow="api",target_namespace="janua",check="availability",module="http_janua_ready",money_path=",retainer,dhanam-self-serve,"}'
+            values: '0x20'
+          - series: 'probe_success{job="blackbox-revenue",instance="https://dhan.am/pricing",product="dhanam",flow="pricing-page",target_namespace="dhanam",check="availability",module="http_page_2xx",money_path=",dhanam-self-serve,"}'
+            values: '0x20'
+          - series: 'probe_success{job="blackbox-revenue",instance="https://app.nauta.quest/health",product="nauta",flow="web",target_namespace="nauta",check="availability",module="http_2xx_json",money_path=",retainer,"}'
+            values: '1x20'
+          - series: 'probe_success{job="blackbox-revenue",instance="https://selva.town/pricing",product="selva",flow="pricing-page",target_namespace="selva",check="availability",module="http_pricing_page",paging="warning"}'
+            values: '0x20'
+        alert_rule_test:
+          - eval_time: 2m
+            alertname: MoneyPathDown
+            exp_alerts: []
+          - eval_time: 5m
+            alertname: MoneyPathDown
+            exp_alerts:
+              - exp_labels:
+                  severity: critical
+                  category: revenue-probe
+                  money_path: retainer
+                  product: retainer
+                exp_annotations:
+                  summary: "Money path retainer is broken: 1 step(s) failing"
+              - exp_labels:
+                  severity: critical
+                  category: revenue-probe
+                  money_path: dhanam-self-serve
+                  product: dhanam-self-serve
+                exp_annotations:
+                  summary: "Money path dhanam-self-serve is broken: 2 step(s) failing"
+          # The steps never page as RevenueEndpointDown, and neither does the
+          # warning target.
+          - eval_time: 15m
+            alertname: RevenueEndpointDown
+            exp_alerts: []
+          - eval_time: 5m
+            alertname: MoneyPathStepFailing
+            exp_alerts:
+              - exp_labels:
+                  severity: warning
+                  category: revenue-probe
+                  job: blackbox-revenue
+                  instance: https://auth.madfam.io/api/v1/health/ready
+                  product: janua
+                  flow: api
+                  target_namespace: janua
+                  check: availability
+                  module: http_janua_ready
+                  money_path: ",retainer,dhanam-self-serve,"
+                exp_annotations:
+                  summary: "Money path step failing (,retainer,dhanam-self-serve,): janua api https://auth.madfam.io/api/v1/health/ready"
+              - exp_labels:
+                  severity: warning
+                  category: revenue-probe
+                  job: blackbox-revenue
+                  instance: https://dhan.am/pricing
+                  product: dhanam
+                  flow: pricing-page
+                  target_namespace: dhanam
+                  check: availability
+                  module: http_page_2xx
+                  money_path: ",dhanam-self-serve,"
+                exp_annotations:
+                  summary: "Money path step failing (,dhanam-self-serve,): dhanam pricing-page https://dhan.am/pricing"
+          - eval_time: 8m
+            alertname: RevenueEndpointDegraded
+            exp_alerts: []
+          - eval_time: 12m
+            alertname: RevenueEndpointDegraded
+            exp_alerts:
+              - exp_labels:
+                  severity: warning
+                  category: revenue-probe
+                  job: blackbox-revenue
+                  instance: https://selva.town/pricing
+                  product: selva
+                  flow: pricing-page
+                  target_namespace: selva
+                  check: availability
+                  module: http_pricing_page
+                  paging: warning
+                exp_annotations:
+                  summary: "selva pricing-page is failing (warning only): https://selva.town/pricing"
     """
 ).lstrip()
 
