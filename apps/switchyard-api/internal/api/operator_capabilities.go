@@ -25,9 +25,9 @@ var opsCapabilities = []operatorCapability{
 	{
 		Name:        "jobs",
 		Status:      "partial",
-		Description: "Kubernetes CronJob reads, audited triggers, and durable namespace-specific service-job suspension",
-		Actions:     []string{"list", "trigger", "suspend"},
-		Scopes:      []string{"namespace", "project", "service", "target"},
+		Description: "Kubernetes CronJob reads, audited triggers, durable service-job suspension and independent operator Jobs from verified runtime targets (closed API request)",
+		Actions:     []string{"list", "trigger", "suspend", "run-target"},
+		Scopes:      []string{"namespace", "project", "service", "environment", "target"},
 	},
 	{
 		Name:        "storage",

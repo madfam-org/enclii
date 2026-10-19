@@ -29,7 +29,7 @@ encouraging direct `kubectl`.
 | `enclii ops apps tracking` | Declare Argo CD's annotation tracking default once in `argocd-cm` ([below](#argo-tracking-declaration)) |
 | `enclii ops pods diagnose|logs` | Pod diagnosis and logs |
 | `enclii ops pods restart` | Audited rollout restart of a Deployment, StatefulSet or DaemonSet, or recreation of one controller-owned pod ([below](#ops-pods-restart)) |
-| `enclii ops jobs list|trigger|suspend` | CronJob inspection, audited triggers and durable service-job holds |
+| `enclii ops jobs list|trigger|suspend` | CronJob inspection, audited triggers and durable service-job holds; independent verified-target Jobs use the [closed API request](../../runbooks/ENCLII_VERIFIED_TARGET_JOBS.md) |
 | `enclii ops storage volumes|pvc|longhorn|repair-plan|settings-apply|prune-detached|storageclass-apply|r2-audit` | PVC/PV/Longhorn inspection, repair planning, CPU settings (O-5), orphan prune (O-4), StorageClass reconcile, R2 credential audit (incomplete, shared, or mismatched buckets) |
 | `enclii ops secrets external|vault|refresh|sync|sync-sweep|rotate|vault-backfill` | ExternalSecrets and Vault readiness workflows |
 | `enclii ops secrets provision-kalya-feed` | Server-side kalya standing-feed credential provisioning ([below](#ops-secrets-provision-kalya-feed)) |

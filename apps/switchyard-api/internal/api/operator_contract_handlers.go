@@ -76,6 +76,10 @@ func (h *Handler) HandleProviderOperation(c *gin.Context) {
 }
 
 func (h *Handler) handleOperatorOperation(c *gin.Context, prefix, domain, action string, capabilities []operatorCapability) {
+	if prefix == "ops" && domain == "jobs" && action == "run-target" {
+		h.RunJobForVerifiedTarget(c)
+		return
+	}
 	if prefix == "ops" && domain == "apps" && action == "bind-target" {
 		h.PlanServiceDeploymentTarget(c)
 		return
