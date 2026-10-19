@@ -32,3 +32,30 @@ Deploy the qualified SIM bootstrap with its activation flag off first, then
 activate only after the live trust opt-in is verified. On withdrawal, disable
 the SIM flag first and verify the same client before removing only this scope.
 A real invited browser walkthrough remains separate from local synthetic tests.
+
+## Scope-only native plan and guarded apply
+
+`enclii --profile admin secrets provision oidc sim-sso` is read-only by default.
+It reports the actual public metadata, its SHA256 fingerprint, and the sole
+`allowed_scopes` patch. It is hardcoded to the embedded `crea-sim` UI profile;
+there is no platform override, registration, resolver, rotator or intake path.
+It refuses an inactive/public/unbound client, a different audience/callback or
+grants, or scopes outside the four ordinary scopes plus this one trust opt-in.
+
+Only a separately reviewed operator action may add `--apply`,
+`--expect-metadata-sha256 <reviewed-plan-hash>` and a bounded `--reason`.
+The command re-reads the client immediately, verifies that exact fingerprint,
+PATCHes only `allowed_scopes` once, and re-reads the pinned client. A successful
+receipt requires every other allowlisted fact to remain exactly equal. Provider
+authority remains Janua's platform-admin check; the command grants no privilege.
+
+There is no atomic metadata If-Match in this Janua endpoint. Serialize other
+edits to this one client during the bounded operation; the fingerprint is a
+fresh-read precondition, not a server-side compare-and-swap claim. Any denied,
+uncertain, credential-bearing or drifted outcome is HELD without automatic
+retry or rollback. Inspect the actual state before deciding the next step.
+
+For withdrawal, disable the SIM app flag first. `sim-sso --disable` only plans
+removal of `madfam:silent_auth`; review its fresh fingerprint before using the
+same explicit apply/reason controls. All other scopes and identity fields stay
+unchanged. Merely invoking either default plan performs only GET requests.
