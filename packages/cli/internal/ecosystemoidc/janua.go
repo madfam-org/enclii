@@ -21,6 +21,7 @@ type JanuaClient struct {
 	AdminToken     string
 	InternalAPIKey string
 	HTTP           *http.Client
+	metadataOnly   bool
 }
 
 func NewJanuaClient(adminToken, internalAPIKey string) *JanuaClient {
@@ -384,6 +385,9 @@ func (c *JanuaClient) rotateSecret(ctx context.Context, internalUUID string, gra
 }
 
 func (c *JanuaClient) doJSON(ctx context.Context, method, path string, body interface{}, out interface{}, internal bool) (int, error) {
+	if c.metadataOnly && (method != http.MethodGet || body != nil || internal) {
+		return 0, fmt.Errorf("metadata inspection permits admin GET only")
+	}
 	var reader io.Reader
 	if body != nil {
 		raw, err := json.Marshal(body)
@@ -421,6 +425,12 @@ func (c *JanuaClient) doJSON(ctx context.Context, method, path string, body inte
 	}
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		return resp.StatusCode, fmt.Errorf("Janua request refused with HTTP %d", resp.StatusCode)
+	}
+	if c.metadataOnly {
+		var value interface{}
+		if err := decodeProviderJSON(data, &value); err != nil || containsCredential(value) {
+			return resp.StatusCode, fmt.Errorf("Janua metadata response refused")
+		}
 	}
 	if out != nil {
 		if err := decodeProviderJSON(data, out); err != nil {
