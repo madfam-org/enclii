@@ -8,6 +8,8 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"path"
+	"reflect"
 	"strings"
 	"unicode"
 
@@ -150,11 +152,15 @@ func runTargetSpec(r runTargetRequest, s workloadtargets.Snapshot) (batchv1.JobS
 			container = &p.Containers[i]
 		}
 	}
-	if container == nil || len(container.VolumeMounts) != 0 || len(container.VolumeDevices) != 0 ||
+	if container == nil || len(container.VolumeDevices) != 0 ||
 		container.SecurityContext != nil && container.SecurityContext.Privileged != nil && *container.SecurityContext.Privileged {
 		return empty, workloadtargets.ErrIntent
 	}
-	c := corev1.Container{Name: container.Name, Image: container.Image, ImagePullPolicy: container.ImagePullPolicy, WorkingDir: container.WorkingDir, Command: append([]string(nil), r.Args.Command...), Env: container.Env, EnvFrom: container.EnvFrom, Resources: container.Resources, SecurityContext: container.SecurityContext}
+	volumes, err := runTargetScratch(p.Volumes, container.VolumeMounts)
+	if err != nil {
+		return empty, err
+	}
+	c := corev1.Container{VolumeMounts: container.VolumeMounts, Name: container.Name, Image: container.Image, ImagePullPolicy: container.ImagePullPolicy, WorkingDir: container.WorkingDir, Command: append([]string(nil), r.Args.Command...), Env: container.Env, EnvFrom: container.EnvFrom, Resources: container.Resources, SecurityContext: container.SecurityContext}
 	if p.Affinity == nil {
 		p.Affinity = &corev1.Affinity{}
 	}
@@ -166,7 +172,7 @@ func runTargetSpec(r runTargetRequest, s workloadtargets.Snapshot) (batchv1.JobS
 	no, zero, ttl := false, int32(0), int32(86400)
 	return batchv1.JobSpec{BackoffLimit: &zero, ActiveDeadlineSeconds: &r.Args.Timeout, TTLSecondsAfterFinished: &ttl,
 		Template: corev1.PodTemplateSpec{ObjectMeta: metav1.ObjectMeta{Labels: map[string]string{"app.kubernetes.io/managed-by": "enclii-ops"}}, Spec: corev1.PodSpec{
-			Containers: []corev1.Container{c}, RestartPolicy: corev1.RestartPolicyNever, AutomountServiceAccountToken: &no,
+			Containers: []corev1.Container{c}, Volumes: volumes, RestartPolicy: corev1.RestartPolicyNever, AutomountServiceAccountToken: &no,
 			ServiceAccountName: p.ServiceAccountName,
 			ImagePullSecrets:   p.ImagePullSecrets, // pragma: allowlist secret (runtime references only, no credential values)
 			SecurityContext:    p.SecurityContext,
@@ -174,6 +180,42 @@ func runTargetSpec(r runTargetRequest, s workloadtargets.Snapshot) (batchv1.JobS
 			TopologySpreadConstraints: p.TopologySpreadConstraints, PriorityClassName: p.PriorityClassName, PreemptionPolicy: p.PreemptionPolicy,
 			RuntimeClassName: p.RuntimeClassName, DNSPolicy: p.DNSPolicy, DNSConfig: p.DNSConfig,
 		}}}, nil
+}
+
+// Scratch is recreated for the Job, never shared with the source pod. Only the
+// selected container's mounted, positively bounded emptyDirs are copied. Other
+// source volumes (including unmounted credentials) never enter the Job.
+func runTargetScratch(volumes []corev1.Volume, mounts []corev1.VolumeMount) ([]corev1.Volume, error) {
+	if len(mounts) > 8 {
+		return nil, workloadtargets.ErrIntent
+	}
+	var selected []corev1.Volume
+	names, paths := map[string]bool{}, map[string]bool{}
+	var total int64
+	for _, m := range mounts {
+		if names[m.Name] || paths[m.MountPath] || !path.IsAbs(m.MountPath) || path.Clean(m.MountPath) != m.MountPath || m.MountPath == "/" || m.SubPath != "" || m.SubPathExpr != "" || m.MountPropagation != nil && *m.MountPropagation != corev1.MountPropagationNone {
+			return nil, workloadtargets.ErrIntent
+		}
+		names[m.Name], paths[m.MountPath] = true, true
+		var found *corev1.Volume
+		for i := range volumes {
+			if volumes[i].Name == m.Name {
+				if found != nil {
+					return nil, workloadtargets.ErrIntent
+				}
+				found = &volumes[i]
+			}
+		}
+		if found == nil || found.EmptyDir == nil || !reflect.DeepEqual(found.VolumeSource, corev1.VolumeSource{EmptyDir: found.EmptyDir}) || found.EmptyDir.SizeLimit == nil || found.EmptyDir.SizeLimit.Sign() <= 0 || found.EmptyDir.SizeLimit.CmpInt64(1<<30) > 0 || found.EmptyDir.Medium != "" && found.EmptyDir.Medium != corev1.StorageMediumMemory {
+			return nil, workloadtargets.ErrIntent
+		}
+		total += found.EmptyDir.SizeLimit.Value()
+		if total > 1<<30 {
+			return nil, workloadtargets.ErrIntent
+		}
+		selected = append(selected, *found.DeepCopy())
+	}
+	return selected, nil
 }
 
 func runTargetPlan(r runTargetRequest, target workloadtargets.Request, s workloadtargets.Snapshot) (workloadtargets.Plan, batchv1.JobSpec, string, error) {

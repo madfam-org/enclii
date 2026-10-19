@@ -51,10 +51,14 @@ FROM docker.io/library/nginx:alpine AS runner
 # 2.42.3) retires the seven util-linux entries from .trivyignore.
 # 2026-10-17: CVE-2026-77214 (libexpat 2.8.5-r0, fixed 2.9.0-r0) failed
 # `Scan: docs-site` on main run 39064455550.
-ARG APK_SECURITY_REFRESH=2026-10-17
+# 2026-10-19: CVE-2026-88806 (libx11 1.8.13-r0, fixed 1.8.14-r0)
+# failed docs-site on main run 39243201232. Alpine v3.24 main secdb confirms
+# the floor, which also covers CVE-2026-94283/94284/94285. Refresh the cached
+# upgrade layer; retain the scan/signature gate without a vulnerability waiver.
+ARG APK_SECURITY_REFRESH=2026-10-19
 RUN echo "apk security refresh: ${APK_SECURITY_REFRESH}" && \
     apk upgrade --no-cache && \
-    apk add --no-cache 'libexpat>=2.9.0-r0' 'pcre2>=10.49-r0' 'libuuid>=2.42.3-r0'
+    apk add --no-cache 'libexpat>=2.9.0-r0' 'pcre2>=10.49-r0' 'libuuid>=2.42.3-r0' 'libx11>=1.8.14-r0'
 
 # Copy custom nginx config (standard port 80)
 # Security headers applied at origin (defense-in-depth; Cloudflare may also set some).
