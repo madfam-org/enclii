@@ -56,6 +56,11 @@ rules:
 - apiGroups: [""]
   resources: ["services"]
   verbs: ["create", "get", "list", "watch", "update", "patch", "delete"]
+# Read-only Service backend observations for the platform-rank inventory API.
+# No endpoint writes, pod exec or network-policy changes are granted.
+- apiGroups: ["discovery.k8s.io"]
+  resources: ["endpointslices"]
+  verbs: ["list"]
 # ConfigMaps: hostname inventory reads for domain truth reconciliation
 # create: the fixed initial-bootstrap Job retains its immutable intent and
 # result receipts as ConfigMaps in the project addon namespace

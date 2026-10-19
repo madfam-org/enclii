@@ -70,7 +70,7 @@ It has no workload routing labels, ports, probes, service-account token mount,
 init containers or Deployment owner reference. Host namespace sharing, an
 explicit node name, privileged containers, init dependencies, volume devices,
 resource claims and scheduling gates are refused.
-Existing admission and NetworkPolicy still apply. A policy selecting only the
+Existing admission and NetworkPolicy still apply. Inspect [Service backend evidence](ENCLII_SERVICE_BACKEND_EVIDENCE.md) before inferring transport from selectors or healthy pods. A policy selecting only the
 web's labels may reject the Job; no ownership labels or network/RBAC exceptions
 are added to bypass it. No `pods/exec` permission is required or granted.
 

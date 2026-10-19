@@ -261,7 +261,7 @@ func (h *Handler) RunJobForVerifiedTarget(c *gin.Context) {
 		}
 		c.JSON(http.StatusOK, gin.H{"operation": "ops.jobs.run-target", "status": "planned", "dry_run": true,
 			"data":   gin.H{"plan_sha256": sha, "target": p, "container": r.Args.Container, "command_sha256": runTargetHash(r.Args.Command), "timeout_seconds": r.Args.Timeout},
-			"limits": []string{"no Job created", "requires a persisted verified target", "placement with target is required; existing placement constraints remain", "Job survives later web stop but is deadline bounded", "command read-only semantics and connectivity require independent verification", "no workload labels, volumes, service-account token or new RBAC"}})
+			"limits": []string{"no Job created", "requires a persisted verified target", "placement with target is required; existing placement constraints remain", "Job survives later web stop but is deadline bounded", "command read-only semantics and connectivity require independent verification", "no workload routing labels, persistent or credential volumes, service-account token or new RBAC"}})
 		return
 	}
 	actor, err := uuid.Parse(c.GetString("user_id"))
