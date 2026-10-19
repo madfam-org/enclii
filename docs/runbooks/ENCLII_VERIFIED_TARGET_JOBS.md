@@ -97,3 +97,8 @@ Jobs.
 
 See [verified targets](ENCLII_EXPLICIT_DEPLOYMENT_TARGETS.md) for the binding's
 source and immutable ownership prerequisites.
+
+**Boundary checkpoint — 2026-10-19; owner: platform maintainer.** This public
+runbook describes the API, safeguards and synthetic proof limits. Deployment
+identity, custody and runtime receipts remain in private internal-devops and
+the labspace audit lane. Policy: [public repository boundary](../PUBLIC_REPO_BOUNDARY.md).
