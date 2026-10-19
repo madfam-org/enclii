@@ -1,5 +1,11 @@
 # Read-only OAuth client evidence
 
+> **Boundary checkpoint (2026-10-19; owner: platform maintainer):** Public-safe
+> OAuth metadata and SIM UI trust workflow. Actual client UUIDs, organization
+> bindings, credentials and live receipts belong in private `internal-devops`
+> operational evidence, not this runbook. Policy: [public repository boundary](../PUBLIC_REPO_BOUNDARY.md)
+> and [canonical repo-boundary contract](https://github.com/madfam-org/internal-devops/blob/main/docs/repo-boundary-contract.md).
+
 `enclii --profile admin secrets provision oidc inspect --platform crea-sim --json`
 uses the existing managed Enclii admin session to GET the Janua client inventory
 and the selected internal UUID's detail. The output contains only public client
