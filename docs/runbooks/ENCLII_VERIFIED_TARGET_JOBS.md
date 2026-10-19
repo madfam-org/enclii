@@ -57,10 +57,19 @@ priority/runtime class and DNS configuration. It adds required colocation; it
 does not relax those constraints. Unsupported constraints can leave it pending;
 inspect scheduling through Enclii rather than weakening them automatically.
 
-It has no workload routing labels, ports, probes, volume mounts, service-account
-token mount, init containers or Deployment owner reference. Host namespace
-sharing, an explicit node name, privileged containers, init dependencies,
-volume mounts/devices, resource claims and scheduling gates are refused.
+The selected container's scratch mounts are supported only when each refers to
+one uniquely named `emptyDir` with a positive size limit. At most eight mounts
+and 1 GiB total are accepted; default disk and memory media are supported. They
+are fresh Job-local scratch, never a copy of or attachment to the web's cache.
+The exact mount paths, limits and medium are included in the plan fingerprint.
+Subpaths, propagation, missing/duplicate volumes, unbounded scratch and all other
+mounted volume sources (including secrets, projected tokens, host paths and
+persistent claims) are refused. Unmounted source volumes are not inherited.
+
+It has no workload routing labels, ports, probes, service-account token mount,
+init containers or Deployment owner reference. Host namespace sharing, an
+explicit node name, privileged containers, init dependencies, volume devices,
+resource claims and scheduling gates are refused.
 Existing admission and NetworkPolicy still apply. A policy selecting only the
 web's labels may reject the Job; no ownership labels or network/RBAC exceptions
 are added to bypass it. No `pods/exec` permission is required or granted.
