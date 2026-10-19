@@ -1,12 +1,11 @@
 'use client';
 
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Spinner } from '@/components/ui/spinner';
 import { Button } from '@enclii/ui-components/button';
-import { apiFetchResponse } from '@/lib/api';
-import { TIER_CONFIG } from '@/lib/tiers';
+import { TIER_CONFIG, getDhanamCheckoutUrl, getUpgradeReturnUrl } from '@/lib/tiers';
 
 // Sourced from TIER_CONFIG (lib/tiers.ts) — the canonical customer-facing
 // catalog that also drives PricingModal and the API's tier-limit copy.
@@ -14,83 +13,37 @@ import { TIER_CONFIG } from '@/lib/tiers';
 // drifted out of sync before (see docs/faq/billing.md for the ratified copy).
 const proTier = TIER_CONFIG.pro;
 
-type CheckoutState = 'starting' | 'redirecting' | 'unconfigured' | 'error';
-
 /**
  * Upgrade page — the enclii-owned funnel entrypoint for tier upgrades.
  *
- * On load it POSTs to /v1/billing/checkout (the Dhanam federation relay,
- * mirrors janua#453). The backend resolves the caller's Dhanam billing
- * customer, opens a hosted checkout for `enclii_pro`, and returns the real
- * Dhanam-hosted checkout URL, which we redirect the browser to.
+ * It sends the browser to Dhanam's hosted checkout
+ * (`app.dhan.am/checkout?plan=enclii_pro&product=enclii&return_url=…`), the
+ * link pattern Karafiel, Forgesight and Tezca use. The buyer signs in with
+ * Janua there and Dhanam decides who the purchase entitles, so nothing about
+ * the user rides in the URL.
  *
- * This replaces the previous dead-end where tier-blocked users were sent to
- * https://dhanam.madfam.io/checkout — an NXDOMAIN host with no checkout route.
- *
- * 503 is handled honestly: the relay fails closed until the operator provisions
- * FEDERATION_API_TOKEN, and we say so rather than spinning forever.
+ * It used to POST /v1/billing/checkout (switchyard's federation relay). That
+ * relay sends the Janua subject as checkout metadata, which Dhanam's
+ * federation contract refuses with 400, and names no organization to
+ * entitle, which it refuses with 422: no buyer could reach a payment page.
  */
 export default function UpgradePage() {
-  const [state, setState] = useState<CheckoutState>('starting');
-  const [errorMessage, setErrorMessage] = useState<string>('');
   const searchParams = useSearchParams();
   const canceled = searchParams?.get('canceled') === '1';
-  // Guard against React strict-mode double-invocation firing two checkouts.
+  const requestedReturn = searchParams?.get('return_url');
   const startedRef = useRef(false);
 
-  const startCheckout = useCallback(async () => {
-    try {
-      const res = await apiFetchResponse('/v1/billing/checkout', {
-        method: 'POST',
-        body: JSON.stringify({ plan: 'pro' }),
-      });
-
-      if (res.ok) {
-        const data = (await res.json()) as { checkout_url?: string };
-        if (data.checkout_url) {
-          setState('redirecting');
-          window.location.href = data.checkout_url;
-          return;
-        }
-        setErrorMessage('Checkout did not return a payment URL. Please try again.');
-        setState('error');
-        return;
-      }
-
-      if (res.status === 503) {
-        setState('unconfigured');
-        return;
-      }
-
-      const body = (await res.json().catch(() => ({}))) as { message?: string; error?: string };
-      setErrorMessage(
-        body.message || body.error || `Could not start checkout (HTTP ${res.status}).`,
-      );
-      setState('error');
-    } catch (e) {
-      setErrorMessage(
-        e instanceof Error ? e.message : 'Could not reach the billing service. Please try again.',
-      );
-      setState('error');
-    }
-  }, []);
+  const checkoutUrl = useMemo(
+    () => getDhanamCheckoutUrl(getUpgradeReturnUrl(requestedReturn)),
+    [requestedReturn],
+  );
 
   useEffect(() => {
-    if (startedRef.current) return;
+    // A canceled checkout lands back here: offer the link instead of looping.
+    if (canceled || startedRef.current) return;
     startedRef.current = true;
-    // Intentionally trigger the checkout (an external system) on mount — the
-    // setState calls happen only after the awaited fetch resolves, not
-    // synchronously in the effect body.
-    // eslint-disable-next-line react-hooks/set-state-in-effect
-    void startCheckout();
-  }, [startCheckout]);
-
-  const retry = useCallback(() => {
-    startedRef.current = true;
-    setState('starting');
-    setErrorMessage('');
-    void startCheckout();
-  }, [startCheckout]);
+    window.location.assign(checkoutUrl);
+  }, [canceled, checkoutUrl]);
 
   return (
     <div className="mx-auto flex min-h-[60vh] max-w-lg items-center justify-center p-6">
@@ -104,38 +57,22 @@ export default function UpgradePage() {
           </CardDescription>
         </CardHeader>
         <CardContent>
-          {(state === 'starting' || state === 'redirecting') && (
+          {canceled ? (
+            <div className="space-y-4 py-2">
+              <Button onClick={() => window.location.assign(checkoutUrl)}>Start checkout</Button>
+            </div>
+          ) : (
             <div className="flex items-center gap-3 py-4" role="status" aria-live="polite">
               <Spinner size="md" />
-              <span>
-                {state === 'redirecting'
-                  ? 'Redirecting you to secure checkout…'
-                  : 'Preparing your secure checkout…'}
-              </span>
+              <span>Redirecting you to secure checkout…</span>
             </div>
           )}
-
-          {state === 'unconfigured' && (
-            <div className="space-y-4 py-2">
-              <p className="text-sm">
-                Billing isn&apos;t configured yet, so we can&apos;t start checkout right now. This
-                is on our side — no action is needed from you.
-              </p>
-              <p className="text-muted-foreground text-sm">
-                Please contact support and we&apos;ll get your upgrade sorted.
-              </p>
-              <Button variant="secondary" onClick={retry}>
-                Try again
-              </Button>
-            </div>
-          )}
-
-          {state === 'error' && (
-            <div className="space-y-4 py-2">
-              <p className="text-destructive text-sm">{errorMessage}</p>
-              <Button onClick={retry}>Try again</Button>
-            </div>
-          )}
+          <p className="text-muted-foreground pt-2 text-sm">
+            Checkout runs on Dhanam, MADFAM&apos;s billing service.{' '}
+            <a className="underline" href={checkoutUrl}>
+              Continue to checkout
+            </a>
+          </p>
         </CardContent>
       </Card>
     </div>
