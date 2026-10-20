@@ -3502,10 +3502,285 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/admin/projects/{slug}/addons/{id}/retained-generation-read": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Observe one retained synthetic generation with a fixed runtime-only Job
+         * @description Requires an authenticated admin with the server-resolved platform_admin
+         *     rank, independently of the tenant-scope rollback flag, and project access
+         *     under the existing platform/acting-tenant rules. The fixed profile owns
+         *     only the crea-sim gateway and its same-project dedicated portal addon.
+         *
+         *     The closed UTF-8 JSON body is at most 8192 bytes; duplicate or unknown
+         *     keys, trailing JSON and caller-selected SQL, image, command,
+         *     namespace or credentials are refused. Start with dry_run:true and one
+         *     canonical operation UUID. Native Job/Pod admission creates no persistent
+         *     resource in this mode. Review plan_sha256, then use the same identifiers
+         *     and key with dry_run:false, expect_plan_sha256 and a reason. Apply creates
+         *     only the bounded observation Job and its owned custody/network records;
+         *     it never stops the gateway, resets/reseeds an exercise or uses owner
+         *     credentials. A changed input, image, custody or native identity refuses.
+         *
+         *     POST with the same input/key can collect that completed Job into an
+         *     immutable typed receipt; it never reruns it. An uncertain response,
+         *     partial creation, uncollected expired Job or conflict stays held: inspect
+         *     the same operation, without automatic retry or inventing another key.
+         *     PROVENANCE_ONLY is historical evidence, never a fresh lease, adoption
+         *     intent/fence, durable writer exclusion, owner authority or SSO approval.
+         *     Invalid typed output retains only a hash and a closed held reason; raw
+         *     stdout, driver errors and credential material are never response data.
+         */
+        post: operations["observeRetainedSyntheticGeneration"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/admin/projects/{slug}/addons/{id}/retained-generation-read/{job_name}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Read retained historical synthetic-generation observation status
+         * @description Requires the same unconditional platform operator and project access
+         *     rules as POST. The addon, service, retained intent and native namespace
+         *     identities must belong to the fixed crea-sim profile. GET never reads
+         *     logs, collects a receipt, creates records, retries or executes work.
+         *     A completed Job without a collected immutable receipt is explicitly
+         *     PROVENANCE_ONLY_UNRETAINED; a partial or failed operation is held.
+         *     Retained history remains readable after Job/custody TTL deletion, but
+         *     does not establish current exercise control, adoption or SSO authority.
+         */
+        get: operations["getRetainedSyntheticGenerationObservation"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/admin/projects/{slug}/environments/staging/addon-admission": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Dry-admit the fixed isolated Janua staging database profile
+         * @description Requires an authenticated admin with unconditional server-resolved
+         *     platform_admin authority and project access under existing platform/
+         *     acting-tenant rules. Only slug janua, the two single-valued query keys
+         *     plan and service_id, and an empty request body are accepted. There is no
+         *     apply selector, generic manifest/configuration, credential or SQL input.
+         *
+         *     Reads persisted Janua staging ownership, the available database plan,
+         *     owned clean namespaces, retained storage, exact native API destinations
+         *     and the CNPG operator. Verifies the fixed official PostgreSQL image's
+         *     producer signature, then submits exactly one CNPG Cluster, two network
+         *     policies and one credential-free representative Pod with DryRunAll and
+         *     strict field validation. Re-reads authority metadata before emitting the
+         *     typed receipt. No resource, row, credential, running Pod or SQL persists.
+         *
+         *     ADMITTED_DRY_RUN_ONLY proves only this signed admission observation.
+         *     apply_supported is always false and all seven unresolved gates remain;
+         *     it never authorizes provisioning, runtime promotion or SSO activation.
+         *     Unknown or incomplete admission, signature, ownership or changed metadata
+         *     refuses. Native endpoint identities and verifier output are withheld.
+         */
+        post: operations["dryAdmitJanuaStagingDatabase"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        /** @description Canonical lowercase nonzero UUID string, validated before any custody access. */
+        VerificationCanonicalUUID: string;
+        VerificationSHA256: string;
+        PortalGenerationReadInput: {
+            /** @enum {string} */
+            version: "crea-sim-generation-read-v1";
+            reservaId: components["schemas"]["VerificationCanonicalUUID"];
+            /** @enum {string} */
+            nucleoId: "crea-sim-map01" | "crea-sim-map02" | "crea-sim-map03";
+        };
+        /** @description Closed dry-run/apply alternatives; duplicate keys and bodies over 8192 bytes are independently refused by the server. */
+        PortalGenerationReadRequest: components["schemas"]["PortalGenerationReadDryRunRequest"] | components["schemas"]["PortalGenerationReadApplyRequest"];
+        PortalGenerationReadDryRunRequest: {
+            /** @enum {string} */
+            profile: "portal-sim-generation-read";
+            service_id: components["schemas"]["VerificationCanonicalUUID"];
+            pedido: components["schemas"]["PortalGenerationReadInput"];
+            /** @enum {boolean} */
+            dry_run: true;
+            idempotency_key: components["schemas"]["VerificationCanonicalUUID"];
+            /** @enum {string} */
+            expect_plan_sha256?: "";
+            /** @enum {string} */
+            reason?: "";
+        };
+        PortalGenerationReadApplyRequest: {
+            /** @enum {string} */
+            profile: "portal-sim-generation-read";
+            service_id: components["schemas"]["VerificationCanonicalUUID"];
+            pedido: components["schemas"]["PortalGenerationReadInput"];
+            /** @enum {boolean} */
+            dry_run: false;
+            idempotency_key: components["schemas"]["VerificationCanonicalUUID"];
+            expect_plan_sha256: components["schemas"]["VerificationSHA256"];
+            reason: string;
+        };
+        /**
+         * @description Historical coherent portal snapshot, bound to the requested reservation
+         *     and kernel. baseEsperada must match nucleoId's fixed kernel database.
+         *     schemaSha256 is the reviewed portal custody SQL hash. Original empty
+         *     counters and the observed phase are not current lease/fence authority.
+         */
+        PortalGenerationReadReceipt: {
+            /** @enum {string} */
+            fuente: "portal-sim-retained-generation";
+            /** @enum {string} */
+            version: "crea-sim-generation-read-v1";
+            reservaId: components["schemas"]["VerificationCanonicalUUID"];
+            /** @enum {string} */
+            nucleoId: "crea-sim-map01" | "crea-sim-map02" | "crea-sim-map03";
+            /** @enum {string} */
+            baseEsperada: "crea_sim_kernel01_sim" | "crea_sim_kernel02_sim" | "crea_sim_kernel03_sim";
+            propietarioSha256: components["schemas"]["VerificationSHA256"];
+            integranteSha256: components["schemas"]["VerificationSHA256"];
+            /** @enum {string} */
+            rol: "DIRECTOR" | "STRATEGIC_COORDINATION" | "OPERATIONAL_COORDINATION" | "THERAPIST" | "TECHNICAL_DIRECTION" | "PRESCHOOL_ASSISTANT" | "OPERATIONS_SUPPORT";
+            escenario: string;
+            /** @enum {string} */
+            faseObservada: "RESERVADA" | "ACTIVA" | "INCIERTA" | "RESTABLECIENDO" | "CERRADA";
+            revisionVacia: string;
+            epocaVacia: string;
+            manifiestoSha256: components["schemas"]["VerificationSHA256"];
+            huellaSemilla: components["schemas"]["VerificationSHA256"];
+            codigoSha256: components["schemas"]["VerificationSHA256"];
+            fixtureSha256: components["schemas"]["VerificationSHA256"];
+            /** @description Valid UTC ISO timestamp with exactly three fractional digits, independently parsed and round-tripped by the server. */
+            ahoraInicial: string;
+            /** @enum {string} */
+            schemaSha256: "66b3ab6bc4306efcb75ee75cdad85084ac1c6b9a6fd4542df99c0a7aafdf8496";
+            databaseIdentitySha256: components["schemas"]["VerificationSHA256"];
+            /** @enum {boolean} */
+            adoptionAuthorized: false;
+        };
+        /**
+         * @description Immutable native Job/Pod/image and bounded exact stdout hash, never raw
+         *     output. PROVENANCE_ONLY requires generation_read and observed Pod/hash.
+         *     PROVENANCE_ONLY_HELD has no generation_read: output_unclassified carries
+         *     the observed Pod/hash; job_failed leaves pod_uid/stdout_sha256 empty and
+         *     reads no logs. Both remain historical and grant no adoption authority.
+         */
+        PortalGenerationNativeReceipt: {
+            /** @enum {string} */
+            version: "isolated-provenance-read-v1";
+            /** @enum {string} */
+            classification: "PROVENANCE_ONLY" | "PROVENANCE_ONLY_HELD";
+            intent_sha256: components["schemas"]["VerificationSHA256"];
+            intent_uid: string;
+            job_uid: string;
+            pod_uid: string;
+            image: string;
+            source_revision: string;
+            stdout_sha256: string;
+            /** @enum {string} */
+            held_reason?: "job_failed" | "output_unclassified";
+            generation_read?: components["schemas"]["PortalGenerationReadReceipt"];
+        };
+        /** @description Execution/status observation; only PROVENANCE_ONLY with an accredited native receipt proves the historical reader completed. */
+        PortalGenerationReadJob: {
+            name: string;
+            namespace: string;
+            dry_run: boolean;
+            suspended: boolean;
+            succeeded: number;
+            failed: number;
+            active: number;
+            /** @enum {string} */
+            classification: "PROVENANCE_ONLY_EXECUTION" | "PROVENANCE_ONLY" | "PROVENANCE_ONLY_HELD" | "PROVENANCE_ONLY_UNRETAINED";
+            native_receipt?: components["schemas"]["PortalGenerationNativeReceipt"];
+        };
+        /** @description Verified public producer facts; no registry, runtime or owner credential material. */
+        PortalGenerationProducerProof: {
+            image: string;
+            revision: string;
+            /** @enum {string} */
+            producer: "madfam-org/crea-sim";
+            run_id: number;
+            checks: number;
+            /** @enum {boolean} */
+            signature_verified: true;
+            pin_payload_sha256: components["schemas"]["VerificationSHA256"];
+            /** @enum {string} */
+            pin_match: "current";
+            verified_sources: ("packages/entrenamiento/src/leer-generacion-retenida.ts" | "packages/entrenamiento/sql/002-custodia-reset.sql")[];
+        };
+        PortalGenerationReadResponse: {
+            job: components["schemas"]["PortalGenerationReadJob"];
+            producer: components["schemas"]["PortalGenerationProducerProof"];
+            plan_sha256: components["schemas"]["VerificationSHA256"];
+            /** @enum {string} */
+            scope: "PROVENANCE_ONLY historical snapshot; no fresh lease, intent, fence, writer exclusion or adoption authority";
+        };
+        PortalGenerationReadStatusResponse: {
+            job: components["schemas"]["PortalGenerationReadJob"];
+            /** @enum {string} */
+            scope: "PROVENANCE_ONLY retained historical snapshot; no fresh lease, intent, fence, writer exclusion or adoption authority";
+        };
+        /** @description Nonpersistent signed DryRunAll observation, never an apply token or runtime/SSO promotion receipt. */
+        JanuaStagingAdmissionReceipt: {
+            /** @enum {string} */
+            classification: "ADMITTED_DRY_RUN_ONLY";
+            /** @enum {boolean} */
+            dry_run_only: true;
+            /** @enum {boolean} */
+            apply_supported: false;
+            /** @enum {string} */
+            profile: "janua-api-staging-v1";
+            /** @enum {string} */
+            reviewed_image: "ghcr.io/cloudnative-pg/postgresql:18.6-202610190957-standard-trixie@sha256:d72ace96f5803b12c341bb5dac48532e8c1f92f69e8a717a59d779bfc038dea9";
+            /** @enum {string} */
+            project_slug: "janua";
+            /** @enum {string} */
+            environment_name: "staging";
+            project_id: components["schemas"]["VerificationCanonicalUUID"];
+            environment_id: components["schemas"]["VerificationCanonicalUUID"];
+            service_id: components["schemas"]["VerificationCanonicalUUID"];
+            catalog_plan: string;
+            /** @enum {integer} */
+            objects_dry_admitted: 4;
+            exact_api_destination_pairs: number;
+            observation_fingerprint: string;
+            /**
+             * Format: date-time
+             * @description Canonical RFC3339Nano UTC timestamp emitted after the final authority re-read.
+             */
+            observed_at: string;
+            /** @description All seven distinct gates; the native API and CLI independently enforce complete membership, beyond generated SDK reference shapes. */
+            unresolved_gates: ("DURABLE_TYPED_APPLY_NOT_IMPLEMENTED" | "ACTUAL_CAPACITY_AND_SCHEDULING_NOT_EXERCISED" | "ACTUAL_CNPG_PODS_AND_CNI_PATHS_NOT_EXERCISED" | "RUNTIME_OWNER_AND_PUBLIC_CA_CUSTODY_NOT_PROVISIONED" | "STANDARD_IMAGE_BACKUP_PLUGIN_AND_RECOVERY_NOT_QUALIFIED" | "FIXED_JANUA_STAGE_MIGRATOR_NOT_IMPLEMENTED" | "ACTUAL_RUNTIME_SOAK_AND_PRODUCTION_PROMOTION_NOT_QUALIFIED")[];
+        };
         HealthResponse: {
             /** @example ok */
             status?: string;
@@ -10855,6 +11130,216 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["OperatorOperationResponse"];
                 };
+            };
+        };
+    };
+    observeRetainedSyntheticGeneration: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                slug: "crea-sim";
+                /** @description Existing same-project dedicated portal addon, as a canonical nonzero UUID. */
+                id: components["schemas"]["VerificationCanonicalUUID"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PortalGenerationReadRequest"];
+            };
+        };
+        responses: {
+            /**
+             * @description Native admission preflight, one execution observation or retained
+             *     historical receipt. HTTP success alone does not prove completed
+             *     provenance: inspect job.classification and native_receipt.
+             */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PortalGenerationReadResponse"];
+                };
+            };
+            /** @description Invalid/oversized/nonclosed body, noncanonical identifiers, or missing apply confirmation. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Authentication is missing or invalid. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description The caller lacks unconditional platform operator authority or the permitted acting-tenant scope. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Project unavailable under the caller's project access rules. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /**
+             * @description Verified runtime authority unavailable; plan changed; or Job refused,
+             *     partial, uncertain or held. No automatic replay. Inspect the same
+             *     operation key; a conflict is never adoption or execution acceptance.
+             */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Required provenance, custody, repository or native Job adapter is unavailable. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    getRetainedSyntheticGenerationObservation: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                slug: "crea-sim";
+                id: components["schemas"]["VerificationCanonicalUUID"];
+                job_name: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Read-only execution status or retained historical receipt; inspect its closed classification. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PortalGenerationReadStatusResponse"];
+                };
+            };
+            /** @description Invalid addon identifier. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Authentication is missing or invalid. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Platform operator authority or the permitted acting-tenant scope is absent. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Owned project/addon/service, read Job, immutable intent, receipt or namespace proof is unavailable. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Required status repository or native adapter is unavailable. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    dryAdmitJanuaStagingDatabase: {
+        parameters: {
+            query: {
+                /** @description Existing available PostgreSQL catalog plan code; exactly one value. */
+                plan: string;
+                /** @description Existing same-project Janua API service in the exact persisted staging namespace; exactly one value. */
+                service_id: string;
+            };
+            header?: never;
+            path: {
+                slug: "janua";
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Nonpersistent signed native admission observation with apply_supported:false and every unresolved gate. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["JanuaStagingAdmissionReceipt"];
+                };
+            };
+            /** @description Wrong project, missing/invalid identifiers, duplicate/unknown query keys, request body or apply selector. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Authentication is missing or invalid. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Unconditional platform operator authority or the permitted acting-tenant scope is absent. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Project unavailable under existing project access rules. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /**
+             * @description Closed ownership/isolation/storage/catalog prerequisites, official
+             *     producer signature, native dry admission or complete typed receipt
+             *     refused, or authority changed during observation. No resources persisted.
+             */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Required repository, Kubernetes or signature-verifier adapter is unavailable. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
         };
     };
