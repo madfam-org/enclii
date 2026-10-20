@@ -56,7 +56,7 @@ configMapGenerator:
 # (commit-digests runs `kustomize edit set image roundhouse-worker=...`,
 # which rewrites both newName and digest). Do not hand-edit.
 images:
-- digest: sha256:9dd774624f11a830f2cd57e0c6242ab6c2b9af5d6bcdb896e14b83b9ebda8ca7
+- digest: sha256:9242261f9db00d3c7c8cc7d860ff5713d1b956b50ca7dfdd219981e7ed10fe6d
   name: docs-site
   newName: ghcr.io/madfam-org/enclii/docs-site
 - digest: sha256:82608d611dd839eb2f4efeda643e4510bd4f559a13c2d6213da3f4c952c76404
@@ -68,7 +68,7 @@ images:
 - digest: sha256:fcf926e230ffb62b082b8797b059bfcf1fd07704c73b1827fd272a6d24028f33
   name: roundhouse-worker
   newName: ghcr.io/madfam-org/enclii/roundhouse-worker
-- digest: sha256:1fd36418c0a201b3a829ff65cdbd02cdb64d1e0f8e3ce74e640d8f01cd54ddfe
+- digest: sha256:afce8eb9c2e689a0263cf0f2aad5c8c8ae1d4051561ba698abd2b8abed84e9d0
   name: switchyard-api
   newName: ghcr.io/madfam-org/enclii/switchyard-api
 - digest: sha256:377b1d93110e1d67471627d211ab5300e3eff2c942e5bad93242fa6e188c81f8
