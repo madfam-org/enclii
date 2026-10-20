@@ -32,7 +32,7 @@ func (h *Handler) InitialBootstrapAddon(c *gin.Context) {
 	addonID, addonErr := uuid.Parse(c.Param("id"))
 	serviceID, serviceErr := uuid.Parse(request.ServiceID)
 	dryRun := request.DryRun == nil || *request.DryRun
-	if err != nil || addonErr != nil || serviceErr != nil || addonID == uuid.Nil || serviceID == uuid.Nil || (!dryRun && (request.IdempotencyKey == "" || strings.TrimSpace(request.Reason) == "")) {
+	if err != nil || k8s.IsProvenanceReadProfile(request.Profile) || addonErr != nil || serviceErr != nil || addonID == uuid.Nil || serviceID == uuid.Nil || (!dryRun && (request.IdempotencyKey == "" || strings.TrimSpace(request.Reason) == "")) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "valid owned IDs/profile and apply reason/idempotency key required"})
 		return
 	}
@@ -218,7 +218,9 @@ func (h *Handler) InitialBootstrapAddonStatus(c *gin.Context) {
 		return
 	}
 	scope := "INITIAL_ONLY retained history; current readiness, kernel control and reset accreditation remain separate"
-	if k8s.IsFixedStepProfile(profile.Name) {
+	if k8s.IsProvenanceReadProfile(profile.Name) {
+		scope = "PROVENANCE_ONLY retained historical snapshot; no fresh lease, intent, fence, writer exclusion or adoption authority"
+	} else if k8s.IsFixedStepProfile(profile.Name) {
 		scope = "FIXED_STEP retained history of this operation key; the database's own turno_vigente_recibos row remains the authority"
 	}
 	c.JSON(http.StatusOK, gin.H{"job": receipt, "scope": scope})

@@ -71,6 +71,7 @@ type IsolatedInitialJobPlan struct {
 	Data                                                       map[string][]byte           `json:"-"`
 	Revalidate                                                 func(context.Context) error `json:"-"`
 	Identity                                                   InitialBootstrapIdentity    `json:"-"`
+	GenerationRead                                             *PortalGenerationReadInput  `json:"-"`
 	retainedJobName                                            string
 }
 
@@ -157,6 +158,16 @@ func BuildIsolatedInitialJob(p IsolatedInitialJobPlan) (*batchv1.Job, error) {
 		}
 		command = []string{"node", "packages/entrenamiento/src/preparar-turno-vigente.ts"}
 		allowed["CREA_SIM_MIGRATOR_DATABASE_URL"], allowed["CREA_SIM_PORTAL_DATABASE_URL"], allowed["CREA_SIM_DATABASE_NAMESPACE"] = true, true, true
+	case IsProvenanceReadProfile(p.Profile):
+		if !strings.HasPrefix(p.Image, "ghcr.io/madfam-org/crea-sim/gateway@sha256:") {
+			return nil, fmt.Errorf("provenance reader producer refused")
+		}
+		input, err := generationReadBytes(p.GenerationRead)
+		if err != nil || string(input) != string(p.Data["request.json"]) {
+			return nil, fmt.Errorf("provenance reader input refused")
+		}
+		command = []string{"sh", "-c", portalGenerationReadCommand}
+		allowed["CREA_SIM_PORTAL_DATABASE_URL"], allowed["CREA_SIM_DATABASE_NAMESPACE"], allowed["request.json"] = true, true, true
 	default:
 		return nil, fmt.Errorf("unsupported initial Job profile")
 	}
@@ -168,7 +179,7 @@ func BuildIsolatedInitialJob(p IsolatedInitialJobPlan) (*batchv1.Job, error) {
 		if !allowed[key] || len(value) == 0 {
 			return nil, fmt.Errorf("initial Job environment refused")
 		}
-		if key != "ca.crt" {
+		if key != "ca.crt" && key != "request.json" {
 			keys = append(keys, key)
 		}
 	}
@@ -207,6 +218,13 @@ func BuildIsolatedInitialJob(p IsolatedInitialJobPlan) (*batchv1.Job, error) {
 	}
 	if IsFixedStepProfile(p.Profile) {
 		job.Spec.Template.Spec.InitContainers = []corev1.Container{initialNetworkReady(container, "CREA_SIM_MIGRATOR_DATABASE_URL")}
+	}
+	if IsProvenanceReadProfile(p.Profile) {
+		job.Spec.ActiveDeadlineSeconds = ptr.To[int64](180)
+		job.Spec.Template.Spec.Volumes[1].EmptyDir.SizeLimit = resource.NewQuantity(16<<20, resource.BinarySI)
+		job.Spec.Template.Spec.Containers[0].VolumeMounts = append(job.Spec.Template.Spec.Containers[0].VolumeMounts, corev1.VolumeMount{Name: "request", MountPath: "/var/run/crea-sim/request", ReadOnly: true})
+		job.Spec.Template.Spec.Volumes = append(job.Spec.Template.Spec.Volumes, corev1.Volume{Name: "request", VolumeSource: corev1.VolumeSource{Secret: &corev1.SecretVolumeSource{SecretName: p.jobName() + "-credentials", DefaultMode: ptr.To[int32](0444), Items: []corev1.KeyToPath{{Key: "request.json", Path: "request.json"}}}}})
+		job.Spec.Template.Spec.InitContainers = []corev1.Container{initialNetworkReady(container, "CREA_SIM_PORTAL_DATABASE_URL")}
 	}
 	return job, nil
 }
@@ -402,7 +420,7 @@ func (c *Client) RunIsolatedInitialJob(ctx context.Context, p IsolatedInitialJob
 		if !k8serrors.IsNotFound(receiptErr) {
 			return nil, receiptErr
 		}
-		if IsFixedStepProfile(p.Profile) && k8serrors.IsNotFound(jobErr) {
+		if IsRepeatedProfile(p.Profile) && k8serrors.IsNotFound(jobErr) {
 			// Its Job outlived its TTL uncollected. Nothing runs and nothing is
 			// written here; the database's own step receipt holds the outcome,
 			// and this operation no longer blocks a new key.
@@ -417,7 +435,7 @@ func (c *Client) RunIsolatedInitialJob(ctx context.Context, p IsolatedInitialJob
 		if existing.Status.Failed > 0 {
 			// An initial failure is never resumed. A fixed step's failed Job
 			// is collected once as a terminal held receipt; nothing reruns.
-			if !IsFixedStepProfile(p.Profile) {
+			if !IsRepeatedProfile(p.Profile) {
 				return nil, fmt.Errorf("initial Job partial or failed; held, no repair")
 			}
 			receipt := initialJobReceipt(existing, kind, dryRun)
@@ -503,11 +521,14 @@ func (c *Client) RunIsolatedInitialJob(ctx context.Context, p IsolatedInitialJob
 	}
 	owner := metav1.OwnerReference{APIVersion: "batch/v1", Kind: "Job", Name: job.Name, UID: job.UID, Controller: ptr.To(true)}
 	secret := &corev1.Secret{ObjectMeta: metav1.ObjectMeta{Name: job.Name + "-credentials", Namespace: p.Namespace, Labels: p.jobLabels(), OwnerReferences: []metav1.OwnerReference{owner}}, Type: corev1.SecretTypeOpaque, Data: p.Data}
+	if IsProvenanceReadProfile(p.Profile) {
+		secret.Immutable = ptr.To(true)
+	}
 	secrets := c.kubeClient().CoreV1().Secrets(p.Namespace)
 	oldSecret, getErr := secrets.Get(ctx, secret.Name, metav1.GetOptions{})
 	if k8serrors.IsNotFound(getErr) {
 		_, err = secrets.Create(ctx, secret, metav1.CreateOptions{})
-	} else if getErr != nil || !reflect.DeepEqual(oldSecret.OwnerReferences, secret.OwnerReferences) || !reflect.DeepEqual(oldSecret.Data, secret.Data) {
+	} else if getErr != nil || !reflect.DeepEqual(oldSecret.OwnerReferences, secret.OwnerReferences) || !reflect.DeepEqual(oldSecret.Data, secret.Data) || IsProvenanceReadProfile(p.Profile) && (oldSecret.Immutable == nil || !*oldSecret.Immutable) {
 		err = fmt.Errorf("initial transient custody conflicts")
 	}
 	if err != nil {
@@ -553,7 +574,7 @@ func (c *Client) IsolatedInitialJobStatus(ctx context.Context, namespace, name s
 		return nil, nil, fmt.Errorf("initial Job status scope refused")
 	}
 	suffix := ""
-	for _, kind := range []bootstrapKind{initialKind, fixedStepKind} {
+	for _, kind := range []bootstrapKind{initialKind, fixedStepKind, provenanceReadKind} {
 		if strings.HasPrefix(name, kind.namePrefix) {
 			suffix = name[len(kind.namePrefix):]
 		}

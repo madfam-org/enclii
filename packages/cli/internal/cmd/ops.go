@@ -115,6 +115,7 @@ func newOpsAppsCommand(cfg *config.Config) *cobra.Command {
 	cmd.AddCommand(newOpsActionCommand(cfg, "apps", "retire", "Retire an Argo application without routine kubectl access"))
 	cmd.AddCommand(newOpsActionCommand(cfg, "apps", "rollback", "Rollback an application to a known revision"))
 	cmd.AddCommand(newOpsAppsTrackingCommand(cfg))
+	cmd.AddCommand(newJanuaStagingIntentCommand(cfg))
 	return cmd
 }
 
@@ -164,6 +165,7 @@ func newOpsJobsCommand(cfg *config.Config) *cobra.Command {
 	cmd := &cobra.Command{Use: "jobs", Short: "CronJob inspection and audited triggers"}
 	cmd.AddCommand(newOpsReadCommand(cfg, "jobs", "list", "List Kubernetes CronJobs through Enclii"))
 	cmd.AddCommand(newOpsJobsSuspendCommand(cfg))
+	cmd.AddCommand(newOpsGenerationReadCommand(cfg))
 	cmd.AddCommand(newOpsActionCommand(cfg, "jobs", "trigger", "Trigger an existing CronJob once from its live template"))
 	return cmd
 }

@@ -84,6 +84,13 @@ func isolatedBootstrapProfileFor(name string) (isolatedBootstrapProfile, error) 
 		return profile, nil
 	}
 	switch name {
+	case k8s.PortalGenerationReadProfile:
+		profile := portalSimProfile(name)
+		profile.SourceRequirements = []bootstrapSourceRequirement{
+			{Path: "packages/entrenamiento/src/leer-generacion-retenida.ts", SHA256: k8s.PortalGenerationReaderSHA256},
+			{Path: "packages/entrenamiento/sql/002-custodia-reset.sql", SHA256: k8s.PortalGenerationSchemaSHA256},
+		}
+		return profile, nil
 	case "portal-sim-initial":
 		return portalSimProfile(name), nil
 	case "portal-sim-turno-vigente":
@@ -116,7 +123,7 @@ func portalSimProfile(name string) isolatedBootstrapProfile {
 // portalDatabase reports whether the profile works on the portal database
 // with its four-key migrator custody (CREA_SIM_*), rather than a MAP kernel's.
 func (p isolatedBootstrapProfile) portalDatabase() bool {
-	return p.Name == "portal-sim-initial" || p.Name == "portal-sim-turno-vigente"
+	return p.Name == "portal-sim-initial" || p.Name == "portal-sim-turno-vigente" || k8s.IsProvenanceReadProfile(p.Name)
 }
 
 // mapSimInitialProfile is the one constructor for the three MAP kernels. The

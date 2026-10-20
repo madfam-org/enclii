@@ -107,3 +107,96 @@ soak and canonical production promotion remain separate gates.
 
 See [Isolated staging custody](ISOLATED_TRAINING_CUSTODY.md) and
 [Secret intake](SECRET_INTAKE.md).
+
+## Typed server-side dry admission
+
+The separate `staging-admission` adapter closes the source path for a native
+admission observation. It adds no apply path and does not invoke legacy addon
+`Provision`. The generic `*_sim` runtime validator remains unchanged. Run only
+after the released adapter and actual prerequisites have been independently
+verified through Enclii:
+
+```bash
+enclii addon staging-admission --project janua --plan standard-0 --service-id <STAGING_API_SERVICE_UUID> --json
+```
+
+The operator POST is
+`/v1/admin/projects/janua/environments/staging/addon-admission`, with required
+`plan` and `service_id` query keys only. The existing same-project and unconditional
+platform-operator checks apply. Missing or foreign persisted stage API registration
+refuses before native metadata or signature verification. Request bodies,
+duplicate/unknown keys, caller image/SQL/roles/namespaces/credentials and apply
+selectors are rejected.
+
+The closed profile requires both actual owned namespaces and their current
+UID/resource versions, signature-admission labels, exactly one owned DNS-only
+baseline and no unknown additive policies or broad legacy data-access labels.
+The retained StorageClass must have its UID/resource version and Retain policy.
+Existing staging addon rows, any addon row in the proposed addon namespace, or
+any actual Cluster there refuse; no production/shared database is selected,
+copied or adopted. Missing isolation is a prerequisite for separate reviewed
+preparation, not authorization to relabel or repair namespaces.
+
+Control-plane destinations come only from the fixed native `default/kubernetes`
+Service and Endpoints metadata. Selectorless canonical Service identity, current
+UID/resource versions, numeric TCP port mapping, complete ready endpoint subsets
+and bounded valid unicast addresses are required. The candidate permits exact
+current destination/port pairs as `/32` or `/128` routes; it contains no broad
+private range or destination-free API egress. Raw addresses are never returned,
+logged or committed. The actual observed CNPG operator namespace and single
+available Deployment selector constrain candidate port-8000 ingress. Stage DB
+ingress and API egress use the persisted service's canonical `enclii.dev/service`
+label plus the exact owned namespace. This is metadata and candidate-policy proof;
+actual CNI translation, denied paths and runtime connectivity remain unexercised.
+
+The source-reviewed PG18 descriptor is pinned to the major-18 entry in the
+[immutable official catalog](https://github.com/cloudnative-pg/artifacts/blob/61f84bd4493da4e92fce41b79093246ad266a25d/image-catalogs/catalog-standard-trixie.yaml).
+This adapter separately verifies that exact digest with the existing API-process
+native cosign mechanism, a fixed official GitHub workflow identity/repository and
+GitHub Actions issuer. It uses no shell, cluster exec, verifier Job, new RBAC,
+registry credential read/copy or workload. Verification has a private temporary
+writable cache, empty isolated Docker config, a minimal environment excluding
+ambient registry/cloud/API credentials and proxies, bounded output and generic errors. Missing
+cosign or unavailable/refused verification stops before admission. The existing
+API image bundles `/usr/local/bin/cosign`; a source pin alone is never a live
+signature/admission receipt. The official image producer can sign from PR workflows;
+this verification does not claim an unverified main-ref SHA.
+
+Every native create request hardcodes `DryRunAll` and strict field validation:
+
+- A fixed `pg-janua-staging-db` Cluster in the owned addon namespace, using
+  catalog allocation, retained storage, the immutable image and separate fixed
+  `enclii_migrator` owner and nonowner `janua_staging_runtime` flags. Fixed bootstrap
+  SQL contains no password; the managed runtime role names only its future Secret.
+- Two narrow candidate network policies for that Cluster and the exact staging
+  API. No apply, patch, deletion, policy expansion or existing resource adoption
+  occurs.
+- A representative nonroot Pod with only `postgres --version`, dropped
+  capabilities, read-only root filesystem, explicit resources, no token mount,
+  credential, environment, volume, SQL or network action. It is never scheduled,
+  executed or substituted for the real CNPG-generated Pod admission/soak.
+
+The adapter checks returned identity and preserved critical candidate fields,
+then re-reads persisted ownership, namespace/baseline/storage, canonical endpoints
+and operator resource versions. Any refusal, partial receipt or changed authority
+discards the observation. Returned/defaulted Kubernetes objects are never exported
+or reused for apply. A successful receipt is `ADMITTED_DRY_RUN_ONLY`, records four
+dry-admitted objects and an observation hash, and always says
+`apply_supported: false`. It creates no database/addon row, Secret, Pod, policy,
+namespace or credential and performs no migration or SSO activation.
+
+Actual capacity/scheduling, CNPG runtime/role readiness, live CNI allow/deny proof,
+verified Cluster-owned public CA and owner/runtime custody, a fixed Janua migration
+executor, recovery and staging soak remain required. The official standard image
+also requires separately qualified backup-plugin integration; do not copy legacy
+in-core backup settings from the shared production Cluster. See the
+[official image documentation](https://github.com/cloudnative-pg/postgres-containers/blob/main/README.md).
+A future durable typed apply adapter must independently enforce these gates,
+review all server-defaulted fields and bind fresh authority and operation identity;
+neither this receipt nor the earlier plan hash authorizes apply.
+
+Local fake-native tests cover exact dry-run options, refusal before mutation,
+upstream failure stop, no Secret reads or tracker persistence, authority drift,
+producer identity/digest and bounded CLI receipt handling. They do not establish
+deployed image verification, live namespace policy, PostgreSQL18 runtime/RLS,
+custody, backup, migration or production readiness.

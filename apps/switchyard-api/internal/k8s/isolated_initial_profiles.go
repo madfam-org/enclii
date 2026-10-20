@@ -11,6 +11,16 @@ const initialPortalProfile = "portal-sim-initial"
 // may run again under a new operation key: the step answers YA_APLICADO.
 const fixedStepTurnoVigenteProfile = "portal-sim-turno-vigente"
 
+// PortalGenerationReadProfile is observation only; never migration or reset.
+const PortalGenerationReadProfile = "portal-sim-generation-read"
+
+func IsProvenanceReadProfile(profile string) bool { return profile == PortalGenerationReadProfile }
+
+// IsRepeatedProfile uses one retained Job per key for fixed steps and reads.
+func IsRepeatedProfile(profile string) bool {
+	return IsFixedStepProfile(profile) || IsProvenanceReadProfile(profile)
+}
+
 // IsFixedStepProfile reports whether a profile is a re-runnable fixed step
 // rather than a once-only initial preparation.
 func IsFixedStepProfile(profile string) bool {
@@ -41,7 +51,16 @@ var fixedStepKind = bootstrapKind{
 	nameIncludesKey: true,
 }
 
+var provenanceReadKind = bootstrapKind{
+	manager: "isolated-provenance-read", namePrefix: "read-", version: "isolated-provenance-read-v1",
+	intent: "PROVENANCE_ONLY_INTENT", execution: "PROVENANCE_ONLY_EXECUTION", retained: "PROVENANCE_ONLY", held: "PROVENANCE_ONLY_HELD", unretained: "PROVENANCE_ONLY_UNRETAINED",
+	nameIncludesKey: true,
+}
+
 func bootstrapKindFor(profile string) bootstrapKind {
+	if IsProvenanceReadProfile(profile) {
+		return provenanceReadKind
+	}
 	if IsFixedStepProfile(profile) {
 		return fixedStepKind
 	}
@@ -90,7 +109,7 @@ func initialProvenanceFor(profile string) (initialProvenance, bool) {
 	}
 	// The fixed step runs the same producer's image against the same portal
 	// database and roles as the initial portal profile.
-	if profile == initialPortalProfile || profile == fixedStepTurnoVigenteProfile {
+	if profile == initialPortalProfile || profile == fixedStepTurnoVigenteProfile || IsProvenanceReadProfile(profile) {
 		return initialProvenance{Producer: "madfam-org/crea-sim", ImagePrefix: "ghcr.io/madfam-org/crea-sim/gateway@sha256:", Database: "crea_sim_portal_sim", RuntimeRole: "crea_sim_portal", Checks: 2}, true
 	}
 	return initialProvenance{}, false

@@ -34,12 +34,15 @@ func (h *Handler) initialWorkload(ctx context.Context, p isolatedBootstrapProfil
 	if err != nil || deployment.UID == "" || deployment.Spec.Replicas == nil || len(deployment.Spec.Template.Spec.Containers) != 1 || deployment.Spec.Template.Labels["enclii.dev/service"] != p.Service {
 		return nil, fmt.Errorf("initial bootstrap requires the exact owned workload")
 	}
-	if k8s.IsFixedStepProfile(p.Name) {
+	if k8s.IsRepeatedProfile(p.Name) {
 		// A fixed step runs against a live database: its workload may serve,
 		// but every Pod must already run the template image this Job will run,
 		// so no Pod still on an older image meets the changed catalog.
 		if !rolloutConverged(deployment) {
 			return nil, fmt.Errorf("fixed step requires the owned workload's rollout to have converged on its pinned image")
+		}
+		if k8s.IsProvenanceReadProfile(p.Name) && (*deployment.Spec.Replicas < 1 || deployment.Status.ReadyReplicas != *deployment.Spec.Replicas || deployment.Status.AvailableReplicas != *deployment.Spec.Replicas) {
+			return nil, fmt.Errorf("provenance reader requires the signed gateway runtime Ready and available")
 		}
 		return deployment, nil
 	}
@@ -60,7 +63,7 @@ func rolloutConverged(d *appsv1.Deployment) bool {
 // at all; a fixed step's live Deployment must keep its generation (its spec),
 // while its status, and so its resourceVersion, may move.
 func sameWorkloadRevision(p isolatedBootstrapProfile, current, observed *appsv1.Deployment) bool {
-	if k8s.IsFixedStepProfile(p.Name) {
+	if k8s.IsRepeatedProfile(p.Name) {
 		return current.Generation == observed.Generation && rolloutConverged(current)
 	}
 	return current.ResourceVersion == observed.ResourceVersion
@@ -282,6 +285,11 @@ func strictInitialPortalRuntime(raw string) bool {
 // Retain independently observed identities, not caller selectors or labels as
 // producer authority. The source proof was already fully verified above.
 func (h *Handler) initialBootstrapIdentity(ctx context.Context, p isolatedBootstrapProfile, project uuid.UUID, d *appsv1.Deployment, b *addons.InitialBootstrapCredentials, addonNamespace string, binding, onboarding uuid.UUID, proof *bootstrapProducerProof) (k8s.InitialBootstrapIdentity, error) {
+	return h.bootstrapTransportIdentity(ctx, p, project, d, b.ClusterUID, b.PublicCA, addonNamespace, binding, onboarding, proof)
+}
+
+// Identity binding needs public transport evidence, never an owner credential.
+func (h *Handler) bootstrapTransportIdentity(ctx context.Context, p isolatedBootstrapProfile, project uuid.UUID, d *appsv1.Deployment, clusterUID, publicCA, addonNamespace string, binding, onboarding uuid.UUID, proof *bootstrapProducerProof) (k8s.InitialBootstrapIdentity, error) {
 	fail := fmt.Errorf("initial namespace/workload identity unavailable")
 	if proof == nil || binding == uuid.Nil || onboarding == uuid.Nil || d == nil || d.UID == "" || d.ResourceVersion == "" {
 		return k8s.InitialBootstrapIdentity{}, fail
@@ -289,7 +297,7 @@ func (h *Handler) initialBootstrapIdentity(ctx context.Context, p isolatedBootst
 	// A held workload is bound by resourceVersion; a fixed step's live one by
 	// generation (see k8s.InitialBootstrapIdentity).
 	resourceVersion, generation := d.ResourceVersion, int64(0)
-	if k8s.IsFixedStepProfile(p.Name) {
+	if k8s.IsRepeatedProfile(p.Name) {
 		if d.Generation <= 0 {
 			return k8s.InitialBootstrapIdentity{}, fail
 		}
@@ -307,6 +315,10 @@ func (h *Handler) initialBootstrapIdentity(ctx context.Context, p isolatedBootst
 	if e != nil || svc.UID == "" || d.Spec.Selector == nil || len(d.Spec.Selector.MatchExpressions) != 0 || len(d.Spec.Selector.MatchLabels) == 0 || !reflect.DeepEqual(svc.Spec.Selector, d.Spec.Selector.MatchLabels) {
 		return k8s.InitialBootstrapIdentity{}, fail
 	}
-	return k8s.InitialBootstrapIdentity{ApplicationNamespaceUID: string(app.UID), AddonNamespaceUID: string(ns.UID), DeploymentUID: string(d.UID), DeploymentResourceVersion: resourceVersion, DeploymentGeneration: generation, WorkloadServiceUID: string(svc.UID), ClusterUID: b.ClusterUID, BindingID: binding, OnboardingID: onboarding, Database: p.Database, OwnerRole: "enclii_migrator", RuntimeRole: p.RuntimeRole, PublicCASHA256: initialPayloadSHA([]byte(b.PublicCA)), Producer: proof.Producer, SourceRevision: proof.Revision, BuildRunID: proof.RunID, Checks: proof.Checks, SignatureVerified: proof.SignatureVerified, PinPayloadSHA256: proof.PinPayloadSHA256}, nil
+	ownerRole := "enclii_migrator"
+	if k8s.IsProvenanceReadProfile(p.Name) {
+		ownerRole = ""
+	}
+	return k8s.InitialBootstrapIdentity{ApplicationNamespaceUID: string(app.UID), AddonNamespaceUID: string(ns.UID), DeploymentUID: string(d.UID), DeploymentResourceVersion: resourceVersion, DeploymentGeneration: generation, WorkloadServiceUID: string(svc.UID), ClusterUID: clusterUID, BindingID: binding, OnboardingID: onboarding, Database: p.Database, OwnerRole: ownerRole, RuntimeRole: p.RuntimeRole, PublicCASHA256: initialPayloadSHA([]byte(publicCA)), Producer: proof.Producer, SourceRevision: proof.Revision, BuildRunID: proof.RunID, Checks: proof.Checks, SignatureVerified: proof.SignatureVerified, PinPayloadSHA256: proof.PinPayloadSHA256}, nil
 }
 func initialPayloadSHA(b []byte) string { sum := sha256.Sum256(b); return hex.EncodeToString(sum[:]) }
