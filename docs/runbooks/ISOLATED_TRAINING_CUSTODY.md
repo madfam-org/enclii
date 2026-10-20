@@ -155,6 +155,11 @@ not execute any of those operations or introduce an owner/migrator credential.
 
 ## Bounded staging namespace bootstrap
 
+The separate [read-only Janua addon plan](JANUA_STAGING_ADDON_PLAN.md) verifies
+persisted staging ownership, namespace metadata and catalog allocation without
+creating rows/resources or reading credentials. A plan response cannot activate
+the namespace or replace the still-missing typed staging provisioning adapter.
+
 `POST /v1/admin/projects/:slug/environments/staging/bootstrap` defaults to
 `dry_run: true`. It uses the existing platform-rank and project/acting-tenant
 guards, preserving the documented tenant-scope rollback policy. It requires a

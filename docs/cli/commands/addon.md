@@ -1,5 +1,7 @@
 # enclii addon
 
+Last Updated: 2026-10-20
+
 Manage database addons — fresh, isolated managed Postgres instances scoped to a service.
 
 ## Synopsis
@@ -19,6 +21,23 @@ The CLI talks to switchyard-api, which validates the requested plan, provisions 
 See `docs/architecture/managed-db-addon.md` for the full design.
 
 ## Subcommands
+
+### `staging-plan`
+
+Read the closed Janua staging addon preview, without creating or binding anything:
+
+```bash
+enclii addon staging-plan --project janua --plan standard-0 --json
+```
+
+`--project janua` and an existing PostgreSQL `--plan` are required. Optional
+`--service-id` identifies a persisted staging API service; a production service
+is refused and no identifier is assumed when omitted. The platform operator
+route returns ownership/resource metadata, read counts and unresolved gates.
+It always reports `apply_supported: false`; the observation hash is not apply
+authority. No SQL, namespace, credentials or apply flag is accepted.
+
+See [the exact preview and custody contract](../../runbooks/JANUA_STAGING_ADDON_PLAN.md).
 
 ### `plans`
 
