@@ -150,7 +150,10 @@ audit reasons and upstream error bodies.
    closed plan/record/read interface. Its source implementation still creates no
    service or workload. The fixed PG18/TLS CI proof includes native constraints,
    concurrent fixed-slot arbitration, exact replay, immutable history and absence
-   of service creation/production retargeting; a source test is not its run receipt.
+   of service creation/production retargeting. A separate concurrency case proves
+   rollback locks history before checking emptiness and refuses when an in-flight
+   first record commits. The exclusive lock, check and conditional drop share one
+   statement/transaction. A source test is not its native run receipt.
 2. Define faithful environment-specific source authority without rewriting the
    global production onboarding registration. Repository ownership alone leaves
    `SOURCE_STAGE_REGISTRATION_NOT_PROVEN` unresolved, including after recording.
@@ -167,8 +170,14 @@ audit reasons and upstream error bodies.
 
 Source tests cover operator revocation and identity drift, exact record/replay/CAS,
 unknown/duplicate input rejection, closed CLI redaction in both modes and absence
-of native clients or service-writer calls. The separate mandatory native-tag case
-covers immutability/FK/uniqueness, concurrent fixed-slot arbitration and no service
-materialization. Mocked records and native-tag compilation cannot establish those
+of native clients or service-writer calls. The canonical
+[OpenAPI contract](../api/openapi.yaml) describes the two closed routes and all
+unresolved gates; TypeScript and Python reference artifacts are generated from it.
+Python model round trips test the generated closed flags, modes and fields; the
+server and official Go CLI additionally validate correlated modes, nonzero and
+distinct IDs and actor-bound fingerprints. Mandatory native-tag cases cover
+immutability/FK/uniqueness, concurrent fixed-slot arbitration, rollback versus an
+in-flight first record and no service materialization. Mocked records and
+native-tag compilation cannot establish those
 native constraints, namespace ownership or workload readiness. Actual native CI
 receipts must be checked independently before any use of the deployed adapter.

@@ -3609,10 +3609,133 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/admin/projects/{slug}/environments/staging/preregistration-intents": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Plan or retain an inert Janua staging preregistration intent
+         * @description Requires a current actual platform operator and same-project access even
+         *     when tenant-scope enforcement is disabled. Only slug `janua` is accepted;
+         *     no query parameters, arbitrary service, environment, source or native
+         *     selectors are accepted. The body is at most 8192 bytes with exact
+         *     case-sensitive keys, canonical nonzero UUIDs and no duplicate keys.
+         *     `record: false` performs metadata reads only. `record: true` records an
+         *     immutable held intent after an actor-bound current-plan comparison.
+         *     Exact operation/payload replay returns the original receipt; changing
+         *     actor, plan or reason is refused. After an uncertain write, read the same
+         *     operation UUID; clients must not automatically replay this POST.
+         *     The repository FK proves repository ownership only. No service row,
+         *     source registration, build, deployment, binding, secret, DNS, network or
+         *     authority grant is created. SOURCE_STAGE_REGISTRATION_NOT_PROVEN remains
+         *     unresolved. An intent never authorizes materialization or activation.
+         */
+        post: operations["planOrRecordJanuaStagingPreregistrationIntent"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/admin/projects/{slug}/environments/staging/preregistration-intents/{operation_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Read a retained inert Janua staging intent
+         * @description Requires a current actual platform operator and same-project access.
+         *     Accepts no body or query parameters. A historical receipt proves only
+         *     retained repository-ownership intent, never current staging source,
+         *     native binding, workload readiness or activation authority. Private actor
+         *     and reason are never returned. An absent or invalid retained proof is
+         *     refused; no receipt or default is manufactured.
+         */
+        get: operations["readJanuaStagingPreregistrationIntent"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        /** @description Canonical lowercase nonzero UUID; all ownership IDs must be distinct */
+        JanuaStagingPreregistrationUUID: string;
+        JanuaStagingPreregistrationPlanRequest: {
+            operation_id: components["schemas"]["JanuaStagingPreregistrationUUID"];
+            /** @enum {boolean} */
+            record: false;
+        };
+        JanuaStagingPreregistrationRecordRequest: {
+            operation_id: components["schemas"]["JanuaStagingPreregistrationUUID"];
+            /** @enum {boolean} */
+            record: true;
+            /** @description Exact current actor-bound plan SHA-256, not activation authority */
+            expect_plan_sha256: string;
+            /** @description At most 512 UTF-8 bytes, no Unicode controls or surrounding whitespace; retained privately, never echoed */
+            reason: string;
+        };
+        /** @enum {string} */
+        JanuaStagingPreregistrationGate: "SOURCE_STAGE_REGISTRATION_NOT_PROVEN" | "STAGING_SOURCE_ALIGNMENT_NOT_QUALIFIED" | "SERVICE_MATERIALIZATION_NOT_IMPLEMENTED" | "BACKGROUND_WRITER_EXCLUSION_NOT_QUALIFIED" | "NATIVE_043_BINDING_NOT_PROVEN" | "RUNTIME_CUSTODY_MIGRATION_AND_SOAK_NOT_QUALIFIED";
+        /**
+         * @description Repository-ownership-only plan or immutable receipt. All six gates remain
+         *     unresolved. No value, hash or historical FK confers current staging
+         *     source registration, service materialization, native binding or authority.
+         *     `recorded` is false and recorded_at absent for plans; retained/read
+         *     receipts have recorded true and a canonical UTC recorded_at timestamp.
+         *     These correlated modes, nonzero/distinct IDs and the actor-bound plan
+         *     hash are additionally validated by the server and official Go CLI.
+         */
+        JanuaStagingPreregistrationIntent: {
+            id: components["schemas"]["JanuaStagingPreregistrationUUID"];
+            project_id: components["schemas"]["JanuaStagingPreregistrationUUID"];
+            environment_id: components["schemas"]["JanuaStagingPreregistrationUUID"];
+            repository_registration_id: components["schemas"]["JanuaStagingPreregistrationUUID"];
+            /** @enum {string} */
+            repository_registration_scope: "REPOSITORY_OWNERSHIP_ONLY";
+            /** @enum {string} */
+            state: "HELD_PREREGISTRATION_ONLY";
+            /** @enum {string} */
+            profile: "janua-staging-preregistration-v1";
+            /** @enum {string} */
+            proposed_service_name: "janua-api-staging";
+            /** @enum {string} */
+            proposed_deployment_name: "janua-api-staging";
+            /** @enum {string} */
+            proposed_repository: "https://github.com/madfam-org/janua.git";
+            /** @enum {string} */
+            proposed_app_path: "apps/api";
+            /** @enum {string} */
+            proposed_namespace: "janua-staging";
+            /** @enum {string} */
+            proposed_manifest_path: "k8s/overlays/staging";
+            /** @enum {string} */
+            proposed_ref: "main";
+            /** @enum {boolean} */
+            activation_held: true;
+            /** @enum {boolean} */
+            service_materialized: false;
+            /** @enum {boolean} */
+            native_binding_proven: false;
+            /** @enum {boolean} */
+            materialization_supported: false;
+            recorded: boolean;
+            recorded_at?: string;
+            plan_sha256: string;
+            unresolved_gates: components["schemas"]["JanuaStagingPreregistrationGate"][];
+        };
         /** @description Canonical lowercase nonzero UUID string, validated before any custody access. */
         VerificationCanonicalUUID: string;
         VerificationSHA256: string;
@@ -11335,6 +11458,132 @@ export interface operations {
                 content?: never;
             };
             /** @description Required repository, Kubernetes or signature-verifier adapter is unavailable. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    planOrRecordJanuaStagingPreregistrationIntent: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                slug: "janua";
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["JanuaStagingPreregistrationPlanRequest"] | components["schemas"]["JanuaStagingPreregistrationRecordRequest"];
+            };
+        };
+        responses: {
+            /** @description Closed plan or historical held receipt; never activation authority */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["JanuaStagingPreregistrationIntent"];
+                };
+            };
+            /** @description Closed fixed input or route required */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Authentication required */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Current actual platform operator and project access required */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Fixed project unavailable */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Ownership, plan comparison, fixed slot or immutable replay refused */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Adapter unavailable or commit unconfirmed; read the same operation UUID */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    readJanuaStagingPreregistrationIntent: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                slug: "janua";
+                operation_id: components["schemas"]["JanuaStagingPreregistrationUUID"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Validated immutable held receipt with recorded true */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["JanuaStagingPreregistrationIntent"];
+                };
+            };
+            /** @description Canonical nonzero UUID, no body and no query required */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Authentication required */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Current actual platform operator and project access required */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Fixed project or validated held intent unavailable */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Held intent adapter unavailable */
             503: {
                 headers: {
                     [name: string]: unknown;

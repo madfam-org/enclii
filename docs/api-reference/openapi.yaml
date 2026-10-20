@@ -6016,6 +6016,103 @@ paths:
         '503':
           description: Required repository, Kubernetes or signature-verifier adapter is unavailable.
 
+  /admin/projects/{slug}/environments/staging/preregistration-intents:
+    post:
+      tags: [admin]
+      operationId: planOrRecordJanuaStagingPreregistrationIntent
+      summary: Plan or retain an inert Janua staging preregistration intent
+      description: |
+        Requires a current actual platform operator and same-project access even
+        when tenant-scope enforcement is disabled. Only slug `janua` is accepted;
+        no query parameters, arbitrary service, environment, source or native
+        selectors are accepted. The body is at most 8192 bytes with exact
+        case-sensitive keys, canonical nonzero UUIDs and no duplicate keys.
+        `record: false` performs metadata reads only. `record: true` records an
+        immutable held intent after an actor-bound current-plan comparison.
+        Exact operation/payload replay returns the original receipt; changing
+        actor, plan or reason is refused. After an uncertain write, read the same
+        operation UUID; clients must not automatically replay this POST.
+        The repository FK proves repository ownership only. No service row,
+        source registration, build, deployment, binding, secret, DNS, network or
+        authority grant is created. SOURCE_STAGE_REGISTRATION_NOT_PROVEN remains
+        unresolved. An intent never authorizes materialization or activation.
+      parameters:
+        - name: slug
+          in: path
+          required: true
+          schema:
+            type: string
+            enum: [janua]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              oneOf:
+                - $ref: '#/components/schemas/JanuaStagingPreregistrationPlanRequest'
+                - $ref: '#/components/schemas/JanuaStagingPreregistrationRecordRequest'
+      responses:
+        '200':
+          description: Closed plan or historical held receipt; never activation authority
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/JanuaStagingPreregistrationIntent'
+        '400':
+          description: Closed fixed input or route required
+        '401':
+          description: Authentication required
+        '403':
+          description: Current actual platform operator and project access required
+        '404':
+          description: Fixed project unavailable
+        '409':
+          description: Ownership, plan comparison, fixed slot or immutable replay refused
+        '503':
+          description: Adapter unavailable or commit unconfirmed; read the same operation UUID
+
+  /admin/projects/{slug}/environments/staging/preregistration-intents/{operation_id}:
+    get:
+      tags: [admin]
+      operationId: readJanuaStagingPreregistrationIntent
+      summary: Read a retained inert Janua staging intent
+      description: |
+        Requires a current actual platform operator and same-project access.
+        Accepts no body or query parameters. A historical receipt proves only
+        retained repository-ownership intent, never current staging source,
+        native binding, workload readiness or activation authority. Private actor
+        and reason are never returned. An absent or invalid retained proof is
+        refused; no receipt or default is manufactured.
+      parameters:
+        - name: slug
+          in: path
+          required: true
+          schema:
+            type: string
+            enum: [janua]
+        - name: operation_id
+          in: path
+          required: true
+          schema:
+            $ref: '#/components/schemas/JanuaStagingPreregistrationUUID'
+      responses:
+        '200':
+          description: Validated immutable held receipt with recorded true
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/JanuaStagingPreregistrationIntent'
+        '400':
+          description: Canonical nonzero UUID, no body and no query required
+        '401':
+          description: Authentication required
+        '403':
+          description: Current actual platform operator and project access required
+        '404':
+          description: Fixed project or validated held intent unavailable
+        '503':
+          description: Held intent adapter unavailable
+
 components:
   securitySchemes:
     bearerAuth:
@@ -6100,6 +6197,155 @@ components:
             $ref: '#/components/schemas/Error'
 
   schemas:
+    # ===== Inert Janua staging preregistration; no activation authority =====
+    JanuaStagingPreregistrationUUID:
+      type: string
+      description: Canonical lowercase nonzero UUID; all ownership IDs must be distinct
+      pattern: '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$'
+      not:
+        enum: ['00000000-0000-0000-0000-000000000000']
+
+    JanuaStagingPreregistrationPlanRequest:
+      type: object
+      additionalProperties: false
+      required: [operation_id, record]
+      properties:
+        operation_id:
+          $ref: '#/components/schemas/JanuaStagingPreregistrationUUID'
+        record:
+          type: boolean
+          enum: [false]
+
+    JanuaStagingPreregistrationRecordRequest:
+      type: object
+      additionalProperties: false
+      required: [operation_id, record, expect_plan_sha256, reason]
+      properties:
+        operation_id:
+          $ref: '#/components/schemas/JanuaStagingPreregistrationUUID'
+        record:
+          type: boolean
+          enum: [true]
+        expect_plan_sha256:
+          type: string
+          pattern: '^[a-f0-9]{64}$'
+          description: Exact current actor-bound plan SHA-256, not activation authority
+        reason:
+          type: string
+          minLength: 1
+          maxLength: 512
+          description: At most 512 UTF-8 bytes, no Unicode controls or surrounding whitespace; retained privately, never echoed
+
+    JanuaStagingPreregistrationGate:
+      type: string
+      enum:
+        - SOURCE_STAGE_REGISTRATION_NOT_PROVEN
+        - STAGING_SOURCE_ALIGNMENT_NOT_QUALIFIED
+        - SERVICE_MATERIALIZATION_NOT_IMPLEMENTED
+        - BACKGROUND_WRITER_EXCLUSION_NOT_QUALIFIED
+        - NATIVE_043_BINDING_NOT_PROVEN
+        - RUNTIME_CUSTODY_MIGRATION_AND_SOAK_NOT_QUALIFIED
+
+    JanuaStagingPreregistrationIntent:
+      type: object
+      additionalProperties: false
+      description: |
+        Repository-ownership-only plan or immutable receipt. All six gates remain
+        unresolved. No value, hash or historical FK confers current staging
+        source registration, service materialization, native binding or authority.
+        `recorded` is false and recorded_at absent for plans; retained/read
+        receipts have recorded true and a canonical UTC recorded_at timestamp.
+        These correlated modes, nonzero/distinct IDs and the actor-bound plan
+        hash are additionally validated by the server and official Go CLI.
+      required:
+        - id
+        - project_id
+        - environment_id
+        - repository_registration_id
+        - repository_registration_scope
+        - state
+        - profile
+        - proposed_service_name
+        - proposed_deployment_name
+        - proposed_repository
+        - proposed_app_path
+        - proposed_namespace
+        - proposed_manifest_path
+        - proposed_ref
+        - activation_held
+        - service_materialized
+        - native_binding_proven
+        - materialization_supported
+        - recorded
+        - plan_sha256
+        - unresolved_gates
+      properties:
+        id:
+          $ref: '#/components/schemas/JanuaStagingPreregistrationUUID'
+        project_id:
+          $ref: '#/components/schemas/JanuaStagingPreregistrationUUID'
+        environment_id:
+          $ref: '#/components/schemas/JanuaStagingPreregistrationUUID'
+        repository_registration_id:
+          $ref: '#/components/schemas/JanuaStagingPreregistrationUUID'
+        repository_registration_scope:
+          type: string
+          enum: [REPOSITORY_OWNERSHIP_ONLY]
+        state:
+          type: string
+          enum: [HELD_PREREGISTRATION_ONLY]
+        profile:
+          type: string
+          enum: [janua-staging-preregistration-v1]
+        proposed_service_name:
+          type: string
+          enum: [janua-api-staging]
+        proposed_deployment_name:
+          type: string
+          enum: [janua-api-staging]
+        proposed_repository:
+          type: string
+          enum: ['https://github.com/madfam-org/janua.git']
+        proposed_app_path:
+          type: string
+          enum: [apps/api]
+        proposed_namespace:
+          type: string
+          enum: [janua-staging]
+        proposed_manifest_path:
+          type: string
+          enum: [k8s/overlays/staging]
+        proposed_ref:
+          type: string
+          enum: [main]
+        activation_held:
+          type: boolean
+          enum: [true]
+        service_materialized:
+          type: boolean
+          enum: [false]
+        native_binding_proven:
+          type: boolean
+          enum: [false]
+        materialization_supported:
+          type: boolean
+          enum: [false]
+        recorded:
+          type: boolean
+        recorded_at:
+          type: string
+          pattern: '^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(\.[0-9]{1,9})?Z$'
+        plan_sha256:
+          type: string
+          pattern: '^[a-f0-9]{64}$'
+        unresolved_gates:
+          type: array
+          minItems: 6
+          maxItems: 6
+          uniqueItems: true
+          items:
+            $ref: '#/components/schemas/JanuaStagingPreregistrationGate'
+
     # ===== Closed verification contracts (no adoption or apply authority) =====
     VerificationCanonicalUUID:
       type: string

@@ -4,9 +4,11 @@ package workloadtargets
 
 import (
 	"context"
+	"database/sql"
 	"encoding/json"
 	"errors"
 	"os"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -16,6 +18,130 @@ import (
 	"github.com/madfam-org/enclii/apps/switchyard-api/internal/stagingintents"
 	"github.com/madfam-org/enclii/packages/sdk-go/pkg/types"
 )
+
+// Exercise the actual down migration with an uncommitted first record. The
+// isolated owner-only schema uses no platform data and is never a native binding.
+// The old check-before-lock migration observes empty, waits at DROP, then erases
+// the committed record; lock-before-check must instead retain it and refuse.
+func TestNativeTargetHeldStagingRollbackWaitsBeforeReadingHistory(t *testing.T) {
+	owner := nativeConnection(t, "ENCLII_TARGET_OWNER_PROOF_URL", "binding_owner")
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+	defer cancel()
+	up, err := os.ReadFile("../db/migrations/045_janua_staging_preregistration.up.sql")
+	if err != nil {
+		t.Fatal("held migration unavailable")
+	}
+	down, err := os.ReadFile("../db/migrations/045_janua_staging_preregistration.down.sql")
+	if err != nil {
+		t.Fatal("rollback migration unavailable")
+	}
+	setup := `CREATE SCHEMA held_intent_rollback_fixture;
+SET search_path TO held_intent_rollback_fixture;
+CREATE TABLE projects(id uuid PRIMARY KEY,slug text);
+CREATE TABLE environments(id uuid PRIMARY KEY,project_id uuid,name text,kube_namespace text);
+CREATE TABLE onboarding_registrations(id uuid PRIMARY KEY,project_id uuid,repo_full_name text,onboard_status text);
+CREATE TABLE users(id uuid PRIMARY KEY,is_platform_admin boolean,active boolean);`
+	writer, err := owner.Conn(ctx)
+	if err != nil {
+		t.Fatal("fixture writer unavailable")
+	}
+	defer func() { _ = writer.Close() }()
+	if _, err = writer.ExecContext(ctx, setup); err != nil {
+		t.Fatal("isolated rollback schema unavailable")
+	}
+	defer func() {
+		cleanup, stop := context.WithTimeout(context.Background(), 5*time.Second)
+		defer stop()
+		if _, e := owner.ExecContext(cleanup, `DROP SCHEMA held_intent_rollback_fixture CASCADE`); e != nil {
+			t.Error("isolated rollback fixture cleanup failed")
+		}
+	}()
+	if _, err = writer.ExecContext(ctx, string(up)); err != nil {
+		t.Fatal("isolated held migration failed")
+	}
+	if _, err = writer.ExecContext(ctx, string(down)); err != nil {
+		t.Fatal("empty isolated history rollback was refused")
+	}
+	var absent bool
+	if writer.QueryRowContext(ctx, `SELECT to_regclass('held_intent_rollback_fixture.janua_staging_preregistration_intents') IS NULL`).Scan(&absent) != nil || !absent {
+		t.Fatal("empty isolated rollback retained the table")
+	}
+	if _, err = writer.ExecContext(ctx, string(up)); err != nil {
+		t.Fatal("isolated migration after empty rollback failed")
+	}
+	p, e, r, a := uuid.New(), uuid.New(), uuid.New(), uuid.New()
+	for _, s := range []struct {
+		query string
+		args  []any
+	}{
+		{`INSERT INTO projects VALUES($1,'janua')`, []any{p}},
+		{`INSERT INTO environments VALUES($1,$2,'staging','janua-staging')`, []any{e, p}},
+		{`INSERT INTO onboarding_registrations VALUES($1,$2,'madfam-org/janua','completed')`, []any{r, p}},
+		{`INSERT INTO users VALUES($1,true,true)`, []any{a}},
+	} {
+		if _, err = writer.ExecContext(ctx, s.query, s.args...); err != nil {
+			t.Fatal("isolated rollback authority failed")
+		}
+	}
+	rollback, err := owner.Conn(ctx)
+	if err != nil {
+		t.Fatal("fixture rollback connection unavailable")
+	}
+	defer func() { _ = rollback.Close() }()
+	var pid int
+	var relation uint32
+	if _, err = rollback.ExecContext(ctx, `SET search_path TO held_intent_rollback_fixture`); err != nil || rollback.QueryRowContext(ctx, `SELECT pg_backend_pid(),'held_intent_rollback_fixture.janua_staging_preregistration_intents'::regclass::oid`).Scan(&pid, &relation) != nil {
+		t.Fatal("isolated rollback session unavailable")
+	}
+	tx, err := writer.BeginTx(ctx, &sql.TxOptions{})
+	if err != nil {
+		t.Fatal("fixture record transaction unavailable")
+	}
+	defer func() { _ = tx.Rollback() }()
+	receipt := types.NewJanuaStagingIntent()
+	receipt.ID, receipt.ProjectID, receipt.EnvironmentID, receipt.RepositoryRegistrationID = uuid.New(), p, e, r
+	yes := true
+	receipt.Recorded, receipt.RecordedAt, receipt.PlanSHA256 = &yes, time.Now().UTC().Format(time.RFC3339Nano), strings.Repeat("a", 64)
+	raw, _ := json.Marshal(receipt)
+	if _, err = tx.ExecContext(ctx, `INSERT INTO janua_staging_preregistration_intents(id,project_id,environment_id,repository_registration_id,actor_id,plan_sha256,request_sha256,reason,payload) VALUES($1,$2,$3,$4,$5,$6,$6,'synthetic rollback concurrency proof',$7)`, receipt.ID, p, e, r, a, receipt.PlanSHA256, raw); err != nil {
+		t.Fatal("uncommitted first record unavailable")
+	}
+	finished := make(chan error, 1)
+	go func() { _, e := rollback.ExecContext(ctx, string(down)); finished <- e }()
+	ticker := time.NewTicker(10 * time.Millisecond)
+	defer ticker.Stop()
+	wait, stop := context.WithTimeout(ctx, 3*time.Second)
+	defer stop()
+	for {
+		var blocked bool
+		if owner.QueryRowContext(wait, `SELECT EXISTS(SELECT 1 FROM pg_locks WHERE pid=$1 AND relation=$2::oid AND mode='AccessExclusiveLock' AND NOT granted)`, pid, relation).Scan(&blocked) != nil {
+			t.Fatal("rollback lock observation unavailable")
+		}
+		if blocked {
+			break
+		}
+		select {
+		case <-finished:
+			t.Fatal("rollback did not wait for the first record transaction")
+		case <-wait.Done():
+			t.Fatal("rollback never requested the exclusive history lock")
+		case <-ticker.C:
+		}
+	}
+	if tx.Commit() != nil {
+		t.Fatal("first record commit failed")
+	}
+	select {
+	case err := <-finished:
+		nativeState(t, err, "P0001")
+	case <-ctx.Done():
+		t.Fatal("rollback failed to finish after the first commit")
+	}
+	var count int
+	if writer.QueryRowContext(ctx, `SELECT count(*) FROM janua_staging_preregistration_intents WHERE id=$1`, receipt.ID).Scan(&count) != nil || count != 1 {
+		t.Fatal("rollback erased newly committed immutable history")
+	}
+}
 
 // Uses the existing explicit owned loopback PG18/TLS fixture, no skipped body
 // and no credential grant. The CI proof runner's ^TestNativeTarget filter includes
