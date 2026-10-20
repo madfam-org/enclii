@@ -50,7 +50,7 @@ func newOpsGenerationReadCommand(cfg *config.Config) *cobra.Command {
 	}
 	authClient := func() (*client.APIClient, error) {
 		token := cfg.APIToken
-		if cfg.Credentials != nil && cfg.Credentials.AccessToken != "" {
+		if token == "" && cfg.Credentials != nil {
 			token = cfg.Credentials.AccessToken
 		}
 		if strings.TrimSpace(token) == "" {

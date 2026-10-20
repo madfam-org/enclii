@@ -81,6 +81,48 @@ func TestGenerationReadCLIUsesClosedPlanAndApplyRequests(t *testing.T) {
 	}
 }
 
+func TestGenerationReadCLIPreservesExplicitTokenPrecedenceAndManagedFallback(t *testing.T) {
+	for _, scenario := range []string{"explicit", "managed", "missing", "invalid explicit"} {
+		t.Run(scenario, func(t *testing.T) {
+			calls := 0
+			expected := "synthetic-managed-token"
+			if scenario == "explicit" {
+				expected = "synthetic-explicit-token"
+			}
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				calls++
+				require.Equal(t, "Bearer "+expected, r.Header.Get("Authorization"))
+				_ = json.NewEncoder(w).Encode(generationCLIResponse())
+			}))
+			defer server.Close()
+			cfg := &config.Config{APIEndpoint: server.URL, Credentials: &config.Credentials{AccessToken: "synthetic-managed-token"}}
+			switch scenario {
+			case "explicit":
+				cfg.APIToken = "synthetic-explicit-token"
+			case "missing":
+				cfg.Credentials = nil
+			case "invalid explicit":
+				cfg.APIToken = " "
+			}
+			cmd := newOpsGenerationReadCommand(cfg)
+			out := &bytes.Buffer{}
+			cmd.SetOut(out)
+			cmd.SetErr(out)
+			cmd.SetArgs(generationCLIArgs())
+			err := cmd.Execute()
+			if scenario == "missing" || scenario == "invalid explicit" {
+				require.Error(t, err)
+				require.Zero(t, calls)
+			} else {
+				require.NoError(t, err)
+				require.Equal(t, 1, calls)
+			}
+			require.NotContains(t, out.String(), "synthetic-managed-token")
+			require.NotContains(t, out.String(), "synthetic-explicit-token")
+		})
+	}
+}
+
 func TestGenerationReadCLIRejectsMissingOrBroadenedInputsWithoutNetwork(t *testing.T) {
 	calls := 0
 	srv := httptest.NewServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) { calls++ }))
