@@ -27,6 +27,7 @@ encouraging direct `kubectl`.
 | `enclii ops capabilities` | List server-supported operator capabilities |
 | `enclii ops apps status|sync|sync-sweep|diff|retire|rollback` | Argo app inspection and remediation |
 | `enclii ops apps tracking` | Declare Argo CD's annotation tracking default once in `argocd-cm` ([below](#argo-tracking-declaration)) |
+| `enclii ops apps staging-intent [read OPERATION_UUID]` | Plan, retain or read an inert Janua staging intent; never creates a service or activation authority ([below](#held-janua-staging-intent)) |
 | `enclii ops pods diagnose|logs` | Pod diagnosis and logs |
 | `enclii ops pods restart` | Audited rollout restart of a Deployment, StatefulSet or DaemonSet, or recreation of one controller-owned pod ([below](#ops-pods-restart)) |
 | `enclii ops jobs list|trigger|suspend` | CronJob inspection, audited triggers and durable service-job holds; independent verified-target Jobs use the [closed API request](../../runbooks/ENCLII_VERIFIED_TARGET_JOBS.md) |
@@ -105,6 +106,39 @@ other write error returns `unknown`: run the plan again before another attempt.
 An exact repeat after success returns `already-declared` without writing.
 The `infra/argocd/resource-customizations.yaml` bootstrap patch predates this
 command and does not carry the key; do not re-apply it as a substitute.
+
+## Held Janua staging intent
+
+`ops apps staging-intent` requires an existing actual platform-operator login and
+the fixed `--project janua`. After the reviewed API/CLI and migration `045` pass
+their native qualification, plan with a caller-chosen canonical operation UUID:
+
+```bash
+enclii ops apps staging-intent --project janua --operation-id <operation-uuid> --json
+```
+
+Review the exact fingerprint and all unresolved gates. To retain only that
+immutable metadata intent, use the same UUID and reviewed fingerprint:
+
+```bash
+enclii ops apps staging-intent --project janua --operation-id <operation-uuid> \
+  --record --expect-plan <reviewed-sha256> --reason "retain reviewed held intent" --json
+```
+
+This command uses `--record`, not the generic `--apply` switch. The default plan
+and the `read` subcommand never write. After an uncertain POST outcome, inspect
+the same UUID instead of automatically repeating the write:
+
+```bash
+enclii ops apps staging-intent read <operation-uuid> --project janua --json
+```
+
+The receipt always retains `REPOSITORY_OWNERSHIP_ONLY`, activation held and
+`SOURCE_STAGE_REGISTRATION_NOT_PROVEN`. It creates no service, build, workload,
+source registration, native binding, secret, DNS or authority grant. Private
+actor/reason and upstream response bodies are not printed. See the
+[held preregistration contract](../../runbooks/JANUA_STAGING_PREREGISTRATION_DESIGN.md)
+for immutable replay, custody and remaining dependency gates.
 
 ## Service-job suspension
 
