@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/lib/pq"
 	"github.com/madfam-org/enclii/apps/switchyard-api/internal/db"
 	"github.com/madfam-org/enclii/apps/switchyard-api/internal/stagingintents"
 	"github.com/madfam-org/enclii/packages/sdk-go/pkg/types"
@@ -265,11 +266,30 @@ func TestNativeTargetHeldStagingIntentIsImmutableInertAndIdempotent(t *testing.T
 	_, err = runtime.ExecContext(ctx, `INSERT INTO janua_staging_preregistration_intents(id) VALUES($1)`, uuid.New())
 	nativeState(t, err, "42501")
 	for _, statement := range []struct {
-		sql string
-		id  uuid.UUID
-	}{{`DELETE FROM environments WHERE id=$1`, environment}, {`DELETE FROM onboarding_registrations WHERE id=$1`, registration}, {`DELETE FROM users WHERE id=$1`, actor}} {
-		_, err := owner.ExecContext(ctx, statement.sql, statement.id)
-		nativeState(t, err, "23503")
+		parent, column, sql string
+		id                  uuid.UUID
+	}{{"environments", "environment_id", `DELETE FROM environments WHERE id=$1`, environment}, {"onboarding_registrations", "repository_registration_id", `DELETE FROM onboarding_registrations WHERE id=$1`, registration}, {"users", "actor_id", `DELETE FROM users WHERE id=$1`, actor}} {
+		t.Run("foreign-key-retirement-refused/"+statement.parent, func(t *testing.T) {
+			var constraint, schema string
+			if owner.QueryRowContext(ctx, `SELECT c.conname,n.nspname FROM pg_constraint c
+JOIN pg_namespace n ON n.oid=c.connamespace
+JOIN pg_attribute a ON a.attrelid=c.conrelid AND c.conkey=ARRAY[a.attnum]::smallint[]
+WHERE c.conrelid='janua_staging_preregistration_intents'::regclass
+ AND c.confrelid=$1::regclass AND c.contype='f' AND c.confdeltype='r' AND a.attname=$2`, statement.parent, statement.column).Scan(&constraint, &schema) != nil || constraint == "" || schema == "" {
+				t.Fatal("exact retained-intent RESTRICT constraint unavailable")
+			}
+			_, err := owner.ExecContext(ctx, statement.sql, statement.id)
+			var failure *pq.Error
+			// PostgreSQL18's RESTRICT branch returns restrict_violation, rather
+			// than the NO ACTION/insert foreign_key_violation classification.
+			if !errors.As(err, &failure) || string(failure.Code) != "23001" || failure.Schema != schema || failure.Table != "janua_staging_preregistration_intents" || failure.Constraint != constraint {
+				t.Fatal("exact retained-intent RESTRICT deletion guard was not observed")
+			}
+			var retained int
+			if owner.QueryRowContext(ctx, `SELECT count(*) FROM janua_staging_preregistration_intents WHERE id=$1`, winner.ID).Scan(&retained) != nil || retained != 1 {
+				t.Fatal("RESTRICT deletion refusal changed retained intent history")
+			}
+		})
 	}
 	down, err := os.ReadFile("../db/migrations/045_janua_staging_preregistration.down.sql")
 	if err != nil {
