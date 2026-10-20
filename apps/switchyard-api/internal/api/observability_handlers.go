@@ -68,8 +68,9 @@ type ServiceHealth struct {
 	ServiceID         string    `json:"service_id"`
 	ServiceName       string    `json:"service_name"`
 	ProjectSlug       string    `json:"project_slug"`
-	Status            string    `json:"status"` // healthy, degraded, unhealthy, unknown
-	Uptime            float64   `json:"uptime"` // percentage
+	Namespace         string    `json:"namespace,omitempty"` // Namespace actually queried, never an environment label
+	Status            string    `json:"status"`              // healthy, degraded, unhealthy, unknown
+	Uptime            float64   `json:"uptime"`              // percentage
 	ResponseTime      float64   `json:"response_time_ms"`
 	ErrorRate         float64   `json:"error_rate"`
 	LastChecked       time.Time `json:"last_checked"`
@@ -322,6 +323,7 @@ func (h *Handler) computeServiceHealth(ctx context.Context) (ServiceHealthRespon
 				} else if projectSlug != "" {
 					ns = projectSlug
 				}
+				health.Namespace = ns
 				status, err := h.k8sClient.GetServiceDeploymentStatusInfo(gCtx, ns, svc.Name)
 				applyRuntimeObservation(&health, status, err)
 			}

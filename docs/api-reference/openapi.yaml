@@ -560,10 +560,37 @@ paths:
   # ============================================
   # ENVIRONMENTS
   # ============================================
+  /projects/{slug}/registered-environments:
+    get:
+      summary: List registered environments without side effects
+      description: Read existing environment identities and namespace bindings; never create an implicit default environment.
+      tags: [environments]
+      operationId: listRegisteredEnvironments
+      parameters:
+        - name: slug
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Existing environment list
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  environments:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Environment'
+        '404':
+          description: Project not found
+
   /projects/{slug}/environments:
     get:
       summary: List environments
-      description: Get all environments for a project.
+      description: Get all environments for a project. This legacy endpoint may create default production metadata; use registered-environments for a side-effect-free inventory.
       tags: [environments]
       operationId: listEnvironments
       parameters:
@@ -6914,6 +6941,9 @@ components:
                 type: string
               project_slug:
                 type: string
+              namespace:
+                type: string
+                description: Namespace actually queried for native runtime health; absence cannot establish an environment observation.
               status:
                 type: string
                 enum: [healthy, degraded, unhealthy, unknown]

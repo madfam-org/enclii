@@ -19,7 +19,7 @@ func NewPsCommand(cfg *config.Config) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "ps",
 		Short: "List services and their status",
-		Long:  "Show running services, their health, and resource usage",
+		Long:  "Show runtime health in one registered environment. Missing environment proof or services that are not ready return an error.",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return listServices(cfg, environment, project)
 		},
@@ -52,22 +52,25 @@ func listServices(cfg *config.Config, environment, projectFlag string) error {
 		return fmt.Errorf("list services in project %q: %w (run `enclii projects list` for valid slugs, or pass --project)", projectSlug, err)
 	}
 
-	if len(services) == 0 {
-		fmt.Println("No services found in this project")
-		fmt.Println("💡 Create a service with: enclii init")
-		return nil
+	environments, err := apiClient.ListRegisteredEnvironments(ctx, projectSlug)
+	if err != nil {
+		return fmt.Errorf("resolve environment %q: %w", environment, err)
 	}
+	selectedEnvironment, err := resolvePsEnvironment(environments, environment)
+	if err != nil {
+		return err
+	}
+	services, err = psServicesInEnvironment(services, selectedEnvironment)
+	if err != nil {
+		return err
+	}
+	fmt.Printf("Verified environment namespace: %s\n\n", selectedEnvironment.KubeNamespace)
 
-	// Runtime health is the same source used by `enclii observe health`.
-	// Deployment rows can lag behind Argo/K8s reality, so use observability as
-	// the preferred health/replica signal and gracefully fall back if unavailable.
-	runtimeHealthByID := map[string]client.ServiceHealth{}
+	// Only native observations explicitly bound to this namespace can report
+	// health. Historical rows and unscoped/older API responses cannot substitute.
+	var runtimeHealth []client.ServiceHealth
 	if healthResp, err := apiClient.GetServiceHealth(ctx, ""); err == nil && healthResp != nil {
-		for _, health := range healthResp.Services {
-			if health.ServiceID != "" {
-				runtimeHealthByID[health.ServiceID] = health
-			}
-		}
+		runtimeHealth = healthResp.Services
 	}
 
 	// Fetch deployment status for each service
@@ -77,30 +80,16 @@ func listServices(cfg *config.Config, environment, projectFlag string) error {
 			Name:     svc.Name,
 			Status:   "unknown",
 			Health:   "unknown",
-			Replicas: "0/0",
+			Replicas: "unavailable",
 			Version:  "N/A",
 			Uptime:   "N/A",
 		}
 
-		if svc.Status != "" {
-			status.Status = svc.Status
-		}
-		if svc.Health != "" {
-			status.Health = string(svc.Health)
-		}
-		if svc.DesiredReplicas > 0 || svc.ReadyReplicas > 0 {
-			status.Replicas = fmt.Sprintf("%d/%d", svc.ReadyReplicas, svc.DesiredReplicas)
-		}
-
-		// Get latest deployment
+		// The latest project service deployment can belong to another environment.
+		// Its health is never proof, and its metadata is shown only after binding.
 		deploymentResp, err := apiClient.GetLatestDeployment(ctx, svc.ID.String())
-		if err == nil && deploymentResp.Deployment != nil {
+		if err == nil && deploymentResp != nil && deploymentResp.Deployment != nil && deploymentResp.Deployment.EnvironmentID == selectedEnvironment.ID && deploymentResp.Release != nil && deploymentResp.Release.ServiceID == svc.ID {
 			deployment := deploymentResp.Deployment
-
-			// Map deployment status
-			status.Status = string(deployment.Status)
-			status.Health = string(deployment.Health)
-			status.Replicas = fmt.Sprintf("%d/%d", deployment.Replicas, deployment.Replicas)
 
 			// Get version from release
 			if deploymentResp.Release != nil {
@@ -115,8 +104,8 @@ func listServices(cfg *config.Config, environment, projectFlag string) error {
 			status.Uptime = formatDuration(uptime)
 		}
 
-		if runtimeHealth, ok := runtimeHealthByID[svc.ID.String()]; ok {
-			applyRuntimeHealth(&status, runtimeHealth)
+		if observation, ok := psRuntimeHealth(runtimeHealth, svc, projectSlug, selectedEnvironment); ok {
+			applyRuntimeHealth(&status, observation)
 		}
 
 		serviceStatuses = append(serviceStatuses, status)
@@ -144,6 +133,12 @@ func listServices(cfg *config.Config, environment, projectFlag string) error {
 	fmt.Println()
 	fmt.Println("💡 Use 'enclii logs <service>' to view logs")
 	fmt.Println("💡 Use 'enclii deploy --env <env>' to deploy updates")
+
+	for _, status := range serviceStatuses {
+		if status.Health != "healthy" {
+			return fmt.Errorf("environment %q has services that are not ready or lack scoped runtime proof", environment)
+		}
+	}
 
 	return nil
 }

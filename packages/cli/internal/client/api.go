@@ -647,6 +647,7 @@ type ServiceHealth struct {
 	ServiceID         string    `json:"service_id"`
 	ServiceName       string    `json:"service_name"`
 	ProjectSlug       string    `json:"project_slug"`
+	Namespace         string    `json:"namespace,omitempty"`
 	Status            string    `json:"status"`
 	Uptime            float64   `json:"uptime"`
 	ResponseTime      float64   `json:"response_time_ms"`
@@ -820,11 +821,21 @@ func (c *APIClient) ListServicesWithInfo(ctx context.Context, projectSlug string
 
 // ListEnvironments returns all environments for a project
 func (c *APIClient) ListEnvironments(ctx context.Context, projectSlug string) ([]*EnvironmentInfo, error) {
+	return c.listEnvironmentsAt(ctx, fmt.Sprintf("/v1/projects/%s/environments", projectSlug))
+}
+
+// ListRegisteredEnvironments never requests implicit default creation. Older
+// servers without this read-only endpoint fail closed rather than fall back.
+func (c *APIClient) ListRegisteredEnvironments(ctx context.Context, projectSlug string) ([]*EnvironmentInfo, error) {
+	return c.listEnvironmentsAt(ctx, fmt.Sprintf("/v1/projects/%s/registered-environments", projectSlug))
+}
+
+func (c *APIClient) listEnvironmentsAt(ctx context.Context, path string) ([]*EnvironmentInfo, error) {
 	var response struct {
 		Environments []*EnvironmentInfo `json:"environments"`
 	}
 
-	if err := c.get(ctx, fmt.Sprintf("/v1/projects/%s/environments", projectSlug), &response); err != nil {
+	if err := c.get(ctx, path, &response); err != nil {
 		return nil, fmt.Errorf("failed to list environments: %w", err)
 	}
 
