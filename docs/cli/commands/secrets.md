@@ -274,6 +274,7 @@ Chat-safe credential handoff into Vault — values never appear in agent transcr
 
 ```bash
 enclii secrets intake targets
+enclii secrets intake training-capabilities --json
 enclii secrets intake submit ceq/vast-api-key --reason "orchestrator bootstrap"
 enclii secrets intake submit ceq/vast-api-key --value-file ~/.config/madfam/vast.key --reason "orchestrator bootstrap"
 enclii secrets intake submit <client-portal>/internal-api-key --generate internal_api_key --reason "client portal smoke gate"
@@ -283,6 +284,7 @@ enclii secrets intake status int_1234567890
 | Subcommand | Description |
 |------------|-------------|
 | `targets` | List registered intake targets (Vault path, keys, namespace) |
+| `training-capabilities` | Observe current writer authorization on ten fixed training custody paths; metadata only |
 | `submit TARGET` | Send secret value(s) once; masked prompt, `--value-file`, `--stdin`, or `--generate` |
 | `status INTAKE_ID` | Poll metadata only — safe for agents (no values returned) |
 
@@ -297,6 +299,25 @@ enclii secrets intake status int_1234567890
 | `--json` | JSON output |
 
 `--reason` is required on submit. After submit, tell your agent the `intake_id` only — never paste the secret into chat.
+
+### `training-capabilities` (read-only authorization evidence)
+
+Requires an existing platform-operator login. The command uses the active managed
+CLI configuration; an explicit API token takes precedence and is never retried
+with a different identity. It sends one fixed GET, with no path selector, query,
+body, redirect or automatic retry. Only bounded, validated metadata is rendered;
+raw proxy responses and errors are withheld. `--json` prints a closed
+receipt including all ten reviewed paths, capability enums, UTC
+observation time and derived status. No values, cookies or credential files are
+copied.
+
+Only `verified_required_capabilities` exits successfully. Complete missing or
+excess-authority evidence, and validated `unverified`/`unavailable` receipts, are
+printed for inspection and exit nonzero. Malformed, extra or incomplete metadata
+is refused without printing it. This proves the current scoped writer's path
+authorization only; it grants no permission to mint credentials and proves no
+delivery, ownership, admission or runtime readiness. See the
+[training custody capability contract](../../runbooks/TRAINING_CUSTODY_CAPABILITIES.md).
 
 ### `--generate` (server-side minting)
 

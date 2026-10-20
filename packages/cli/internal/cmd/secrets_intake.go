@@ -36,6 +36,7 @@ Examples:
 	}
 
 	cmd.AddCommand(newSecretsIntakeTargetsCommand(cfg))
+	cmd.AddCommand(newSecretsTrainingCapabilitiesCommand(cfg))
 	cmd.AddCommand(newSecretsIntakeStatusCommand(cfg))
 	cmd.AddCommand(newSecretsIntakeSubmitCommand(cfg))
 	return cmd
