@@ -5,6 +5,7 @@ import (
 	"crypto/rand"
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"sort"
@@ -14,6 +15,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 
+	"github.com/madfam-org/enclii/apps/switchyard-api/internal/lockbox"
 	"github.com/madfam-org/enclii/apps/switchyard-api/internal/secretsintake"
 )
 
@@ -62,12 +64,13 @@ func (h *Handler) ListSecretIntakeTargets(c *gin.Context) {
 	}
 	// Public-safe fields only
 	type row struct {
-		ID          string   `json:"id"`
-		Label       string   `json:"label"`
-		Description string   `json:"description"`
-		VaultPath   string   `json:"vault_path"`
-		Namespace   string   `json:"namespace"`
-		Keys        []string `json:"keys"`
+		ID          string                        `json:"id"`
+		Label       string                        `json:"label"`
+		Description string                        `json:"description"`
+		VaultPath   string                        `json:"vault_path"`
+		Namespace   string                        `json:"namespace"`
+		Keys        []string                      `json:"keys"`
+		Generation  *secretsintake.GeneratePolicy `json:"generation,omitempty"`
 	}
 	out := make([]row, 0, len(targets))
 	for _, t := range targets {
@@ -78,6 +81,7 @@ func (h *Handler) ListSecretIntakeTargets(c *gin.Context) {
 			VaultPath:   t.VaultPath,
 			Namespace:   t.Namespace,
 			Keys:        t.Keys,
+			Generation:  t.Generate,
 		})
 	}
 	c.JSON(http.StatusOK, gin.H{"targets": out})
@@ -141,8 +145,26 @@ func (h *Handler) SubmitSecretIntake(c *gin.Context) {
 	}
 
 	ctx := c.Request.Context()
-	vaultVersion, err := h.vaultClient.MergeSecretData(ctx, target.VaultPath, updates)
+	var vaultVersion int
+	if target.Generate != nil && target.Generate.Profile != "" {
+		initializer, ok := h.vaultClient.(vaultSecretInitializer)
+		if !ok {
+			c.JSON(http.StatusServiceUnavailable, gin.H{"error": "vault_initializer_disabled", "message": "atomic staging initialization is unavailable"})
+			return
+		}
+		vaultVersion, err = initializer.InitializeSecretData(ctx, target.VaultPath, updates)
+	} else {
+		vaultVersion, err = h.vaultClient.MergeSecretData(ctx, target.VaultPath, updates)
+	}
 	if err != nil {
+		if errors.Is(err, lockbox.ErrSecretInitializationOutcomeUnknown) {
+			c.JSON(http.StatusServiceUnavailable, gin.H{"error": "vault_initialization_outcome_unknown", "message": "initialization receipt unavailable; inspect custody before proceeding, do not retry"})
+			return
+		}
+		if errors.Is(err, lockbox.ErrSecretInitializationConflict) {
+			c.JSON(http.StatusConflict, gin.H{"error": "vault_initialization_conflict", "message": "staging custody already exists or changed; no retry or rotation was performed"})
+			return
+		}
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "vault_merge_failed", "message": "failed to write to Vault"})
 		return
 	}
@@ -242,8 +264,21 @@ func validateIntakeValues(target secretsintake.Target, values map[string]string)
 // into updates. Generated values are returned to nobody: they go into the Vault
 // merge map and the key NAMES come back for the audit record.
 func applyGeneratedIntakeValues(target secretsintake.Target, generate []string, updates map[string]interface{}) ([]string, error) {
+	if target.Generate != nil && target.Generate.Profile != "" {
+		values, keys, err := generatedProfileValues(target, generate, updates)
+		if err != nil {
+			return nil, err
+		}
+		for key, value := range values {
+			updates[key] = value
+		}
+		return keys, nil
+	}
 	if len(generate) == 0 {
 		return nil, nil
+	}
+	if target.Generate != nil && target.Generate.Disabled {
+		return nil, fmt.Errorf("target %q is supplied-only; generation is disabled", target.ID)
 	}
 	allowed := make(map[string]struct{}, len(target.Keys))
 	for _, k := range target.Keys {

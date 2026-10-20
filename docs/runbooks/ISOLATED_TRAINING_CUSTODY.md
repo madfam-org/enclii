@@ -1,5 +1,7 @@
 # Isolated training and staging custody
 
+Last Updated: 2026-10-20
+
 > Boundary checkpoint (2026-10-14, platform preparation): public-safe logical
 > target names, namespaces, key names and callbacks only. Actual credentials,
 > human/organization identifiers and operational receipts stay in the private
@@ -94,7 +96,69 @@ control, mail and session keys are distinct by purpose; only the intended two
 ends receive each shared key. Registration, invitation and message delivery
 are separate operations; this runbook does not send invitations or mail.
 
+### Typed Janua staging initialization
+
+The two fixed profiles below initialize only the existing isolated staging
+targets. Their identity, Vault path, namespace, ExternalSecret and complete key
+set are validated when the registry loads. The endpoint retains the existing
+platform operator checks; no new role or Vault path is added.
+
+| Target | Server-side format |
+| --- | --- |
+| `janua-staging/runtime-crypto` | One matched 2048-bit RSA pair (PKCS8 private / PKIX public PEM), independent 32-byte JWT and application secrets, and a 32-byte padded URL-safe Fernet key |
+| `janua-staging/redis` | One 32-byte password and a matching `redis://` URI for the fixed same-namespace `janua-staging-redis` service, port 6379, database 0 |
+
+Submit the complete declared key group with `--generate`; partial generation or
+supplied values for either profile refuse before Vault writes. The database URI
+and public CA targets are supplied-only: random bytes cannot establish database
+authority or trust.
+
+After the reviewed Switchyard release is deployed, an authorized operator may
+initialize each group separately and collect only its metadata receipt:
+
+The updated CLI requires the server's typed/supplied-only `generation` metadata
+for all four Janua staging targets. An older server without that metadata is
+refused before input or submission; a new CLI alone cannot make its generic
+generator safe. Verify the deployed API release and live target policy first.
+
+```bash
+enclii secrets intake submit janua-staging/runtime-crypto \
+  --generate jwt_private_key,jwt_public_key,jwt_secret_key,secret_key,field_encryption_key \
+  --reason "initialize fresh isolated staging crypto"
+```
+
+Review the receipt before the next separate operation:
+
+```bash
+enclii secrets intake submit janua-staging/redis \
+  --generate redis_password,redis_url \
+  --reason "initialize fresh isolated staging Redis authentication"
+```
+
+Unlike generic generated-key intake, these profiles **do not rotate** existing
+custody. Initialization reads the KV v2 version, refuses if any group key exists
+(including an empty or partial group), preserves unrelated properties, and uses
+an atomic compare-and-set write. Concurrent changes refuse with HTTP 409 and no
+retry. File other targets sharing this Vault path serially: legacy generic
+merges are still read/write operations without a compare-and-set guarantee.
+If the response is lost or the write receipt cannot be verified, inspect the
+existing custody state through an authorized operator flow before proceeding;
+never mint again to guess the result. A writer without atomic initialization
+support refuses with 503 instead of falling back to an overwriting merge.
+
+Values remain inside the existing write-only intake/Vault flow. Responses and
+cached status carry only generated key names, version and audit metadata. An
+accepted intake or `external_secret_refreshed` does not establish projected
+Secret readiness, a running Redis, a database migration, a healthy application,
+staging soak, production promotion or SSO activation. This implementation does
+not execute any of those operations or introduce an owner/migrator credential.
+
 ## Bounded staging namespace bootstrap
+
+The separate [read-only Janua addon plan](JANUA_STAGING_ADDON_PLAN.md) verifies
+persisted staging ownership, namespace metadata and catalog allocation without
+creating rows/resources or reading credentials. A plan response cannot activate
+the namespace or replace the still-missing typed staging provisioning adapter.
 
 `POST /v1/admin/projects/:slug/environments/staging/bootstrap` defaults to
 `dry_run: true`. It uses the existing platform-rank and project/acting-tenant

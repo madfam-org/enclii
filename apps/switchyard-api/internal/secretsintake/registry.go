@@ -27,7 +27,9 @@ const MaxGenerateBytes = 128
 
 // GeneratePolicy tunes server-side value generation for a target.
 type GeneratePolicy struct {
-	Bytes int `yaml:"bytes" json:"bytes,omitempty"`
+	Bytes    int    `yaml:"bytes" json:"bytes,omitempty"`
+	Profile  string `yaml:"profile" json:"profile,omitempty"`
+	Disabled bool   `yaml:"disabled" json:"disabled,omitempty"`
 }
 
 // Target describes where an intake writes and what to sync afterward.
@@ -78,6 +80,9 @@ func LoadRegistry() (map[string]Target, error) {
 				return nil, fmt.Errorf("target %q generate.bytes must be between %d and %d, got %d",
 					id, MinGenerateBytes, MaxGenerateBytes, t.Generate.Bytes)
 			}
+		}
+		if err := validateGenerationPolicy(t); err != nil {
+			return nil, err
 		}
 		out[id] = t
 	}

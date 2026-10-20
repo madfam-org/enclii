@@ -135,6 +135,10 @@ use it for shared internal keys that no human needs to read. Remaining keys of t
 target are still prompted (or supplied via --value-file / --stdin). A key cannot be
 both generated and supplied.
 
+Fixed typed staging profiles require every declared key in --generate and no
+supplied values; they initialize a matched group once and refuse existing custody.
+Supplied-only targets reject generation. See the target description and runbook.
+
 Secret values are never echoed to stdout.`,
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
@@ -166,7 +170,7 @@ Secret values are never echoed to stdout.`,
 				return err
 			}
 			apiClient := client.NewAPIClient(cfg.APIEndpoint, cfg.APIToken)
-			body, err := apiClient.PostRaw(context.Background(), "/v1/secrets/intake", bytes.NewReader(raw))
+			body, err := apiClient.PostRawOnce(context.Background(), "/v1/secrets/intake", bytes.NewReader(raw))
 			if err != nil {
 				return err
 			}
@@ -234,22 +238,54 @@ func collectIntakeValues(cfg *config.Config, target, valueFile string, fromStdin
 	}
 	var reg struct {
 		Targets []struct {
-			ID   string   `json:"id"`
-			Keys []string `json:"keys"`
+			ID         string   `json:"id"`
+			Keys       []string `json:"keys"`
+			Generation *struct {
+				Profile  string `json:"profile"`
+				Disabled bool   `json:"disabled"`
+			} `json:"generation"`
 		} `json:"targets"`
 	}
 	if err := json.Unmarshal(body, &reg); err != nil {
 		return nil, err
 	}
 	var keys []string
+	var generationProfile string
+	var generationDisabled bool
 	for _, t := range reg.Targets {
 		if t.ID == target {
 			keys = t.Keys
+			if t.Generation != nil {
+				generationProfile, generationDisabled = t.Generation.Profile, t.Generation.Disabled
+			}
 			break
 		}
 	}
 	if len(keys) == 0 {
 		return nil, fmt.Errorf("unknown target %q (run: enclii secrets intake targets)", target)
+	}
+	// A new CLI must not send typed staging generation to an old server that
+	// would interpret it as independent random strings. Other targets retain
+	// compatibility with the original metadata contract.
+	switch target {
+	case "janua-staging/runtime-crypto":
+		if generationProfile != "janua-staging-crypto-v1" || generationDisabled {
+			return nil, fmt.Errorf("server lacks the required staging crypto intake policy; upgrade and verify Switchyard first")
+		}
+	case "janua-staging/redis":
+		if generationProfile != "janua-staging-redis-v1" || generationDisabled {
+			return nil, fmt.Errorf("server lacks the required staging Redis intake policy; upgrade and verify Switchyard first")
+		}
+	case "janua-staging/database", "janua-staging/database-ca":
+		if !generationDisabled || generationProfile != "" {
+			return nil, fmt.Errorf("server lacks the required supplied-only staging intake policy; upgrade and verify Switchyard first")
+		}
+	}
+	if generationDisabled && len(generateKeys) > 0 {
+		return nil, fmt.Errorf("target %q is supplied-only; generation is disabled", target)
+	}
+	if generationProfile != "" && (len(generateKeys) != len(keys) || valueFile != "" || fromStdin) {
+		return nil, fmt.Errorf("typed staging profile requires every declared key in --generate and no supplied values")
 	}
 
 	generated := make(map[string]struct{}, len(generateKeys))

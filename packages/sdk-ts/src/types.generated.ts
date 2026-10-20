@@ -339,6 +339,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/projects/{slug}/registered-environments": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List registered environments without side effects
+         * @description Read existing environment identities and namespace bindings; never create an implicit default environment.
+         */
+        get: operations["listRegisteredEnvironments"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/projects/{slug}/environments": {
         parameters: {
             query?: never;
@@ -348,7 +368,7 @@ export interface paths {
         };
         /**
          * List environments
-         * @description Get all environments for a project.
+         * @description Get all environments for a project. This legacy endpoint may create default production metadata; use registered-environments for a side-effect-free inventory.
          */
         get: operations["listEnvironments"];
         put?: never;
@@ -4034,6 +4054,8 @@ export interface components {
                 service_id?: string;
                 service_name?: string;
                 project_slug?: string;
+                /** @description Namespace actually queried for native runtime health; absence cannot establish an environment observation. */
+                namespace?: string;
                 /** @enum {string} */
                 status?: "healthy" | "degraded" | "unhealthy" | "unknown";
                 /** Format: date-time */
@@ -5367,6 +5389,37 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+            /** @description Project not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    listRegisteredEnvironments: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                slug: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Existing environment list */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        environments?: components["schemas"]["Environment"][];
+                    };
+                };
             };
             /** @description Project not found */
             404: {

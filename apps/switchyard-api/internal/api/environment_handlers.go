@@ -111,6 +111,16 @@ func (h *Handler) CreateEnvironment(c *gin.Context) {
 
 // ListEnvironments returns all environments for a project
 func (h *Handler) ListEnvironments(c *gin.Context) {
+	h.listProjectEnvironments(c, true)
+}
+
+// ListRegisteredEnvironments is a read-only inventory. In contrast to the
+// legacy list endpoint, it never creates a default production environment.
+func (h *Handler) ListRegisteredEnvironments(c *gin.Context) {
+	h.listProjectEnvironments(c, false)
+}
+
+func (h *Handler) listProjectEnvironments(c *gin.Context, ensureDefault bool) {
 	projectSlug := c.Param("slug")
 
 	// Get project by slug
@@ -120,10 +130,18 @@ func (h *Handler) ListEnvironments(c *gin.Context) {
 		return
 	}
 
-	if _, err := h.ensureDefaultProductionEnvironment(c.Request.Context(), project); err != nil {
-		h.logger.Warn(c.Request.Context(), "Failed to ensure default production environment before listing",
-			logging.String("project", projectSlug),
-			logging.Error("error", err))
+	// The new inventory requires existing project access/platform authority;
+	// preserve the legacy list's compatibility behavior outside this scope.
+	if !ensureDefault && !h.enforceUserProjectAccess(c, project.ID) {
+		return
+	}
+
+	if ensureDefault {
+		if _, err := h.ensureDefaultProductionEnvironment(c.Request.Context(), project); err != nil {
+			h.logger.Warn(c.Request.Context(), "Failed to ensure default production environment before listing",
+				logging.String("project", projectSlug),
+				logging.Error("error", err))
+		}
 	}
 
 	environments, err := h.repos.Environments.ListByProject(project.ID)
