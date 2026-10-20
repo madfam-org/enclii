@@ -136,6 +136,7 @@ func (h *Handler) registerAdminRoutes(protected *gin.RouterGroup) {
 	platform.POST("/projects/:slug/environments/:env_name/bootstrap", h.RequirePlatformOperator(), h.BootstrapStagingNamespace)
 	registerJanuaStagingAddonPlanRoutes(platform, h)
 	registerJanuaStagingAdmissionRoutes(platform, h)
+	registerJanuaStagingIntentRoutes(platform, h)
 	platform.POST("/projects/:slug/addons/:id/initial-bootstrap", h.RequirePlatformOperator(), h.InitialBootstrapAddon)
 	platform.GET("/projects/:slug/addons/:id/initial-bootstrap/:job_name", h.RequirePlatformOperator(), h.InitialBootstrapAddonStatus)
 	registerPortalGenerationReadRoutes(platform, h)

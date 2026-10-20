@@ -115,6 +115,7 @@ func newOpsAppsCommand(cfg *config.Config) *cobra.Command {
 	cmd.AddCommand(newOpsActionCommand(cfg, "apps", "retire", "Retire an Argo application without routine kubectl access"))
 	cmd.AddCommand(newOpsActionCommand(cfg, "apps", "rollback", "Rollback an application to a known revision"))
 	cmd.AddCommand(newOpsAppsTrackingCommand(cfg))
+	cmd.AddCommand(newJanuaStagingIntentCommand(cfg))
 	return cmd
 }
 

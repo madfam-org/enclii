@@ -87,10 +87,16 @@ pick it up) or *owner decision* (needs the maintainer before work starts).
 
 ### This repository
 
+> Boundary checkpoint (2026-10-20, engineering): held preregistration source and
+> remaining materialization/source-authority gates only. Operational identities,
+> custody and live receipts remain private. Reviewer/owner: platform engineering;
+> [public repository boundary](docs/PUBLIC_REPO_BOUNDARY.md).
+
 | Item | Why it matters | Priority | Kind | Link |
 |---|---|---|---|---|
 | Add reviewed typed staging addon apply and nonowner/CA/owner custody binding | A [read-only plan and typed dry-admission adapter](docs/runbooks/JANUA_STAGING_ADDON_PLAN.md) inspect persisted ownership and admit only closed nonpersistent candidates; executable provisioning, capacity, fixed runtime and custody proof remain absent | P1 | engineering | [Isolated staging custody](docs/runbooks/ISOLATED_TRAINING_CUSTODY.md) |
 | Add a fixed Janua isolated staging migrator profile | Generic jobs and initial synthetic bootstrap profiles cannot authorize application migrations against a separate staging database | P1 | engineering | [Fixed initial database Jobs](docs/runbooks/ISOLATED_TRAINING_CUSTODY.md#fixed-initial-database-jobs) |
+| Materialize exact staging service/source identity through a reviewed adapter | Held preregistration records repository ownership only; they create no service and leave stage source registration, writer exclusion and native `043` binding unresolved | P1 | engineering | [Held preregistration](docs/runbooks/JANUA_STAGING_PREREGISTRATION_DESIGN.md) |
 | Add canonical staging-to-production promotion dispatch with reviewed evidence | A staging digest timestamp or a successful scheduled guard does not prove Ready runtime, healthy soak or authorize a production change | P1 | engineering | [Isolated staging custody](docs/runbooks/ISOLATED_TRAINING_CUSTODY.md) |
 | Verify `ENCLII_TRUSTED_PROXY_CIDRS` live | Set to the cluster pod CIDR on 2026-10-18 (both production env files), and gin's `ClientIP` wired to the same list. After the rollout, confirm a public request's audit row records the visitor address, not a `10.42.` peer, and that `invalid trusted proxy` is absent from the startup log | P2 | verify after deploy | [SECURITY.md](SECURITY.md#client-address-behind-the-tunnel) |
 | Run the ADR-003 cross-tenant `404` check | Stage 3 is live (2026-10-18) and three of its checks passed, but the cross-tenant refusal has not been observed: it needs a principal in exactly one tenant, which no existing principal is. A fresh self-serve sign-up would serve, and doubles as the self-onboarding journey test | P1 | engineering + owner sign-up | [rollout runbook](docs/runbooks/TENANT_SCOPE_ENFORCEMENT_ROLLOUT.md#production-status-2026-10-18-times-utc) |
