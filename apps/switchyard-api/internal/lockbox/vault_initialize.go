@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"net/http"
 	"strings"
 )
@@ -43,9 +44,10 @@ func (v *VaultClient) InitializeSecretData(ctx context.Context, path string, upd
 	switch resp.StatusCode {
 	case http.StatusNotFound:
 		// CAS 0 means create only. A deleted/destroyed existing version refuses.
+		snapshot.Data.Data = make(map[string]interface{})
 	case http.StatusOK:
-		err = json.NewDecoder(resp.Body).Decode(&snapshot)
-		if err != nil || snapshot.Data.Metadata.Version <= 0 || snapshot.Data.Metadata.Destroyed {
+		err = decodeInitializationJSON(resp.Body, &snapshot)
+		if err != nil || snapshot.Data.Data == nil || snapshot.Data.Metadata.Version <= 0 || snapshot.Data.Metadata.Destroyed {
 			_ = resp.Body.Close()
 			return 0, fmt.Errorf("invalid initialization custody snapshot")
 		}
@@ -54,9 +56,6 @@ func (v *VaultClient) InitializeSecretData(ctx context.Context, path string, upd
 		return 0, fmt.Errorf("initialization custody read refused")
 	}
 	_ = resp.Body.Close()
-	if snapshot.Data.Data == nil {
-		snapshot.Data.Data = make(map[string]interface{})
-	}
 	for key, value := range updates {
 		if _, exists := snapshot.Data.Data[key]; exists {
 			return 0, ErrSecretInitializationConflict
@@ -90,10 +89,25 @@ func (v *VaultClient) InitializeSecretData(ctx context.Context, path string, upd
 		return 0, ErrSecretInitializationOutcomeUnknown
 	}
 	var written vaultKVWriteResponse
-	if err := json.NewDecoder(resp.Body).Decode(&written); err != nil || written.Data.Version != snapshot.Data.Metadata.Version+1 {
+	if err := decodeInitializationJSON(resp.Body, &written); err != nil || written.Data.Version != snapshot.Data.Metadata.Version+1 {
 		return 0, ErrSecretInitializationOutcomeUnknown
 	}
 	return written.Data.Version, nil
+}
+
+// A complete snapshot is one JSON value. UseNumber keeps unrelated KV numbers
+// exact when the whole map is encoded for CAS; float64 would silently round them.
+func decodeInitializationJSON(body io.Reader, value interface{}) error {
+	decoder := json.NewDecoder(body)
+	decoder.UseNumber()
+	if err := decoder.Decode(value); err != nil {
+		return fmt.Errorf("invalid initialization JSON")
+	}
+	var trailing interface{}
+	if err := decoder.Decode(&trailing); err != io.EOF {
+		return fmt.Errorf("invalid initialization JSON")
+	}
+	return nil
 }
 
 func (v *VaultClient) setInitializationHeaders(req *http.Request) {

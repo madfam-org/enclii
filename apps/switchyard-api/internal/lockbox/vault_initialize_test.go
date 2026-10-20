@@ -126,7 +126,15 @@ func TestInitializeSecretDataNoRetryAndNoVaultBodyDisclosure(t *testing.T) {
 }
 
 func TestInitializeSecretDataInvalidSnapshotNeverWrites(t *testing.T) {
-	for _, snapshot := range []string{`{`, `{"data":{"data":{}}}`, `{"data":{"metadata":{"version":2,"destroyed":true}}}`} {
+	for _, snapshot := range []string{
+		`{`, `{"data":{"data":{}}}`,
+		`{"data":{"metadata":{"version":2}}}`,
+		`{"data":{"data":null,"metadata":{"version":2}}}`,
+		`{"data":{"data":{},"metadata":{"version":2,"destroyed":true}}}`,
+		`{"data":{"data":{},"metadata":{"version":2}}} trailing`,
+		`{"data":{"data":{},"metadata":{"version":2}}} {}`,
+		`{"data":{"data":{},"metadata":{"version":2}}} {`,
+	} {
 		writes := 0
 		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			if r.Method == http.MethodPost {
@@ -138,6 +146,62 @@ func TestInitializeSecretDataInvalidSnapshotNeverWrites(t *testing.T) {
 		_, err := client.InitializeSecretData(t.Context(), "secret/stage", map[string]interface{}{"key": "fresh"})
 		require.Error(t, err)
 		require.Equal(t, 0, writes)
+		server.Close()
+	}
+}
+
+func TestInitializeSecretDataPreservesExactNumbersAndAcceptsExplicitEmptyObject(t *testing.T) {
+	for _, data := range []string{`{}`, `{"counter":9007199254740993,"nested":{"nonce":9223372036854775807}}`} {
+		reads, writes := 0, 0
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if r.Method == http.MethodGet {
+				reads++
+				_, _ = w.Write([]byte(`{"data":{"data":` + data + `,"metadata":{"version":6}}}`))
+				return
+			}
+			writes++
+			var payload struct {
+				Data    map[string]interface{} `json:"data"`
+				Options map[string]int         `json:"options"`
+			}
+			decoder := json.NewDecoder(r.Body)
+			decoder.UseNumber()
+			require.NoError(t, decoder.Decode(&payload))
+			require.Equal(t, 6, payload.Options["cas"])
+			require.Equal(t, "fresh", payload.Data["new_key"])
+			if data == `{}` {
+				require.Len(t, payload.Data, 1)
+			} else {
+				require.Equal(t, json.Number("9007199254740993"), payload.Data["counter"])
+				require.Equal(t, json.Number("9223372036854775807"), payload.Data["nested"].(map[string]interface{})["nonce"])
+			}
+			_, _ = w.Write([]byte("{\"data\":{\"version\":7}}\n  "))
+		}))
+		client := NewVaultClient(&VaultConfig{Address: server.URL, Enabled: true})
+		version, err := client.InitializeSecretData(t.Context(), "secret/stage", map[string]interface{}{"new_key": "fresh"})
+		require.NoError(t, err)
+		require.Equal(t, 7, version)
+		require.Equal(t, 1, reads)
+		require.Equal(t, 1, writes)
+		server.Close()
+	}
+}
+
+func TestInitializeSecretDataTrailingWriteReceiptIsUnknownWithoutRetry(t *testing.T) {
+	for _, receipt := range []string{`{"data":{"version":1}} trailing`, `{"data":{"version":1}} {}`, `{"data":{"version":1}} {`} {
+		writes := 0
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if r.Method == http.MethodGet {
+				w.WriteHeader(http.StatusNotFound)
+				return
+			}
+			writes++
+			_, _ = w.Write([]byte(receipt))
+		}))
+		client := NewVaultClient(&VaultConfig{Address: server.URL, Enabled: true})
+		_, err := client.InitializeSecretData(t.Context(), "secret/stage", map[string]interface{}{"new_key": "fresh"})
+		require.ErrorIs(t, err, ErrSecretInitializationOutcomeUnknown)
+		require.Equal(t, 1, writes)
 		server.Close()
 	}
 }
