@@ -206,6 +206,34 @@ func (c *APIClient) PostRaw(ctx context.Context, path string, body io.Reader) ([
 	return respBody, nil
 }
 
+// PostRawOnce disables redirect replay for durable operations whose result may
+// be unknown after a lost response. No automatic retry or idempotency header is
+// added. Other client operations retain their existing redirect policy.
+func (c *APIClient) PostRawOnce(ctx context.Context, path string, body io.Reader) ([]byte, error) {
+	once := *c
+	httpClient := *c.httpClient
+	httpClient.CheckRedirect = func(*http.Request, []*http.Request) error {
+		return fmt.Errorf("mutation redirect refused; inspect operation before retry")
+	}
+	once.httpClient = &httpClient
+	resp, err := once.makeRequest(ctx, http.MethodPost, path, body)
+	if err != nil {
+		// Transport errors and redirect URLs can contain upstream material.
+		return nil, fmt.Errorf("mutation outcome unconfirmed; inspect custody before proceeding, do not retry")
+	}
+	defer func() { _ = resp.Body.Close() }()
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		// Do not echo an upstream proxy error body: it may contain submitted
+		// values even though the application contract never returns them.
+		return nil, APIError{StatusCode: resp.StatusCode, Message: "mutation not confirmed; inspect custody before proceeding, do not retry"}
+	}
+	response, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, fmt.Errorf("mutation response unavailable; inspect custody before proceeding, do not retry")
+	}
+	return response, nil
+}
+
 // Projects
 func (c *APIClient) CreateProject(ctx context.Context, name, slug string) (*types.Project, error) {
 	payload := map[string]string{

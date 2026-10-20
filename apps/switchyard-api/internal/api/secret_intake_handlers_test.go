@@ -170,7 +170,7 @@ func newIntakeVaultRecorder(t *testing.T, captured *map[string]interface{}) *Han
 			_ = json.NewDecoder(r.Body).Decode(&body)
 			*captured = body.Data
 			w.Header().Set("Content-Type", "application/json")
-			_, _ = w.Write([]byte(`{"data":{"version":7}}`))
+			_, _ = w.Write([]byte(`{"data":{"version":1}}`))
 			return
 		}
 		w.WriteHeader(http.StatusNotFound)

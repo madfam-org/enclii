@@ -1,6 +1,6 @@
 # Secret Intake (chat-safe credential handoff)
 
-**Last Updated:** 2026-10-13
+**Last Updated:** 2026-10-20
 
 Isolated training and API-only Janua staging targets are documented in
 [Isolated training custody](ISOLATED_TRAINING_CUSTODY.md). These declarations
@@ -785,8 +785,11 @@ returned by any endpoint** — not by submit, not by status, not in logs. The
 intake record names the key in `keys_generated` and the ESO annotation records
 `enclii.dev/secret-intake-source: generated`; the value exists only in Vault.
 
-Because nothing outside Vault ever holds a copy, rotation is a re-run of the same
-command, and there is no scrollback, clipboard, or password manager to clean up.
+For generic generated keys, rotation is a re-run of the same command, with no
+scrollback, clipboard, or password manager to clean up. The
+[typed Janua staging profiles](ISOLATED_TRAINING_CUSTODY.md#typed-janua-staging-initialization)
+are initialization-only, generate complete matched groups in their consumer
+formats, and refuse existing custody atomically instead of rotating it.
 
 Mix generated and supplied keys on one target when only some values are secrets
 nobody should see:
@@ -802,6 +805,9 @@ A key cannot be both generated and supplied — that is a `400`, not a silent
 preference for one of them. `--generate` rejects any key the target does not
 declare. Entropy defaults to 32 bytes and can be raised per target with a
 `generate: {bytes: N}` block in the registry (16–128).
+Targets with `generate: {disabled: true}` accept supplied values only; they
+refuse `--generate`. A fixed `generate.profile` selects typed initialization
+instead of generic unpadded base64url and cannot override the entropy policy.
 
 ### After intake: ESO → reloader
 

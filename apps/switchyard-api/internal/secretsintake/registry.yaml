@@ -1254,7 +1254,7 @@ targets:
 
   janua-staging/runtime-crypto:
     label: Fresh isolated staging identity crypto
-    description: Governed isolated runtime custody; no owner, provider or production credential
+    description: Initialize all five fresh staging crypto keys together with --generate; matched RSA pair and padded Fernet key, no overwrite or production credential
     vault_path: secret/janua-staging
     namespace: janua-staging
     external_secret: janua-staging-secrets # pragma: allowlist secret -- ExternalSecret resource name; not a credential
@@ -1264,6 +1264,8 @@ targets:
       - jwt_secret_key
       - secret_key
       - field_encryption_key
+    generate:
+      profile: janua-staging-crypto-v1
 
   janua-staging/database:
     label: Isolated staging nonowner database URI
@@ -1273,6 +1275,8 @@ targets:
     external_secret: janua-staging-secrets # pragma: allowlist secret -- ExternalSecret resource name; not a credential
     keys:
       - database_url
+    generate:
+      disabled: true
 
   janua-staging/database-ca:
     label: Verified public staging database CA
@@ -1282,16 +1286,20 @@ targets:
     external_secret: janua-staging-ca # pragma: allowlist secret -- ExternalSecret resource name; not a credential
     keys:
       - database_ca
+    generate:
+      disabled: true
 
   janua-staging/redis:
     label: Fresh private staging Redis authentication
-    description: Governed isolated runtime custody; no owner, provider or production credential
+    description: Initialize both fresh staging Redis keys together with --generate; matched password and private service URI, no overwrite or production credential
     vault_path: secret/janua-staging
     namespace: janua-staging
     external_secret: janua-staging-redis # pragma: allowlist secret -- ExternalSecret resource name; not a credential
     keys:
       - redis_password
       - redis_url
+    generate:
+      profile: janua-staging-redis-v1
 
   # Dhanam <-> Karafiel webhook signing keys (owner ruling 2026-10-14): one
   # dedicated HMAC key per direction, carried with a signed timestamp. Each is

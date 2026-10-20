@@ -1,5 +1,7 @@
 # enclii secrets
 
+Last Updated: 2026-10-20
+
 Manage service secrets and environment variables.
 
 ## Synopsis
@@ -316,8 +318,14 @@ enclii secrets intake submit <client-portal>/internal-api-key \
   declare is rejected before anything is written.
 - Per-target entropy is tunable in the registry with `generate: {bytes: N}` (16–128).
 
-Nothing outside Vault ever holds a copy, so rotation is a re-run of the same
-command with no scrollback or clipboard to clean up.
+For generic keys, rotation is a re-run of the same command with no scrollback or
+clipboard to clean up. Fixed
+[Janua staging profiles](../../runbooks/ISOLATED_TRAINING_CUSTODY.md#typed-janua-staging-initialization)
+are initialization-only: list every declared key in `--generate` to create a
+matched RSA/Fernet or Redis group, with no supplied values. An existing group
+or concurrent Vault change refuses with 409 and no retry. Database/CA targets
+are supplied-only and reject generation. No arbitrary generator, destination,
+production key reuse or rotation option is exposed.
 
 Requires Switchyard Vault writer enabled (`ENCLII_SECRET_ROTATION_ENABLED` + `vault-credentials` secret). Until then, submit returns `503 vault_writer_disabled`.
 
