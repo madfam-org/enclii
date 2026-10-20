@@ -7,13 +7,26 @@ import yaml
 from pydantic import ValidationError
 
 from enclii_sdk.models.generated import (
+    BareMetalHost,
     JanuaStagingPreregistrationGate,
     JanuaStagingPreregistrationIntent,
     JanuaStagingPreregistrationPlanRequest,
     JanuaStagingPreregistrationRecordRequest,
+    JanuaStagingPreregistrationState,
+    State,
 )
 
 OPERATION = "11111111-1111-4111-8111-111111111111"
+
+
+def test_held_intent_preserves_existing_bare_metal_state_enum_import() -> None:
+    assert State.available.value == "available"
+    assert BareMetalHost.model_validate({"state": "available"}).state is State.available
+    assert (
+        JanuaStagingPreregistrationState.held_preregistration_only.value
+        == "HELD_PREREGISTRATION_ONLY"
+    )
+    assert State is not JanuaStagingPreregistrationState
 
 
 def intent() -> dict[str, object]:

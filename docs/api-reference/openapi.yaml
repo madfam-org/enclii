@@ -6236,6 +6236,10 @@ components:
           maxLength: 512
           description: At most 512 UTF-8 bytes, no Unicode controls or surrounding whitespace; retained privately, never echoed
 
+    JanuaStagingPreregistrationState:
+      type: string
+      enum: [HELD_PREREGISTRATION_ONLY]
+
     JanuaStagingPreregistrationGate:
       type: string
       enum:
@@ -6292,8 +6296,7 @@ components:
           type: string
           enum: [REPOSITORY_OWNERSHIP_ONLY]
         state:
-          type: string
-          enum: [HELD_PREREGISTRATION_ONLY]
+          $ref: '#/components/schemas/JanuaStagingPreregistrationState'
         profile:
           type: string
           enum: [janua-staging-preregistration-v1]

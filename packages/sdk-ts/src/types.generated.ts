@@ -3688,6 +3688,8 @@ export interface components {
             reason: string;
         };
         /** @enum {string} */
+        JanuaStagingPreregistrationState: "HELD_PREREGISTRATION_ONLY";
+        /** @enum {string} */
         JanuaStagingPreregistrationGate: "SOURCE_STAGE_REGISTRATION_NOT_PROVEN" | "STAGING_SOURCE_ALIGNMENT_NOT_QUALIFIED" | "SERVICE_MATERIALIZATION_NOT_IMPLEMENTED" | "BACKGROUND_WRITER_EXCLUSION_NOT_QUALIFIED" | "NATIVE_043_BINDING_NOT_PROVEN" | "RUNTIME_CUSTODY_MIGRATION_AND_SOAK_NOT_QUALIFIED";
         /**
          * @description Repository-ownership-only plan or immutable receipt. All six gates remain
@@ -3705,8 +3707,7 @@ export interface components {
             repository_registration_id: components["schemas"]["JanuaStagingPreregistrationUUID"];
             /** @enum {string} */
             repository_registration_scope: "REPOSITORY_OWNERSHIP_ONLY";
-            /** @enum {string} */
-            state: "HELD_PREREGISTRATION_ONLY";
+            state: components["schemas"]["JanuaStagingPreregistrationState"];
             /** @enum {string} */
             profile: "janua-staging-preregistration-v1";
             /** @enum {string} */
