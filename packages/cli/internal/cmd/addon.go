@@ -55,6 +55,7 @@ Examples:
 	}
 	cmd.AddCommand(newAddonCreateCommand(cfg))
 	cmd.AddCommand(newAddonStagingPlanCommand(cfg))
+	cmd.AddCommand(newAddonStagingAdmissionCommand(cfg))
 	cmd.AddCommand(newAddonListCommand(cfg))
 	cmd.AddCommand(newAddonDestroyCommand(cfg))
 	cmd.AddCommand(newAddonPlansCommand(cfg))

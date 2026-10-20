@@ -34,7 +34,7 @@ func (h *Handler) readJanuaStageNamespace(ctx context.Context, name string, proj
 	if k8serrors.IsNotFound(err) {
 		return result, nil
 	}
-	if err != nil || namespace.UID == "" || namespace.Labels[k8s.LabelProjectNamespace] != project.String() {
+	if err != nil || namespace.UID == "" || namespace.DeletionTimestamp != nil || namespace.Labels[k8s.LabelProjectNamespace] != project.String() {
 		return result, errJanuaStagePlanRead
 	}
 	result.State, result.UID, result.ResourceVersion = "OWNED", string(namespace.UID), namespace.ResourceVersion
@@ -42,7 +42,7 @@ func (h *Handler) readJanuaStageNamespace(ctx context.Context, name string, proj
 	result.LegacySharedDataAccessLabel = namespace.Labels["enclii.dev/data-access"] == "true"
 	result.LegacySharedPostgresConsumerLabel = namespace.Labels["enclii.dev/postgres-consumer"] == "true"
 	policies, err := h.k8sClient.Kube().NetworkingV1().NetworkPolicies(name).List(ctx, metav1.ListOptions{})
-	if err != nil {
+	if err != nil || policies.Continue != "" || (policies.RemainingItemCount != nil && *policies.RemainingItemCount > 0) {
 		return result, errJanuaStagePlanRead
 	}
 	result.PoliciesRead = len(policies.Items)
@@ -51,7 +51,7 @@ func (h *Handler) readJanuaStageNamespace(ctx context.Context, name string, proj
 			result.OtherPoliciesRead++
 			continue
 		}
-		if policy.UID == "" || policy.Namespace != name || policy.Labels["enclii.dev/managed-by"] != "onboarding-api" || policy.Labels[k8s.LabelProjectNamespace] != project.String() {
+		if policy.UID == "" || policy.DeletionTimestamp != nil || policy.Namespace != name || policy.Labels["enclii.dev/managed-by"] != "onboarding-api" || policy.Labels[k8s.LabelProjectNamespace] != project.String() {
 			return result, errJanuaStagePlanRead
 		}
 		result.BaselineUID, result.BaselineResourceVersion = string(policy.UID), policy.ResourceVersion
