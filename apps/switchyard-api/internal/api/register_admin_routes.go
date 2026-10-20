@@ -137,6 +137,7 @@ func (h *Handler) registerAdminRoutes(protected *gin.RouterGroup) {
 	registerJanuaStagingAddonPlanRoutes(platform, h)
 	platform.POST("/projects/:slug/addons/:id/initial-bootstrap", h.RequirePlatformOperator(), h.InitialBootstrapAddon)
 	platform.GET("/projects/:slug/addons/:id/initial-bootstrap/:job_name", h.RequirePlatformOperator(), h.InitialBootstrapAddonStatus)
+	registerPortalGenerationReadRoutes(platform, h)
 	platform.GET("/secrets/training-custody-capabilities", h.RequirePlatformOperator(), h.TrainingCustodyCapabilities)
 
 	// Database schema / migration status (GA migration verify)

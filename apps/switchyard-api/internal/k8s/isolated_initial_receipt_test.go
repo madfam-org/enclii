@@ -249,6 +249,8 @@ func initialNativeHTTPProfile(t *testing.T, profile string) (*Client, *initialHT
 		// Same portal custody; a live workload is bound by generation.
 		p.Profile = profile
 		p.Identity.DeploymentResourceVersion, p.Identity.DeploymentGeneration = "", 3
+	} else if IsProvenanceReadProfile(profile) {
+		p = generationReadPlan()
 	} else {
 		require.Equal(t, "portal-sim-initial", profile)
 	}
@@ -282,6 +284,11 @@ func initialNativeHTTPProfile(t *testing.T, profile string) (*Client, *initialHT
 
 	if profile == fixedStepTurnoVigenteProfile {
 		f.stdout, f.initStdout = fixedStepStdout("APLICADO"), ""
+	}
+	if IsProvenanceReadProfile(profile) {
+		b, err := json.Marshal(generationReceiptFixture())
+		require.NoError(t, err)
+		f.stdout, f.initStdout = string(b)+"\n", ""
 	}
 	if _, isMAP := initialKernelFixtures[profile]; isMAP {
 		f.stdout = `{"huella":"` + strings.Repeat("d", 64) + `","codigoSha256":"` + strings.Repeat("e", 64) + `","fixtureSha256":"` + strings.Repeat("f", 64) + `","roles":7,"casos":6}` + "\n"

@@ -72,22 +72,23 @@ type InitialBootstrapIdentity struct {
 }
 
 type initialIntent struct {
-	Version                 string                   `json:"version"`
-	Classification          string                   `json:"classification"`
-	JobUID                  string                   `json:"job_uid"`
-	CreationResourceVersion string                   `json:"creation_resource_version"`
-	JobName                 string                   `json:"job_name"`
-	Namespace               string                   `json:"namespace"`
-	ProjectID               uuid.UUID                `json:"project_id"`
-	AddonID                 uuid.UUID                `json:"addon_id"`
-	ServiceID               uuid.UUID                `json:"service_id"`
-	Cluster                 string                   `json:"cluster"`
-	Profile                 string                   `json:"profile"`
-	Image                   string                   `json:"image"`
-	PlanSHA256              string                   `json:"plan_sha256"`
-	JobSpecSHA256           string                   `json:"job_spec_sha256"`
-	OperationSHA256         string                   `json:"operation_sha256"`
-	Identity                InitialBootstrapIdentity `json:"identity"`
+	Version                 string                     `json:"version"`
+	Classification          string                     `json:"classification"`
+	JobUID                  string                     `json:"job_uid"`
+	CreationResourceVersion string                     `json:"creation_resource_version"`
+	JobName                 string                     `json:"job_name"`
+	Namespace               string                     `json:"namespace"`
+	ProjectID               uuid.UUID                  `json:"project_id"`
+	AddonID                 uuid.UUID                  `json:"addon_id"`
+	ServiceID               uuid.UUID                  `json:"service_id"`
+	Cluster                 string                     `json:"cluster"`
+	Profile                 string                     `json:"profile"`
+	Image                   string                     `json:"image"`
+	PlanSHA256              string                     `json:"plan_sha256"`
+	JobSpecSHA256           string                     `json:"job_spec_sha256"`
+	OperationSHA256         string                     `json:"operation_sha256"`
+	Identity                InitialBootstrapIdentity   `json:"identity"`
+	GenerationRead          *PortalGenerationReadInput `json:"generation_read,omitempty"`
 }
 
 type InitialPortal001Receipt struct {
@@ -145,8 +146,9 @@ type InitialNativeReceipt struct {
 	MAP              *InitialMAPReceipt       `json:"map,omitempty"`
 	// Fixed step only: the typed step output when accredited, or the closed
 	// reason its terminal receipt is held.
-	TurnoVigente *FixedStepTurnoVigenteReceipt `json:"turno_vigente,omitempty"`
-	HeldReason   string                        `json:"held_reason,omitempty"`
+	TurnoVigente   *FixedStepTurnoVigenteReceipt `json:"turno_vigente,omitempty"`
+	HeldReason     string                        `json:"held_reason,omitempty"`
+	GenerationRead *PortalGenerationReadReceipt  `json:"generation_read,omitempty"`
 }
 
 func initialHash(b []byte) string { s := sha256.Sum256(b); return hex.EncodeToString(s[:]) }
@@ -223,7 +225,7 @@ func DecodeInitialBootstrapJSON(b []byte, out any) error {
 // profile requires: an initial profile by the held Deployment's
 // resourceVersion, a fixed step by the live Deployment's generation.
 func (id InitialBootstrapIdentity) workloadBound(profile string) bool {
-	if IsFixedStepProfile(profile) {
+	if IsRepeatedProfile(profile) {
 		return id.DeploymentResourceVersion == "" && id.DeploymentGeneration > 0
 	}
 	return initialUID.MatchString(id.DeploymentResourceVersion) && id.DeploymentGeneration == 0
@@ -243,12 +245,15 @@ func (p IsolatedInitialJobPlan) initialIntent(job *batchv1.Job) (initialIntent, 
 	if !id.workloadBound(p.Profile) {
 		return initialIntent{}, fmt.Errorf("initial authoritative identity incomplete")
 	}
-	if id.BindingID == uuid.Nil || id.OnboardingID == uuid.Nil || id.Database != want.Database || id.OwnerRole != "enclii_migrator" || id.RuntimeRole != want.RuntimeRole || id.Producer != want.Producer || !initialRevision.MatchString(id.SourceRevision) || id.BuildRunID <= 0 || id.Checks < want.Checks || !id.SignatureVerified || !initialSHA.MatchString(id.PinPayloadSHA256) || id.PublicCASHA256 != initialHash(p.Data["ca.crt"]) {
+	if id.BindingID == uuid.Nil || id.OnboardingID == uuid.Nil || id.Database != want.Database || id.OwnerRole != expectedOwnerRole(p.Profile) || id.RuntimeRole != want.RuntimeRole || id.Producer != want.Producer || !initialRevision.MatchString(id.SourceRevision) || id.BuildRunID <= 0 || id.Checks < want.Checks || !id.SignatureVerified || !initialSHA.MatchString(id.PinPayloadSHA256) || id.PublicCASHA256 != initialHash(p.Data["ca.crt"]) {
 		return initialIntent{}, fmt.Errorf("initial verified provenance incomplete")
 	}
 	spec, _ := json.Marshal(job.Spec)
 	kind := p.kind()
-	return initialIntent{Version: kind.version, Classification: kind.intent, JobName: job.Name, Namespace: p.Namespace, ProjectID: p.ProjectID, AddonID: p.AddonID, ServiceID: p.ServiceID, Cluster: p.Cluster, Profile: p.Profile, Image: p.Image, PlanSHA256: p.fingerprint(), JobSpecSHA256: initialHash(spec), OperationSHA256: initialHash([]byte(p.IdempotencyKey)), Identity: id}, nil
+	if IsProvenanceReadProfile(p.Profile) != validGenerationInput(p.GenerationRead) || !IsProvenanceReadProfile(p.Profile) && p.GenerationRead != nil {
+		return initialIntent{}, fmt.Errorf("provenance read input unavailable")
+	}
+	return initialIntent{Version: kind.version, Classification: kind.intent, JobName: job.Name, Namespace: p.Namespace, ProjectID: p.ProjectID, AddonID: p.AddonID, ServiceID: p.ServiceID, Cluster: p.Cluster, Profile: p.Profile, Image: p.Image, PlanSHA256: p.fingerprint(), JobSpecSHA256: initialHash(spec), OperationSHA256: initialHash([]byte(p.IdempotencyKey)), Identity: id, GenerationRead: p.GenerationRead}, nil
 }
 
 func initialRecord(p IsolatedInitialJobPlan, suffix string, payload any) (*corev1.ConfigMap, error) {
@@ -298,7 +303,7 @@ func (c *Client) readInitialIntent(ctx context.Context, p IsolatedInitialJobPlan
 }
 
 func (c *Client) checkOperationExclusion(ctx context.Context, p IsolatedInitialJobPlan) error {
-	if IsFixedStepProfile(p.Profile) {
+	if IsRepeatedProfile(p.Profile) {
 		return c.checkFixedStepExclusion(ctx, p)
 	}
 	return c.checkInitialOperationExclusion(ctx, p)
@@ -311,7 +316,7 @@ func (c *Client) checkOperationExclusion(ctx context.Context, p IsolatedInitialJ
 // proceed, so an uncollectable history cannot wedge the step. A Job held
 // suspended is unfinished and blocks, as initial history does.
 func (c *Client) checkFixedStepExclusion(ctx context.Context, p IsolatedInitialJobPlan) error {
-	for _, manager := range []string{fixedStepKind.manager, initialKind.manager} {
+	for _, manager := range []string{fixedStepKind.manager, initialKind.manager, provenanceReadKind.manager} {
 		selector := labels.Set(map[string]string{"enclii.dev/managed-by": manager, LabelProjectNamespace: p.ProjectID.String(), "enclii.dev/addon-id": p.AddonID.String(), "enclii.dev/service-id": p.ServiceID.String()}).String()
 		jobs, e := c.kubeClient().BatchV1().Jobs(p.Namespace).List(ctx, metav1.ListOptions{LabelSelector: selector})
 		if e != nil {
@@ -419,6 +424,18 @@ func validInitialNative(r InitialNativeReceipt, p IsolatedInitialJobPlan, cm *co
 	}
 	// Evidence of the one Pod that ran and its bounded main stdout.
 	observed := initialUID.MatchString(r.PodUID) && initialSHA.MatchString(r.StdoutSHA256)
+	if IsProvenanceReadProfile(p.Profile) {
+		if r.MAP != nil || r.Portal001 != nil || r.Portal002 != nil || r.TurnoVigente != nil || r.InitStdoutSHA256 != "" || !validGenerationInput(in.GenerationRead) {
+			return false
+		}
+		if r.Classification == kind.retained {
+			return observed && r.HeldReason == "" && validGenerationReceipt(r.GenerationRead, in.GenerationRead)
+		}
+		return r.Classification == kind.held && r.GenerationRead == nil && ((r.HeldReason == fixedStepHeldUnclassified && observed) || (r.HeldReason == fixedStepHeldJobFailed && r.PodUID == "" && r.StdoutSHA256 == ""))
+	}
+	if r.GenerationRead != nil || in.GenerationRead != nil {
+		return false
+	}
 	if IsFixedStepProfile(p.Profile) {
 		if r.MAP != nil || r.Portal001 != nil || r.Portal002 != nil || r.InitStdoutSHA256 != "" {
 			return false
@@ -568,7 +585,14 @@ func (c *Client) collectInitialReceipt(ctx context.Context, p IsolatedInitialJob
 	}
 	kind := p.kind()
 	r := InitialNativeReceipt{Version: kind.version, Classification: kind.retained, IntentSHA256: intent.Data["sha256"], IntentUID: string(intent.UID), JobUID: string(job.UID), PodUID: string(pod.UID), Image: p.Image, SourceRevision: p.Identity.SourceRevision, StdoutSHA256: initialHash(b)}
-	if IsFixedStepProfile(p.Profile) {
+	if IsProvenanceReadProfile(p.Profile) {
+		out := &PortalGenerationReadReceipt{}
+		if DecodeInitialBootstrapJSON(b, out) == nil && validGenerationReceipt(out, p.GenerationRead) {
+			r.GenerationRead = out
+		} else {
+			r.Classification, r.HeldReason = kind.held, fixedStepHeldUnclassified
+		}
+	} else if IsFixedStepProfile(p.Profile) {
 		// Classify only the exact typed line; anything else is retained as a
 		// terminal held receipt carrying the stdout hash, never its content.
 		out := &FixedStepTurnoVigenteReceipt{}
@@ -606,7 +630,7 @@ func (c *Client) collectInitialReceipt(ctx context.Context, p IsolatedInitialJob
 // collectFixedStepFailure retains a fixed step's failed Job as one terminal
 // held receipt. It reads no logs: the native failed status is the evidence.
 func (c *Client) collectFixedStepFailure(ctx context.Context, p IsolatedInitialJobPlan, job, expected *batchv1.Job, intent *corev1.ConfigMap, plan initialIntent) (*InitialNativeReceipt, error) {
-	if !IsFixedStepProfile(p.Profile) || job == nil || plan.JobUID != string(job.UID) || !initialJobMatches(job, expected, plan) || job.Spec.Suspend == nil || *job.Spec.Suspend || job.Status.Failed == 0 || job.Status.Succeeded != 0 || !initialJobFinished(job) {
+	if !IsRepeatedProfile(p.Profile) || job == nil || plan.JobUID != string(job.UID) || !initialJobMatches(job, expected, plan) || job.Spec.Suspend == nil || *job.Spec.Suspend || job.Status.Failed == 0 || job.Status.Succeeded != 0 || !initialJobFinished(job) {
 		return nil, fmt.Errorf("fixed step failed Job not accredited")
 	}
 	failed := false
@@ -679,7 +703,7 @@ func (c *Client) retainedInitialStatus(ctx context.Context, namespace, name stri
 	if in.Version != kind.version || in.Classification != kind.intent || !strings.HasPrefix(name, kind.namePrefix) || in.JobName != name || in.Namespace != namespace || in.ProjectID != project || in.AddonID != addon || in.ServiceID == uuid.Nil || !initialUID.MatchString(in.JobUID) || !initialUID.MatchString(in.CreationResourceVersion) || !initialSHA.MatchString(in.PlanSHA256) || !initialSHA.MatchString(in.JobSpecSHA256) || !initialSHA.MatchString(in.OperationSHA256) {
 		return nil, nil, fmt.Errorf("initial retained intent refused")
 	}
-	p := IsolatedInitialJobPlan{ProjectID: project, AddonID: addon, ServiceID: in.ServiceID, Namespace: namespace, Cluster: in.Cluster, Profile: in.Profile, Image: in.Image, Identity: in.Identity, retainedJobName: name}
+	p := IsolatedInitialJobPlan{ProjectID: project, AddonID: addon, ServiceID: in.ServiceID, Namespace: namespace, Cluster: in.Cluster, Profile: in.Profile, Image: in.Image, Identity: in.Identity, GenerationRead: in.GenerationRead, retainedJobName: name}
 	// The operation key is not retained. Labels/name derive from validated intent.
 	if validateInitialStatusIntent(cm, p, name, &in) != nil {
 		return nil, nil, fmt.Errorf("initial retained authority refused")
@@ -728,7 +752,7 @@ func validateInitialStatusIntent(cm *corev1.ConfigMap, p IsolatedInitialJobPlan,
 		return fmt.Errorf("initial status identity refused")
 	}
 	prefix := want.ImagePrefix
-	if !strings.HasPrefix(in.Image, prefix) || !initialSHA.MatchString(strings.TrimPrefix(in.Image, prefix)) || id.Producer != want.Producer || id.Database != want.Database || id.RuntimeRole != want.RuntimeRole || id.OwnerRole != "enclii_migrator" || !id.SignatureVerified || !initialSHA.MatchString(id.PinPayloadSHA256) || !initialRevision.MatchString(id.SourceRevision) || id.BindingID == uuid.Nil || id.OnboardingID == uuid.Nil || !initialSHA.MatchString(id.PublicCASHA256) || id.BuildRunID <= 0 || id.Checks < want.Checks {
+	if !strings.HasPrefix(in.Image, prefix) || !initialSHA.MatchString(strings.TrimPrefix(in.Image, prefix)) || id.Producer != want.Producer || id.Database != want.Database || id.RuntimeRole != want.RuntimeRole || id.OwnerRole != expectedOwnerRole(in.Profile) || !id.SignatureVerified || !initialSHA.MatchString(id.PinPayloadSHA256) || !initialRevision.MatchString(id.SourceRevision) || id.BindingID == uuid.Nil || id.OnboardingID == uuid.Nil || !initialSHA.MatchString(id.PublicCASHA256) || id.BuildRunID <= 0 || id.Checks < want.Checks || IsProvenanceReadProfile(p.Profile) != validGenerationInput(in.GenerationRead) || !IsProvenanceReadProfile(p.Profile) && in.GenerationRead != nil {
 		return fmt.Errorf("initial status source refused")
 	}
 	return nil
