@@ -37,6 +37,7 @@ func TestBuildApplicationMirrorsApplicationSetSemantics(t *testing.T) {
 	if got := app.GetLabels()["app.kubernetes.io/managed-by"]; got != "enclii-platform" {
 		t.Fatalf("managed-by label = %q, want enclii-platform", got)
 	}
+	assertNotificationSubscriptions(t, app)
 
 	syncOptions, found, err := unstructured.NestedStringSlice(app.Object, "spec", "syncPolicy", "syncOptions")
 	if err != nil || !found {
@@ -133,7 +134,9 @@ func TestReconcileApplicationUpdatesExistingApplicationAndPreservesMetadata(t *t
 		t.Fatalf("BuildApplication() error = %v", err)
 	}
 	existing.SetLabels(map[string]string{"custom": "keep"})
-	existing.SetAnnotations(map[string]string{"notifications.argoproj.io/subscribe.on-sync-succeeded.enclii": ""})
+	// A pre-fix runtime Application has no release subscriptions. Preserve
+	// unrelated annotations while adding both channels on an explicit ensure.
+	existing.SetAnnotations(map[string]string{"example.test/custom": "keep"})
 	_ = unstructured.SetNestedField(existing.Object, "old-branch", "spec", "source", "targetRevision")
 
 	client := fake.NewSimpleDynamicClient(runtime.NewScheme(), existing)
@@ -154,12 +157,27 @@ func TestReconcileApplicationUpdatesExistingApplicationAndPreservesMetadata(t *t
 	if got := app.GetLabels()["custom"]; got != "keep" {
 		t.Fatalf("custom label = %q, want keep", got)
 	}
-	if _, ok := app.GetAnnotations()["notifications.argoproj.io/subscribe.on-sync-succeeded.enclii"]; !ok {
-		t.Fatalf("expected notification annotation to be preserved")
+	assertNotificationSubscriptions(t, app)
+	if app.GetAnnotations()["example.test/custom"] != "keep" {
+		t.Fatal("custom annotation was not preserved")
 	}
 	branch, _, _ := unstructured.NestedString(app.Object, "spec", "source", "targetRevision")
 	if branch != "main" {
 		t.Fatalf("targetRevision = %q, want main", branch)
+	}
+	result, err = reconciler.ReconcileApplication(context.Background(), testDesiredApplication())
+	if err != nil || result.Action != "unchanged" {
+		t.Fatalf("repeat ensure must be a no-op: result=%v err=%v", result, err)
+	}
+}
+
+func assertNotificationSubscriptions(t *testing.T, app *unstructured.Unstructured) {
+	t.Helper()
+	for _, trigger := range []string{"on-sync-succeeded", "on-sync-failed"} {
+		key := "notifications.argoproj.io/subscribe." + trigger + ".enclii"
+		if value, exists := app.GetAnnotations()[key]; !exists || value != "" {
+			t.Fatalf("notification subscription %s missing or invalid: %q", key, value)
+		}
 	}
 }
 

@@ -458,7 +458,7 @@ func TestServiceRepository_ListByProject(t *testing.T) {
 		bc := mustMarshalBuildConfig(t, defaultBuildConfig())
 
 		releaseID := uuid.New()
-		recentJSON := []byte(`[{"id":"` + releaseID.String() + `","version":"v1.2.3","image_uri":"ghcr.io/madfam-org/svc-1@sha256:abc123","git_sha":"deadbeef","status":"succeeded","created_at":"` + now.UTC().Format(time.RFC3339Nano) + `"}]`)
+		recentJSON := []byte(`[{"id":"` + releaseID.String() + `","version":"v1.2.3","image_uri":"ghcr.io/madfam-org/svc-1@sha256:abc123","git_sha":"deadbeef","status":"ready","created_at":"` + now.UTC().Format(time.RFC3339Nano) + `"}]`)
 
 		rows := sqlmock.NewRows(listByProjectColumns).
 			AddRow(uuid.New(), projID, "svc-1", "repo-1", "", bc,
@@ -469,7 +469,7 @@ func TestServiceRepository_ListByProject(t *testing.T) {
 				"ghcr.io/madfam-org/svc-1@sha256:abc123", releaseID.String(), now, "nextjs", recentJSON,
 				now, now, []byte(`[]`), "web", "default")
 
-		mock.ExpectQuery(`SELECT s\.id, s\.project_id, s\.name, s\.git_repo`).
+		mock.ExpectQuery(`(?s)SELECT s\.id, s\.project_id, s\.name, s\.git_repo.*r4.status = 'ready'.*r5.status = 'ready'.*r6.status = 'ready'`).
 			WithArgs(projID).
 			WillReturnRows(rows)
 
@@ -493,7 +493,7 @@ func TestServiceRepository_ListByProject(t *testing.T) {
 		assert.NotNil(t, results[0].CurrentReleaseCreatedAt)
 		assert.Len(t, results[0].RecentReleases, 1)
 		assert.Equal(t, "v1.2.3", results[0].RecentReleases[0].Version)
-		assert.Equal(t, "succeeded", results[0].RecentReleases[0].Status)
+		assert.Equal(t, string(types.ReleaseStatusReady), results[0].RecentReleases[0].Status)
 		assert.NoError(t, mock.ExpectationsWereMet())
 	})
 
@@ -679,7 +679,7 @@ func TestServiceRepository_EnrichWithLatestRelease(t *testing.T) {
 		releaseID := uuid.New()
 		releaseCreated := time.Date(2026, 4, 27, 9, 0, 0, 0, time.UTC)
 
-		mock.ExpectQuery(`SELECT image_uri, created_at FROM releases\s+WHERE service_id = \$1 AND status = 'succeeded'`).
+		mock.ExpectQuery(`SELECT image_uri, created_at FROM releases\s+WHERE service_id = \$1 AND status = 'ready'`).
 			WithArgs(svc.ID).
 			WillReturnRows(sqlmock.NewRows([]string{"image_uri", "created_at"}).
 				AddRow("ghcr.io/madfam-org/api@sha256:f00", releaseCreated))
@@ -687,7 +687,7 @@ func TestServiceRepository_EnrichWithLatestRelease(t *testing.T) {
 		mock.ExpectQuery(`SELECT id, version, image_uri, git_sha, status, created_at FROM releases\s+WHERE service_id = \$1`).
 			WithArgs(svc.ID).
 			WillReturnRows(sqlmock.NewRows([]string{"id", "version", "image_uri", "git_sha", "status", "created_at"}).
-				AddRow(releaseID, "v1", "ghcr.io/madfam-org/api@sha256:f00", "deadbeef", "succeeded", releaseCreated))
+				AddRow(releaseID, "v1", "ghcr.io/madfam-org/api@sha256:f00", "deadbeef", types.ReleaseStatusReady, releaseCreated))
 
 		err := repo.EnrichWithLatestRelease([]*types.Service{svc})
 		assert.NoError(t, err)
@@ -696,16 +696,17 @@ func TestServiceRepository_EnrichWithLatestRelease(t *testing.T) {
 		assert.Equal(t, releaseCreated, svc.CurrentReleaseCreatedAt.UTC())
 		require.Len(t, svc.RecentReleases, 1)
 		assert.Equal(t, "v1", svc.RecentReleases[0].Version)
+		assert.Equal(t, string(types.ReleaseStatusReady), svc.RecentReleases[0].Status)
 		assert.NoError(t, mock.ExpectationsWereMet())
 	})
 
-	t.Run("no succeeded release leaves fields unset", func(t *testing.T) {
+	t.Run("no ready release leaves fields unset", func(t *testing.T) {
 		repo, mock, cleanup := newServiceMockDB(t)
 		defer cleanup()
 
 		svc := &types.Service{ID: uuid.New(), Name: "fresh"}
 
-		mock.ExpectQuery(`SELECT image_uri, created_at FROM releases\s+WHERE service_id = \$1 AND status = 'succeeded'`).
+		mock.ExpectQuery(`SELECT image_uri, created_at FROM releases\s+WHERE service_id = \$1 AND status = 'ready'`).
 			WithArgs(svc.ID).
 			WillReturnRows(sqlmock.NewRows([]string{"image_uri", "created_at"}))
 		mock.ExpectQuery(`SELECT id, version, image_uri, git_sha, status, created_at FROM releases\s+WHERE service_id = \$1`).

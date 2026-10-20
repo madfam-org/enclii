@@ -274,6 +274,29 @@ The `LifecycleEventCallback` handler creates Deployment records automatically fo
 
 **Stale deploying filter (UI):** The Active Deployments card is always visible on the deployments page. It filters out `deploying`/`pending` records older than 30 minutes — these are shown in Deployment History instead, rendered as "Timed Out" badges. Records marked `cancelled` by server-side cleanup also appear in history as "Cancelled". When no active deployments exist, the card shows a green "No active deployments" idle state.
 
+## Release image projection
+
+Service image projections select the latest `ready` release, the successful
+artifact status in the release contract (`building`, `ready`, `failed`). They
+must not filter on `succeeded`, which is not a release status. A ready artifact
+is not itself a running-state proof; deployment status and live Argo/pod
+observations establish what is actually serving.
+
+## Runtime onboarding notifications
+
+Runtime-created Applications subscribe to `on-sync-succeeded.enclii` and
+`on-sync-failed.enclii`, matching the ApplicationSet path. ArgoCD Notifications
+sends its observed revision, images and health to the existing authenticated
+callback. A product repository does not need a shared CI callback credential
+for this deployment tracking path.
+
+For an Application created before these subscriptions were included, run the
+native onboarding `ensure` for that project, then sync that Application through
+Enclii. Ensure preserves unrelated metadata and is a no-op on a repeat. Verify
+the native Releases and Deployments APIs against the observed image and Git
+revision; a successful sync alone does not prove history registration. This
+records the observed deployment, without fabricating missing historical builds.
+
 ## ArgoCD Application Poller (GitOps fallback)
 
 The ArgoCD Notifications → webhook push (`POST /v1/callbacks/argocd-sync`) is the
