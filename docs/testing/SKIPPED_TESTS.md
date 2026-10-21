@@ -55,6 +55,7 @@ Removed in the 2026-10-02 close-out:
 |---|---|
 | `tests/scripts/test_arc_pool_health.py`, `test_stuck_runner_watchdog.py` | A required CLI tool is missing, or `date` is BSD rather than GNU (macOS) |
 | `infra/synthetic-flow-probe/tests/test_probe.py` manifest case | The journey manifests are not in the checkout |
+| `tests/scripts/test_pgbouncer_auth_query.py` end-to-end case | No PostgreSQL binaries (`initdb`, `pg_ctl`, `psql`; `PG_BIN_DIR`) or no `pgbouncer` (`PGBOUNCER_BIN`), or running as root. The `pgbouncer-auth-query` job in `ci.yml` installs pgbouncer and uses the runner's PostgreSQL, so it runs in CI; the static, init-script and wrapper cases never skip |
 | `tests/scripts/test_client_slo_rules.py` promtool case | `promtool` is not on PATH and `ENCLII_PROMTOOL` is unset, or the evaluator cannot run (no Docker daemon, image pull failure). The `client-slo-rules-test` job in `ci.yml` sets `ENCLII_PROMTOOL` to the pinned `prom/prometheus` image, so it runs in CI; the structural cases never skip |
 
 `tests/scripts/test_digest_pin_push_retry.py` does not skip on macOS: it shims

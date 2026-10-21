@@ -3,6 +3,21 @@
 # Shared connection pooler for all databases in the cluster.
 # Services connect to pgbouncer.data.svc.cluster.local:6432 instead of postgres:5432.
 # Required when 8+ databases × multiple services = 100+ connections exceed Postgres limits.
+#
+# AUTHENTICATION (2026-10-21, auth_query). pgbouncer looks a role's password up
+# in Postgres (auth_query, through the SECURITY DEFINER function
+# pgbouncer.get_auth in the postgres database, as role pgbouncer_auth) when the
+# role has no line in userlist.txt. Lines in userlist.txt still win, so the
+# move is additive: every role that works through the pooler today keeps its
+# line and its behaviour, and a role with no line (ceq, 2026-10-18) starts to
+# work. The end state is a userlist with only pgbouncer_auth and
+# pgbouncer_admin; shrinking it is a separate owner step.
+#   - The DDL is owner-run: scripts/sql/pgbouncer-auth-query.sql through
+#     scripts/pgbouncer-auth-query.sh migrate (rollback: ... rollback).
+#   - pgbouncer_auth's password comes from Vault (secret/enclii, property
+#     pgbouncer_auth_password; intake target data/pgbouncer-auth) through the
+#     pgbouncer-auth ExternalSecret. The init container below writes it as the
+#     first userlist line; the value is never in git.
 ---
 apiVersion: v1
 kind: ConfigMap
@@ -19,8 +34,23 @@ data:
     [pgbouncer]
     listen_addr = 0.0.0.0
     listen_port = 6432
-    auth_type = plain
+    ; AUTH (2026-10-21). md5, not plain: with auth_query the password
+    ; pgbouncer gets back is the role's stored verifier, and every role on this
+    ; cluster is SCRAM (PostgreSQL 15 default password_encryption, switchyard
+    ; writes SCRAM verifiers). Under md5 pgbouncer uses SCRAM automatically for
+    ; a SCRAM verifier, and passes the client's SCRAM keys on to Postgres, so
+    ; it never needs the plaintext. Lines in userlist.txt that hold plaintext
+    ; get an MD5 challenge instead of a cleartext one. plain cannot check a
+    ; SCRAM verifier at all. Move to scram-sha-256 once the userlist holds only
+    ; plaintext lines pgbouncer itself uses (see the module comment).
+    auth_type = md5
+    ; userlist.txt is built by the init container: pgbouncer_auth's line from
+    ; the pgbouncer-auth Secret, then every line of the pgbouncer-userlist
+    ; Secret (which switchyard-api still writes on onboarding).
     auth_file = /etc/pgbouncer/userlist.txt
+    auth_user = pgbouncer_auth
+    auth_dbname = postgres
+    auth_query = SELECT usename, passwd FROM pgbouncer.get_auth($1)
     pool_mode = transaction
     max_client_conn = 400
     ; SERVER-SIDE SIZING (2026-09-24). Postgres has max_connections = 100
@@ -76,6 +106,22 @@ data:
     tezca = host=postgres.data.svc.cluster.local port=5432 dbname=tezca
     selva = host=postgres.data.svc.cluster.local port=5432 dbname=selva
     * = host=postgres.data.svc.cluster.local port=5432
+  # Login roles that connect to Postgres directly (5432), never through this
+  # pooler: migrators and clients whose DSN names postgres.data. pgbouncer does
+  # not read this key; switchyard-api's userlist drift checker does, and does
+  # not report these roles as missing from the userlist. One role per line;
+  # `#` starts a comment. The first eight are from internal-devops
+  # audits/2026-10-17-infra-stability/lanes/W1-P.md (W1P-5): zero pooled
+  # attempts in about 9 hours of pooler logs.
+  direct-connect-roles: |
+    app_admin
+    janua_migrator
+    phyne
+    posthog
+    selva_migrator
+    telesia
+    tlacuilo
+    voxa_app
 ---
 apiVersion: apps/v1
 kind: Deployment
@@ -112,7 +158,7 @@ spec:
         # pgbouncer.ini is mounted with subPath, so a ConfigMap edit never
         # reaches the running pod. Bump this with every pgbouncer.ini change
         # to roll the pod (maxSurge 1 / maxUnavailable 0).
-        enclii.dev/pgbouncer-ini-rev: "2026-10-17-two-replicas-halved-pools"
+        enclii.dev/pgbouncer-ini-rev: "2026-10-21-auth-query"
     spec:
       securityContext:
         runAsNonRoot: true
@@ -131,6 +177,66 @@ spec:
                 matchLabels:
                   app: pgbouncer
               topologyKey: kubernetes.io/hostname
+      # Builds /etc/pgbouncer/userlist.txt in a memory-backed emptyDir:
+      # pgbouncer_auth's line first, then the hand-kept userlist minus any
+      # pgbouncer_auth line. Runs again on every pod start, which is when
+      # pgbouncer would re-read the file anyway (switchyard-api restarts the
+      # Deployment after it edits the userlist Secret).
+      # The password is checked to be what intake --generate mints (unpadded
+      # base64url, at least 32 characters): such a value cannot break the
+      # quoted userlist format. A missing or odd value stops the pod here, and
+      # with maxUnavailable 0 the old pods keep serving.
+      initContainers:
+        - name: build-userlist
+          image: docker.io/edoburu/pgbouncer:v1.25.1-p0@sha256:c7bfcaa24de830e29588bb9ad1eb39cebaf07c27149e1974445899b695634bb4
+          imagePullPolicy: IfNotPresent
+          command:
+            - /bin/sh
+            - -c
+            - |
+              set -eu
+              umask 077
+              src=/etc/pgbouncer-userlist-source/userlist.txt
+              pw_file=/etc/pgbouncer-auth/pgbouncer_auth_password
+              out=/etc/pgbouncer-generated/userlist.txt
+              pw="$(cat "$pw_file")"
+              case "$pw" in
+                *[!A-Za-z0-9_-]*) echo "pgbouncer_auth password has characters outside base64url; refusing" >&2; exit 1 ;;
+              esac
+              if [ "${#pw}" -lt 32 ]; then
+                echo "pgbouncer_auth password is shorter than 32 characters; refusing" >&2
+                exit 1
+              fi
+              [ -r "$src" ] || { echo "$src is not readable" >&2; exit 1; }
+              {
+                printf '"pgbouncer_auth" "%s"\n' "$pw"
+                grep -v '^"pgbouncer_auth"' "$src" || true
+              } > "$out.tmp"
+              mv "$out.tmp" "$out"
+              echo "userlist.txt: pgbouncer_auth + $(( $(grep -c '^"' "$out") - 1 )) line(s) from pgbouncer-userlist"
+          resources:
+            requests:
+              memory: "16Mi"
+              cpu: "10m"
+            limits:
+              memory: "32Mi"
+              cpu: "100m"
+          securityContext:
+            privileged: false
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop:
+                - ALL
+          volumeMounts:
+            - name: pgbouncer-userlist
+              mountPath: /etc/pgbouncer-userlist-source
+              readOnly: true
+            - name: pgbouncer-auth
+              mountPath: /etc/pgbouncer-auth
+              readOnly: true
+            - name: pgbouncer-generated
+              mountPath: /etc/pgbouncer-generated
       containers:
         - name: pgbouncer
           image: docker.io/edoburu/pgbouncer:v1.25.1-p0@sha256:c7bfcaa24de830e29588bb9ad1eb39cebaf07c27149e1974445899b695634bb4
@@ -176,7 +282,12 @@ spec:
               mountPath: /etc/pgbouncer/pgbouncer.ini
               subPath: pgbouncer.ini
               readOnly: true
-            - name: pgbouncer-userlist
+            # Same path as before, so a pod of the previous ReplicaSet that
+            # restarts during the rollout (it reads the new pgbouncer.ini, with
+            # auth_query, through its subPath mount) still finds the userlist
+            # where it expects it. Without pgbouncer_auth's line it simply
+            # cannot use auth_query; every role with a line keeps working.
+            - name: pgbouncer-generated
               mountPath: /etc/pgbouncer/userlist.txt
               subPath: userlist.txt
               readOnly: true
@@ -187,6 +298,16 @@ spec:
         - name: pgbouncer-userlist
           secret:
             secretName: pgbouncer-userlist
+        # Synced by the pgbouncer-auth ExternalSecret. Not optional: until
+        # intake has written the Vault property, new pods wait in
+        # ContainerCreating and the old ones keep serving (maxUnavailable 0).
+        - name: pgbouncer-auth
+          secret:
+            secretName: pgbouncer-auth  # pragma: allowlist secret
+        - name: pgbouncer-generated
+          emptyDir:
+            medium: Memory
+            sizeLimit: 1Mi
 ---
 apiVersion: v1
 kind: Service

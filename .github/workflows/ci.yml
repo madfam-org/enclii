@@ -653,6 +653,42 @@ jobs:
       - name: Run Kyverno policy tests
         run: kyverno test tests/kyverno/ --detailed-results
 
+  pgbouncer-auth-query:
+    name: pgbouncer auth_query
+    runs-on: ubuntu-24.04
+    # A few seconds. Pins the chain Vault -> ExternalSecret -> init container
+    # -> pgbouncer.ini auth_query -> pgbouncer.get_auth, runs the shipped init
+    # script and scripts/pgbouncer-auth-query.sh against stubs (the password
+    # never reaches stdout, stderr or argv), and then runs the real migration
+    # and the manifest's pgbouncer.ini against a disposable PostgreSQL and
+    # pgbouncer: a role with a userlist line, a role resolved through
+    # auth_query, a superuser refused, and the rollback.
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Set up Python
+        uses: actions/setup-python@v7
+        with:
+          python-version: '3.11'
+
+      - name: Install deps (pgbouncer from the distribution; PostgreSQL ships with the runner image)
+        run: |
+          set -euo pipefail
+          pip install --quiet pyyaml pytest
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq --no-install-recommends pgbouncer
+          if ! ls /usr/lib/postgresql/*/bin/initdb >/dev/null 2>&1; then
+            sudo apt-get install -y -qq --no-install-recommends postgresql
+          fi
+          ls -d /usr/lib/postgresql/*/bin
+          /usr/sbin/pgbouncer --version
+
+      - name: Run pgbouncer auth_query tests
+        env:
+          PGBOUNCER_BIN: /usr/sbin/pgbouncer
+          PGBOUNCER_AUTH_QUERY_E2E_REQUIRED: '1'
+        run: pytest tests/scripts/test_pgbouncer_auth_query.py -v -rs
+
   restore-drill-lint:
     name: Addon restore drill (safety + drill row)
     runs-on: ubuntu-24.04

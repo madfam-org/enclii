@@ -6,6 +6,9 @@ resources:
   - postgres.yaml
   - redis.yaml
   - pgbouncer.yaml
+  # pgbouncer_auth's password (auth_query), from Vault through intake target
+  # data/pgbouncer-auth. See the file header.
+  - pgbouncer-auth.externalsecret.yaml
 
   # Backup infrastructure (data namespace)
   - postgres-backup.yaml

@@ -790,6 +790,11 @@ data:
           # checker dead — (a) alone can lie if the checker dies with
           # missing_users frozen at 0. Full rationale + synthetic-test recipe:
           # docs/monitoring/pgbouncer-drift-alerts.md.
+          # Since 2026-10-21 (auth_query) "missing" means a login role the
+          # pooler cannot authenticate by EITHER path (no userlist line and
+          # auth_query cannot return it, or auth_query itself is broken);
+          # roles declared in pgbouncer-config `direct-connect-roles` are not
+          # counted.
           - alert: PgbouncerUserlistDrift
             expr: enclii_pgbouncer_userlist_missing_users > 0
             for: 10m
@@ -798,7 +803,7 @@ data:
               service: pgbouncer
             annotations:
               summary: "pgbouncer userlist drift — pooler auth diverged from DB truth (the 2026-08-24 outage class)"
-              description: "{{ $value }} Postgres login role(s) exist that pgbouncer's userlist does not have a line for. Every pooled connection as those roles is failing auth right now — this is the exact drift class that took fortuna/bloom-scroll/ceq hard-down for days on 2026-08-24. Check GET /v1/admin/provision/pgbouncer/reconcile on switchyard-api for the current missing-role list; repair requires the role's password from the consuming service's own secret (see internal-devops/scripts/restore-pgbouncer-users.py) — this alert does NOT self-heal."
+              description: "{{ $value }} Postgres login role(s) that pgbouncer cannot authenticate: no userlist line, and auth_query cannot return them (a superuser, no usable password) or auth_query itself is broken. Every pooled connection as those roles is failing auth right now — the drift class that took fortuna/bloom-scroll/ceq hard-down for days on 2026-08-24. GET /v1/admin/provision/pgbouncer/reconcile on switchyard-api lists them and, when the auth_query path is broken, says why (auth_query_problem: Secret data/pgbouncer-auth, role pgbouncer_auth, or pgbouncer.get_auth; fix with scripts/pgbouncer-auth-query.sh). A role that connects to Postgres directly belongs in pgbouncer-config direct-connect-roles. Otherwise repair needs the role's password from the consuming service's own secret (internal-devops/scripts/restore-pgbouncer-users.py). This alert does NOT self-heal."
 
           - alert: PgbouncerUserlistCheckErrors
             expr: increase(enclii_pgbouncer_userlist_check_errors_total[15m]) > 0
