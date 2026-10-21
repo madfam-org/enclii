@@ -1,0 +1,40 @@
+# Synthetic journeys (S-Gate 1): the Dhanam staging synthetic buyer.
+#
+# Rendered by the `synthetics` Argo Application (infra/argocd/apps/synthetics.yaml).
+# `resources:` is an allowlist: a manifest in this directory that is not listed
+# here is never applied, and Argo still reports Synced/Healthy. Guarded by
+# tests/scripts/test_synthetic_journeys.py.
+#
+# The runner's code, journeys and image definition live in the private
+# operations repo (tools/journeys); only its schedule, sandbox and alerting
+# live here.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: synthetics
+
+resources:
+  - namespace.yaml
+  - resource-quota.yaml
+  - network-policies.yaml
+  - serviceaccount.yaml
+  - journeys-identity.externalsecret.yaml
+  - cronjob.yaml
+  # The weekly production pre-session pass (decisions 7 and 9).
+  - cronjob-production-weekly.yaml
+
+labels:
+  - pairs:
+      app.kubernetes.io/part-of: enclii
+    includeSelectors: false
+    includeTemplates: false
+
+# The journeys runner image, built from internal-devops tools/journeys/Dockerfile
+# by internal-devops .github/workflows/journeys-image.yml (enclii build-publish:
+# GHCR push plus keyless cosign signature). That workflow records the same
+# digest in internal-devops tools/journeys/deploy/kustomization.yaml; bump both
+# together. Built 2026-10-14 from internal-devops 6ab3a8dd (run 38614310794).
+images:
+  - name: journeys
+    newName: ghcr.io/madfam-org/internal-devops/journeys
+    digest: sha256:b094c6edfb371edfcab315a846dcf32592da0bc71cb7f655e2fb4dc996f8da31

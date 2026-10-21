@@ -548,3 +548,36 @@ spec:
     ports:
     - protocol: TCP
       port: 443
+---
+# Pushgateway ingress from the synthetic journeys (infra/k8s/production/synthetics).
+# The runner pushes synthetic_journey_* after every run and reads the previous
+# run's group back first, both on 9091. Additive to `pushgateway-ingress` in
+# deploy-pipeline-monitor.yaml, which admits only the monitoring namespace and
+# the npm-registry token rotation. Without this the push is silently dropped
+# and the synthetic buyer's alerts can only ever fire as NotRunning.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: pushgateway-ingress-synthetics
+  namespace: monitoring
+  labels:
+    app.kubernetes.io/name: pushgateway
+    app.kubernetes.io/component: monitoring
+    app.kubernetes.io/part-of: enclii
+spec:
+  podSelector:
+    matchLabels:
+      app: pushgateway
+  policyTypes:
+  - Ingress
+  ingress:
+  - from:
+    - namespaceSelector:
+        matchLabels:
+          kubernetes.io/metadata.name: synthetics
+      podSelector:
+        matchLabels:
+          app.kubernetes.io/name: journeys
+    ports:
+    - protocol: TCP
+      port: 9091

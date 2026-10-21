@@ -1,0 +1,20 @@
+# Two CronJobs, one headless Chromium each (concurrencyPolicy: Forbid on
+# both): the */15 staging buyer and the weekly production pass, which can
+# overlap for up to its 4 hours. The quota fits both runs at once plus the
+# Job history both CronJobs keep; a third concurrent pod is refused.
+apiVersion: v1
+kind: ResourceQuota
+metadata:
+  name: synthetics-quota
+spec:
+  hard:
+    requests.cpu: "1500m"
+    requests.memory: 3Gi
+    limits.cpu: "3500m"
+    limits.memory: 5Gi
+    pods: "3"
+    count/jobs.batch: "12"
+    persistentvolumeclaims: "0"
+    services: "0"
+    services.loadbalancers: "0"
+    services.nodeports: "0"

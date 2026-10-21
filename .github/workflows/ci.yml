@@ -599,6 +599,35 @@ jobs:
           image="$(python3 -c 'import yaml; d=[x for x in yaml.safe_load_all(open("infra/k8s/production/monitoring/blackbox-exporter.yaml")) if x and x.get("kind")=="Deployment"][0]; print(d["spec"]["template"]["spec"]["containers"][0]["image"])')"
           docker run --rm -v "$dir":/w:ro "$image" --config.file=/w/config.yml --config.check
 
+  synthetic-journeys-test:
+    name: Synthetic buyer manifests and rules
+    runs-on: ubuntu-24.04
+    # Cheap. The S-Gate 1 synthetic buyer: infra/k8s/production/synthetics,
+    # its Argo Application, its pushgateway ingress and intake target, and the
+    # synthetic-journeys rule group in prometheus.yaml. The structural tests
+    # pin the wiring, kustomize renders the directory, promtool checks and
+    # evaluates the rules (and proves the legacy synthetic-flow-probe rule no
+    # longer pages on the runner's series). test_journeys_image_digest_is_published
+    # keeps the all-zero placeholder from ever coming back.
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Set up Python
+        uses: actions/setup-python@v7
+        with:
+          python-version: '3.11'
+
+      - name: Install deps
+        run: pip install --quiet pyyaml pytest
+
+      - name: Run synthetic buyer tests
+        env:
+          ENCLII_PROMTOOL: >-
+            docker run --rm --entrypoint /bin/promtool -v {dir}:/w:ro
+            docker.io/prom/prometheus:v2.53.3
+            test rules /w/{name}
+        run: pytest tests/scripts/test_synthetic_journeys.py tests/scripts/test_synthetic_journeys_production.py -v -rs
+
   courier-envelope-lint:
     name: Courier envelope shape (ops scripts)
     runs-on: ubuntu-24.04
