@@ -131,6 +131,8 @@ func (h *Handler) registerAdminRoutes(protected *gin.RouterGroup) {
 	platform.POST("/onboard/ensure", h.EnsureOnboarding)
 	platform.POST("/onboard/preflight", h.PreflightOnboard)
 	platform.GET("/preflight", h.PreflightImageGates) // image gates preflight, see onboarding_image_gates.go
+	// Read-only dry run of the network_policies step (onboarding_netpolicy_guard.go).
+	platform.POST("/onboard/netpolicy-plan", h.PlanOnboardingNetworkPolicies)
 	platform.GET("/onboard", h.ListOnboardings)
 	platform.GET("/onboard/:owner/:repo", h.GetOnboarding)
 	platform.POST("/projects/:slug/environments/:env_name/bootstrap", h.RequirePlatformOperator(), h.BootstrapStagingNamespace)
