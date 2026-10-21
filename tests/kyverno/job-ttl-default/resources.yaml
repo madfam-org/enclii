@@ -1,0 +1,116 @@
+# Fixtures for tests/kyverno/job-ttl-default/kyverno-test.yaml. One Job per
+# case; the names say which case. Container specs are the minimum a Job needs.
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: plain-job
+  namespace: tenant-a
+spec:
+  template:
+    spec:
+      restartPolicy: Never
+      containers:
+        - name: main
+          image: busybox
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: own-ttl-job
+  namespace: tenant-a
+spec:
+  ttlSecondsAfterFinished: 600
+  template:
+    spec:
+      restartPolicy: Never
+      containers:
+        - name: main
+          image: busybox
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: argo-hook-job
+  namespace: tenant-a
+  annotations:
+    argocd.argoproj.io/tracking-id: "tenant-a:batch/Job:tenant-a/argo-hook-job"
+    argocd.argoproj.io/hook: PreSync
+    argocd.argoproj.io/hook-delete-policy: BeforeHookCreation
+spec:
+  template:
+    spec:
+      restartPolicy: Never
+      containers:
+        - name: main
+          image: busybox
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: helm-hook-job
+  namespace: tenant-a
+  annotations:
+    argocd.argoproj.io/tracking-id: "tenant-a:batch/Job:tenant-a/helm-hook-job"
+    helm.sh/hook: pre-upgrade
+spec:
+  template:
+    spec:
+      restartPolicy: Never
+      containers:
+        - name: main
+          image: busybox
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: argo-tracked-job
+  namespace: tenant-a
+  annotations:
+    argocd.argoproj.io/tracking-id: "tenant-a:batch/Job:tenant-a/argo-tracked-job"
+spec:
+  template:
+    spec:
+      restartPolicy: Never
+      containers:
+        - name: main
+          image: busybox
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: system-job
+  namespace: kube-system
+spec:
+  template:
+    spec:
+      restartPolicy: Never
+      containers:
+        - name: main
+          image: busybox
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: kyverno-job
+  namespace: kyverno
+spec:
+  template:
+    spec:
+      restartPolicy: Never
+      containers:
+        - name: main
+          image: busybox
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: infra-job
+  namespace: infra-ns
+spec:
+  template:
+    spec:
+      restartPolicy: Never
+      containers:
+        - name: main
+          image: busybox

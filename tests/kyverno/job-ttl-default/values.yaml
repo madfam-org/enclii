@@ -1,0 +1,12 @@
+# Admission context for the CLI: every case is a CREATE, and infra-ns carries
+# the infrastructure label the policy excludes.
+apiVersion: cli.kyverno.io/v1alpha1
+kind: Values
+globalValues:
+  request.operation: CREATE
+namespaceSelector:
+  - name: tenant-a
+    labels: {}
+  - name: infra-ns
+    labels:
+      enclii.dev/type: infrastructure
