@@ -75,6 +75,7 @@ kubectl apply -f policies/
 | `require-labels` | Audit | Warns if required labels missing |
 | `require-probes` | Audit | Warns if health probes missing |
 | `disallow-latest-tag` | Audit | Warns on `:latest` image tags |
+| `job-ttl-default` | Mutate (create) | Sets `ttlSecondsAfterFinished: 604800` (7 days) on new Jobs that set none; skips Argo CD-tracked non-hook Jobs, kube-system, kyverno and `enclii.dev/type=infrastructure` namespaces. Tested by `kyverno test tests/kyverno/` |
 
 ### Image Security Policies
 

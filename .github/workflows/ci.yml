@@ -625,6 +625,34 @@ jobs:
       - name: Run Courier envelope tests
         run: bash ./scripts/tests/test-courier-envelope.sh
 
+  kyverno-policy-tests:
+    name: Kyverno policy tests
+    runs-on: ubuntu-24.04
+    # Cheap (a few seconds, no cluster). `kyverno test` applies the policies in
+    # infra/k8s/base/kyverno/policies to the fixtures under tests/kyverno/ and
+    # compares the mutated output. The CLI is pinned to the Kyverno release the
+    # chart installs (infra/argocd/apps/kyverno.yaml, chart 3.1.4 = v1.11.4),
+    # so a policy that passes here is one that release admits.
+    env:
+      KYVERNO_CLI_VERSION: v1.11.4
+      KYVERNO_CLI_SHA256: dd43253ca1c764c8c14fccc45a476482c81fdafb7b3a5818ff38e4bcc669a1d1  # pragma: allowlist secret (release checksum, public)
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Install the Kyverno CLI (checksum-pinned)
+        run: |
+          set -euo pipefail
+          tarball="kyverno-cli_${KYVERNO_CLI_VERSION}_linux_x86_64.tar.gz"
+          curl -fsSL --retry 3 -o "${RUNNER_TEMP}/${tarball}" \
+            "https://github.com/kyverno/kyverno/releases/download/${KYVERNO_CLI_VERSION}/${tarball}"
+          echo "${KYVERNO_CLI_SHA256}  ${RUNNER_TEMP}/${tarball}" | sha256sum -c -
+          mkdir -p "${RUNNER_TEMP}/kyverno"
+          tar -xzf "${RUNNER_TEMP}/${tarball}" -C "${RUNNER_TEMP}/kyverno" kyverno
+          echo "${RUNNER_TEMP}/kyverno" >> "$GITHUB_PATH"
+
+      - name: Run Kyverno policy tests
+        run: kyverno test tests/kyverno/ --detailed-results
+
   restore-drill-lint:
     name: Addon restore drill (safety + drill row)
     runs-on: ubuntu-24.04
