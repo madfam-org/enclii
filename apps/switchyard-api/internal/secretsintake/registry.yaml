@@ -1331,3 +1331,57 @@ targets:
     external_secret: dhanam-secrets-karafiel-callback  # pragma: allowlist secret
     keys:
       - karafiel_dhanam_signing_secret
+
+  # zavlo on Enclii (2026-10-21). zavlo-api (namespace zavlo) projects one
+  # ExternalSecret per target below (zavlo repo, infra/k8s/production/
+  # externalsecrets-api.yaml), so an unfilled optional concern never blocks a
+  # required one (ESO is all-or-nothing per ExternalSecret). zavlo/cfdi-emitter
+  # (above) is the sixth. DATABASE_URL is not here: onboarding writes it to the
+  # project Secret zavlo-secrets. LOWERCASE keys, as Vault stores them.
+  zavlo/api-runtime:
+    label: Zavlo API runtime Redis URL
+    description: REDIS_URL for zavlo-api's Bull queues — the shared platform Redis with its password and zavlo's own DB index (first free index ≥ 10 by `redis-cli INFO keyspace`). Composed on the host and typed at the masked prompt; never generated. Required at boot.
+    vault_path: secret/zavlo
+    namespace: zavlo
+    external_secret: zavlo-api-runtime  # pragma: allowlist secret
+    keys:
+      - redis_url
+
+  zavlo/email:
+    label: Zavlo API email provider key
+    description: RESEND_API_KEY for zavlo-api's transactional email. The current code constructs its Resend client at boot, so the API does not start without it. Which sender and account zavlo uses is an owner ruling (R46); typed at the masked prompt.
+    vault_path: secret/zavlo
+    namespace: zavlo
+    external_secret: zavlo-api-email  # pragma: allowlist secret
+    keys:
+      - resend_api_key
+
+  zavlo/blockchain:
+    label: Zavlo API chain wallet, RPC and contract
+    description: WALLET_PRIVATE_KEY (the stamp minter's hot wallet), POLYGON_RPC_URL (may embed a provider key) and CONTRACT_ADDRESS (not secret; kept beside the key so the three change together) for zavlo-api's BlockchainService, which builds its wallet at boot. Which network and which key is an owner ruling; typed at the masked prompt, never generated here.
+    vault_path: secret/zavlo
+    namespace: zavlo
+    external_secret: zavlo-api-blockchain  # pragma: allowlist secret
+    keys:
+      - wallet_private_key
+      - polygon_rpc_url
+      - contract_address
+
+  zavlo/billing:
+    label: Zavlo Dhanam billing federation secrets
+    description: DHANAM_WEBHOOK_SECRET (verifies Dhanam's signed zavlo subscription webhooks; must equal what Dhanam signs them with) and FEDERATION_API_TOKEN (bearer for zavlo's calls to Dhanam's customer federation). Optional for boot; zavlo's billing fails closed without them. Typed at the masked prompt.
+    vault_path: secret/zavlo
+    namespace: zavlo
+    external_secret: zavlo-api-billing  # pragma: allowlist secret
+    keys:
+      - dhanam_webhook_secret
+      - federation_api_token
+
+  zavlo/karafiel-hmac:
+    label: Zavlo → Karafiel CFDI envelope HMAC key
+    description: ZAVLO_KARAFIEL_HMAC_SECRET, the HMAC zavlo signs its CFDI envelopes to Karafiel's zavlo intake with. Karafiel must verify with the same value (its ZAVLO_BILLING_WEBHOOK_SECRET), through its own read-only ExternalSecret on this property (a karafiel change). Mint server-side with --generate zavlo_karafiel_hmac_secret. Optional for boot; the emitter fails closed without it.
+    vault_path: secret/zavlo
+    namespace: zavlo
+    external_secret: zavlo-api-karafiel  # pragma: allowlist secret
+    keys:
+      - zavlo_karafiel_hmac_secret

@@ -12,7 +12,7 @@ import (
 func TestLoadRegistry(t *testing.T) {
 	reg, err := LoadRegistry()
 	require.NoError(t, err)
-	assert.Len(t, reg, 90)
+	assert.Len(t, reg, 95)
 	assert.Contains(t, reg, "ceq/vast-api-key")
 	assert.Contains(t, reg, "karafiel/web-oidc-janua")
 	adminSession := reg["karafiel/admin-session"]
@@ -37,7 +37,7 @@ func TestGetTarget(t *testing.T) {
 func TestListTargetsSorted(t *testing.T) {
 	list, err := ListTargets()
 	require.NoError(t, err)
-	require.Len(t, list, 90)
+	require.Len(t, list, 95)
 	for i := 1; i < len(list); i++ {
 		assert.Less(t, list[i-1].ID, list[i].ID, "targets should be sorted by id")
 	}
@@ -118,8 +118,47 @@ func TestListTargetsSorted(t *testing.T) {
 		"voxa/selva-client",
 		"voxa/web-session",
 		"yantra4d/asset-shells-publisher",
+		"zavlo/api-runtime",
+		"zavlo/billing",
+		"zavlo/blockchain",
 		"zavlo/cfdi-emitter",
+		"zavlo/email",
+		"zavlo/karafiel-hmac",
 	}, legacyTargetIDs(ids))
+}
+
+// zavlo on Enclii (2026-10-21): zavlo-api projects one ExternalSecret per
+// target, all from secret/zavlo in namespace zavlo. Pin the routing so a
+// rename is a test failure and not a silent write to the wrong Secret.
+func TestZavloEncliiTargets(t *testing.T) {
+	cases := []struct {
+		id             string
+		externalSecret string
+		keys           []string
+	}{
+		{"zavlo/api-runtime", "zavlo-api-runtime", []string{"redis_url"}},
+		{"zavlo/email", "zavlo-api-email", []string{"resend_api_key"}},
+		{"zavlo/blockchain", "zavlo-api-blockchain", []string{"wallet_private_key", "polygon_rpc_url", "contract_address"}},
+		{"zavlo/billing", "zavlo-api-billing", []string{"dhanam_webhook_secret", "federation_api_token"}},
+		{"zavlo/karafiel-hmac", "zavlo-api-karafiel", []string{"zavlo_karafiel_hmac_secret"}},
+		{"zavlo/cfdi-emitter", "zavlo-service-clients", []string{"zavlo_cfdi_emitter_client_id", "zavlo_cfdi_emitter_client_secret"}},
+	}
+	seen := map[string]string{}
+	for _, tc := range cases {
+		t.Run(tc.id, func(t *testing.T) {
+			tgt, err := GetTarget(tc.id)
+			require.NoError(t, err)
+			assert.Equal(t, "secret/zavlo", tgt.VaultPath)
+			assert.Equal(t, "zavlo", tgt.Namespace)
+			assert.Equal(t, tc.externalSecret, tgt.ExternalSecret)
+			assert.Equal(t, tc.keys, tgt.Keys)
+		})
+		for _, k := range tc.keys {
+			prev, dup := seen[k]
+			assert.False(t, dup, "key %s is written by both %s and %s", k, prev, tc.id)
+			seen[k] = tc.id
+		}
+	}
 }
 
 // The 2026-09-03 batch: the operator had to break-glass `vault kv patch` for
