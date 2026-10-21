@@ -12,7 +12,7 @@ import (
 func TestLoadRegistry(t *testing.T) {
 	reg, err := LoadRegistry()
 	require.NoError(t, err)
-	assert.Len(t, reg, 90)
+	assert.Len(t, reg, 91)
 	assert.Contains(t, reg, "ceq/vast-api-key")
 	assert.Contains(t, reg, "karafiel/web-oidc-janua")
 	adminSession := reg["karafiel/admin-session"]
@@ -37,7 +37,7 @@ func TestGetTarget(t *testing.T) {
 func TestListTargetsSorted(t *testing.T) {
 	list, err := ListTargets()
 	require.NoError(t, err)
-	require.Len(t, list, 90)
+	require.Len(t, list, 91)
 	for i := 1; i < len(list); i++ {
 		assert.Less(t, list[i-1].ID, list[i].ID, "targets should be sorted by id")
 	}
@@ -88,6 +88,7 @@ func TestListTargetsSorted(t *testing.T) {
 		"karafiel/web-oidc-janua",
 		"lexidrop/oidc-janua",
 		"lexidrop/selva-inference",
+		"monitoring/alertmanager-heartbeat",
 		"monitoring/alertmanager-smtp",
 		"monitoring/grafana-admin",
 		"nauta/internal-probe-key",
@@ -690,6 +691,26 @@ func TestMonitoringAlertmanagerSMTPTarget(t *testing.T) {
 	// never to pass --generate (the API does not refuse it, see SECRET_INTAKE.md).
 	assert.Nil(t, tgt.Generate)
 	assert.Contains(t, tgt.Description, "never generated")
+}
+
+// The outside heartbeat's bearer token (2026-10-14). One value lives in two
+// places: Vault (read by the alertmanager-heartbeat-secret ExternalSecret,
+// mounted as the credentials_file of watchdog-sink) and the heartbeat Worker's
+// HEARTBEAT_TOKEN. Intake never returns a value, so this target must stay
+// value-intake: a generate policy would invite a token the Worker never sees.
+// The values here must match
+// infra/k8s/production/monitoring/alertmanager-heartbeat-secret.externalsecret.yaml.
+func TestMonitoringAlertmanagerHeartbeatTarget(t *testing.T) {
+	tgt, err := GetTarget("monitoring/alertmanager-heartbeat")
+	require.NoError(t, err)
+	assert.Equal(t, "secret/monitoring", tgt.VaultPath)
+	assert.Equal(t, "monitoring", tgt.Namespace)
+	assert.Equal(t, "alertmanager-heartbeat-secret", tgt.ExternalSecret)
+	assert.Equal(t, []string{"alertmanager_heartbeat_token"}, tgt.Keys,
+		"the property the ExternalSecret reads; anything else syncs zero keys")
+	assert.Nil(t, tgt.Generate, "the Worker needs the same value; intake cannot hand a generated one back")
+	assert.Contains(t, tgt.Description, "never generated")
+	assert.NotEmpty(t, tgt.Label)
 }
 
 // S-Gate 1 synthetic buyer (2026-10-14). The journeys CronJob reads exactly

@@ -70,6 +70,15 @@ expect public-ip 1 1
 d=$(new_repo ip-in-source); echo 'const p = "198.18.7.9"' > "$d/app.ts"
 expect ip-in-source 0 1
 
+# 5b. Cloudflare's published range network addresses (NetworkPolicy CIDRs) are not node identity
+d=$(new_repo cloudflare-ranges)
+{ echo '    - ipBlock:'; echo '        cidr: 173.245.48.0/20'; echo '        cidr: 104.16.0.0/13'; echo '        cidr: 131.0.72.0/22'; } > "$d/netpol.yaml"
+expect cloudflare-ranges 0 1
+
+# 5c. any OTHER address inside a Cloudflare range is still a finding (a resolved host is identity)
+d=$(new_repo cloudflare-host); echo 'endpoint: 104.21.2.158' > "$d/infra.yaml"
+expect cloudflare-host 1 1
+
 # 6. a hardware SKU is a finding wherever it appears
 d=$(new_repo hardware-sku); echo 'ordered an EX44 for the cluster' > "$d/CAPACITY.md"
 expect hardware-sku 1 1
