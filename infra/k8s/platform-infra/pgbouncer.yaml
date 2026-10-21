@@ -32,11 +32,23 @@ data:
     ; HCM's avisos sweep raised "too many clients". In transaction mode an idle
     ; server connection serves nobody, so: keep none warm (min 0), release idle
     ; ones after a minute (60), and bound each database lower (10/2/15).
-    default_pool_size = 10
+    ;
+    ; TWO REPLICAS (2026-10-17). These limits are PER POOLER POD, and there
+    ; are now 2, so each per-database bound is halved: 2 x 7 = 14 server
+    ; connections per database at most, one fewer than the single pod's 15.
+    ; No database can take more of Postgres than it could before.
+    ; Budget against Postgres: 2 pods x 7 x the number of databases busy at
+    ; the same moment. With max_connections 200 (197 usable) and about 60
+    ; kept for direct 5432 clients (karafiel, janua, enclii, migrations,
+    ; exporters, pgBackRest), 9 databases can sit at their cap at once
+    ; (2 x 7 x 9 = 126 of 137). With max_connections still 100 it is the
+    ; same exposure as before this change. Idle pools hold nothing
+    ; (min_pool_size 0, server_idle_timeout 60).
+    default_pool_size = 5
     min_pool_size = 0
     reserve_pool_size = 2
     reserve_pool_timeout = 3
-    max_db_connections = 15
+    max_db_connections = 7
     server_lifetime = 3600
     server_idle_timeout = 60
     server_connect_timeout = 15
@@ -76,7 +88,10 @@ metadata:
     app.kubernetes.io/component: connection-pooler
     app.kubernetes.io/part-of: enclii
 spec:
-  replicas: 1
+  # 2 replicas on different nodes (2026-10-17): one pooler pod was a single
+  # point of failure for every pooled database, and its PDB allowed draining
+  # it. Pool sizes in pgbouncer.ini are halved to match.
+  replicas: 2
   revisionHistoryLimit: 3
   strategy:
     type: RollingUpdate
@@ -97,7 +112,7 @@ spec:
         # pgbouncer.ini is mounted with subPath, so a ConfigMap edit never
         # reaches the running pod. Bump this with every pgbouncer.ini change
         # to roll the pod (maxSurge 1 / maxUnavailable 0).
-        enclii.dev/pgbouncer-ini-rev: "2026-09-24-release-idle-server-connections"
+        enclii.dev/pgbouncer-ini-rev: "2026-10-17-two-replicas-halved-pools"
     spec:
       securityContext:
         runAsNonRoot: true
@@ -106,6 +121,16 @@ spec:
         fsGroup: 1000
         seccompProfile:
           type: RuntimeDefault
+      # Never both replicas on one node. With maxSurge 1 a rollout needs a
+      # third node for a moment; there are three workload nodes. If one is
+      # down, the rollout waits (maxUnavailable 0) instead of stacking pods.
+      affinity:
+        podAntiAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            - labelSelector:
+                matchLabels:
+                  app: pgbouncer
+              topologyKey: kubernetes.io/hostname
       containers:
         - name: pgbouncer
           image: docker.io/edoburu/pgbouncer:v1.25.1-p0@sha256:c7bfcaa24de830e29588bb9ad1eb39cebaf07c27149e1974445899b695634bb4
@@ -190,7 +215,9 @@ metadata:
     app.kubernetes.io/name: pgbouncer
     app.kubernetes.io/part-of: enclii
 spec:
-  maxUnavailable: 1
+  # minAvailable 1 with 2 replicas: a drain can evict one pooler, never both.
+  # (maxUnavailable 1 on a single replica protected nothing.)
+  minAvailable: 1
   selector:
     matchLabels:
       app: pgbouncer
