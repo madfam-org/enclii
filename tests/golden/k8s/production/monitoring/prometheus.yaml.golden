@@ -725,6 +725,26 @@ metadata:
     app.kubernetes.io/name: prometheus
     app.kubernetes.io/component: monitoring
     app.kubernetes.io/part-of: enclii
+  # REPLACE, NOT SERVER-SIDE APPLY, FOR THIS ONE OBJECT (2026-10-21).
+  #
+  # Prometheus loads every key of this ConfigMap (`rule_files:
+  # /etc/prometheus/rules/*.yml`), so a key that is live but not in git is
+  # a live rule nobody can see in review. Under the app's ServerSideApply,
+  # Argo only removes data keys that argocd-controller itself owns. Two keys
+  # written by `kubectl patch` on 2026-04-14 (ecosystem-alerts.yml,
+  # secrets-alerts.yml) were owned by that field manager, so six months of
+  # syncs left them in place and Argo still reported Synced. One of them
+  # carried a second, unfiltered PodNotReady (no Succeeded/Failed exclusion,
+  # for: 10m), which is why finished Job pods in crea-map and crea-sim
+  # kept firing although the rule below excludes them.
+  #
+  # Replace=true makes each sync of this object a full PUT: the live data is
+  # exactly git's, and any key added by hand is gone on the next change to
+  # this file. PrometheusRuleFileNotInGit (alert-delivery-rules.yml) makes a
+  # hand-added key visible in the meantime. Never `kubectl patch` a rule in:
+  # add the key here, and to the rule_group regex in that rule.
+  annotations:
+    argocd.argoproj.io/sync-options: Replace=true
 data:
   enclii-alerts.yml: |
     groups:
@@ -3202,6 +3222,35 @@ data:
                 If the series is absent while kube-state-metrics is up, the
                 StatefulSet itself is gone: check the Prometheus CR
                 `rules-eval` and the prometheus-operator log.
+
+          # A rule file this Prometheus evaluates that is not a key of the
+          # prometheus-rules ConfigMap in git. The list is the ConfigMap's
+          # keys (tests/scripts/test_alert_noise_rules.py fails when they
+          # differ), so adding a key in a PR means adding it here too.
+          - alert: PrometheusRuleFileNotInGit
+            expr: |
+              count by (rule_group) (
+                prometheus_rule_group_rules{job="prometheus", rule_group!~"/etc/prometheus/rules/(alert-delivery-rules|arc-pool-health-rules|chronic-restart-rules|client-slo-rules|cloudflared-tunnel-rules|courier-page-budget-rules|courier-receiver-rules|deploy-parity-alerts|deploy-pipeline-freshness-rules|enclii-alerts|geometry-probe-rules|longhorn-filesystem-health|maintenance-alerts|pager-path-drill-rules|pgbackrest-health-rules|postgres-wal-archive-rules|retainer-cycle-rules|revenue-probe-rules|secret-integrity-rules|synthetic-flow-probe-rules)\\.yml;.*"}
+              ) > 0
+            for: 15m
+            labels:
+              severity: warning
+              service: prometheus
+              category: alerting-pipeline
+            annotations:
+              summary: "Prometheus evaluates a rule file that is not in git: {{ $labels.rule_group }}"
+              description: |
+                The main Prometheus loads every key of ConfigMap
+                monitoring/prometheus-rules. This group comes from a key that
+                is not in infra/k8s/production/monitoring/prometheus.yaml, so
+                its rules fire without ever having been reviewed. On
+                2026-10-21 two such keys, written by `kubectl patch` six
+                months earlier, were found: one held an unfiltered
+                PodNotReady that fired for every finished Job pod.
+
+                The ConfigMap syncs with Replace=true, so the next merged
+                change to prometheus.yaml removes the key. If the rules are
+                wanted, move them into git in that change.
 
   # THE PAGE BUDGET (infra-stability audit 2026-10-17, pager noise plan
   # step 5). A pager that sends more than a handful of critical pages a day
