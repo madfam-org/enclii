@@ -125,6 +125,11 @@ ESO sources: `enclii-secrets`, `janua-secrets`, `madfam-site-secrets`, `phynd-cr
 | `digifab-quoting/web-oidc` | `secret/digifab-quoting` | `janua_client_id`, `janua_client_secret` |
 | `digifab-quoting/web-session` | `secret/digifab-quoting` | `nextauth_secret` |
 | `zavlo/cfdi-emitter` | `secret/zavlo` | `zavlo_cfdi_emitter_client_id`, `zavlo_cfdi_emitter_client_secret` |
+| `zavlo/api-runtime` | `secret/zavlo` | `redis_url` |
+| `zavlo/email` | `secret/zavlo` | `resend_api_key` |
+| `zavlo/blockchain` | `secret/zavlo` | `wallet_private_key`, `polygon_rpc_url`, `contract_address` |
+| `zavlo/billing` | `secret/zavlo` | `dhanam_webhook_secret`, `federation_api_token` |
+| `zavlo/karafiel-hmac` | `secret/zavlo` | `zavlo_karafiel_hmac_secret` |
 | `routecraft/billing-relay` | `secret/routecraft` | `billing_relay_client_id`, `billing_relay_client_secret` |
 | `voxa/selva-client` | `secret/voxa` | `selva_client_id`, `selva_client_secret` |
 | `voxa/web-session` | `secret/voxa` | `auth_secret` |
