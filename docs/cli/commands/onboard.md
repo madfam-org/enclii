@@ -50,6 +50,7 @@ enclii onboard ensure --repo <org/repo> [flags]
 | `--skip-postgres` | No | `false` | Skip Postgres provisioning |
 | `--skip-secrets` | No | `false` | Skip secrets provisioning |
 | `--skip-r2` | No | `false` | Skip R2 provisioning |
+| `--allow-netpol-narrowing` | No | `false` | Apply generated NetworkPolicies even when they narrow live access ([narrowing guard](#networkpolicy-narrowing-guard)) |
 
 ## What It Does
 
@@ -229,6 +230,49 @@ enclii onboard ensure --repo madfam-org/pravara-mes --project pravara-mes \
 | `--db-name` | string | | Database: provisioned with `--generate-db-password`; the role's database with `--app-role` |
 | `--db-extensions` | string | | Extensions (with `--generate-db-password`) |
 | generation flags | | | `--generate-db-password`, `--rotate-db-password`, `--db-url-key`, `--db-connection-limit`, `--app-role*`, `--rotate-app-role-password`, `--generate-secret`, `--rotate-secret` — as above |
+| `--allow-netpol-narrowing` | bool | `false` | Apply generated NetworkPolicies even when they narrow live access |
+| `--dry-run` | bool | `false` | Print the NetworkPolicy diff and change nothing (previews only the `network_policies` step) |
+
+### NetworkPolicy narrowing guard
+
+Both `onboard` and `onboard ensure` generate the namespace's NetworkPolicies
+from the `network` section of `enclii.yaml`. Before applying them, the
+`network_policies` step diffs the live policies against the generated ones,
+prints the diff (`network_policy_plan` in the API response), and **refuses to
+apply anything** when a change would:
+
+- narrow an existing policy's `podSelector` (for example `{}` → `app: web`, or
+  a selector that no longer matches a workload it matches today);
+- take an allowed egress or ingress port or peer away from a workload that
+  runs in the namespace (Deployment, StatefulSet, CronJob and Job templates,
+  including unlabeled Jobs, plus live pods without a listed controller);
+- add a namespace-wide default deny where no namespace-wide policy of that
+  type existed.
+
+A refused step fails, so the run is `partial` and exits non-zero. Declare the
+missing access in `enclii.yaml` (for a service that connects through
+PgBouncer, `pgbouncer` in its egress list, not `postgres`), or re-run with
+`--allow-netpol-narrowing` (request field `allow_netpol_narrowing`) after
+reviewing the diff. If the live policies cannot be read, nothing is applied,
+with or without the flag. A workload kind the server cannot list is reported
+as a note in the diff.
+
+The guard never reads Secret values: the PgBouncer hint is derived from the
+live policies, not from `DATABASE_URL`.
+
+```bash
+# Preview the diff; nothing is changed
+enclii onboard ensure --repo madfam-org/my-app --project my-app --dry-run
+```
+
+The dry run calls `POST /v1/admin/onboard/netpolicy-plan`, which reads the live
+policies and workloads and writes nothing.
+
+Background: on 2026-10-21 a repair-mode `ensure`, with every step "ok",
+regenerated a namespace's policies from an `enclii.yaml` that declared
+`postgres` (TCP 5432) while the runtime used PgBouncer (TCP 6432). The
+egress policy went from `podSelector: {}` to one app label, and the service,
+its CronJobs and its migrate Job lost their database for hours.
 
 ## Standalone Provisioning
 
