@@ -75,6 +75,19 @@ export function formatTimestamp(date: Date): string {
 // Number helpers
 // ---------------------------------------------------------------------------
 
+/** A missing/unread meter is distinct from a measured zero. */
+export function isUsageValue(value: unknown): value is number {
+  return typeof value === 'number' && Number.isFinite(value) && value >= 0;
+}
+
+/** Usage API values already carry their unit (notably storage is GB, not bytes). */
+export function formatUsageValue(value: unknown, unit: string): string {
+  if (!isUsageValue(value)) return 'Unavailable';
+  if (unit === 'bytes' || unit === 'B') return formatBytes(value);
+  const number = Number(value.toFixed(2)).toString();
+  return !unit || unit === 'number' ? number : `${number} ${unit}`;
+}
+
 /** Bytes → human-readable string (e.g. "1.5 GB") */
 export function formatBytes(bytes: number): string {
   if (bytes === 0) return '0 B';

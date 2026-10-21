@@ -1,24 +1,20 @@
 /**
  * POST /api/argocd/applications/[name]/sync
  *
- * Triggers an ArgoCD sync for the named application by patching its
- * `operation.sync` field (equivalent to `kubectl patch application <name>
- * -n argocd --type merge -p '{"operation":{"sync":{}}}').
+ * Requests an audited, non-pruning sync through the Switchyard ops adapter.
+ * Switchyard resolves the caller's platform-admin rank before cluster access.
  *
  * Authorization: superadmin only. Middleware ensures the caller is an
  * authorized operator; we re-verify the JWT here to enforce the stricter
  * superadmin requirement.
  */
 import { NextRequest, NextResponse } from 'next/server'
-import { customObjectsApi, invalidateCache } from '@/lib/k8s-client'
+import { switchyardOpsCall } from '@/lib/switchyard-proxy'
 import { hasRole, verifyAuth } from '@/lib/api-auth'
 
 export const dynamic = 'force-dynamic'
 
-const ARGO_GROUP = 'argoproj.io'
-const ARGO_VERSION = 'v1alpha1'
 const ARGO_NAMESPACE = process.env.ARGOCD_NAMESPACE || 'argocd'
-const APPLICATIONS_PLURAL = 'applications'
 
 export async function POST(
   request: NextRequest,
@@ -38,23 +34,21 @@ export async function POST(
   }
 
   try {
-    const api = customObjectsApi()
-    // v0.22.x positional signature: patchNamespacedCustomObject(group, version,
-    // namespace, plural, name, body, dryRun?, fieldManager?, force?, options?).
-    await api.patchNamespacedCustomObject(
-      ARGO_GROUP,
-      ARGO_VERSION,
-      ARGO_NAMESPACE,
-      APPLICATIONS_PLURAL,
-      name,
-      { operation: { sync: {} } },
-      undefined,
-      undefined,
-      undefined,
-      { headers: { 'Content-Type': 'application/merge-patch+json' } }
-    )
-
-    invalidateCache('argocd:applications')
+    const token = request.cookies.get('dispatch_auth')?.value || request.cookies.get('admin_auth')?.value
+    const { ok, data, status } = await switchyardOpsCall('apps', 'sync', {
+      dry_run: false,
+      reason: `Operator requested ArgoCD sync for ${name} from Dispatch`,
+      scope: { namespace: ARGO_NAMESPACE },
+      // The old direct patch never requested pruning. The adapter defaults to
+      // true, so explicitly retain the existing non-destructive behavior.
+      args: { target: name, prune: 'false' },
+    }, token)
+    if (!ok) {
+      return NextResponse.json(
+        { error: data.message || data.error || data.summary || 'Failed to trigger sync' },
+        { status: status >= 400 ? status : 502 }
+      )
+    }
 
     return NextResponse.json({
       status: 'sync_triggered',

@@ -1,3 +1,4 @@
+import { cookies } from 'next/headers'
 import { NextResponse } from 'next/server'
 import { switchyardProviderCall } from '@/lib/switchyard-proxy'
 import { tenantFromDomain } from '@enclii/ecosystem-tenants'
@@ -31,13 +32,15 @@ function mapZonesToDispatch(zones: CfZone[]): DispatchDomain[] {
  */
 export async function GET() {
   try {
-    const { ok, data } = await switchyardProviderCall('cloudflare', 'zones', {
+    const store = await cookies()
+    const token = store.get('dispatch_auth')?.value || store.get('admin_auth')?.value
+    const { ok, data, status } = await switchyardProviderCall('cloudflare', 'zones', {
       dry_run: true,
-    })
+    }, token)
     if (!ok) {
       return NextResponse.json(
         { success: false, error: data.summary || 'Failed to fetch zones from Switchyard' },
-        { status: 502 }
+        { status: status >= 400 ? status : 502 }
       )
     }
     const zones = ((data.data as { zones?: CfZone[] })?.zones ?? []) as CfZone[]
@@ -77,11 +80,13 @@ export async function POST(request: Request) {
     }
 
     const reason = body.reason?.trim() || `Commission domain ${body.domain} via Dispatch`
+    const store = await cookies()
+    const token = store.get('dispatch_auth')?.value || store.get('admin_auth')?.value
     const { ok, data, status } = await switchyardProviderCall('cloudflare', 'zone-add-apply', {
       dry_run: false,
       reason,
       args: { target: body.domain.trim() },
-    })
+    }, token)
 
     if (!ok) {
       return NextResponse.json(

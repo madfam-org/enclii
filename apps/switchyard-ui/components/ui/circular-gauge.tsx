@@ -2,6 +2,7 @@
 
 import * as React from 'react';
 import { cn } from '@/lib/utils';
+import { formatUsageValue, isUsageValue } from '@/lib/formatting';
 
 // =============================================================================
 // TYPES
@@ -82,14 +83,6 @@ function getColorClasses(
         bg: 'stroke-muted',
       };
   }
-}
-
-function formatBytes(bytes: number): string {
-  if (bytes === 0) return '0 B';
-  const k = 1024;
-  const sizes = ['B', 'KB', 'MB', 'GB', 'TB'];
-  const i = Math.floor(Math.log(bytes) / Math.log(k));
-  return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + ' ' + sizes[i];
 }
 
 function formatNumber(num: number): string {
@@ -234,13 +227,15 @@ export function CircularGauge({
 
 interface UsageGaugeProps {
   /** Current usage value */
-  used: number;
+  used: number | null;
   /** Maximum/limit value */
-  limit: number;
+  limit: number | null;
   /** Resource name/label */
   label: string;
   /** Unit type for formatting */
-  unit?: 'bytes' | 'number' | 'percentage' | 'hours' | 'requests';
+  unit?: string;
+  unavailable?: boolean;
+  note?: string;
   /** Size variant */
   size?: 'sm' | 'md' | 'lg';
   /** Additional class names */
@@ -257,6 +252,8 @@ export function UsageGauge({
   size = 'md',
   className,
   overageCostUsd,
+  unavailable = false,
+  note,
 }: UsageGaugeProps) {
   const sizeMap = {
     sm: { px: 80, stroke: 6 },
@@ -266,19 +263,27 @@ export function UsageGauge({
 
   const { px, stroke } = sizeMap[size];
 
+  const measured = !unavailable && isUsageValue(used);
+  const hasLimit = isUsageValue(limit) && limit > 0;
+  if (!measured || !hasLimit) {
+    return (
+      <div className={cn('flex flex-col items-center gap-1', className)}>
+        <div className="rounded-full border-8 border-muted flex items-center justify-center text-center"
+          style={{ width: px, height: px }}>
+          <span className="text-sm font-mono text-muted-foreground">
+            {measured ? formatUsageValue(used, unit) : 'Unavailable'}
+          </span>
+        </div>
+        <span className="text-xs text-muted-foreground font-medium">{label}</span>
+        <span className="text-[10px] text-muted-foreground/70 text-center">
+          {!measured ? note || 'Meter unavailable' : limit === -1 ? 'Unlimited' : 'Utilization unavailable'}
+        </span>
+      </div>
+    );
+  }
+
   const formatUsedValue = (val: number, max: number): string => {
-    switch (unit) {
-      case 'bytes':
-        return formatBytes(val);
-      case 'hours':
-        return `${val.toFixed(1)}h`;
-      case 'requests':
-        return formatNumber(val);
-      case 'percentage':
-        return `${Math.round((val / max) * 100)}%`;
-      default:
-        return formatNumber(val);
-    }
+    return unit === 'percentage' ? `${Math.round((val / max) * 100)}%` : formatUsageValue(val, unit);
   };
 
   return (
@@ -304,7 +309,7 @@ export function UsageGauge({
           return (
             <>
               <span className="text-[10px] font-mono font-semibold text-red-500 dark:text-red-400">
-                {realPct}% — {(unit === 'bytes' ? formatBytes(used - limit) : formatNumber(used - limit))} over {(unit === 'bytes' ? formatBytes(limit) : formatNumber(limit))}
+                {realPct}% — {formatUsageValue(used - limit, unit)} over {formatUsageValue(limit, unit)}
               </span>
               {overageCostUsd != null && overageCostUsd > 0 && (
                 <span className="text-[10px] font-mono text-red-500 dark:text-red-400">
@@ -316,7 +321,7 @@ export function UsageGauge({
         }
         return (
           <span className="text-[10px] text-muted-foreground/70">
-            {unit === 'bytes' ? formatBytes(limit) : formatNumber(limit)} limit
+            {formatUsageValue(limit, unit)} limit
           </span>
         );
       })()}

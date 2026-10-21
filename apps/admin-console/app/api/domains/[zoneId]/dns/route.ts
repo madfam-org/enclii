@@ -1,3 +1,4 @@
+import { cookies } from 'next/headers'
 import { NextResponse } from 'next/server'
 import { switchyardProviderCall } from '@/lib/switchyard-proxy'
 
@@ -10,10 +11,12 @@ export async function GET(
 ) {
   try {
     const { zoneId } = await params
+    const store = await cookies()
+    const token = store.get('dispatch_auth')?.value || store.get('admin_auth')?.value
     const { ok, data, status } = await switchyardProviderCall('cloudflare', 'dns', {
       dry_run: true,
       args: { zone_id: zoneId },
-    })
+    }, token)
     if (!ok) {
       return NextResponse.json(
         { success: false, error: data.summary || 'Failed to fetch DNS records' },
@@ -52,6 +55,8 @@ export async function POST(
       )
     }
 
+    const store = await cookies()
+    const token = store.get('dispatch_auth')?.value || store.get('admin_auth')?.value
     const { ok, data, status } = await switchyardProviderCall('cloudflare', 'dns-apply', {
       dry_run: false,
       reason: body.reason?.trim() || `Dispatch DNS create in zone ${zoneId}`,
@@ -62,7 +67,7 @@ export async function POST(
         content: body.content,
         proxied: body.proxied ? 'true' : 'false',
       },
-    })
+    }, token)
 
     if (!ok) {
       return NextResponse.json(

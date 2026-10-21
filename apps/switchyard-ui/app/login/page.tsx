@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { useAuth } from "@/contexts/AuthContext";
 import { SignIn } from "@janua/ui";
 import { Spinner } from "@/components/ui/spinner";
+import { StationIdentity } from "@enclii/ui-components/station-identity";
 
 export default function LoginPage() {
   const router = useRouter();
@@ -38,10 +39,7 @@ export default function LoginPage() {
     <div className="min-h-screen flex items-center justify-center bg-background py-12 px-4 sm:px-6 lg:px-8">
       <div className="max-w-md w-full space-y-8">
         {/* Header */}
-        <div className="text-center">
-          <h1 className="text-4xl font-bold text-enclii-blue mb-2">Enclii</h1>
-          <p className="text-muted-foreground text-sm mb-6">Switchyard Platform</p>
-        </div>
+        <StationIdentity surface="switchyard" />
 
         {/* Error message */}
         {error && (

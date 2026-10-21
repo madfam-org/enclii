@@ -23,6 +23,7 @@ import { UserMenu } from '@/components/navigation/user-menu';
 import { useScope } from '@/contexts/ScopeContext';
 import { useTheme } from 'next-themes';
 import { AdminActingBanner } from '@/components/AdminActingBanner';
+import { StationIdentity } from '@enclii/ui-components/station-identity';
 
 interface AuthenticatedLayoutProps {
   children: React.ReactNode;
@@ -146,8 +147,7 @@ export function AuthenticatedLayout({ children }: AuthenticatedLayoutProps) {
             <div className="flex items-center min-w-0 flex-1">
               <div className="flex-shrink-0 flex items-center gap-2">
                 <Link href="/" className="flex items-center">
-                  <span className="text-2xl font-bold text-enclii-blue">🚂 Enclii</span>
-                  <span className="ml-2 text-sm text-muted-foreground font-medium hidden sm:inline">Switchyard</span>
+                  <StationIdentity surface="switchyard" variant="compact" />
                 </Link>
                 {/* Scope Switcher - Vercel-style team/personal context */}
                 {currentScope && (

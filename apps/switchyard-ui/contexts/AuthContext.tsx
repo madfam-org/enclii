@@ -20,6 +20,8 @@ import React, {
   type ReactNode,
 } from "react";
 import type { AuthMode, AuthContextType, User, RedirectTokens, LoginWithOIDCOptions } from "./auth-types";
+import { getStoredTokens, setStoredTokens, clearStorage, captureSession, sameSession, withSessionLock, canRestoreCookieSession, SESSION_CHANGED, TOKEN_STORAGE_KEY, type StoredTokens } from "@/lib/auth-session";
+import { JANUA_BASE_URL, OAUTH_CLIENT_ID } from "@/lib/constants";
 import { apiFetchResponse, apiPublicFetchResponse, attemptTokenRefresh } from "@/lib/api";
 
 // =============================================================================
@@ -28,8 +30,6 @@ import { apiFetchResponse, apiPublicFetchResponse, attemptTokenRefresh } from "@
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:4200";
 const AUTH_MODE = (process.env.NEXT_PUBLIC_AUTH_MODE || "local") as AuthMode;
-const JANUA_BASE_URL = process.env.NEXT_PUBLIC_JANUA_URL || "https://auth.madfam.io";
-const OAUTH_CLIENT_ID = process.env.NEXT_PUBLIC_OAUTH_CLIENT_ID || "jnc_RqeHy54KYGjVr8yQiBeUncMhnQFhS2NA";
 
 const STORAGE_KEYS = {
   TOKENS: "enclii_tokens",
@@ -59,26 +59,6 @@ async function generateCodeChallenge(verifier: string): Promise<string> {
 // STORAGE HELPERS
 // =============================================================================
 
-function getStoredTokens(): { accessToken: string; refreshToken?: string; expiresAt: number } | null {
-  if (typeof window === "undefined") return null;
-  const stored = localStorage.getItem(STORAGE_KEYS.TOKENS);
-  if (!stored) return null;
-  try {
-    return JSON.parse(stored);
-  } catch {
-    return null;
-  }
-}
-
-function setStoredTokens(tokens: { accessToken: string; refreshToken?: string; expiresAt: number }) {
-  if (typeof window === "undefined") return;
-  localStorage.setItem(STORAGE_KEYS.TOKENS, JSON.stringify(tokens));
-  const maxAge = Math.floor((tokens.expiresAt - Date.now()) / 1000);
-  if (maxAge > 0) {
-    document.cookie = `${STORAGE_KEYS.COOKIE}=${tokens.accessToken}; path=/; secure; samesite=lax; max-age=${maxAge}`;
-  }
-}
-
 function setStoredUser(user: User) {
   if (typeof window === "undefined") return;
   localStorage.setItem(STORAGE_KEYS.USER, JSON.stringify(user));
@@ -93,14 +73,6 @@ function getStoredUser(): User | null {
   } catch {
     return null;
   }
-}
-
-function clearStorage() {
-  if (typeof window === "undefined") return;
-  localStorage.removeItem(STORAGE_KEYS.TOKENS);
-  localStorage.removeItem(STORAGE_KEYS.USER);
-  document.cookie = `${STORAGE_KEYS.COOKIE}=; path=/; secure; samesite=lax; max-age=0`;
-  document.cookie = `enclii_user_email=; path=/; secure; samesite=lax; max-age=0`;
 }
 
 function parseJwt(token: string): Record<string, unknown> | null {
@@ -176,67 +148,146 @@ function OIDCAuthProvider({ children }: { children: ReactNode }) {
   const [isLoading, setIsLoading] = useState(true);
   const [authError, setAuthError] = useState<string | null>(null);
   const tokenRef = useRef<string | null>(null);
+  const sessionRef = useRef<StoredTokens | null>(getStoredTokens());
 
-  // Check auth on mount — single /auth/me call with Bearer token (not cookie-based polling)
-  useEffect(() => {
-    checkAuth();
-  }, []);
+  const refreshTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const checkVersion = useRef(0);
 
   const checkAuth = useCallback(async () => {
+    const version = ++checkVersion.current;
     try {
-      // Read token from cookie (set by server-side /api/auth/session route)
-      const cookieToken = document.cookie
-        .split("; ")
-        .find((r) => r.startsWith("enclii_auth="))
-        ?.split("=")[1];
-
-      if (!cookieToken) {
-        setIsLoading(false);
-        return;
+      let tokens = await captureSession();
+      if (!tokens && canRestoreCookieSession()) {
+        const cookieToken = document.cookie.split('; ').find((r) => r.startsWith('enclii_auth='))?.slice('enclii_auth='.length);
+        // Decode exp only for scheduling. Identity is always verified below.
+        const exp = cookieToken ? parseJwt(cookieToken)?.exp : null;
+        if (cookieToken && typeof exp === 'number' && Number.isFinite(exp)) {
+          tokens = { accessToken: cookieToken, expiresAt: exp * 1000 };
+          tokens = await setStoredTokens(tokens);
+        }
       }
-
-      // Verify token with Janua using Bearer header (not cookie-based session)
-      const response = await fetch(`${JANUA_BASE_URL}/api/v1/auth/me`, {
-        headers: { Authorization: `Bearer ${cookieToken}` },
+      if (!tokens) { tokenRef.current = null; setUser(null); return; }
+      const checkedSession = tokens;
+      if (tokens.expiresAt <= Date.now()) {
+        const refreshed = await attemptTokenRefresh(checkedSession);
+        if (version !== checkVersion.current || !sameSession(checkedSession, getStoredTokens())) return;
+        if (!refreshed) {
+          tokenRef.current = null;
+          setUser(null);
+          setAuthError('Session expired. Please sign in again.');
+          return;
+        }
+        tokens = getStoredTokens();
+      }
+      if (!tokens || !sameSession(checkedSession, tokens) || version !== checkVersion.current) return;
+      let checkedToken = tokens.accessToken;
+      const verify = (token: string) => fetch(`${JANUA_BASE_URL}/api/v1/auth/me`, {
+        headers: { Authorization: `Bearer ${token}` },
       });
-
+      let response = await verify(checkedToken);
+      const refreshedAfterRejection = response.status === 401 && await attemptTokenRefresh(checkedSession);
+      if (refreshedAfterRejection) {
+        const refreshed = getStoredTokens();
+        if (!refreshed || !sameSession(checkedSession, refreshed) || version !== checkVersion.current) return;
+        checkedToken = refreshed.accessToken;
+        response = await verify(checkedToken);
+      }
+      if (version !== checkVersion.current || !sameSession(checkedSession, getStoredTokens()) || getStoredTokens()?.accessToken !== checkedToken) return;
       if (response.ok) {
         const userData = await response.json();
-        const userRoles: string[] = userData.roles || [];
-        if (userData.is_admin && !userRoles.includes("admin")) {
-          userRoles.push("admin");
-        }
-
-        tokenRef.current = cookieToken;
-
-        // Sync token to localStorage so lib/api.ts can use it for API calls
-        if (!localStorage.getItem(STORAGE_KEYS.TOKENS)) {
-          localStorage.setItem(STORAGE_KEYS.TOKENS, JSON.stringify({
-            accessToken: cookieToken,
-            refreshToken: null,
-            expiresAt: Date.now() + 24 * 60 * 60 * 1000, // Match cookie maxAge (24h)
-          }));
-        }
-
+        if (version !== checkVersion.current || !sameSession(checkedSession, getStoredTokens()) || getStoredTokens()?.accessToken !== checkedToken) return;
+        sessionRef.current = getStoredTokens();
+        tokenRef.current = checkedToken;
         setUser({
-          id: userData.id || "",
-          email: userData.email || "",
+          id: userData.id || '', email: userData.email || '',
           name: userData.name || userData.display_name,
-          roles: userRoles,
-          foundry_tier: (userData.user_metadata?.foundry_tier as User["foundry_tier"]) || null,
+          roles: extractRoles(userData),
+          foundry_tier: (userData.user_metadata?.foundry_tier as User['foundry_tier']) || null,
         });
+        setAuthError(getStoredTokens()?.refreshAttempted ? 'Session refresh could not be confirmed. Please sign in again.' : null);
+      } else if (response.status === 401 || response.status === 403) {
+        tokenRef.current = null;
+        setUser(null);
+        // A rejected access token plus an unavailable issuer is recoverable.
+        // Retain its refresh credential, but expose no authenticated user.
+        if (refreshedAfterRejection || !getStoredTokens()?.refreshToken) await clearStorage(checkedSession);
+        setAuthError('Session expired. Please sign in again.');
       } else {
-        // Token invalid — clear cookies via server-side route
-        await fetch("/api/auth/session", { method: "DELETE" }).catch(() => {});
-        clearStorage();
+        setAuthError('Authentication service unavailable. Please retry.');
       }
-    } catch (err) {
-      console.error("Auth check failed:", err);
-      setAuthError("Authentication check failed");
-    } finally {
-      setIsLoading(false);
-    }
+    } catch {
+      if (version === checkVersion.current) {
+        tokenRef.current = null;
+        setUser(null);
+        setAuthError('Authentication check failed. Please retry.');
+      }
+    } finally { if (version === checkVersion.current) setIsLoading(false); }
   }, []);
+
+  const refreshTokens = useCallback(async (owned: StoredTokens | null = getStoredTokens()) => {
+    if (!owned || !sameSession(owned, getStoredTokens())) return false;
+    if (owned.expiresAt <= Date.now()) {
+      tokenRef.current = null;
+      setUser(null);
+    }
+    const refreshed = await attemptTokenRefresh(owned);
+    if (!sameSession(owned, getStoredTokens())) return false;
+    if (refreshed) await checkAuth();
+    else if (getStoredTokens()?.refreshAttempted) setAuthError('Session refresh could not be confirmed. Please sign in again.');
+    if (!refreshed && (getStoredTokens()?.expiresAt ?? 0) <= Date.now()) {
+      tokenRef.current = null;
+      setUser(null);
+      setAuthError('Session expired. Please sign in again.');
+    }
+    return refreshed;
+  }, [checkAuth]);
+
+  useEffect(() => {
+    let active = true;
+    const schedule = () => {
+      if (refreshTimerRef.current) clearTimeout(refreshTimerRef.current);
+      const tokens = getStoredTokens();
+      const changed = !sameSession(sessionRef.current, tokens);
+      if (changed) { ++checkVersion.current; sessionRef.current = tokens; setUser(null); }
+      tokenRef.current = tokens && tokens.expiresAt > Date.now() ? tokens.accessToken : null;
+      if (!tokens) {
+        ++checkVersion.current; setUser(null); setIsLoading(false);
+        if (changed) setAuthError('Session unavailable. Please sign in again.');
+        return;
+      }
+      if (tokens.expiresAt <= Date.now()) {
+        setUser(null);
+        setAuthError('Session expired. Please sign in again.');
+      }
+      // Retry transient failures at a bounded cadence, then fail closed at expiry.
+      const delay = tokens.refreshToken && !tokens.refreshAttempted ? Math.max(1000, tokens.expiresAt - Date.now() - 60_000)
+        : Math.max(0, tokens.expiresAt - Date.now());
+      refreshTimerRef.current = setTimeout(async () => {
+        const refreshed = await refreshTokens(tokens);
+        if (active && !refreshed && sameSession(tokens, getStoredTokens())) {
+          const latest = getStoredTokens();
+          if (latest && latest.expiresAt > Date.now()) {
+            refreshTimerRef.current = setTimeout(schedule, Math.min(30_000, latest.expiresAt - Date.now()));
+          }
+        }
+      }, Math.min(delay, 2_147_483_647));
+      return changed;
+    };
+    const onStorage = (event: StorageEvent) => {
+      if (event.key === TOKEN_STORAGE_KEY || event.key === null) { schedule(); void checkAuth(); }
+    };
+    const onSessionChange = () => { if (schedule()) void checkAuth(); };
+    window.addEventListener(SESSION_CHANGED, onSessionChange);
+    window.addEventListener('storage', onStorage);
+    void checkAuth().then(() => { if (active) schedule(); });
+    return () => {
+      active = false;
+      ++checkVersion.current;
+      if (refreshTimerRef.current) clearTimeout(refreshTimerRef.current);
+      window.removeEventListener(SESSION_CHANGED, onSessionChange);
+      window.removeEventListener('storage', onStorage);
+    };
+  }, [checkAuth, refreshTokens]);
 
   const login = useCallback(async (options?: LoginWithOIDCOptions) => {
     // Generate PKCE parameters
@@ -273,28 +324,24 @@ function OIDCAuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const logout = useCallback(async () => {
-    try {
-      const cookieToken = tokenRef.current || document.cookie
-        .split("; ")
-        .find((r) => r.startsWith("enclii_auth="))
-        ?.split("=")[1];
-
-      if (cookieToken) {
-        // Notify Janua of logout
-        await fetch(`${JANUA_BASE_URL}/api/v1/auth/logout`, {
-          method: "POST",
-          headers: { Authorization: `Bearer ${cookieToken}` },
-        }).catch(() => {});
-      }
-    } finally {
-      tokenRef.current = null;
-      setUser(null);
-      clearStorage();
-      // Clear cookies server-side
+    const owned = getStoredTokens();
+    const accessToken = owned?.accessToken || tokenRef.current;
+    ++checkVersion.current;
+    tokenRef.current = null;
+    setUser(null);
+    // Local denial is immediate; storage and network cleanup settle independently.
+    const cleanup = clearStorage(owned).catch(() => false);
+    const revoke = accessToken ? fetch(`${JANUA_BASE_URL}/api/v1/auth/logout`, {
+      method: "POST", headers: { Authorization: `Bearer ${accessToken}` },
+    }).catch(() => {}) : Promise.resolve();
+    await Promise.allSettled([cleanup, revoke]);
+    await withSessionLock(async () => {
+      // A newer login wins over this logout's delayed cleanup/redirect.
+      const replacement = getStoredTokens();
+      if (replacement && !sameSession(owned, replacement)) return;
       await fetch("/api/auth/session", { method: "DELETE" }).catch(() => {});
-      // Redirect to login
       window.location.href = "/login";
-    }
+    }).catch(() => {});
   }, []);
 
   const value: AuthContextType = {
@@ -312,7 +359,7 @@ function OIDCAuthProvider({ children }: { children: ReactNode }) {
     handleOAuthCallback: async () => { /* Handled by callback page */ },
     storeTokensFromRedirect: async () => { /* Not used in PKCE flow */ },
     logout,
-    refreshTokens: async () => true,
+    refreshTokens,
     getAccessToken: () => tokenRef.current,
     getIDPToken: () => null,
   };
@@ -331,19 +378,20 @@ function LocalAuthProvider({ children }: { children: ReactNode }) {
   const refreshTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const isRefreshingRef = useRef(false);
 
-  const refreshTokens = useCallback(async (): Promise<boolean> => {
+  const refreshTokens = useCallback(async (stored: StoredTokens | null = getStoredTokens()): Promise<boolean> => {
     if (isRefreshingRef.current) return false;
-    const stored = getStoredTokens();
+    if (!sameSession(stored, getStoredTokens())) return false;
     if (!stored?.refreshToken) return false;
     isRefreshingRef.current = true;
     try {
-      const ok = await attemptTokenRefresh();
+      const ok = await attemptTokenRefresh(stored);
+      if (!sameSession(stored, getStoredTokens())) return false;
       if (!ok) throw new Error("Token refresh failed");
       const newTokens = getStoredTokens();
       if (newTokens) scheduleRefresh(newTokens.expiresAt);
       return true;
     } catch {
-      setAuthError("Session expired. Please log in again.");
+      if (sameSession(stored, getStoredTokens())) setAuthError("Session expired. Please log in again.");
       return false;
     } finally {
       isRefreshingRef.current = false;
@@ -354,7 +402,8 @@ function LocalAuthProvider({ children }: { children: ReactNode }) {
     if (refreshTimerRef.current) clearTimeout(refreshTimerRef.current);
     const refreshIn = expiresAt - Date.now() - 5 * 60 * 1000;
     if (refreshIn > 0) {
-      refreshTimerRef.current = setTimeout(() => { refreshTokens(); }, refreshIn);
+      const owned = getStoredTokens();
+      refreshTimerRef.current = setTimeout(() => { refreshTokens(owned); }, refreshIn);
     }
   }, [refreshTokens]);
 
@@ -362,7 +411,7 @@ function LocalAuthProvider({ children }: { children: ReactNode }) {
     const init = async () => {
       try {
         if (typeof window !== "undefined" && window.location.pathname.startsWith("/auth/callback")) return;
-        const storedTokens = getStoredTokens();
+        const storedTokens = await captureSession();
         const storedUser = getStoredUser();
         if (storedTokens && storedUser) {
           if (Date.now() < storedTokens.expiresAt) {
@@ -370,10 +419,10 @@ function LocalAuthProvider({ children }: { children: ReactNode }) {
             scheduleRefresh(storedTokens.expiresAt);
           } else if (storedTokens.refreshToken) {
             const refreshed = await refreshTokens();
-            if (refreshed) setUser(storedUser);
-            else clearStorage();
+            if (refreshed && sameSession(storedTokens, getStoredTokens())) setUser(storedUser);
+            else await clearStorage(storedTokens);
           } else {
-            clearStorage();
+            await clearStorage(storedTokens);
           }
         }
       } finally {
@@ -396,7 +445,8 @@ function LocalAuthProvider({ children }: { children: ReactNode }) {
       const data = await response.json();
       const tokens = { accessToken: data.access_token, refreshToken: data.refresh_token, expiresAt: new Date(data.expires_at).getTime() };
       const userData: User = { id: data.user?.id || "", email: data.user?.email || email, name: data.user?.name, roles: data.user?.roles || [] };
-      setStoredTokens(tokens);
+      const published = await setStoredTokens(tokens);
+      if (!sameSession(published, getStoredTokens())) return;
       setStoredUser(userData);
       setUser(userData);
       scheduleRefresh(tokens.expiresAt);
@@ -417,7 +467,8 @@ function LocalAuthProvider({ children }: { children: ReactNode }) {
       const data = await response.json();
       const tokens = { accessToken: data.access_token, refreshToken: data.refresh_token, expiresAt: new Date(data.expires_at).getTime() };
       const userData: User = { id: data.user?.id || "", email: data.user?.email || email, name: data.user?.name || name, roles: data.user?.roles || [] };
-      setStoredTokens(tokens);
+      const published = await setStoredTokens(tokens);
+      if (!sameSession(published, getStoredTokens())) return;
       setStoredUser(userData);
       setUser(userData);
       scheduleRefresh(tokens.expiresAt);
@@ -440,7 +491,8 @@ function LocalAuthProvider({ children }: { children: ReactNode }) {
       const tokens = { accessToken: data.access_token, refreshToken: data.refresh_token, expiresAt: new Date(data.expires_at).getTime() };
       const claims = parseJwt(data.access_token);
       const userData: User = { id: (claims?.sub as string) || "", email: (claims?.email as string) || "", name: claims?.name as string, roles: extractRoles(claims), foundry_tier: (claims?.foundry_tier as User["foundry_tier"]) || null };
-      setStoredTokens(tokens);
+      const published = await setStoredTokens(tokens);
+      if (!sameSession(published, getStoredTokens())) return;
       setStoredUser(userData);
       setUser(userData);
       scheduleRefresh(tokens.expiresAt);
@@ -456,7 +508,8 @@ function LocalAuthProvider({ children }: { children: ReactNode }) {
       const tokens = { accessToken: redirectTokens.accessToken, refreshToken: redirectTokens.refreshToken, expiresAt: redirectTokens.expiresAt.getTime() };
       const claims = parseJwt(redirectTokens.accessToken);
       const userData: User = { id: (claims?.sub as string) || "", email: (claims?.email as string) || "", name: claims?.name as string, roles: extractRoles(claims), foundry_tier: (claims?.foundry_tier as User["foundry_tier"]) || null };
-      setStoredTokens(tokens);
+      const published = await setStoredTokens(tokens);
+      if (!sameSession(published, getStoredTokens())) return;
       setStoredUser(userData);
       setUser(userData);
       scheduleRefresh(tokens.expiresAt);
@@ -468,6 +521,7 @@ function LocalAuthProvider({ children }: { children: ReactNode }) {
   const logout = useCallback(async (options?: { skipServerRevocation?: boolean }): Promise<void> => {
     let logoutUrl: string | null = null;
     const stored = getStoredTokens();
+    setUser(null);
     try {
       if (stored?.accessToken && !options?.skipServerRevocation) {
         const response = await apiFetchResponse("/v1/auth/logout", {
@@ -478,8 +532,9 @@ function LocalAuthProvider({ children }: { children: ReactNode }) {
         }
       }
     } finally {
+      if (!sameSession(stored, getStoredTokens())) return;
       setUser(null);
-      clearStorage();
+      await clearStorage(stored);
       if (refreshTimerRef.current) { clearTimeout(refreshTimerRef.current); refreshTimerRef.current = null; }
       if (logoutUrl) {
         const returnUrl = encodeURIComponent(`${window.location.origin}/login`);
@@ -500,9 +555,9 @@ function LocalAuthProvider({ children }: { children: ReactNode }) {
     // Local/bootstrap mode has no OIDC prompt concept (no estate SSO session to
     // switch). The `LoginWithOIDCOptions` arg from the interface is simply not
     // read here; local login has no chooser.
-    loginWithOIDC: () => {
+    loginWithOIDC: async () => {
       if (typeof window !== "undefined") localStorage.setItem("auth_return_url", window.location.pathname);
-      clearStorage();
+      await clearStorage();
       window.location.href = `${API_BASE_URL}/v1/auth/login`;
     },
     handleOAuthCallback,

@@ -9,6 +9,10 @@ export const API_BASE_URL =
 /** Auth mode (local or oidc) */
 export const AUTH_MODE = process.env.NEXT_PUBLIC_AUTH_MODE || 'local';
 
+/** Browser PKCE issuer and public client. Never configure a client secret here. */
+export const JANUA_BASE_URL = process.env.NEXT_PUBLIC_JANUA_URL || 'https://auth.madfam.io';
+export const OAUTH_CLIENT_ID = process.env.NEXT_PUBLIC_OAUTH_CLIENT_ID || 'jnc_RqeHy54KYGjVr8yQiBeUncMhnQFhS2NA';
+
 // ---------------------------------------------------------------------------
 // Polling intervals
 // ---------------------------------------------------------------------------

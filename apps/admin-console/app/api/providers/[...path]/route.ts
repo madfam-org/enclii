@@ -14,7 +14,7 @@ async function handler(
     ? await request.text()
     : undefined
 
-  const token = request.cookies.get('dispatch_auth')?.value
+  const token = request.cookies.get('dispatch_auth')?.value || request.cookies.get('admin_auth')?.value
   const res = await switchyardProxy('providers', `${providerPath}${qs}`, {
     method: request.method,
     body,

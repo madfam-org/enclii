@@ -10,7 +10,8 @@ import {
   DropdownMenuLabel,
   DropdownMenuSeparator,
 } from "@enclii/ui-components/dropdown-menu"
-import { Radio, LogOut, User, ChevronDown, Users, UserPlus, ExternalLink } from 'lucide-react'
+import { LogOut, User, ChevronDown, Users, UserPlus, ExternalLink } from 'lucide-react'
+import { StationIdentity } from '@enclii/ui-components/station-identity'
 import { MobileSidebarToggle } from './sidebar'
 
 export function AdminHeader() {
@@ -27,12 +28,9 @@ export function AdminHeader() {
       <div className="px-4 py-3 flex items-center justify-between gap-2">
         <div className="flex items-center gap-3 min-w-0">
           <MobileSidebarToggle />
-          <div className="p-2 rounded-lg bg-primary/10 border border-primary/20 shrink-0">
-            <Radio className="size-5 text-primary" />
-          </div>
           <div className="min-w-0">
             <h1 className="font-mono font-semibold text-foreground text-lg tracking-tight truncate">
-              ENCLII ADMIN
+              <StationIdentity surface="dispatch" variant="compact" />
             </h1>
             <p className="text-xs text-muted-foreground hidden sm:block">Universal Control Plane</p>
           </div>

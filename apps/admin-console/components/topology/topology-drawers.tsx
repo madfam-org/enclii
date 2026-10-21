@@ -97,7 +97,7 @@ export function TopologyNodeDrawer({
             <div className="grid grid-cols-3 gap-3 text-sm">
               <div className="rounded border border-border p-3">
                 <div className="text-xs text-muted-foreground flex items-center gap-1 mb-1">
-                  <Cpu className="size-3" /> CPU
+                  <Cpu className="size-3" /> CPU requests
                 </div>
                 <div className="font-mono text-xs">
                   {formatCpuShort(node.used.cpu_millicores)} /{' '}
@@ -106,7 +106,7 @@ export function TopologyNodeDrawer({
               </div>
               <div className="rounded border border-border p-3">
                 <div className="text-xs text-muted-foreground flex items-center gap-1 mb-1">
-                  <HardDrive className="size-3" /> Memory
+                  <HardDrive className="size-3" /> Memory requests
                 </div>
                 <div className="font-mono text-xs">
                   {formatBytesShort(node.used.memory_bytes)} /{' '}
@@ -120,6 +120,10 @@ export function TopologyNodeDrawer({
                 </div>
               </div>
             </div>
+
+            <p className="text-xs text-muted-foreground">
+              Requests from running pods / allocatable capacity. Live utilization is unavailable here.
+            </p>
 
             {node.taints.length > 0 && (
               <div>
