@@ -639,6 +639,81 @@ data:
             target_label: instance
           - target_label: __address__
             replacement: blackbox-exporter.monitoring.svc:9115
+
+      # Geometry-factory hosts (geometry stability pass 2026-10-18, lane O1).
+      # Every public host of Yantra4D, Fashion Cabinet, Pliego, Cotiza and
+      # Blueprint.Tube, probed on its health path through Cloudflare and the
+      # tunnel, as blackbox-revenue does. Until this job most of them were
+      # watched by replica counts only: a host answering 5xx or timing out
+      # behind Ready pods paged nobody. The `geometry-probes` rule group
+      # (geometry-probe-rules.yml below) pages on the results:
+      # GeometryHostDown (a probe failing for 3 minutes),
+      # GeometryTLSCertExpiring (the served certificate expires within 14
+      # days) and GeometryProbesNotRunning (this job is not being scraped).
+      #
+      # A job of its own, not more blackbox-revenue targets: its alerts carry
+      # no `category: revenue-probe`, so they take the generic critical route
+      # (critical-receiver: Courier + email, one group per alertname) and
+      # leave the revenue route's email budget as it is. Two hosts are also
+      # revenue targets (api.yantra4d.com/api/health; the Cotiza API, there
+      # on /health/ready). When one fails both alerts fire: the revenue one
+      # names the flow, this one names the factory.
+      #
+      # Labels on every target: product (what pages; Courier keys the page
+      # on it, so each product pages once per episode), flow, target_namespace
+      # (where to look first) and module. Adding a host: the same rules as
+      # blackbox-revenue (a URL that answers 200 with no redirect, the module
+      # chosen by its body), and add it to GEOMETRY_TARGETS in
+      # tests/scripts/test_geometry_probe_rules.py.
+      - job_name: 'blackbox-geometry'
+        metrics_path: /probe
+        scrape_interval: 60s
+        scrape_timeout: 15s
+        static_configs:
+          # Yantra4D. The apex is a static SPA: every path, /api/health
+          # included, answers 200 with index.html, so its front page is
+          # judged as HTML. The studio and admin hosts answer /api/health
+          # with the API's JSON report.
+          - targets: ['https://yantra4d.com/']
+            labels: {product: yantra4d, flow: landing, target_namespace: yantra4d, module: http_200_html}
+          - targets: ['https://app.yantra4d.com/api/health']
+            labels: {product: yantra4d, flow: studio, target_namespace: yantra4d, module: http_2xx_json}
+          - targets: ['https://admin.yantra4d.com/api/health']
+            labels: {product: yantra4d, flow: admin, target_namespace: yantra4d, module: http_2xx_json}
+          - targets: ['https://api.yantra4d.com/api/health']
+            labels: {product: yantra4d, flow: api, target_namespace: yantra4d, module: http_2xx_json}
+          # Fashion Cabinet: one app behind two hostnames.
+          - targets: ['https://fc.madfam.io/health']
+            labels: {product: fashion-cabinet, flow: app, target_namespace: fashion-cabinet, module: http_2xx_json}
+          - targets: ['https://fashioncabi.net/health']
+            labels: {product: fashion-cabinet, flow: brand-domain, target_namespace: fashion-cabinet, module: http_2xx_json}
+          # Pliego: one service behind three hostnames. The app host's root
+          # redirects to /studio/; /health answers 200 on all three.
+          - targets: ['https://pliego.madfam.io/health']
+            labels: {product: pliego, flow: landing, target_namespace: pliego, module: http_2xx_json}
+          - targets: ['https://pliego-app.madfam.io/health']
+            labels: {product: pliego, flow: app, target_namespace: pliego, module: http_2xx_json}
+          - targets: ['https://pliego-api.madfam.io/health']
+            labels: {product: pliego, flow: api, target_namespace: pliego, module: http_2xx_json}
+          # Cotiza: the web app's /api/health crosses its proxy to the API.
+          - targets: ['https://cotiza.studio/api/health']
+            labels: {product: cotiza, flow: web, target_namespace: digifab-quoting, module: http_2xx_json}
+          - targets: ['https://api.cotiza.studio/health']
+            labels: {product: cotiza, flow: api, target_namespace: digifab-quoting, module: http_2xx_json}
+          # Blueprint.Tube: the landing and the API gateway.
+          - targets: ['https://blueprint.tube/health']
+            labels: {product: blueprint, flow: landing, target_namespace: blueprint-harvester, module: http_2xx_json}
+          - targets: ['https://api.blueprint.tube/health']
+            labels: {product: blueprint, flow: api, target_namespace: blueprint-harvester, module: http_2xx_json}
+        relabel_configs:
+          - source_labels: [__address__]
+            target_label: __param_target
+          - source_labels: [module]
+            target_label: __param_module
+          - source_labels: [__param_target]
+            target_label: instance
+          - target_label: __address__
+            replacement: blackbox-exporter.monitoring.svc:9115
 ---
 # Alert Rules ConfigMap
 apiVersion: v1
@@ -2596,6 +2671,112 @@ data:
                 Triage:
                   1. curl -sS -o /dev/null -w '%{http_code}\n' '{{ $labels.instance }}'
                   2. enclii ops pods diagnose -n {{ $labels.target_namespace }}
+
+  # =========================================================================
+  # Geometry-factory probes (geometry stability pass 2026-10-18, lane O1).
+  # Reads the `blackbox-geometry` scrape job above (targets) and
+  # blackbox-exporter.yaml (modules). The geometry offering is up only if
+  # someone is told when it is down, so all three page.
+  #
+  # Paging shape. No `category: revenue-probe`: these take the generic
+  # critical route in alertmanager.yaml (critical-receiver, Courier + email,
+  # grouped by alertname, email re-sent every 4h). Each target carries a
+  # `product` label and no rule here sets one, so Courier keys each page
+  # `alarm:<alertname>:<product>:<hour>`: one page per failing product per
+  # episode, a reminder every 24h, one resolved notice. A second product
+  # failing while the first is paging joins the alertname's email group at
+  # its next 15m tick and still pages on its own in chat. The `product`
+  # label also keeps these out of the staging routes.
+  #
+  # Annotations use $labels and $value only: no `query` template functions.
+  # =========================================================================
+  geometry-probe-rules.yml: |
+    groups:
+      - name: geometry-probes
+        interval: 30s
+        rules:
+          # Any geometry host failing for 3 minutes (three 60s probes in a
+          # row): a 5xx, a timeout, a TLS failure (an expired certificate
+          # fails the handshake and lands here), a redirect, a wrong status
+          # or a body that fails its module's check.
+          - alert: GeometryHostDown
+            expr: |
+              probe_success{job="blackbox-geometry"} == 0
+            for: 3m
+            labels:
+              severity: critical
+              category: geometry-probe
+            annotations:
+              summary: "{{ $labels.product }} {{ $labels.flow }} is down: {{ $labels.instance }}"
+              description: |
+                The synthetic probe of {{ $labels.instance }} (product
+                {{ $labels.product }}, flow {{ $labels.flow }}, blackbox module
+                {{ $labels.module }}) has failed for 3 minutes. It probes the
+                public URL, through Cloudflare and the tunnel, as a visitor
+                would; Argo and the replica alerts can read healthy while this
+                fires.
+
+                Triage:
+                  1. Reproduce: curl -sS -o /dev/null -w '%{http_code}\n' '{{ $labels.instance }}'
+                     (the module's pass condition is in
+                     infra/k8s/production/monitoring/blackbox-exporter.yaml).
+                  2. Pods and logs: enclii ops pods diagnose -n {{ $labels.target_namespace }}
+                  3. If many products fail at once, check CloudflaredTunnelDown
+                     and RevenueEndpointDown first: the probes share the public
+                     edge path.
+                In Grafana: probe_http_status_code{instance="{{ $labels.instance }}"}.
+
+          # The certificate a geometry host serves expires within 14 days.
+          # Cloudflare renews its edge certificates weeks ahead of expiry (on
+          # 2026-10-18 the shortest of these 13 had 32 days left), so under
+          # 14 days means renewal has failed, and the host goes down on a
+          # known date. One hour so a certificate swap mid-probe does not
+          # page. probe_ssl_earliest_cert_expiry is the earliest expiry in
+          # the verified chain, as a Unix time.
+          - alert: GeometryTLSCertExpiring
+            expr: |
+              probe_ssl_earliest_cert_expiry{job="blackbox-geometry"} - time() < 14 * 86400
+            for: 1h
+            labels:
+              severity: critical
+              category: geometry-probe
+            annotations:
+              summary: "{{ $labels.product }} {{ $labels.flow }}: TLS certificate expires within 14 days ({{ $labels.instance }})"
+              description: |
+                The certificate served for {{ $labels.instance }} expires in
+                {{ $value }} seconds. Cloudflare renews edge certificates weeks
+                ahead of expiry, so renewal has likely failed for this hostname.
+
+                Triage:
+                  1. echo | openssl s_client -connect <host>:443 -servername <host> 2>/dev/null | openssl x509 -noout -enddate -issuer
+                  2. Cloudflare dashboard → SSL/TLS → Edge Certificates for the
+                     zone: the certificate's status and validation records.
+
+          # The geometry probes are not running: the scrape job is not loaded
+          # (a merged prometheus-config that never reloaded), or Prometheus
+          # cannot reach blackbox-exporter. Every probe series disappears and
+          # GeometryHostDown can no longer fire, so this pages.
+          - alert: GeometryProbesNotRunning
+            expr: |
+              absent(up{job="blackbox-geometry"} == 1)
+            for: 10m
+            labels:
+              severity: critical
+              category: geometry-probe
+            annotations:
+              summary: "Geometry probes are not running: the geometry hosts are unwatched"
+              description: |
+                No target of the blackbox-geometry scrape job has been scraped
+                successfully for 10 minutes, so GeometryHostDown and
+                GeometryTLSCertExpiring cannot fire.
+
+                Triage:
+                  1. If RevenueProbesNotRunning fires too, the exporter is down:
+                     enclii ops pods diagnose -n monitoring (blackbox-exporter pod).
+                  2. Otherwise the job is not loaded: Grafana up{job="blackbox-geometry"}
+                     is absent. Check the prometheus-config ConfigMap and that
+                     Prometheus reloaded it (/api/v1/status/runtimeinfo
+                     lastConfigTime, reloadConfigSuccess).
 
   # =========================================================================
   # Resurrected 2026-08-26 (availability remediation Tier 0.3): the 5 of 8

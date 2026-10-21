@@ -24,6 +24,9 @@
 #
 # COST. requests 10m CPU / 32Mi, limits 100m CPU / 128Mi; ~20 GETs a minute
 # out to the public edge; ~20 x 15 series in Prometheus (probe_* per target).
+# The `blackbox-geometry` job (geometry-factory hosts, 2026-10-18) adds 13
+# GETs a minute and ~13 x 15 series through the same exporter, at the same
+# 60s interval.
 # monitoring-quota headroom (namespace.yaml): limits.cpu peak 5.5 -> 5.6 of 6,
 # limits.memory ~15.0Gi -> ~15.1Gi of 16Gi, requests well inside 2 CPU / 8Gi.
 #
@@ -343,6 +346,25 @@ data:
           fail_if_body_not_matches_regexp:
             - '"database"\s*:\s*"connected"'
             - '"redis"\s*:\s*"connected"'
+
+      # Exactly 200 and an HTML document. For a static site whose only honest
+      # health signal is its front page: yantra4d.com is an SPA whose
+      # /api/health is its index.html (see http_2xx_json), so the
+      # `blackbox-geometry` job probes its root with this. An empty 200 or a
+      # JSON error answered with 200 fails, as does any redirect.
+      http_200_html:
+        prober: http
+        timeout: 10s
+        http:
+          method: GET
+          preferred_ip_protocol: ip4
+          follow_redirects: false
+          fail_if_not_ssl: true
+          valid_status_codes: [200]
+          headers:
+            User-Agent: "madfam-revenue-probe/1.0 (+https://github.com/madfam-org/enclii)"
+          fail_if_body_not_matches_regexp:
+            - '(?i)<html'
 ---
 apiVersion: apps/v1
 kind: Deployment

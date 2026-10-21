@@ -29,12 +29,32 @@ A critical alert is treated as staging when its `namespace`, `application`,
 it carries no `product` label (#801). Product-labelled alerts always page.
 
 What pages critical: client-facing outages (client SLO rules, revenue probes,
-Argo health, workload availability) and the pager's own health. What does not
+geometry-factory probes, Argo health, workload availability) and the pager's
+own health. What does not
 (warnings since #801/#802): `MainCIFailingForTooLong` (main CI red on push
 runs), `ArgoMainRolloutNotLanded`, `ArgoMainRolloutStuckForTooLong`, and
 `MainCanaryFailing` (a scheduled canary workflow on `main` failing two runs in
 a row for 30m; push CI and scheduled runs are read separately since #802, see
 [`infra/deploy-pipeline-monitor/README.md`](../../infra/deploy-pipeline-monitor/README.md)).
+
+## Geometry-factory probes
+
+The `blackbox-geometry` scrape job probes the 13 public hosts of Yantra4D,
+Fashion Cabinet, Pliego, Cotiza and Blueprint.Tube every 60s on their health
+paths, through Cloudflare and the tunnel (targets in
+[`prometheus.yaml`](../../infra/k8s/production/monitoring/prometheus.yaml),
+modules in
+[`blackbox-exporter.yaml`](../../infra/k8s/production/monitoring/blackbox-exporter.yaml)).
+Three critical rules read it, all through the generic critical route
+(Courier and email; email every 4h):
+
+- `GeometryHostDown`: a host's probe has failed for 3 minutes;
+- `GeometryTLSCertExpiring`: the certificate a host serves expires within 14
+  days, for 1h;
+- `GeometryProbesNotRunning`: the job has not been scraped for 10 minutes.
+
+Each target's `product` label is Courier's page identity, so each failing
+product pages once per episode.
 
 ## The pager's own failures
 
@@ -101,5 +121,6 @@ more page.
 `tests/scripts/test_check_alertmanager_config.py` (config loadability and the
 route walk, including the staging routes), `test_alert_noise_rules.py` (the
 #801/#802 demotions), `test_pager_path_drill.py` (the weekly drill and the
-page-budget rules), `test_revenue_probe_rules.py` and `test_client_slo_rules.py`.
+page-budget rules), `test_revenue_probe_rules.py`, `test_geometry_probe_rules.py`
+and `test_client_slo_rules.py`.
 Some cases need `promtool`; locally they skip and say so.
