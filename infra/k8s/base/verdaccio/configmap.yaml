@@ -168,6 +168,16 @@ data:
         publish: $authenticated
         unpublish: false  # IMMUTABLE: prevents overwriting published versions
 
+      # Pliego - paper physics engine (public read: consumed by public repos' CI and
+      # image builds with no token, as @janua/*). Owner ruling 2026-10-22: publish
+      # @pliego/engine. Deliberately NO `proxy: npmjs`: without this rule the scope
+      # would fall to '**' below, which merges npmjs versions of the same name into
+      # what we serve (dependency confusion if anyone claims @pliego on npmjs).
+      '@pliego/*':
+        access: $all
+        publish: $authenticated
+        unpublish: false  # IMMUTABLE: prevents overwriting published versions
+
       # All other packages - proxy to npmjs
       '**':
         access: $all

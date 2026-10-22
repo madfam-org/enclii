@@ -229,6 +229,9 @@ data:
       '@enclii/*':
         access: $all              # public read for SDK consumers
         publish: $authenticated
+      '@pliego/*':
+        access: $all              # public read; no proxy (never merged with npmjs)
+        publish: $authenticated
       '**':
         access: $all
         publish: $authenticated
@@ -503,6 +506,7 @@ git push origin shared-lib-v0.2.0
 | `@dhanam/billing-sdk` | dhanam | `@dhanam/billing-sdk@*` | 0.2.0 | Published |
 | `@tezca/api-client` | tezca | `api-client-v*` | 0.1.0 | Published |
 | `@forgesight/client` | forgesight | `client-v*` | 0.1.0 | Published |
+| `@pliego/engine` | pliego | dispatch `publish-engine.yml` | 0.1.0 | Pending (publishable; owner ruling 2026-10-22) |
 
 ### .npmrc Template (for all MADFAM repos)
 ```ini
@@ -517,6 +521,7 @@ git push origin shared-lib-v0.2.0
 @coforma:registry=https://npm.madfam.io
 @forj:registry=https://npm.madfam.io
 @enclii:registry=https://npm.madfam.io
+@pliego:registry=https://npm.madfam.io
 
 # CI service token (a Verdaccio-issued JWT, rotated by the npm-token-rotation CronJob)
 //npm.madfam.io/:_authToken=${NPM_MADFAM_TOKEN}
