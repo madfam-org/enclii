@@ -643,6 +643,7 @@ platforms:
       auth_janua_client_id: client_id
       auth_janua_client_secret: client_secret  # pragma: allowlist secret
     janua_client:
+      client_id: jnc_M08TqJZOCUeW5M03YXjMtXxFrogxmI6X
       name: MADFAM CV
       client_key: cv-app  # pragma: allowlist secret
       audience: cv-api
