@@ -22,7 +22,11 @@
 #             argument, never on this machine.
 #   verify    Role and function state, what get_auth returns for ROLE (the
 #             verifier type only), each pooler pod's userlist head (user name
-#             only), SHOW USERS, and "no such user" log lines in 10 minutes.
+#             only), "no such user" log lines in 10 minutes, and SHOW USERS on
+#             the admin console. The console check needs a pgbouncer_admin
+#             line in the pod's userlist (intake target data/pgbouncer-admin,
+#             then a pgbouncer restart); without one it prints SKIPPED with
+#             that owner step instead of failing, and verify still exits 0.
 #   probe     End-to-end proof of the auth_query path: creates the login role
 #             pgbouncer_auth_probe with a random password made on the host,
 #             logs in through each pooler pod on 127.0.0.1:6432 with
@@ -106,6 +110,11 @@ if K -n data get secret pgbouncer-auth -o name >/dev/null 2>&1; then
 else
   echo "secret/pgbouncer-auth is missing (run: enclii secrets intake submit data/pgbouncer-auth --generate pgbouncer_auth_password --reason ...)"
 fi
+if K -n data get secret pgbouncer-admin -o name >/dev/null 2>&1; then
+  echo "secret/pgbouncer-admin exists"
+else
+  echo "secret/pgbouncer-admin is missing: the admin console stays closed (optional; run: enclii secrets intake submit data/pgbouncer-admin --generate pgbouncer_admin_password --reason ..., then restart pgbouncer)"
+fi
 if K -n data get configmap pgbouncer-config -o 'jsonpath={.data.pgbouncer\.ini}' | grep -Eq '^[[:space:]]*auth_query[[:space:]]*='; then
   echo "pgbouncer-config sets auth_query"
 else
@@ -171,10 +180,20 @@ RESET ROLE;
 SQL
 } | pg
 echo "== Pooler pods"
+console_skipped=0
 for pod in $(pooler_pods); do
   head_user="$(K -n data exec "$pod" -c pgbouncer -- sh -c 'head -n 1 /etc/pgbouncer/userlist.txt | cut -d " " -f 1')"
   no_such_user="$(K -n data logs "$pod" -c pgbouncer --since=10m | grep -c 'no such user' || true)"
   echo "$pod: first userlist entry ${head_user}; 'no such user' lines in 10m: ${no_such_user}"
+  # The admin console only answers pgbouncer_admin through a userlist line
+  # (auth_query has no backend for it). Ask whether the line exists; the
+  # answer is the word present or absent, never the line.
+  admin_line="$(K -n data exec "$pod" -c pgbouncer -- sh -c 'if grep -q "^\"pgbouncer_admin\" " /etc/pgbouncer/userlist.txt; then echo present; else echo absent; fi')"
+  if [ "$admin_line" != present ]; then
+    echo "  admin console: SKIPPED, no pgbouncer_admin line in this pod's userlist"
+    console_skipped=$((console_skipped + 1))
+    continue
+  fi
   # SHOW USERS on the admin console. The admin password is read inside the
   # pod from its own userlist and handed to psql in the environment.
   K -n data exec "$pod" -c pgbouncer -- sh -c '
@@ -182,6 +201,11 @@ for pod in $(pooler_pods); do
     export PGPASSWORD
     psql -X -h 127.0.0.1 -p 6432 -U pgbouncer_admin -d pgbouncer -P footer=off -c "SHOW USERS"' | sed 's/^/  /'
 done
+if [ "$console_skipped" -gt 0 ]; then
+  echo "[WARN] admin console check skipped on ${console_skipped} pooler pod(s). Owner step to open it:"
+  echo "  enclii secrets intake submit data/pgbouncer-admin --generate pgbouncer_admin_password --reason \"pgbouncer admin console\""
+  echo "  ssh ssh.madfam.io 'sudo -n kubectl -n data rollout restart deploy/pgbouncer && sudo -n kubectl -n data rollout status deploy/pgbouncer'"
+fi
 REMOTE
   } | run_remote
 }

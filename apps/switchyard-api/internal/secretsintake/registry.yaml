@@ -1241,6 +1241,26 @@ targets:
     keys:
       - pgbouncer_auth_password
 
+  # data (2026-10-22) — pgbouncer_admin, the shared pgbouncer's admin console
+  # user (admin_users/stats_users in infra/k8s/platform-infra/pgbouncer.yaml).
+  # The console has no Postgres backend, so auth_query cannot answer for it;
+  # the pooler's init container writes this value as the second userlist line
+  # when the pgbouncer-admin ExternalSecret has synced it (the volume is
+  # optional, so the pooler runs without it).
+  #
+  # Generatable: only the pooler holds it. --generate pgbouncer_admin_password
+  # mints 32 bytes (43 characters of base64url), the shape the init container
+  # accepts. Same path as pgbouncer_auth_password; enclii-secrets does not map
+  # the property.
+  data/pgbouncer-admin:
+    label: pgbouncer admin console password
+    description: Password of pgbouncer_admin, the admin console user of the shared pgbouncer (namespace data). Mint server-side with --generate pgbouncer_admin_password. Projected to the pgbouncer-admin Secret by the pgbouncer-admin ExternalSecret; then restart the pgbouncer Deployment so its init container writes the userlist line. scripts/pgbouncer-auth-query.sh verify uses it for SHOW USERS.
+    vault_path: secret/enclii
+    namespace: data
+    external_secret: pgbouncer-admin  # pragma: allowlist secret
+    keys:
+      - pgbouncer_admin_password
+
   # synthetics (2026-10-14) — the S-Gate 1 synthetic buyer: the identity the
   # journeys CronJob (infra/k8s/production/synthetics) signs in to Dhanam
   # staging with. No Stripe key: only Dhanam holds Stripe keys (2026-04-25

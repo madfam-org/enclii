@@ -31,3 +31,25 @@ func TestDataPgbouncerAuthTarget(t *testing.T) {
 	assert.Nil(t, tgt.Generate)
 	assert.GreaterOrEqual(t, base64.RawURLEncoding.EncodedLen(tgt.GenerateBytes()), 32)
 }
+
+// pgbouncer_admin's password (2026-10-22): the admin console user's userlist
+// line. Same chain as pgbouncer_auth's, through its own ExternalSecret so a
+// missing property never blocks pgbouncer-auth's sync. The values must match
+// infra/k8s/platform-infra/pgbouncer-admin.externalsecret.yaml, which
+// tests/scripts/test_pgbouncer_auth_query.py checks from the manifest side.
+func TestDataPgbouncerAdminTarget(t *testing.T) {
+	tgt, err := GetTarget("data/pgbouncer-admin")
+	require.NoError(t, err)
+	assert.Equal(t, "secret/enclii", tgt.VaultPath,
+		"a path the switchyard-secret-writer policy already covers")
+	assert.Equal(t, "data", tgt.Namespace)
+	assert.Equal(t, "pgbouncer-admin", tgt.ExternalSecret)
+	assert.NotEqual(t, "pgbouncer-userlist", tgt.ExternalSecret,
+		"pgbouncer-userlist is written by switchyard-api; ESO must not adopt it")
+	assert.NotEqual(t, "pgbouncer-auth", tgt.ExternalSecret,
+		"its own ExternalSecret: a missing admin property must not stop pgbouncer-auth syncing")
+	assert.Equal(t, []string{"pgbouncer_admin_password"}, tgt.Keys)
+	assert.Contains(t, tgt.Description, "--generate pgbouncer_admin_password")
+	assert.Nil(t, tgt.Generate)
+	assert.GreaterOrEqual(t, base64.RawURLEncoding.EncodedLen(tgt.GenerateBytes()), 32)
+}
