@@ -151,6 +151,110 @@ spec:
                       matchLabels:
                         app.kubernetes.io/name: vault
 
+          # FILE AUDIT ROTATION (2026-10-17). The file audit device
+          # (/vault/audit/vault_audit.log) never rotates: Vault 1.18 has no rotation
+          # option for it (log_rotate_* applies to the server log only), and its
+          # docs say to rotate externally and send SIGHUP, which makes Vault close
+          # and reopen the file. Without that the audit claim filled (8.2 GiB on
+          # 8Gi, "no space left on device" on 2026-10-17); Vault kept answering
+          # only because the stderr audit device still writes.
+          # The sidecar below renames the file past ROTATE_BYTES, signals vault
+          # (shareProcessNamespace; same uid 100, so no extra capability), gzips the
+          # rotated file, and keeps the newest rotated files that fit in
+          # KEEP_ROTATED files and MAX_ROTATED_BYTES (3GiB of the 8Gi claim).
+          # Older ones, and a rotated file larger than the whole budget (the
+          # pre-existing full log on its first pass), are DELETED, each with a log
+          # line. If no vault process takes the SIGHUP, it undoes the rename and
+          # deletes nothing. Same image as the server, so nothing new is pulled.
+          # Logs: enclii ops pods logs vault-0 -n vault --container audit-rotate
+          shareProcessNamespace: true
+          extraContainers:
+            - name: audit-rotate
+              image: docker.io/hashicorp/vault:1.18.3
+              command:
+                - /bin/sh
+                - -c
+                - |
+                  set -u
+                  AUDIT="${AUDIT_FILE}"
+                  DIR="$(dirname "${AUDIT}")"
+                  log() { echo "[$(date -u +%Y-%m-%dT%H:%M:%SZ)] audit-rotate: $*"; }
+                  bytes() { wc -c < "$1" 2>/dev/null | tr -d ' '; }
+                  log "start: rotate ${AUDIT} at ${ROTATE_BYTES} bytes; keep ${KEEP_ROTATED} rotated files, ${MAX_ROTATED_BYTES} bytes at most; every ${INTERVAL_SECONDS}s"
+                  while true; do
+                    size="$(bytes "${AUDIT}")"
+                    if [ -n "${size}" ] && [ "${size}" -ge "${ROTATE_BYTES}" ]; then
+                      rotated="${AUDIT}.$(date -u +%Y%m%dT%H%M%SZ)"
+                      if mv "${AUDIT}" "${rotated}"; then
+                        if pkill -HUP -x vault; then
+                          log "rotated ${size} bytes to ${rotated}; sent SIGHUP so vault reopens ${AUDIT}"
+                          # Compress unless it is already over the whole budget (the prune
+                          # below deletes it, and gzip would need space the disk may lack).
+                          if [ "${size}" -le "${MAX_ROTATED_BYTES}" ]; then
+                            gzip -1 "${rotated}" 2>/dev/null || { rm -f "${rotated}.gz"; log "could not compress ${rotated}; kept as is"; }
+                          fi
+                        elif mv "${rotated}" "${AUDIT}"; then
+                          log "ERROR: no vault process took SIGHUP; rotation undone, nothing deleted"
+                        else
+                          log "ERROR: no vault process took SIGHUP and ${rotated} could not be moved back"
+                        fi
+                      else
+                        log "ERROR: could not rename ${AUDIT}"
+                      fi
+                    fi
+                    # Prune rotated files, newest first: keep the newest ones while they fit
+                    # in KEEP_ROTATED files and MAX_ROTATED_BYTES; the first one that does not
+                    # fit, and every older one, is deleted. The live file is never touched.
+                    n=0
+                    total=0
+                    over=0
+                    for f in $(ls -1 "${AUDIT}".* 2>/dev/null | sort -r); do
+                      fsize="$(bytes "${f}")"
+                      [ -n "${fsize}" ] || continue
+                      n=$((n + 1))
+                      total=$((total + fsize))
+                      if [ "${over}" -eq 1 ] || [ "${n}" -gt "${KEEP_ROTATED}" ] || [ "${total}" -gt "${MAX_ROTATED_BYTES}" ]; then
+                        over=1
+                        rm -f "${f}" && log "deleted ${f} (${fsize} bytes): past the limit of ${KEEP_ROTATED} files / ${MAX_ROTATED_BYTES} bytes"
+                      fi
+                    done
+                    used="$(df -P "${DIR}" 2>/dev/null | awk 'NR==2 {gsub("%","",$5); print $5}')"
+                    if [ -n "${used}" ] && [ "${used}" -ge 85 ]; then
+                      log "WARNING: ${DIR} is ${used}% full"
+                    fi
+                    sleep "${INTERVAL_SECONDS}"
+                  done
+              env:
+                - name: AUDIT_FILE
+                  value: /vault/audit/vault_audit.log
+                - name: ROTATE_BYTES
+                  value: "268435456"      # 256MiB
+                - name: KEEP_ROTATED
+                  value: "30"
+                - name: MAX_ROTATED_BYTES
+                  value: "3221225472"     # 3GiB
+                - name: INTERVAL_SECONDS
+                  value: "300"
+              securityContext:
+                allowPrivilegeEscalation: false
+                readOnlyRootFilesystem: true
+                runAsNonRoot: true
+                capabilities:
+                  drop:
+                    - ALL
+                seccompProfile:
+                  type: RuntimeDefault
+              resources:
+                requests:
+                  cpu: 5m
+                  memory: 16Mi
+                limits:
+                  cpu: 200m
+                  memory: 64Mi
+              volumeMounts:
+                - name: audit
+                  mountPath: /vault/audit
+
           serviceAccount:
             create: true
             name: vault
