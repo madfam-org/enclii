@@ -505,8 +505,10 @@ jobs:
     # threshold equals cluster.yaml's `instances`. Also the PagerPathDrill
     # rule, the one critical alert that fires on purpose: its weekly and
     # one-off windows, its two per-product series, and its route to
-    # critical-receiver. promtool evaluates the real rules with the image
-    # production runs; a failed pull skips with a reason.
+    # critical-receiver. And cv's availability and delivery rules
+    # (test_cv_rules.py: 503 and probes never page, the migrate rule reads
+    # the Job's Failed condition). promtool evaluates the real rules with
+    # the image production runs; a failed pull skips with a reason.
     steps:
       - uses: actions/checkout@v7
 
@@ -524,7 +526,7 @@ jobs:
             docker run --rm --entrypoint /bin/promtool -v {dir}:/w:ro
             docker.io/prom/prometheus:v2.53.3
             test rules /w/{name}
-        run: pytest tests/scripts/test_alert_noise_rules.py tests/scripts/test_pager_path_drill.py tests/scripts/test_retainer_cycle_rules.py -v -rs
+        run: pytest tests/scripts/test_alert_noise_rules.py tests/scripts/test_pager_path_drill.py tests/scripts/test_retainer_cycle_rules.py tests/scripts/test_cv_rules.py -v -rs
 
   client-slo-rules-test:
     name: Client SLO rule coverage
