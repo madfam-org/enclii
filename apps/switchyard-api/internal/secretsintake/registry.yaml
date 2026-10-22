@@ -651,6 +651,49 @@ targets:
     keys:
       - fh_session_secret
 
+  # cv (2026-10-22) — the cv product: landing cv.madfam.io, the app
+  # cv-app.madfam.io (an Auth.js BFF that signs in through Janua) and the API
+  # cv-api.madfam.io (audience cv-api), all served by ONE Enclii service `cv`
+  # in namespace cv (repo madfam-org/ai-portfolio-builder). Everything lands
+  # in ONE Vault path, secret/cv, delivered by ONE planned ExternalSecret,
+  # cv-web-auth, in namespace cv. DATABASE_URL is NOT here: it comes from the
+  # onboarding project Secret (cv-secrets), written by `enclii onboard`, which
+  # intake cannot reach.
+  #
+  # TWO targets, one path — one write route per property, the family-history
+  # split. web-oidc is written only by `enclii secrets provision oidc
+  # --platform cv-app` (both the client id and the secret, so the id never
+  # sits in the public repo). web-session only by
+  # `enclii secrets intake submit cv/web-session --generate auth_secret`: it is
+  # Auth.js's own AUTH_SECRET (ruling R42), never the Janua client secret.
+  # Intake writes are merges, so the two land side by side in secret/cv.
+  #
+  # LOWERCASE keys, because that is what Vault stores (normalizeVaultSecretKey)
+  # and what the planned ExternalSecret must map: `property:
+  # auth_janua_client_id`, `auth_janua_client_secret`, `auth_secret`. ESO is
+  # all-or-nothing per ExternalSecret: cv-web-auth stays NotReady until both
+  # targets have been written. Until the ExternalSecret exists, intake still
+  # merges into Vault and reports external_secret_refreshed: false, which is
+  # expected and harmless.
+  cv/web-oidc:
+    label: cv web Janua OAuth client
+    description: cv web (cv-app.madfam.io) Janua confidential client id + secret, filed by `enclii secrets provision oidc --platform cv-app`. No human types either value.
+    vault_path: secret/cv
+    namespace: cv
+    external_secret: cv-web-auth  # pragma: allowlist secret
+    keys:
+      - auth_janua_client_id
+      - auth_janua_client_secret
+
+  cv/web-session:
+    label: cv web session signing secret
+    description: Auth.js AUTH_SECRET for the cv web (signs and encrypts the session cookie); never the Janua client secret. Mint server-side with --generate auth_secret (32 bytes crypto/rand, never returned); rotating it signs every user out.
+    vault_path: secret/cv
+    namespace: cv
+    external_secret: cv-web-auth  # pragma: allowlist secret
+    keys:
+      - auth_secret
+
   # Digital-twins machine edges (2026-10-03). Nine client_credentials pairs,
   # each written ONLY by `enclii secrets provision oidc --platform <id>`
   # (config/ecosystem-oidc-provision.yaml); no human types either value.

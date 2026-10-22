@@ -1,6 +1,6 @@
 # MADFAM ecosystem OIDC auto-provision registry
 # Consumed by: enclii secrets provision oidc
-# Last Updated: 2026-10-13
+# Last Updated: 2026-10-22
 #
 # TWO COPIES, ONE CONTENT. The CLI embeds
 # packages/cli/internal/ecosystemoidc/data/ecosystem-oidc-provision.yaml (go:embed
@@ -581,6 +581,76 @@ platforms:
       website_url: https://cotiza.studio
       redirect_uris:
         - https://cotiza.studio/api/auth/callback/janua
+      allowed_scopes:
+        - openid
+        - profile
+        - email
+        - offline_access
+      grant_types:
+        - authorization_code
+        - refresh_token
+
+  # ---------------------------------------------------------------------------
+  # cv-app — the cv web at cv-app.madfam.io (landing cv.madfam.io, API
+  # cv-api.madfam.io; one Enclii project and service `cv`, namespace cv; repo
+  # madfam-org/ai-portfolio-builder). A CONFIDENTIAL login client: Auth.js
+  # (provider id `janua`) runs authorization_code + PKCE (S256) server-side
+  # and holds the secret, so browsers never see it. PKCE is a per-request
+  # property of the flow, not a client field, so nothing here declares it.
+  # Auth.js, not @madfam/janua-next: the repository is public and must install
+  # from public npm without credentials (the voxa precedent; R45 names the
+  # Auth.js provider as the documented alternative), and janua-next ships no
+  # authorization-code callback.
+  #
+  # ONE redirect URI, exact byte for byte (Janua compares scheme, host, port
+  # and path): Auth.js's callback for provider id `janua` on the app host.
+  # Deliberately NO localhost callback (the family-history-web rule): local
+  # development registers its own client.
+  #
+  # Post-logout https://cv-app.madfam.io/ needs no field: Janua's RP-Initiated
+  # Logout (validate_post_logout_redirect_uri) accepts an exact registered
+  # redirect URI OR the origin root of one, so the callback below admits
+  # https://cv-app.madfam.io/ and nothing on any other host. No allowed-origins
+  # field either: the code exchange is server-to-server, so the browser never
+  # calls Janua cross-origin.
+  #
+  # audience `cv-api` is what cv-api.madfam.io validates bearers against
+  # (RS256 via Janua's JWKS): Janua stamps the client's `audience` as `aud` on
+  # the authorization-code access and refresh tokens, so the session the web
+  # holds is directly usable at the API. This registry has no separate
+  # resource-server record; the audience on this client IS the API's
+  # registration. Scopes are the identity set the other Auth.js login clients
+  # carry (nauta, telesia, lexidrop, cotiza-web); the API authorizes by
+  # audience plus row ownership (Janua `sub`), so no cv:* scope exists yet.
+  #
+  # BOTH the id and the secret go to Vault (target cv/web-oidc, lowercase, as
+  # Vault stores them), family-history-style: the planned cv-web-auth
+  # ExternalSecret maps `property: auth_janua_client_id` -> AUTH_JANUA_CLIENT_ID
+  # and `property: auth_janua_client_secret` -> AUTH_JANUA_CLIENT_SECRET, so the
+  # id stays out of the public repo. AUTH_SECRET is NOT minted here: it has its
+  # own target, cv/web-session (`--generate auth_secret`, ruling R42).
+  # session_intake_target is deliberately unset — it would re-mint the session
+  # secret on every provision re-run and sign every user out.
+  #
+  # NOT pinned with a client_id: the client does not exist yet, so the first
+  # run CREATES it, as a Janua admin (`--profile admin`). Pin the printed jnc_…
+  # id here (both copies) after that run so later runs reconcile instead of
+  # creating a duplicate.
+  # ---------------------------------------------------------------------------
+  cv-app:
+    intake_target: cv/web-oidc
+    intake_key_map:
+      auth_janua_client_id: client_id
+      auth_janua_client_secret: client_secret  # pragma: allowlist secret
+    janua_client:
+      name: MADFAM CV
+      client_key: cv-app  # pragma: allowlist secret
+      audience: cv-api
+      description: cv web (cv-app.madfam.io) — confidential OIDC authorization-code + PKCE client for Auth.js
+      is_confidential: true
+      website_url: https://cv.madfam.io
+      redirect_uris:
+        - https://cv-app.madfam.io/api/auth/callback/janua
       allowed_scopes:
         - openid
         - profile

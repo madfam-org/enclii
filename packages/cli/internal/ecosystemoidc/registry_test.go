@@ -440,6 +440,59 @@ func TestLoadRegistry_cotizaWebLoginClient(t *testing.T) {
 	}, buildIntakeValues(reg.Issuer, "jnc_cotiza", "s3cr3t", p))
 }
 
+// cv-app (2026-10-22). A confidential Auth.js login client shaped like
+// cotiza-web and family-history-web: BOTH the id and the secret are filed in
+// Vault (the planned cv-web-auth ExternalSecret maps them to
+// AUTH_JANUA_CLIENT_ID / AUTH_JANUA_CLIENT_SECRET), one exact production
+// callback on the app host and no localhost twin. Janua's RP-Initiated Logout
+// admits the origin root https://cv-app.madfam.io/ from that entry. Audience
+// cv-api is what cv-api.madfam.io verifies. client_id is deliberately NOT
+// asserted: pinning the printed jnc_… id after the first run must not break this.
+func TestLoadRegistry_cvAppLoginClient(t *testing.T) {
+	reg, err := LoadRegistry("")
+	require.NoError(t, err)
+
+	p, ok := reg.Platforms["cv-app"]
+	require.True(t, ok, "cv-app platform missing")
+	require.NoError(t, validatePlatform(p))
+
+	assert.Equal(t, "cv/web-oidc", p.IntakeTarget)
+	// AUTH_SECRET has its own target (cv/web-session, --generate auth_secret,
+	// ruling R42); a provision re-run must never re-mint it.
+	assert.Empty(t, p.SessionIntakeTarget)
+	// Lowercase, byte for byte what cv-web-auth maps; ESO syncs all of an
+	// ExternalSecret's keys or none.
+	require.Equal(t, map[string]string{
+		"auth_janua_client_id":     "client_id",
+		"auth_janua_client_secret": "client_secret",
+	}, p.IntakeKeyMap)
+
+	jc := p.JanuaClient
+	assert.Equal(t, "MADFAM CV", jc.Name)
+	assert.Equal(t, "cv-app", jc.ClientKey)
+	assert.Equal(t, "cv-api", jc.Audience, "cv-api.madfam.io verifies this audience")
+	assert.Equal(t, "https://cv.madfam.io", jc.WebsiteURL)
+	assert.True(t, jc.confidential(), "Auth.js holds the secret server-side; the client must be confidential")
+	assert.False(t, p.publicLogin())
+	assert.Empty(t, jc.OrganizationID)
+	// Auth.js's callback for provider id `janua`, on the app host only (never
+	// the landing or API host), exact byte for byte.
+	assert.Equal(t, []string{"https://cv-app.madfam.io/api/auth/callback/janua"}, jc.RedirectURIs)
+	for _, u := range jc.RedirectURIs {
+		assert.NotContains(t, u, "localhost", "production client must not accept a localhost callback")
+	}
+	assert.ElementsMatch(t, []string{"openid", "profile", "email", "offline_access"}, jc.AllowedScopes)
+	// First-party silent auth is an operator opt-in, not part of this declaration.
+	assert.NotContains(t, jc.AllowedScopes, "madfam:silent_auth")
+	// The web refreshes its Janua access token, so both grants are required.
+	assert.ElementsMatch(t, []string{"authorization_code", "refresh_token"}, jc.GrantTypes)
+
+	assert.Equal(t, map[string]string{
+		"auth_janua_client_id":     "jnc_cv",
+		"auth_janua_client_secret": "s3cr3t",
+	}, buildIntakeValues(reg.Issuer, "jnc_cv", "s3cr3t", p))
+}
+
 // Digital-twins machine edges (2026-10-03). Nine client_credentials clients:
 // eight copy janua's seed_service_clients.py (SERVICE_CLIENTS and the
 // ORG_BOUND_SERVICE_CLIENTS templates, named `<template>.<org slug>`), the
@@ -662,7 +715,7 @@ func TestReviewedRegistryGrantKindsDoNotDependOnTenant(t *testing.T) {
 			machines++
 		}
 	}
-	require.Equal(t, 14, humans)
+	require.Equal(t, 15, humans)
 	require.Equal(t, 14, machines)
 	p := reg.Platforms["selva-yantra4d"]
 	require.Empty(t, p.JanuaClient.OrganizationID)
