@@ -83,9 +83,13 @@ const (
 )
 
 // reservedRoleNames can never be created or rotated as an application role.
+// pgbouncer_auth is the pooler's auth_query identity (scripts/sql/
+// pgbouncer-auth-query.sql); a database named "pgbouncer" would otherwise let
+// onboarding create or rotate it through the "<database>_" prefix rule.
 var reservedRoleNames = map[string]bool{
 	"postgres":        true,
 	"pgbouncer_admin": true,
+	"pgbouncer_auth":  true,
 }
 
 // ValidateAppRoleName enforces the naming rule for a runtime role on the

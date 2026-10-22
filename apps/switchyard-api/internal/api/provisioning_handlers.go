@@ -197,9 +197,16 @@ func (h *Handler) ReconcilePgbouncerUserlist(c *gin.Context) {
 	if drift.HasMissing() {
 		status = http.StatusConflict
 	}
+	// With auth_query on, missing_from_userlist lists the roles the pooler
+	// cannot authenticate by either path; auth_query_problem says why the
+	// auth_query path is broken, when it is.
 	c.JSON(status, gin.H{
-		"in_sync":               drift.Empty(),
-		"missing_from_userlist": drift.MissingFromUserlist,
-		"stale_in_userlist":     drift.StaleInUserlist,
+		"in_sync":                drift.Empty(),
+		"missing_from_userlist":  drift.MissingFromUserlist,
+		"stale_in_userlist":      drift.StaleInUserlist,
+		"auth_query":             drift.AuthQuery,
+		"auth_user":              drift.AuthUser,
+		"auth_query_problem":     drift.AuthQueryProblem,
+		"direct_connect_skipped": drift.DirectConnectSkipped,
 	})
 }

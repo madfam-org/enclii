@@ -1014,6 +1014,26 @@ targets:
     keys:
       - grafana_admin_password
 
+  # data (2026-10-21) — pgbouncer_auth, the one role the shared pgbouncer logs
+  # in as to run auth_query (infra/k8s/platform-infra/pgbouncer.yaml). The
+  # pgbouncer-auth ExternalSecret (platform-infra) projects it; the pooler's
+  # init container writes it as the first userlist line, and
+  # scripts/pgbouncer-auth-query.sh migrate sets the same value on the Postgres
+  # role, reading it from that Secret in the cluster.
+  #
+  # Generatable: nothing outside the pooler and Postgres holds it. --generate
+  # pgbouncer_auth_password mints 32 bytes (43 characters of base64url), the
+  # shape the init container accepts. Path secret/enclii, which the intake
+  # writer policy already covers; enclii-secrets does not map the property.
+  data/pgbouncer-auth:
+    label: pgbouncer auth_query role password
+    description: Password of the pgbouncer_auth role the shared pgbouncer (namespace data) uses for auth_query. Mint server-side with --generate pgbouncer_auth_password. Projected to the pgbouncer-auth Secret by the pgbouncer-auth ExternalSecret; then run scripts/pgbouncer-auth-query.sh migrate (sets it on the role) and restart the pgbouncer Deployment.
+    vault_path: secret/enclii
+    namespace: data
+    external_secret: pgbouncer-auth  # pragma: allowlist secret
+    keys:
+      - pgbouncer_auth_password
+
   # synthetics (2026-10-14) — the S-Gate 1 synthetic buyer: the identity the
   # journeys CronJob (infra/k8s/production/synthetics) signs in to Dhanam
   # staging with. No Stripe key: only Dhanam holds Stripe keys (2026-04-25

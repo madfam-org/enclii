@@ -107,6 +107,13 @@ rules:
     resources: ["secrets"]
     verbs: ["get", "update"]
     resourceNames: ["pgbouncer-userlist"]
+  # Read (only) pgbouncer_auth's password, so the userlist drift checker can
+  # confirm the auth_query path works: the Secret exists and its value matches
+  # the role's stored verifier in Postgres (a half-landed rotation shows up).
+  - apiGroups: [""]
+    resources: ["secrets"]
+    verbs: ["get"]
+    resourceNames: ["pgbouncer-auth"]
   # Patch PgBouncer Deployment for rollout restart
   - apiGroups: ["apps"]
     resources: ["deployments"]

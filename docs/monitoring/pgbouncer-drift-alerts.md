@@ -40,7 +40,7 @@ detector every 5 minutes and exports:
 
 | Metric | Type | Meaning |
 |---|---|---|
-| `enclii_pgbouncer_userlist_missing_users` | gauge | Count of Postgres login roles absent from the pgbouncer userlist right now. Zero = in sync. |
+| `enclii_pgbouncer_userlist_missing_users` | gauge | Count of Postgres login roles pgbouncer cannot authenticate right now. Static userlist: roles with no line. With auth_query (below): roles with no line that auth_query cannot return, plus the auth user when the auth_query path is broken. Declared direct-connect roles are never counted. Zero = in sync. |
 | `enclii_pgbouncer_userlist_check_errors_total` | counter | Cumulative check runs that errored (DB/k8s access failure, misconfiguration, or a recovered panic) instead of completing a comparison. |
 | `enclii_pgbouncer_userlist_last_check_timestamp_seconds` | gauge | Unix timestamp of the last **successful** check. Only advances on success — an erroring or crashed checker leaves this stale. |
 
@@ -49,6 +49,37 @@ login roles; pgbouncer rejected auth for `fortuna`/`bloom-scroll`/`ceq` while
 the same credentials worked against Postgres directly, hard-down for days
 behind a silent 502) is the incident class rule (a) below turns into a page
 instead of nothing.
+
+## auth_query mode (2026-10-21)
+
+The shared pgbouncer resolves a role with no userlist line through
+`auth_query` (`SELECT usename, passwd FROM pgbouncer.get_auth($1)` in database
+`postgres`, as role `pgbouncer_auth`; config in
+`infra/k8s/platform-infra/pgbouncer.yaml`). A userlist line still wins when
+there is one. The detector reads `pgbouncer.ini` from the `pgbouncer-config`
+ConfigMap, so it follows the config the pooler runs, and then:
+
+- **Counts a role as missing** only when it has no line and auth_query cannot
+  return it: a superuser (`get_auth` never returns one), or a role with no
+  password or an expired `VALID UNTIL`.
+- **Checks the auth_query path itself.** Secret `data/pgbouncer-auth` holds a
+  `pgbouncer_auth_password` that matches role `pgbouncer_auth`'s stored
+  verifier (a half-landed rotation shows up here), the role can log in, and
+  `pgbouncer.get_auth(text)` exists in `auth_dbname` with EXECUTE for it. When
+  any of these fails, every role without a line counts as missing, and so does
+  `pgbouncer_auth`, so the gauge is never 0 while the pooler depends on a
+  broken path. The reconcile endpoint's `auth_query_problem` says which check
+  failed. The fix is `scripts/pgbouncer-auth-query.sh migrate` (role,
+  function, password) or the intake `data/pgbouncer-auth`.
+- **Skips declared direct-connect roles.** The ConfigMap key
+  `direct-connect-roles` lists login roles that connect to Postgres directly
+  (migrators, clients whose DSN names `postgres.data`). They are reported as
+  `direct_connect_skipped` and never counted. The first eight came from 9 hours
+  of pooler logs with zero pooled attempts (internal-devops W1-P, W1P-5).
+
+`GET /v1/admin/provision/pgbouncer/reconcile` returns `auth_query`,
+`auth_user`, `auth_query_problem` and `direct_connect_skipped` alongside
+`missing_from_userlist` and `stale_in_userlist`.
 
 ## The three rules
 
