@@ -12,8 +12,8 @@ import (
 )
 
 // Read-only inputs for the onboarding network-policy narrowing guard
-// (netpolicy.ComputePlan). Nothing here writes, and nothing reads env values
-// or Secrets: only object names and pod-template labels.
+// (netpolicy.ComputePlan). Nothing here writes. Only object names and
+// pod-template labels are read, never env values or Secret objects.
 
 // ListNetworkPolicies returns the live NetworkPolicies in a namespace.
 func (c *Client) ListNetworkPolicies(ctx context.Context, namespace string) ([]networkingv1.NetworkPolicy, error) {
