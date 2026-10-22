@@ -2444,6 +2444,31 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/admin/onboard/netpolicy-plan": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Dry run of the onboarding network_policies step
+         * @description Generates the namespace's NetworkPolicies from the repository's
+         *     enclii.yaml and diffs them against the live policies and workloads.
+         *     Writes nothing. `blocked` is true when onboard or onboard ensure would
+         *     refuse the step without `allow_netpol_narrowing`. Only
+         *     repo_full_name, project_name, namespace and allow_netpol_narrowing
+         *     are read from the body.
+         */
+        post: operations["planOnboardingNetworkPolicies"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/admin/status/services": {
         parameters: {
             query?: never;
@@ -4744,6 +4769,51 @@ export interface components {
             provision_app_role?: components["schemas"]["AppRoleSpec"];
             /** @description Project-Secret keys whose values the server generates. Values are never returned. */
             generate_secrets?: components["schemas"]["GeneratedSecretSpec"][];
+            /**
+             * @description Let the network_policies step apply policies that narrow live
+             *     access: a podSelector {} made app-specific, an allowed port or
+             *     peer a workload loses, or a new namespace-wide deny. Without it
+             *     such a plan is refused, nothing is applied and the step fails.
+             *     See network_policy_plan in the response.
+             * @default false
+             */
+            allow_netpol_narrowing: boolean;
+        };
+        /**
+         * @description Diff between the live NetworkPolicies in the namespace and the ones
+         *     generated from enclii.yaml, with the narrowing guard's findings.
+         */
+        NetworkPolicyPlan: {
+            namespace?: string;
+            changes?: components["schemas"]["NetworkPolicyChange"][];
+            /** @description Changes refused without allow_netpol_narrowing. */
+            refusals?: components["schemas"]["NetworkPolicyFinding"][];
+            warnings?: string[];
+            /** @description Inputs the guard could not read, such as a workload kind it could not list. */
+            notes?: string[];
+            workloads_checked?: number;
+            /** @description The plan narrows live access and was (or would be) refused. */
+            blocked?: boolean;
+            narrowing_allowed?: boolean;
+            applied?: boolean;
+            dry_run?: boolean;
+            /** @description The plan rendered as lines. */
+            diff?: string[];
+        };
+        /** @description The diff of one NetworkPolicy in a NetworkPolicyPlan. */
+        NetworkPolicyChange: {
+            name?: string;
+            /** @enum {string} */
+            action?: "create" | "update" | "unchanged" | "kept";
+            diff?: string[];
+        };
+        /** @description A change the narrowing guard refuses without allow_netpol_narrowing. */
+        NetworkPolicyFinding: {
+            /** @enum {string} */
+            kind?: "selector_narrowed" | "access_lost" | "default_deny_added";
+            policy?: string;
+            workload?: string;
+            message?: string;
         };
         /**
          * @description Database and owner role. Exactly one of role_password and
@@ -8994,6 +9064,7 @@ export interface operations {
                         }[];
                         argocd_yaml?: string;
                         next_steps?: string[];
+                        network_policy_plan?: components["schemas"]["NetworkPolicyPlan"];
                     };
                 };
             };
@@ -9073,6 +9144,49 @@ export interface operations {
                 content?: never;
             };
             /** @description GitHub token or K8s client not available */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    planOnboardingNetworkPolicies: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["OnboardingRequest"];
+            };
+        };
+        responses: {
+            /** @description The plan, or network_declared false when enclii.yaml has no network section */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        namespace?: string;
+                        network_declared?: boolean;
+                        note?: string;
+                        network_policy_plan?: components["schemas"]["NetworkPolicyPlan"];
+                    };
+                };
+            };
+            /** @description Invalid request, or enclii.yaml could not be read */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description K8s client not available, or the live NetworkPolicies could not be read */
             503: {
                 headers: {
                     [name: string]: unknown;

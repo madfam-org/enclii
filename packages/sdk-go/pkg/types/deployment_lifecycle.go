@@ -118,6 +118,12 @@ type OnboardingRequest struct {
 	// GenerateSecrets lists project-Secret keys whose values the server
 	// generates. Values are never returned or logged.
 	GenerateSecrets []GeneratedSecretSpec `json:"generate_secrets,omitempty"`
+
+	// AllowNetpolNarrowing lets the network_policies step apply policies
+	// that narrow live access (a podSelector {} made app-specific, an
+	// allowed port or peer that a workload loses, a new namespace-wide
+	// deny). Without it such a plan is refused and nothing is applied.
+	AllowNetpolNarrowing bool `json:"allow_netpol_narrowing,omitempty"`
 }
 
 // PreflightResult is the response from the preflight validation endpoint

@@ -3867,6 +3867,8 @@ paths:
                     type: array
                     items:
                       type: string
+                  network_policy_plan:
+                    $ref: '#/components/schemas/NetworkPolicyPlan'
         '400':
           description: Invalid request, enclii.yaml, or manifest path not found
         '500':
@@ -3940,6 +3942,45 @@ paths:
           description: Invalid request or manifest path not found
         '503':
           description: GitHub token or K8s client not available
+
+  /v1/admin/onboard/netpolicy-plan:
+    post:
+      summary: Dry run of the onboarding network_policies step
+      description: |
+        Generates the namespace's NetworkPolicies from the repository's
+        enclii.yaml and diffs them against the live policies and workloads.
+        Writes nothing. `blocked` is true when onboard or onboard ensure would
+        refuse the step without `allow_netpol_narrowing`. Only
+        repo_full_name, project_name, namespace and allow_netpol_narrowing
+        are read from the body.
+      tags: [onboarding]
+      operationId: planOnboardingNetworkPolicies
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/OnboardingRequest'
+      responses:
+        '200':
+          description: The plan, or network_declared false when enclii.yaml has no network section
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  namespace:
+                    type: string
+                  network_declared:
+                    type: boolean
+                  note:
+                    type: string
+                  network_policy_plan:
+                    $ref: '#/components/schemas/NetworkPolicyPlan'
+        '400':
+          description: Invalid request, or enclii.yaml could not be read
+        '503':
+          description: K8s client not available, or the live NetworkPolicies could not be read
 
   # ============================================
   # STATUS PAGE MANAGEMENT ENDPOINTS
@@ -8253,6 +8294,86 @@ components:
           description: Project-Secret keys whose values the server generates. Values are never returned.
           items:
             $ref: '#/components/schemas/GeneratedSecretSpec'
+        allow_netpol_narrowing:
+          type: boolean
+          default: false
+          description: |
+            Let the network_policies step apply policies that narrow live
+            access: a podSelector {} made app-specific, an allowed port or
+            peer a workload loses, or a new namespace-wide deny. Without it
+            such a plan is refused, nothing is applied and the step fails.
+            See network_policy_plan in the response.
+
+    NetworkPolicyPlan:
+      type: object
+      description: |
+        Diff between the live NetworkPolicies in the namespace and the ones
+        generated from enclii.yaml, with the narrowing guard's findings.
+      properties:
+        namespace:
+          type: string
+        changes:
+          type: array
+          items:
+            $ref: '#/components/schemas/NetworkPolicyChange'
+        refusals:
+          type: array
+          description: Changes refused without allow_netpol_narrowing.
+          items:
+            $ref: '#/components/schemas/NetworkPolicyFinding'
+        warnings:
+          type: array
+          items:
+            type: string
+        notes:
+          type: array
+          description: Inputs the guard could not read, such as a workload kind it could not list.
+          items:
+            type: string
+        workloads_checked:
+          type: integer
+        blocked:
+          type: boolean
+          description: The plan narrows live access and was (or would be) refused.
+        narrowing_allowed:
+          type: boolean
+        applied:
+          type: boolean
+        dry_run:
+          type: boolean
+        diff:
+          type: array
+          description: The plan rendered as lines.
+          items:
+            type: string
+
+    NetworkPolicyChange:
+      type: object
+      description: The diff of one NetworkPolicy in a NetworkPolicyPlan.
+      properties:
+        name:
+          type: string
+        action:
+          type: string
+          enum: [create, update, unchanged, kept]
+        diff:
+          type: array
+          items:
+            type: string
+
+    NetworkPolicyFinding:
+      type: object
+      description: A change the narrowing guard refuses without allow_netpol_narrowing.
+      properties:
+        kind:
+          type: string
+          enum: [selector_narrowed, access_lost, default_deny_added]
+        policy:
+          type: string
+        workload:
+          type: string
+        message:
+          type: string
 
     PostgresProvisionSpec:
       type: object
