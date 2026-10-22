@@ -76,7 +76,7 @@ jobs:
 
       - name: Upload artefacts
         if: matrix.python-version == '3.12'
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: enclii-sdk-py-dist
           path: packages/sdk-py/dist/

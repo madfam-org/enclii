@@ -256,7 +256,7 @@ jobs:
 
       - name: Upload findings artifact
         if: always() && steps.run-checks.outputs.findings_count != '0'
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: health-regression-findings
           path: findings.jsonl
