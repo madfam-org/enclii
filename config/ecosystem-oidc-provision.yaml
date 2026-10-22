@@ -985,9 +985,9 @@ platforms:
   # by cv's dedicated cv-hcm-client ExternalSecret (ai-portfolio-builder
   # infra/k8s/production/externalsecret-hcm-client.yaml).
   #
-  # NOT pinned yet: the first provision run prints the client id; pin it here
-  # (both copies) so later runs reconcile this client instead of creating a
-  # twin, and put the same id in HCM's MARKET_BENCHMARK_CLIENT_IDS.
+  # Pinned 2026-10-22 from the first provision run (intake
+  # int_1792708658731498229); the same id is in HCM's
+  # MARKET_BENCHMARK_CLIENT_IDS.
   # ---------------------------------------------------------------------------
   cv-hcm-benchmarks:
     intake_target: cv/hcm-client
@@ -995,6 +995,7 @@ platforms:
       hcm_client_id: client_id
       hcm_client_secret: client_secret  # pragma: allowlist secret
     janua_client:
+      client_id: jnc_xlE-loLVhdptMh6wl2fJ1gtAMmduRlo3
       name: cv-hcm-benchmarks
       client_key: cv-hcm-benchmarks  # pragma: allowlist secret
       audience: symbiosis-hcm
