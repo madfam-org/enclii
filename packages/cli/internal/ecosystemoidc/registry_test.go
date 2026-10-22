@@ -700,6 +700,48 @@ func TestLoadRegistry_selvaYantra4dMachineEdge(t *testing.T) {
 	}, buildIntakeValues(reg.Issuer, "jnc_fixture", "fixture-secret", p))
 }
 
+func TestLoadRegistry_cvHCMBenchmarksMachineEdge(t *testing.T) {
+	reg, err := LoadRegistry("")
+	require.NoError(t, err)
+
+	p, ok := reg.Platforms["cv-hcm-benchmarks"]
+	require.True(t, ok, "platform cv-hcm-benchmarks missing")
+	assert.Equal(t, "cv/hcm-client", p.IntakeTarget)
+	assert.Empty(t, p.SessionIntakeTarget, "a machine edge has no session secret")
+	require.Equal(t, map[string]string{
+		"hcm_client_id":     "client_id",
+		"hcm_client_secret": "client_secret",
+	}, p.IntakeKeyMap)
+	for k := range p.IntakeKeyMap {
+		assert.Equal(t, strings.ToLower(k), k,
+			"intake key %q must be lowercase to match cv's cv-hcm-client ExternalSecret property", k)
+	}
+
+	jc := p.JanuaClient
+	assert.Equal(t, "cv-hcm-benchmarks", jc.Name)
+	assert.Equal(t, "cv-hcm-benchmarks", jc.ClientKey)
+	assert.Equal(t, "symbiosis-hcm", jc.Audience, "HCM's own JANUA_AUDIENCE")
+	assert.Empty(t, jc.OrganizationID, "public benchmarks carry no tenant; the edge is platform-admin")
+	assert.Equal(t, []string{"hcm-benchmarks:read"}, jc.AllowedScopes)
+	assert.Regexp(t, `^[a-z][a-z0-9._-]*:[a-z][a-z0-9_-]*$`, jc.AllowedScopes[0],
+		"Janua registers only namespace:action scopes")
+	assert.Equal(t, []string{"client_credentials"}, jc.GrantTypes)
+	assert.Empty(t, jc.RedirectURIs, "a client_credentials client has no browser leg")
+	require.NotNil(t, jc.IsConfidential)
+	assert.True(t, jc.confidential())
+	assert.False(t, p.publicLogin())
+	assert.NotEmpty(t, jc.Description)
+
+	kind, err := jc.kind()
+	require.NoError(t, err)
+	assert.Equal(t, machineClient, kind)
+
+	assert.Equal(t, map[string]string{
+		"hcm_client_id":     "jnc_fixture",
+		"hcm_client_secret": "fixture-secret",
+	}, buildIntakeValues(reg.Issuer, "jnc_fixture", "fixture-secret", p))
+}
+
 func TestReviewedRegistryGrantKindsDoNotDependOnTenant(t *testing.T) {
 	reg, err := LoadRegistry("")
 	require.NoError(t, err)
@@ -716,7 +758,7 @@ func TestReviewedRegistryGrantKindsDoNotDependOnTenant(t *testing.T) {
 		}
 	}
 	require.Equal(t, 15, humans)
-	require.Equal(t, 14, machines)
+	require.Equal(t, 15, machines)
 	p := reg.Platforms["selva-yantra4d"]
 	require.Empty(t, p.JanuaClient.OrganizationID)
 	kind, err := p.JanuaClient.kind()
