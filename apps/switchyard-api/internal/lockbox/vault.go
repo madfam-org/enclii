@@ -1,10 +1,8 @@
 package lockbox
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -198,6 +196,13 @@ func (v *VaultClient) GetSecretMetadata(ctx context.Context, path string) (*Secr
 // MergeSecretData merges key/value pairs into a Vault KV v2 path without
 // returning secret values. It preserves existing keys when the path already
 // exists and returns the new Vault version when Vault reports one.
+//
+// The read-merge-write runs under KV-v2 check-and-set (MutateSecretData): the
+// write carries the version it read, and a concurrent writer that got there
+// first forces a fresh read and merge instead of being overwritten. Without it,
+// two intakes into one path (crea-sim's three training kernels share
+// secret/crea-sim-map01) could each read version N and the later write would
+// silently drop the key the earlier one added.
 func (v *VaultClient) MergeSecretData(ctx context.Context, path string, updates map[string]interface{}) (int, error) {
 	if !v.enabled {
 		return 0, fmt.Errorf("Vault client is disabled")
@@ -208,52 +213,14 @@ func (v *VaultClient) MergeSecretData(ctx context.Context, path string, updates 
 	if len(updates) == 0 {
 		return 0, fmt.Errorf("at least one secret key is required")
 	}
-
-	existing, err := v.readSecretData(ctx, path)
-	if err != nil {
-		return 0, err
-	}
-	for key, value := range updates {
+	for key := range updates {
 		if strings.TrimSpace(key) == "" {
 			return 0, fmt.Errorf("secret key cannot be empty")
 		}
-		existing[key] = value
 	}
-
-	payload, err := json.Marshal(map[string]interface{}{"data": existing})
-	if err != nil {
-		return 0, fmt.Errorf("failed to encode Vault write payload: %w", err)
-	}
-
-	url := fmt.Sprintf("%s/v1/%s", v.address, vaultKVv2DataPath(path))
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewReader(payload))
-	if err != nil {
-		return 0, fmt.Errorf("failed to create write request: %w", err)
-	}
-	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("X-Vault-Token", v.token)
-	if v.namespace != "" {
-		req.Header.Set("X-Vault-Namespace", v.namespace)
-	}
-
-	resp, err := v.httpClient.Do(req)
-	if err != nil {
-		return 0, fmt.Errorf("failed to write secret: %w", err)
-	}
-	defer func() { _ = resp.Body.Close() }()
-	if resp.StatusCode < http.StatusOK || resp.StatusCode >= http.StatusMultipleChoices {
-		body, _ := io.ReadAll(resp.Body)
-		return 0, fmt.Errorf("vault returned status %d: %s", resp.StatusCode, string(body))
-	}
-
-	var writeResp vaultKVWriteResponse
-	if err := json.NewDecoder(resp.Body).Decode(&writeResp); err != nil {
-		if errors.Is(err, io.EOF) {
-			return 0, nil
-		}
-		return 0, fmt.Errorf("failed to decode write response: %w", err)
-	}
-	return writeResp.Data.Version, nil
+	return v.MutateSecretData(ctx, path, func(map[string]interface{}) (map[string]interface{}, error) {
+		return updates, nil
+	})
 }
 
 // GetSecretData returns EVERY key at a KV v2 path.
