@@ -254,10 +254,15 @@ func refreshAccessToken(creds *Credentials) (*Credentials, error) {
 // file with 0600 permissions. Mirrors the writer in internal/cmd/login.go —
 // kept here so refreshAccessToken can update the file without an import cycle.
 func saveCredentials(creds *Credentials) error {
+	return saveCredentialsFor(activeProfile, creds)
+}
+
+// saveCredentialsFor persists Credentials to one named profile's file.
+func saveCredentialsFor(profile string, creds *Credentials) error {
 	if creds == nil {
 		return fmt.Errorf("nil credentials")
 	}
-	credsPath := GetCredentialsPath()
+	credsPath := credentialsPathFor(profile)
 	if err := os.MkdirAll(filepath.Dir(credsPath), 0700); err != nil {
 		return err
 	}
@@ -270,11 +275,16 @@ func saveCredentials(creds *Credentials) error {
 
 // loadCredentials loads the active profile's saved OAuth credentials from disk
 func loadCredentials() (*Credentials, error) {
+	return loadCredentialsFor(activeProfile)
+}
+
+// loadCredentialsFor loads one named profile's saved OAuth credentials.
+func loadCredentialsFor(profile string) (*Credentials, error) {
 	if _, err := os.UserHomeDir(); err != nil {
 		return nil, err
 	}
 
-	data, err := os.ReadFile(GetCredentialsPath())
+	data, err := os.ReadFile(credentialsPathFor(profile))
 	if err != nil {
 		return nil, err
 	}
@@ -291,9 +301,40 @@ func loadCredentials() (*Credentials, error) {
 // ~/.enclii/credentials.json for the default profile, and
 // ~/.enclii/profiles/<name>/credentials.json for any other profile.
 func GetCredentialsPath() string {
+	return credentialsPathFor(activeProfile)
+}
+
+func credentialsPathFor(profile string) string {
 	home, _ := os.UserHomeDir()
-	if activeProfile == "" || activeProfile == DefaultProfile {
+	if profile == "" || profile == DefaultProfile {
 		return filepath.Join(home, ".enclii", "credentials.json")
 	}
-	return filepath.Join(home, ".enclii", "profiles", activeProfile, "credentials.json")
+	return filepath.Join(home, ".enclii", "profiles", profile, "credentials.json")
+}
+
+// ProfileAPIToken returns another profile's stored access token without
+// switching the active profile. A command that needs two identities at once
+// uses it: since ADR-003 an operation can need a Janua admin session for one
+// call and the platform_admin operator for the next. A token near expiry is
+// refreshed and saved back to that profile, as ReloadCredentials does for the
+// active one. It refuses a profile with no unexpired login.
+func ProfileAPIToken(name string) (string, error) {
+	profile, err := NormalizeProfile(name)
+	if err != nil {
+		return "", err
+	}
+	creds, err := loadCredentialsFor(profile)
+	if err != nil || creds == nil || creds.AccessToken == "" {
+		return "", fmt.Errorf("profile %q is not logged in — run `enclii --profile %s login`", profile, profile)
+	}
+	if shouldRefresh(creds) && creds.RefreshToken != "" {
+		if refreshed, rerr := refreshAccessToken(creds); rerr == nil {
+			creds = refreshed
+			_ = saveCredentialsFor(profile, creds)
+		}
+	}
+	if !time.Now().Before(creds.ExpiresAt) {
+		return "", fmt.Errorf("profile %q login has expired — run `enclii --profile %s login`", profile, profile)
+	}
+	return creds.AccessToken, nil
 }

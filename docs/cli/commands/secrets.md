@@ -378,6 +378,23 @@ enclii secrets provision oidc --all --dry-run --reason "ecosystem sweep"
 | `--rotate-secret` | Rotate the Janua client secret when an existing client has no retrievable secret (default `false`; deliberate rotation only) |
 | `--json` | JSON output (no secret values) |
 | `--grace-hours` | Grace period, `0`–`168` hours, for the previous secrets when a secret is rotated. Unset keeps Janua's default (24 h) |
+| `--intake-profile` | Stored login that submits the Vault intake (the `platform_admin` operator under ADR-003). The active profile keeps the Janua calls. Unset uses the active profile |
+
+**Two identities since ADR-003 (2026-10-17).** The Vault intake routes accept only
+the `platform_admin` operator, so a tenant administrator such as `admin@madfam.io`
+gets `403 platform_admin rank required`. Keep `--profile admin` for the Janua calls
+and name the operator's login with `--intake-profile`:
+
+```bash
+enclii --profile admin secrets provision oidc --platform cv-app \
+  --intake-profile default --reason "cv-app sign-in"
+```
+
+Before any Janua change the run lists the intake targets as that login, so a
+refused login or an unknown target stops it with Janua untouched. A run that
+created a client and then lost its intake (the CLI before this check) leaves a
+confidential client whose one-time secret was never stored: re-run with
+`--rotate-secret --grace-hours 0`.
 
 For Dhanam, also auto-submits `dhanam/session-auth` (generated `SESSION_SECRET` /
 `NEXTAUTH_SECRET`) when configured in the registry. After provision, force-sync

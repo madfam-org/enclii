@@ -252,7 +252,9 @@ scripts/apply-switchyard-vault-policy-remote.sh`):
 
 ```bash
 export ENCLII_API_ENDPOINT=https://api.enclii.dev
-# Creating a Janua client needs a Janua admin session (`--profile admin`).
+# Creating a Janua client needs a Janua admin session (`--profile admin`); since
+# ADR-003 the intake needs the platform_admin operator: add `--intake-profile default`
+# (docs/cli/commands/secrets.md#enclii-secrets-provision-oidc).
 # Until a CLI release embeds family-history-web, pass the registry from a main checkout:
 enclii --profile admin secrets provision oidc --platform family-history-web \
   --registry config/ecosystem-oidc-provision.yaml \

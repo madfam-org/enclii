@@ -16,6 +16,14 @@ type IntakeSubmitter interface {
 	SubmitIntake(ctx context.Context, target, reason string, values map[string]string) (intakeID string, err error)
 }
 
+// IntakePreflighter is optionally implemented by an IntakeSubmitter that can
+// prove, read-only, that its identity may write every target before the run
+// touches Janua. Without it a refused intake lands after a client create or a
+// secret rotation, and the one-time secret is lost.
+type IntakePreflighter interface {
+	PreflightIntake(ctx context.Context, targets []string) error
+}
+
 // ProvisionOptions controls one platform provision run.
 type ProvisionOptions struct {
 	PlatformID      string
@@ -119,6 +127,17 @@ func ProvisionPlatform(
 			result.PlannedGraceHours = opts.GraceHours
 		}
 		return result, nil
+	}
+	if strings.TrimSpace(platform.IntakeTarget) != "" {
+		if pre, ok := submitter.(IntakePreflighter); ok {
+			targets := []string{platform.IntakeTarget}
+			if platform.SessionIntakeTarget != "" {
+				targets = append(targets, platform.SessionIntakeTarget)
+			}
+			if err := pre.PreflightIntake(ctx, targets); err != nil {
+				return ProvisionResult{}, fmt.Errorf("intake preflight refused before any Janua change: %w", err)
+			}
+		}
 	}
 	remote, created, err := janua.registerOrReconcile(ctx, platform.JanuaClient)
 	if err != nil {
@@ -328,6 +347,37 @@ func exactIntakeReportKeys(reported, expected []string) bool {
 type HTTPIntakeSubmitter struct {
 	Post func(ctx context.Context, path string, body []byte) ([]byte, error)
 	Get  func(ctx context.Context, path string) ([]byte, error)
+}
+
+// PreflightIntake lists the intake targets through the same platform_admin
+// gate the submit uses (ADR-003), so a refused identity or an unknown target
+// fails before a Janua create or rotation. The listing carries no values.
+func (s HTTPIntakeSubmitter) PreflightIntake(ctx context.Context, targets []string) error {
+	if s.Get == nil {
+		return fmt.Errorf("intake identity cannot be verified")
+	}
+	body, err := s.Get(ctx, "/v1/secrets/intake/targets")
+	if err != nil {
+		return err
+	}
+	var listing struct {
+		Targets []struct {
+			ID string `json:"id"`
+		} `json:"targets"`
+	}
+	if len(body) > 1_048_576 || decodeProviderJSON(body, &listing) != nil {
+		return fmt.Errorf("intake target listing unreadable")
+	}
+	known := make(map[string]bool, len(listing.Targets))
+	for _, t := range listing.Targets {
+		known[t.ID] = true
+	}
+	for _, target := range targets {
+		if !known[target] {
+			return fmt.Errorf("intake target %q is not registered", target)
+		}
+	}
+	return nil
 }
 
 func (s HTTPIntakeSubmitter) SubmitIntake(ctx context.Context, target, reason string, values map[string]string) (string, error) {

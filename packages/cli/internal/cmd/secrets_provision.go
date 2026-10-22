@@ -25,6 +25,7 @@ func newSecretsProvisionCommand(cfg *config.Config) *cobra.Command {
 		dryRun          bool
 		jsonOut         bool
 		graceHours      int
+		intakeProfile   string
 	)
 
 	cmd := &cobra.Command{
@@ -36,13 +37,19 @@ Uses the Janua access token from ` + "`enclii login`" + ` (admin@madfam.io) to r
 reconcile OAuth clients, then writes OIDC material into Vault via Switchyard
 secret intake. Secret values are never printed.
 
+Since ADR-003 only the platform_admin operator may submit an intake, and that
+is often not the Janua admin. --intake-profile names the stored login that
+submits the intake while the active profile keeps the Janua calls. The run
+checks the intake login first and changes nothing in Janua if it is refused.
+
 Examples:
   export ENCLII_API_ENDPOINT=https://api.enclii.dev
   enclii login
   enclii secrets provision oidc --platform dhanam --reason "post-rebuild oidc"
   enclii secrets provision oidc --all --reason "ecosystem oidc sweep"
   enclii secrets provision oidc --platform dhanam --dry-run
-  enclii secrets provision oidc --platform zavlo-cfdi-emitter --grace-hours 0 --reason "rotate"`,
+  enclii secrets provision oidc --platform zavlo-cfdi-emitter --grace-hours 0 --reason "rotate"
+  enclii --profile admin secrets provision oidc --platform cv-app --intake-profile default --reason "cv-app login"`,
 	}
 
 	oidc := &cobra.Command{
@@ -89,7 +96,14 @@ Examples:
 			}
 			janua := ecosystemoidc.NewJanuaClient(januaToken, os.Getenv("JANUA_INTERNAL_API_KEY"))
 
-			apiClient := client.NewAPIClient(cfg.APIEndpoint, cfg.APIToken)
+			intakeToken := cfg.APIToken
+			if cmd.Flags().Changed("intake-profile") && !dryRun {
+				intakeToken, err = config.ProfileAPIToken(intakeProfile)
+				if err != nil {
+					return fmt.Errorf("--intake-profile: %w", err)
+				}
+			}
+			apiClient := client.NewAPIClient(cfg.APIEndpoint, intakeToken)
 			submitter := ecosystemoidc.HTTPIntakeSubmitter{
 				Post: func(ctx context.Context, path string, body []byte) ([]byte, error) {
 					return apiClient.PostRaw(ctx, path, bytes.NewReader(body))
@@ -175,6 +189,7 @@ Examples:
 	oidc.Flags().BoolVar(&rotateIfMissing, "rotate-secret", false, "Rotate Janua client secret when an existing client has no retrievable secret")
 	oidc.Flags().BoolVar(&dryRun, "dry-run", false, "Plan Janua reconcile without Vault intake")
 	oidc.Flags().BoolVar(&jsonOut, "json", false, "JSON output (no secret values)")
+	oidc.Flags().StringVar(&intakeProfile, "intake-profile", "", "Stored login that submits the Vault intake (the platform_admin operator, ADR-003); the active profile keeps the Janua calls. Unset uses the active profile")
 	oidc.Flags().IntVar(&graceHours, "grace-hours", 0, fmt.Sprintf("Grace period (0-%d hours) for previous secrets when a secret is rotated; 0 retires them immediately. Unset keeps Janua's default", ecosystemoidc.MaxGraceHours))
 	oidc.AddCommand(newOIDCInspectCommand(cfg))
 	oidc.AddCommand(newOIDCSIMSSOCommand(cfg))
