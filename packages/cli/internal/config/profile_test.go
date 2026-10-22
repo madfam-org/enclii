@@ -146,3 +146,50 @@ func TestReloadCredentials_SwitchesProfileButExplicitTokenWins(t *testing.T) {
 		t.Errorf("explicit token overridden: %q", cfg.APIToken)
 	}
 }
+
+// ProfileAPIToken reads a second identity without switching the active one, so
+// one command can act as the Janua admin and as the platform_admin operator.
+func TestProfileAPIToken_ReadsNamedProfileWithoutSwitching(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Cleanup(func() { _ = SetProfile("") })
+	writeProfileCreds(t, home, DefaultProfile, "default-token")
+	writeProfileCreds(t, home, "admin", "admin-token")
+
+	if err := SetProfile("admin"); err != nil {
+		t.Fatal(err)
+	}
+	got, err := ProfileAPIToken("")
+	if err != nil || got != "default-token" {
+		t.Fatalf("ProfileAPIToken(default) = %q, %v; want default-token", got, err)
+	}
+	if ActiveProfile() != "admin" {
+		t.Fatalf("active profile switched to %q", ActiveProfile())
+	}
+	if got, err := ProfileAPIToken("admin"); err != nil || got != "admin-token" {
+		t.Fatalf("ProfileAPIToken(admin) = %q, %v; want admin-token", got, err)
+	}
+}
+
+func TestProfileAPIToken_RefusesMissingExpiredOrInvalidProfile(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	if _, err := ProfileAPIToken("ops"); err == nil {
+		t.Fatal("missing profile accepted")
+	}
+	if _, err := ProfileAPIToken("../admin"); err == nil {
+		t.Fatal("invalid profile name accepted")
+	}
+	dir := filepath.Join(home, ".enclii", "profiles", "stale")
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	// Expired with no refresh token: nothing to renew, so it must refuse.
+	data, _ := json.Marshal(Credentials{AccessToken: "old", TokenType: "Bearer", ExpiresAt: time.Now().Add(-time.Hour)})
+	if err := os.WriteFile(filepath.Join(dir, "credentials.json"), data, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := ProfileAPIToken("stale"); err == nil {
+		t.Fatal("expired login accepted")
+	}
+}

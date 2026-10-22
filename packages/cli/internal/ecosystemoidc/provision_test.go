@@ -389,6 +389,9 @@ func TestNativeShapedSessionStatusFailureRetainsBothIntakeIDs(t *testing.T) {
 			return nil, nil
 		},
 		Get: func(_ context.Context, path string) ([]byte, error) {
+			if path == "/v1/secrets/intake/targets" {
+				return json.Marshal(map[string]interface{}{"targets": []map[string]string{{"id": p.IntakeTarget}, {"id": p.SessionIntakeTarget}}})
+			}
 			reads++
 			if path == "/v1/secrets/intake/int_primary" {
 				return json.Marshal(map[string]interface{}{"intake_id": "int_primary", "target_id": p.IntakeTarget, "status": "ready", "keys_written": []string{"CREA_SIM_JANUA_UI_ID", "CREA_SIM_JANUA_UI_SECRET"}, "vault_version": 4, "external_secret_refreshed": true})
@@ -406,5 +409,44 @@ func TestNativeShapedSessionStatusFailureRetainsBothIntakeIDs(t *testing.T) {
 	}
 	if provider.posts != 1 || provider.rotations != 0 {
 		t.Fatal("custody status failure recreated or rotated the provider client")
+	}
+}
+
+// A refused intake identity (ADR-003: only the platform_admin operator may
+// write) or an unknown target must stop the run before Janua creates a client
+// or rotates a secret, or the one-time secret is lost with nowhere to land.
+func TestIntakePreflightRefusalLeavesJanuaUntouched(t *testing.T) {
+	cases := map[string]func(context.Context, string) ([]byte, error){
+		"identity refused": func(context.Context, string) ([]byte, error) {
+			return nil, fmt.Errorf("API error 403: platform_admin rank required (ADR-003)")
+		},
+		"target missing": func(context.Context, string) ([]byte, error) {
+			return []byte(`{"targets":[{"id":"other/oidc"}]}`), nil
+		},
+		"listing unreadable": func(context.Context, string) ([]byte, error) {
+			return []byte(`{"targets":[{"id":"a"}],"targets":[]}`), nil
+		},
+	}
+	for name, get := range cases {
+		t.Run(name, func(t *testing.T) {
+			spec := humanFixtureSpec(t)
+			provider := newProviderFixture(t, spec, nil)
+			p := embedded(t).Platforms["crea-sim"]
+			p.JanuaClient = spec
+			submitter := HTTPIntakeSubmitter{
+				Post: func(context.Context, string, []byte) ([]byte, error) {
+					t.Fatal("intake written after a refused preflight")
+					return nil, nil
+				},
+				Get: get,
+			}
+			_, err := ProvisionPlatform(context.Background(), &Registry{Issuer: "https://auth.example.test", Platforms: map[string]Platform{"fixture": p}}, provider.client(false), submitter, ProvisionOptions{PlatformID: "fixture", Reason: "synthetic preflight", RotateIfMissing: true})
+			if err == nil || !strings.Contains(err.Error(), "before any Janua change") {
+				t.Fatalf("preflight did not refuse first: %v", err)
+			}
+			if provider.posts != 0 || provider.rotations != 0 {
+				t.Fatal("Janua was changed before the intake identity was proven")
+			}
+		})
 	}
 }
