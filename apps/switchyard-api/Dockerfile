@@ -52,9 +52,15 @@ ENV COSIGN_VERSION=v3.1.3
 # v0.41.0, so those floors move 0.41 -> 0.42 and 0.40 -> 0.41. Verified
 # locally: go get + go mod tidy + go build of cosign v3.1.3 succeed, and
 # `go version -m` shows x/net v0.60.0, x/text v0.42.0, x/mod v0.41.0, grpc v1.83.2.
+# 2026-10-22: klauspost/compress floor added at v1.18.7 for CVE-2026-63209
+# (HIGH; cosign v3.1.3 pins v1.18.6). It failed `Scan: switchyard-api` on
+# /usr/local/bin/cosign in run 39722393318, so the digests carrying enclii#833
+# and #836 were not pinned. Verified locally: go get + go mod tidy + go build of
+# cosign v3.1.3 succeed, and `go version -m` shows compress v1.18.7 with the
+# other floors unchanged.
 RUN git clone --depth 1 -b "${COSIGN_VERSION}" https://github.com/sigstore/cosign /tmp/cosign-src && \
     cd /tmp/cosign-src && \
-    go get golang.org/x/text@v0.42.0 google.golang.org/grpc@v1.83.2 golang.org/x/mod@v0.41.0 golang.org/x/net@v0.60.0 && \
+    go get golang.org/x/text@v0.42.0 google.golang.org/grpc@v1.83.2 golang.org/x/mod@v0.41.0 golang.org/x/net@v0.60.0 github.com/klauspost/compress@v1.18.7 && \
     go mod tidy && \
     CGO_ENABLED=0 go build -o /usr/local/bin/cosign ./cmd/cosign && \
     rm -rf /tmp/cosign-src
