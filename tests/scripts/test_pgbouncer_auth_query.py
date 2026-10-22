@@ -19,6 +19,11 @@ THE CHAIN THIS PINS
     -> switchyard-api's drift checker (PgbouncerAuthFunction, the Secret name and
        key, the direct-connect-roles ConfigMap key) and its RBAC.
 
+  The admin console user (2026-10-22) has a parallel, optional chain:
+  intake target data/pgbouncer-admin -> secret/enclii:pgbouncer_admin_password
+    -> ExternalSecret data/pgbouncer-admin -> Secret pgbouncer-admin, mounted
+       optional -> the init container's second line -> admin_users/stats_users.
+
 Three layers:
   1. Static: every copy of a name agrees (no cluster, no database).
   2. Behaviour of the shell that ships: the init container script run with sh,
@@ -48,6 +53,7 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 PLATFORM_INFRA = REPO_ROOT / "infra" / "k8s" / "platform-infra"
 PGBOUNCER_YAML = PLATFORM_INFRA / "pgbouncer.yaml"
 EXTERNAL_SECRET = PLATFORM_INFRA / "pgbouncer-auth.externalsecret.yaml"
+ADMIN_EXTERNAL_SECRET = PLATFORM_INFRA / "pgbouncer-admin.externalsecret.yaml"
 KUSTOMIZATION = PLATFORM_INFRA / "kustomization.yaml"
 MIGRATE_SQL = REPO_ROOT / "scripts" / "sql" / "pgbouncer-auth-query.sql"
 ROLLBACK_SQL = REPO_ROOT / "scripts" / "sql" / "pgbouncer-auth-query-rollback.sql"
@@ -59,6 +65,8 @@ RBAC = REPO_ROOT / "infra" / "k8s" / "cross-namespace-rbac" / "rbac.yaml"
 FUNCTION = "pgbouncer.get_auth(text)"
 SECRET_NAME = "pgbouncer-auth"  # pragma: allowlist secret
 SECRET_KEY = "pgbouncer_auth_password"  # pragma: allowlist secret
+ADMIN_SECRET_NAME = "pgbouncer-admin"  # pragma: allowlist secret
+ADMIN_SECRET_KEY = "pgbouncer_admin_password"  # pragma: allowlist secret
 # internal-devops audits/2026-10-17-infra-stability/lanes/W1-P.md, W1P-5.
 W1P_DIRECT_ROLES = {
     "app_admin", "janua_migrator", "phyne", "posthog",
@@ -66,6 +74,7 @@ W1P_DIRECT_ROLES = {
 }
 # A recognisable fake password in the shape intake --generate mints.
 FAKE_PW = "TESTONLYpgbouncerAuthNotARealPassword_0123"  # pragma: allowlist secret
+FAKE_ADMIN_PW = "TESTONLYpgbouncerAdminNotARealPassword_456"  # pragma: allowlist secret
 
 
 def _docs(path: Path) -> list[dict]:
@@ -162,6 +171,32 @@ def test_intake_target_matches_the_external_secret():
     assert target["keys"] == [SECRET_KEY]
 
 
+def test_admin_console_user_has_its_own_vault_chain():
+    """pgbouncer_admin is in admin_users and stats_users; the console has no
+    Postgres backend, so only a userlist line lets it log in (2026-10-22)."""
+    cm, _ = _pgbouncer()
+    s = _ini_settings(cm["data"]["pgbouncer.ini"])
+    assert s["admin_users"] == "pgbouncer_admin"
+    assert s["stats_users"] == "pgbouncer_admin"
+    (es,) = _docs(ADMIN_EXTERNAL_SECRET)
+    assert es["kind"] == "ExternalSecret"
+    assert es["metadata"] == {**es["metadata"], "name": ADMIN_SECRET_NAME, "namespace": "data"}
+    assert es["spec"]["secretStoreRef"] == {"name": "vault-store", "kind": "ClusterSecretStore"}
+    assert es["spec"]["target"]["name"] == ADMIN_SECRET_NAME
+    assert es["spec"]["target"]["creationPolicy"] == "Owner"
+    assert es["spec"]["target"]["deletionPolicy"] == "Retain"
+    (item,) = es["spec"]["data"]
+    assert item["secretKey"] == ADMIN_SECRET_KEY
+    assert item["remoteRef"]["key"] == "secret/enclii"
+    assert item["remoteRef"]["property"] == ADMIN_SECRET_KEY
+    assert "pgbouncer-admin.externalsecret.yaml" in yaml.safe_load(KUSTOMIZATION.read_text())["resources"]
+    target = yaml.safe_load(REGISTRY.read_text())["targets"]["data/pgbouncer-admin"]
+    assert target["vault_path"] == "secret/enclii"
+    assert target["namespace"] == "data"
+    assert target["external_secret"] == ADMIN_SECRET_NAME
+    assert target["keys"] == [ADMIN_SECRET_KEY]
+
+
 def test_deployment_wires_the_generated_userlist():
     _, deploy = _pgbouncer()
     spec = deploy["spec"]["template"]["spec"]
@@ -170,15 +205,21 @@ def test_deployment_wires_the_generated_userlist():
     assert not volumes["pgbouncer-auth"]["secret"].get("optional"), (
         "required on purpose: without it new pods wait and the old ones keep serving"
     )
+    assert volumes["pgbouncer-admin"]["secret"]["secretName"] == ADMIN_SECRET_NAME
+    assert volumes["pgbouncer-admin"]["secret"]["optional"] is True, (
+        "optional on purpose: the pooler must start before intake writes the admin password"
+    )
     assert volumes["pgbouncer-generated"]["emptyDir"]["medium"] == "Memory"
     init = next(c for c in spec["initContainers"] if c["name"] == "build-userlist")
     mounts = {m["name"]: m["mountPath"] for m in init["volumeMounts"]}
     assert mounts == {
         "pgbouncer-userlist": "/etc/pgbouncer-userlist-source",
         "pgbouncer-auth": "/etc/pgbouncer-auth",
+        "pgbouncer-admin": "/etc/pgbouncer-admin",
         "pgbouncer-generated": "/etc/pgbouncer-generated",
     }
     assert f"/etc/pgbouncer-auth/{SECRET_KEY}" in init["command"][2]
+    assert f"/etc/pgbouncer-admin/{ADMIN_SECRET_KEY}" in init["command"][2]
     main = next(c for c in spec["containers"] if c["name"] == "pgbouncer")
     userlist_mount = next(m for m in main["volumeMounts"] if m["mountPath"] == "/etc/pgbouncer/userlist.txt")
     assert userlist_mount["name"] == "pgbouncer-generated"
@@ -212,18 +253,23 @@ def test_switchyard_can_read_only_the_auth_secret():
 # --------------------------------------------------------------------------
 
 
-def _run_init(tmp_path: Path, password: str | None, source: str | None):
-    src_dir, auth_dir, out_dir = (tmp_path / n for n in ("src", "auth", "out"))
-    for d in (src_dir, auth_dir, out_dir):
-        d.mkdir()
+def _run_init(tmp_path: Path, password: str | None, source: str | None, admin: str | None = None):
+    # admin None: the optional pgbouncer-admin Secret does not exist, so its
+    # volume is an empty directory (what kubelet mounts for optional: true).
+    src_dir, auth_dir, admin_dir, out_dir = (tmp_path / n for n in ("src", "auth", "admin", "out"))
+    for d in (src_dir, auth_dir, admin_dir, out_dir):
+        d.mkdir(parents=True)
     if source is not None:
         (src_dir / "userlist.txt").write_text(source)
     if password is not None:
         (auth_dir / SECRET_KEY).write_text(password)
+    if admin is not None:
+        (admin_dir / ADMIN_SECRET_KEY).write_text(admin)
     script = (
         _init_script()
         .replace("/etc/pgbouncer-userlist-source", str(src_dir))
         .replace("/etc/pgbouncer-auth", str(auth_dir))
+        .replace("/etc/pgbouncer-admin", str(admin_dir))
         .replace("/etc/pgbouncer-generated", str(out_dir))
     )
     proc = subprocess.run(["sh", "-c", script], capture_output=True, text=True, timeout=30)
@@ -263,6 +309,45 @@ def test_init_script_fails_without_the_secret_file(tmp_path):
     assert text is None
 
 
+def test_init_script_without_the_admin_secret_says_the_console_is_closed(tmp_path):
+    proc, text, _ = _run_init(tmp_path, FAKE_PW, '"janua" "j"\n')
+    assert proc.returncode == 0, proc.stderr
+    assert text.splitlines() == [f'"pgbouncer_auth" "{FAKE_PW}"', '"janua" "j"']
+    assert "1 line(s) from pgbouncer-userlist" in proc.stdout
+    assert "admin console closed" in proc.stdout
+
+
+def test_init_script_puts_the_admin_line_second_and_drops_a_hand_kept_one(tmp_path):
+    source = '"janua" "j"\n"pgbouncer_admin" "stale"\n"pgbouncer_auth" "stale"\n"ceq" "c"\n'
+    proc, text, out = _run_init(tmp_path, FAKE_PW, source, admin=FAKE_ADMIN_PW)
+    assert proc.returncode == 0, proc.stderr
+    assert text.splitlines() == [
+        f'"pgbouncer_auth" "{FAKE_PW}"',
+        f'"pgbouncer_admin" "{FAKE_ADMIN_PW}"',
+        '"janua" "j"',
+        '"ceq" "c"',
+    ]
+    assert FAKE_PW not in proc.stdout + proc.stderr
+    assert FAKE_ADMIN_PW not in proc.stdout + proc.stderr
+    assert "pgbouncer_auth + pgbouncer_admin + 2 line(s) from pgbouncer-userlist" in proc.stdout
+    assert oct(out.stat().st_mode & 0o777) == "0o600"
+
+
+@pytest.mark.parametrize(
+    "admin, why",
+    [
+        ("short_but_valid_chars", "pgbouncer_admin password is shorter than 32"),
+        (FAKE_ADMIN_PW[:-1] + '"', "pgbouncer_admin password has characters outside base64url"),
+        ("", "pgbouncer_admin password is shorter than 32"),
+    ],
+)
+def test_init_script_refuses_an_admin_password_that_could_break_the_userlist(tmp_path, admin, why):
+    proc, text, _ = _run_init(tmp_path, FAKE_PW, '"janua" "j"\n', admin=admin)
+    assert proc.returncode != 0
+    assert why in proc.stderr
+    assert text is None, "nothing is written when the admin password is refused"
+
+
 # --------------------------------------------------------------------------
 # 2b. scripts/pgbouncer-auth-query.sh against stub ssh / sudo / kubectl
 # --------------------------------------------------------------------------
@@ -288,11 +373,15 @@ case "$args" in
   *"get secret pgbouncer-auth -o jsonpath={.data.pgbouncer_auth_password}"*)
     printf '%s' "$STUB_SECRET_B64" ;;
   *"get secret pgbouncer-auth -o name"*) echo "secret/pgbouncer-auth" ;;
+  *"get secret pgbouncer-admin -o name"*)
+    [ "${STUB_ADMIN_LINE:-absent}" = present ] || exit 1
+    echo "secret/pgbouncer-admin" ;;
   *"get externalsecret"*) echo "EXTERNALSECRET READY REASON"; echo "pgbouncer-auth True SecretSynced" ;;
   *"get configmap pgbouncer-config"*) cat "$STUB_INI" ;;
   *"get pods -l app=pgbouncer"*) printf 'pgbouncer-a\\npgbouncer-b\\n' ;;
   *"exec -i deploy/postgres"*) cat >> "$STUB_PSQL_STDIN"; echo "psql ok" ;;
   *"exec -i pgbouncer-"*) cat > /dev/null; echo "pooled SCRAM login ok as pgbouncer_auth_probe" ;;
+  *"exec pgbouncer-"*"echo present"*) echo "${STUB_ADMIN_LINE:-absent}" ;;
   *"exec pgbouncer-"*) echo '"pgbouncer_auth"' ;;
   *"logs pgbouncer-"*) : ;;
   *) echo "unexpected kubectl call: $args" >&2; exit 7 ;;
@@ -410,6 +499,34 @@ def test_probe_drops_its_role_and_keeps_the_password_off_argv(stub_env):
     assert proc.stdout.count(": OK") == 2, "one line per pooler pod"
 
 
+def test_verify_skips_the_admin_console_visibly_without_an_admin_line(stub_env):
+    env, tmp = stub_env
+    proc = _wrapper(env, "verify")
+    assert proc.returncode == 0, proc.stderr
+    assert proc.stdout.count("admin console: SKIPPED") == 2, "one line per pooler pod"
+    assert "[WARN] admin console check skipped on 2 pooler pod(s)" in proc.stdout
+    assert "enclii secrets intake submit data/pgbouncer-admin --generate pgbouncer_admin_password" in proc.stdout
+    assert "SHOW USERS" not in _calls(tmp), "no login attempt with an empty password"
+
+
+def test_verify_runs_show_users_when_the_admin_line_exists(stub_env):
+    env, tmp = stub_env
+    env = _Env({**env, "STUB_ADMIN_LINE": "present"})
+    proc = _wrapper(env, "verify")
+    assert proc.returncode == 0, proc.stderr
+    assert "SKIPPED" not in proc.stdout and "[WARN]" not in proc.stdout
+    assert _calls(tmp).count("SHOW USERS") == 2
+
+
+def test_precheck_reports_the_admin_secret_by_name_only(stub_env):
+    env, _ = stub_env
+    proc = _wrapper(env, "precheck")
+    assert proc.returncode == 0, proc.stderr
+    assert "secret/pgbouncer-admin is missing: the admin console stays closed" in proc.stdout
+    env = _Env({**env, "STUB_ADMIN_LINE": "present"})
+    assert "secret/pgbouncer-admin exists" in _wrapper(env, "precheck").stdout
+
+
 def test_verify_rejects_a_role_name_that_is_not_an_identifier(stub_env):
     env, _ = stub_env
     proc = _wrapper(env, "verify", "ceq; DROP ROLE x")
@@ -506,10 +623,10 @@ def cluster(tmp_path_factory):
             time.sleep(0.1)
         raise AssertionError("pgbouncer did not start:\n" + (base / "pgb.log").read_text())
 
-    def pooled(user: str, password: str, db: str = "postgres"):
+    def pooled(user: str, password: str, db: str = "postgres", sql: str = "select current_user"):
         env = _Env({**os.environ, "PGPASSWORD": password, "PGCONNECT_TIMEOUT": "5"})
         return subprocess.run(
-            [PG_BIN / "psql", "-X", "-At", "-h", "127.0.0.1", "-p", str(pgb_port), "-U", user, "-d", db, "-c", "select current_user"],
+            [PG_BIN / "psql", "-X", "-At", "-h", "127.0.0.1", "-p", str(pgb_port), "-U", user, "-d", db, "-c", sql],
             env=env, capture_output=True, text=True,
         )
 
@@ -562,6 +679,23 @@ def test_end_to_end_pooled_logins(cluster, tmp_path):
     assert pooled("ops_super", "superpw").returncode != 0, "get_auth never returns a superuser"
     assert pooled("expired_svc", "exppw").returncode != 0
     assert pooled("pgbouncer_auth", FAKE_PW).returncode == 0, "the auth line itself"
+
+    # The admin console: closed without the optional admin Secret (the
+    # hand-kept list has no admin line), open with it (2026-10-22).
+    proc, no_admin, _ = _run_init(tmp_path / "no-admin", FAKE_PW, '"listed" "listedpw"\n')
+    assert proc.returncode == 0, proc.stderr
+    start_pgbouncer(no_admin)
+    assert pooled("pgbouncer_admin", FAKE_ADMIN_PW, "pgbouncer", "SHOW USERS").returncode != 0
+    proc, with_admin, _ = _run_init(tmp_path / "admin", FAKE_PW, '"listed" "listedpw"\n', admin=FAKE_ADMIN_PW)
+    assert proc.returncode == 0, proc.stderr
+    start_pgbouncer(with_admin)
+    console = pooled("pgbouncer_admin", FAKE_ADMIN_PW, "pgbouncer", "SHOW USERS")
+    assert console.returncode == 0, console.stderr
+    assert "pgbouncer_admin" in console.stdout
+    assert pooled("pgbouncer_admin", "wrong", "pgbouncer", "SHOW USERS").returncode != 0
+    assert pooled("listed", "listedpw").returncode == 0
+    assert pooled("ceq", "ceqpw", "ceq").returncode == 0, "auth_query unaffected by the admin line"
+    start_pgbouncer(built)
 
     # Nobody but pgbouncer_auth can call the lookup.
     denied = psql("SET ROLE listed; SELECT * FROM pgbouncer.get_auth('ceq')", check=False)
