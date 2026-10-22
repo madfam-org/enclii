@@ -12,7 +12,7 @@ import (
 func TestLoadRegistry(t *testing.T) {
 	reg, err := LoadRegistry()
 	require.NoError(t, err)
-	assert.Len(t, reg, 96)
+	assert.Len(t, reg, 98)
 	assert.Contains(t, reg, "ceq/vast-api-key")
 	assert.Contains(t, reg, "karafiel/web-oidc-janua")
 	adminSession := reg["karafiel/admin-session"]
@@ -37,7 +37,7 @@ func TestGetTarget(t *testing.T) {
 func TestListTargetsSorted(t *testing.T) {
 	list, err := ListTargets()
 	require.NoError(t, err)
-	require.Len(t, list, 96)
+	require.Len(t, list, 98)
 	for i := 1; i < len(list); i++ {
 		assert.Less(t, list[i-1].ID, list[i].ID, "targets should be sorted by id")
 	}
@@ -66,6 +66,8 @@ func TestListTargetsSorted(t *testing.T) {
 		"creator-census/web-oidc",
 		"creator-census/web-session",
 		"creator-census/youtube-key",
+		"cv/web-oidc",
+		"cv/web-session",
 		"data/pgbouncer-auth",
 		"dhanam/app-infra",
 		"dhanam/banxico",
@@ -616,6 +618,42 @@ func TestVoxaWebSessionAndAPIRuntimeTargets(t *testing.T) {
 				assert.Equal(t, strings.ToLower(k), k, "Vault stores lowercase; an upper-case key would never match the ExternalSecret property")
 			}
 			assert.NotEqual(t, "voxa-secrets", tgt.ExternalSecret, "voxa-secrets is the onboarding Secret; intake cannot reach it")
+			assert.NotEmpty(t, tgt.Label)
+			assert.NotEmpty(t, tgt.Description)
+			// AUTH_SECRET must carry at least 32 bytes when minted with --generate.
+			assert.GreaterOrEqual(t, tgt.GenerateBytes(), 32)
+		})
+	}
+}
+
+// cv (2026-10-22): the cv web (cv-app.madfam.io) signs in through Janua with
+// Auth.js. Both targets land at secret/cv in namespace cv through ONE planned
+// ExternalSecret, cv-web-auth, never the onboarding Secret cv-secrets (intake
+// cannot reach it). One write route per property: web-oidc only through
+// `enclii secrets provision oidc --platform cv-app`, web-session only through
+// --generate auth_secret (Auth.js AUTH_SECRET, ruling R42: never the Janua
+// client secret). Pinned so a rename is a test failure, not a write to a
+// property cv-web-auth does not map.
+func TestCvWebAuthTargets(t *testing.T) {
+	cases := []struct {
+		id   string
+		keys []string
+	}{
+		{"cv/web-oidc", []string{"auth_janua_client_id", "auth_janua_client_secret"}},
+		{"cv/web-session", []string{"auth_secret"}},
+	}
+	for _, tc := range cases {
+		t.Run(tc.id, func(t *testing.T) {
+			tgt, err := GetTarget(tc.id)
+			require.NoError(t, err)
+			assert.Equal(t, "secret/cv", tgt.VaultPath)
+			assert.Equal(t, "cv", tgt.Namespace)
+			assert.Equal(t, "cv-web-auth", tgt.ExternalSecret)
+			assert.NotEqual(t, "cv-secrets", tgt.ExternalSecret, "cv-secrets is the onboarding Secret; intake cannot reach it")
+			assert.Equal(t, tc.keys, tgt.Keys)
+			for _, k := range tgt.Keys {
+				assert.Equal(t, strings.ToLower(k), k, "Vault stores lowercase; an upper-case key would never match the ExternalSecret property")
+			}
 			assert.NotEmpty(t, tgt.Label)
 			assert.NotEmpty(t, tgt.Description)
 			// AUTH_SECRET must carry at least 32 bytes when minted with --generate.

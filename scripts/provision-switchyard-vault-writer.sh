@@ -11,7 +11,7 @@
 # Policy-only (add paths without rotating writer token):
 #   POLICY_ONLY=1 VAULT_TOKEN_FILE=... ./scripts/provision-switchyard-vault-writer.sh
 #
-# Last Updated: 2026-10-14 (fabrication-prep: R2 credential mirror from `enclii buckets create`)
+# Last Updated: 2026-10-22 (cv: secret/cv for the cv/web-oidc and cv/web-session intake targets)
 set -euo pipefail
 
 VAULT_NS="${VAULT_NS:-vault}"
@@ -581,6 +581,20 @@ path "secret/metadata/fabrication-prep" {
   capabilities = ["read", "list"]
 }
 path "secret/metadata/fabrication-prep/*" {
+  capabilities = ["read", "list"]
+}
+
+# cv — added 2026-10-22 with the intake targets cv/web-oidc (written by
+# `enclii secrets provision oidc --platform cv-app`) and cv/web-session
+# (`--generate auth_secret`). Exact path only: both targets write secret/cv
+# and nothing below it. Merged in git is not applied in Vault: re-apply this
+# policy (ASSERT_PATH=cv scripts/apply-switchyard-vault-policy-remote.sh)
+# before the first run, or the run reconciles the Janua client and then 403s
+# on the Vault merge.
+path "secret/data/cv" {
+  capabilities = ["create", "update", "patch", "read"]
+}
+path "secret/metadata/cv" {
   capabilities = ["read", "list"]
 }
 
