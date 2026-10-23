@@ -6,12 +6,10 @@
 # asked first". These classes make that ordering explicit and reviewable
 # BEFORE there is a tenant to be unfair to.
 #
-# NOTHING USES THEM YET, ON PURPOSE.
-# No pod spec in this repo sets `priorityClassName`. They are declared now so
-# the ordering is a reviewed artifact rather than a value invented under
-# pressure during the first capacity incident, and so that wiring them later
-# is a one-line change per scale set rather than a design discussion. Creating
-# an unreferenced PriorityClass has no runtime effect whatsoever.
+# The on-demand deploy pool references enclii-deploy. Other classes remain
+# declared for future adoption; blue CI retains its existing default priority.
+# Enabling the deploy class changes waiting order, never resource limits or
+# running-job ownership.
 #
 # WHY preemptionPolicy: Never, ON ALL OF THEM
 # Preemption would EVICT a running job to make room for a higher-priority one.
