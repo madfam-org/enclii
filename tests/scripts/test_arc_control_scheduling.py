@@ -68,7 +68,8 @@ def test_recovery_validation_keeps_checks_on_existing_deploy_pool():
     assert "pre-commit run detect-secrets --all-files" in script
     assert "pre-commit run gitleaks --all-files" in script
     assert "pre-commit run detect-secrets --files" in script
-    assert "pre-commit run gitleaks --files" in script
+    assert 'git add "$probe"' in script
+    assert "if pre-commit run gitleaks > gl.out" in script
     for colour in ("blue", "deploy"):
         scale_set = next(
             d
