@@ -60,6 +60,15 @@ def test_recovery_validation_keeps_checks_on_existing_deploy_pool():
     assert (
         "github.event_name == 'workflow_dispatch'" in workflow["jobs"]["deploy"]["if"]
     )
+    scanner = documents(".github/workflows/pre-commit-secret-hooks.yml")[0]["jobs"][
+        "secret-hooks"
+    ]
+    assert scanner["runs-on"] == "ubuntu-24.04"
+    script = "\n".join(step.get("run", "") for step in scanner["steps"])
+    assert "pre-commit run detect-secrets --all-files" in script
+    assert "pre-commit run gitleaks --all-files" in script
+    assert "pre-commit run detect-secrets --files" in script
+    assert "pre-commit run gitleaks --files" in script
     for colour in ("blue", "deploy"):
         scale_set = next(
             d
