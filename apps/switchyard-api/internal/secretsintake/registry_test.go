@@ -12,7 +12,7 @@ import (
 func TestLoadRegistry(t *testing.T) {
 	reg, err := LoadRegistry()
 	require.NoError(t, err)
-	assert.Len(t, reg, 98)
+	assert.Len(t, reg, 99)
 	assert.Contains(t, reg, "ceq/vast-api-key")
 	assert.Contains(t, reg, "karafiel/web-oidc-janua")
 	adminSession := reg["karafiel/admin-session"]
@@ -37,7 +37,7 @@ func TestGetTarget(t *testing.T) {
 func TestListTargetsSorted(t *testing.T) {
 	list, err := ListTargets()
 	require.NoError(t, err)
-	require.Len(t, list, 98)
+	require.Len(t, list, 99)
 	for i := 1; i < len(list); i++ {
 		assert.Less(t, list[i-1].ID, list[i].ID, "targets should be sorted by id")
 	}
@@ -66,6 +66,7 @@ func TestListTargetsSorted(t *testing.T) {
 		"creator-census/web-oidc",
 		"creator-census/web-session",
 		"creator-census/youtube-key",
+		"cv/hcm-client",
 		"cv/web-oidc",
 		"cv/web-session",
 		"data/pgbouncer-auth",
@@ -660,6 +661,27 @@ func TestCvWebAuthTargets(t *testing.T) {
 			assert.GreaterOrEqual(t, tgt.GenerateBytes(), 32)
 		})
 	}
+}
+
+// cv → Symbiosis-HCM market benchmarks (2026-10-22): the client_credentials
+// pair of ecosystem-oidc platform cv-hcm-benchmarks lands at secret/cv through
+// its OWN ExternalSecret, cv-hcm-client, never cv-web-auth (all-or-nothing, it
+// must not wait on this pair) nor the onboarding Secret cv-secrets. Written only
+// by the OIDC provisioner, so the target generates nothing.
+func TestCvHCMClientTarget(t *testing.T) {
+	tgt, err := GetTarget("cv/hcm-client")
+	require.NoError(t, err)
+	assert.Equal(t, "secret/cv", tgt.VaultPath)
+	assert.Equal(t, "cv", tgt.Namespace)
+	assert.Equal(t, "cv-hcm-client", tgt.ExternalSecret)
+	assert.NotEqual(t, "cv-web-auth", tgt.ExternalSecret)
+	assert.NotEqual(t, "cv-secrets", tgt.ExternalSecret)
+	assert.Equal(t, []string{"hcm_client_id", "hcm_client_secret"}, tgt.Keys)
+	for _, k := range tgt.Keys {
+		assert.Equal(t, strings.ToLower(k), k, "Vault stores lowercase")
+	}
+	assert.NotEmpty(t, tgt.Label)
+	assert.NotEmpty(t, tgt.Description)
 }
 
 // tulana (2026-10-05): four keys tulana generates for itself at secret/tulana,

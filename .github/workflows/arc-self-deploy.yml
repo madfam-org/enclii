@@ -52,9 +52,9 @@ env:
 jobs:
   validate:
     name: Validate Configuration
-    # ARC deploy validation must run from the Enclii-provisioned runner network.
-    # GitHub-hosted runners cannot reach the private Kubernetes API.
-    runs-on: madfam-runners-blue
+    # Both pools have Enclii-provisioned cluster-network access. Use the
+    # dedicated deploy pool so capacity repairs do not wait behind blue CI.
+    runs-on: madfam-runners-deploy
     outputs:
       changes_detected: ${{ steps.changes.outputs.any_changed }}
     steps:

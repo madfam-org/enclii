@@ -315,7 +315,7 @@ spec:
                 - name: SET_ORG_SECRET
                   value: "true"
                 - name: NPM_ROTATION_REPO_ALLOWLIST
-                  value: "janua,dhanam,forj,karafiel,enclii,avala,forgesight,rondelio,janua-react-sdk"
+                  value: "janua,dhanam,forj,karafiel,enclii,avala,forgesight,rondelio,janua-react-sdk,pliego"
               resources:
                 requests:
                   cpu: "50m"

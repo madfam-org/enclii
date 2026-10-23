@@ -155,9 +155,17 @@ spec:
   githubConfigSecret: github-app-secret
   runnerScaleSetName: madfam-runners-deploy
   maxRunners: 2
-  minRunners: 1
+  minRunners: 0
   listenerTemplate:
     spec:
+      affinity:
+        nodeAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            nodeSelectorTerms:
+            - matchExpressions:
+              - key: role
+                operator: NotIn
+                values: [builder]
       containers:
       - name: listener
         resources:
@@ -185,6 +193,7 @@ spec:
       annotations:
         arc.enclii.dev/deployed-at: ""
     spec:
+      priorityClassName: enclii-deploy
       imagePullSecrets:
         - name: ghcr-credentials
       nodeSelector: 

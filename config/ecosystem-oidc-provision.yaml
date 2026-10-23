@@ -963,6 +963,49 @@ platforms:
       grant_types:
         - client_credentials
 
+  # ---------------------------------------------------------------------------
+  # cv → Symbiosis-HCM market benchmarks (2026-10-22). MADFAM CV's server asks
+  # HCM's GET /api/v1/market-benchmarks/ for the public ENOE (INEGI) income
+  # range of a saved job's occupation and state. One edge, one client, one
+  # scope: client_credentials only, scope hcm-benchmarks:read, no browser leg.
+  #
+  # audience `symbiosis-hcm` is HCM's own JANUA_AUDIENCE (the audience the
+  # nauta-symbiosis-hcm edge already holds). PLATFORM-ADMIN, no
+  # organization_id: the benchmark is public official data and reads no
+  # tenant, and an org binding would put an org_id (and, per Janua #595, the
+  # scope as an app role) on a token that must carry no tenant at all. HCM
+  # authorizes it by token_use=client_credentials + the `scope` claim + an
+  # allowlist of client ids (MARKET_BENCHMARK_CLIENT_IDS in its
+  # api-deployment.yaml), never by a role, so the scope grants nothing else.
+  # The scope has ONE colon because Janua registers only `namespace:action`.
+  # Registering a client_credentials client without an organization needs a
+  # Janua platform-admin session.
+  #
+  # The pair lands at secret/cv through cv/hcm-client (LOWERCASE keys), read
+  # by cv's dedicated cv-hcm-client ExternalSecret (ai-portfolio-builder
+  # infra/k8s/production/externalsecret-hcm-client.yaml).
+  #
+  # Pinned 2026-10-22 from the first provision run (intake
+  # int_1792708658731498229); the same id is in HCM's
+  # MARKET_BENCHMARK_CLIENT_IDS.
+  # ---------------------------------------------------------------------------
+  cv-hcm-benchmarks:
+    intake_target: cv/hcm-client
+    intake_key_map:
+      hcm_client_id: client_id
+      hcm_client_secret: client_secret  # pragma: allowlist secret
+    janua_client:
+      client_id: jnc_xlE-loLVhdptMh6wl2fJ1gtAMmduRlo3
+      name: cv-hcm-benchmarks
+      client_key: cv-hcm-benchmarks  # pragma: allowlist secret
+      audience: symbiosis-hcm
+      description: Machine edge (client_credentials) from MADFAM CV's server to Symbiosis-HCM's public ENOE market benchmarks. Platform-admin, scope hcm-benchmarks:read only; sends a job title and a state, never a person.
+      is_confidential: true
+      allowed_scopes:
+        - hcm-benchmarks:read
+      grant_types:
+        - client_credentials
+
   crea-sim:
     intake_target: crea-sim/ui-oidc
     intake_key_map:

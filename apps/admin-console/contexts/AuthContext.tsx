@@ -145,11 +145,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const isAuthorized =
     user !== null && isAllowedDomain(user.email) && hasAllowedRole(user.roles)
 
-  // Check authentication status on mount
-  useEffect(() => {
-    checkAuth()
-  }, [])
-
   const checkAuth = useCallback(async () => {
     try {
       // Two-tab focus: if we arrived carrying `#janua_sid=<sid>` (from Janua's
@@ -226,6 +221,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setIsLoading(false)
     }
   }, [])
+
+  // Check authentication status on mount after the stable callback is declared.
+  useEffect(() => {
+    checkAuth()
+  }, [checkAuth])
 
   const login = useCallback(async (options?: LoginOptions) => {
     // Generate PKCE parameters for secure OAuth 2.0 flow

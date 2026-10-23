@@ -694,6 +694,25 @@ targets:
     keys:
       - auth_secret
 
+  # cv → Symbiosis-HCM market benchmarks (2026-10-22). The client_credentials
+  # pair of ecosystem-oidc platform cv-hcm-benchmarks (scope
+  # hcm-benchmarks:read, audience symbiosis-hcm), written ONLY by
+  # `enclii secrets provision oidc --platform cv-hcm-benchmarks`; no human
+  # types either value. Same path as cv/web-oidc (secret/cv, a merge) but its
+  # OWN ExternalSecret, cv-hcm-client, so the benchmark edge can be absent or
+  # rotated without touching sign-in: cv-web-auth is all-or-nothing and must
+  # never wait on this pair. LOWERCASE keys, as Vault stores them; cv's
+  # ExternalSecret maps them to HCM_CLIENT_ID / HCM_CLIENT_SECRET.
+  cv/hcm-client:
+    label: cv → Symbiosis-HCM market benchmarks client
+    description: Janua client_credentials pair (cv-hcm-benchmarks, scope hcm-benchmarks:read) cv's server uses for HCM's public ENOE market benchmarks. Filed by `enclii secrets provision oidc --platform cv-hcm-benchmarks`.
+    vault_path: secret/cv
+    namespace: cv
+    external_secret: cv-hcm-client  # pragma: allowlist secret
+    keys:
+      - hcm_client_id
+      - hcm_client_secret
+
   # Digital-twins machine edges (2026-10-03). Nine client_credentials pairs,
   # each written ONLY by `enclii secrets provision oidc --platform <id>`
   # (config/ecosystem-oidc-provision.yaml); no human types either value.
