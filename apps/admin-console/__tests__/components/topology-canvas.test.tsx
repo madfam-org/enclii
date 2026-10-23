@@ -24,7 +24,8 @@ const snapshot: TopologyResponse = {
     capacity: { cpu_millicores: 1000, memory_bytes: 512, pods: 10 },
   }],
   namespaces: [{ name: 'tenant-a', pod_count: 1, deployment_count: 1, service_count: 0, pod_phases: { Pending: 1 } }],
-  pods: [], services: [], synced_at: '2026-10-22T12:00:00Z',
+  pods: [{ name: 'pending-a', namespace: 'tenant-a', node: '', phase: 'Pending', ready: '0/1', restart_count: 0, age_seconds: 30, containers: [] }],
+  services: [], synced_at: '2026-10-22T12:00:00Z',
   totals: { nodes: 1, pods: 1, namespaces: 1, services: 0, cpu_capacity_millicores: 1000, cpu_used_millicores: 500, memory_capacity_bytes: 512, memory_used_bytes: 256 },
   display: { cpu_capacity: '1 core', cpu_used: '500m', memory_capacity: '512 B', memory_used: '256 B' },
 }
@@ -37,6 +38,9 @@ it('shows builder roles and explains that requests are not utilization', async (
   expect(screen.getByText(/builder/)).toBeInTheDocument()
   expect(screen.getByText('CPU requests')).toBeInTheDocument()
   expect(screen.getByText(/not live utilization/)).toBeInTheDocument()
+  expect(screen.getByRole('region', { name: 'Unscheduled pods' })).toBeInTheDocument()
+  expect(screen.getByRole('button', { name: 'tenant-a/pending-a' })).toBeInTheDocument()
+  expect(screen.getByText('1 pending pods awaiting node assignment')).toBeInTheDocument()
 })
 it.each([401, 403])('discards cached inventory after access refusal %s', async (status) => {
   mockFetch.mockResolvedValueOnce(snapshot).mockRejectedValueOnce(new TopologyFetchError('Access refused', status))

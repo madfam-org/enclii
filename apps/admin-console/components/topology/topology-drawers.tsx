@@ -218,7 +218,7 @@ export function TopologyPodDrawer({ pod, topology, onClose }: PodDrawerProps) {
             )}
           </DialogTitle>
           <DialogDescription>
-            {podData?.namespace} • on node {podData?.node}
+            {podData?.namespace} • {podData?.node ? `on node ${podData.node}` : 'awaiting node assignment'}
           </DialogDescription>
         </DialogHeader>
 

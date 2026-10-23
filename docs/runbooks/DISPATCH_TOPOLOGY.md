@@ -18,7 +18,8 @@ a browser reload alone cannot apply it. See the
 Nodes and namespace placements come from observed Kubernetes objects. Builder
 roles recognize both `role=builder` and `enclii.dev/role=builder` in Switchyard.
 Pending pods remain in inventory and namespace phase counts even when they have
-no assigned node.
+no assigned node. The unscheduled-pods section opens their pod drawers without
+inventing a node placement or inferring why scheduling failed.
 
 CPU and memory bars represent regular-container requests of running pods against
 node allocatable resources. They are not live utilization or complete scheduler

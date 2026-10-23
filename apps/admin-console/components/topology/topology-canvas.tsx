@@ -232,6 +232,10 @@ export function TopologyCanvas() {
     () => (data ? buildGraph(data) : { nodes: [], edges: [] }),
     [data]
   )
+  const unscheduledPods = useMemo(
+    () => data?.pods.filter((pod) => pod.phase === 'Pending' && !pod.node) ?? [],
+    [data]
+  )
 
   const handleNodeClick = useCallback<NodeMouseHandler>((_, node) => {
     if (node.id.startsWith('node:')) {
@@ -325,6 +329,26 @@ export function TopologyCanvas() {
         CPU and memory show regular-container requests for running pods, not live utilization
         or complete scheduler reservations. Pending pods and init containers are excluded.
       </p>
+
+      {unscheduledPods.length > 0 && (
+        <section aria-label="Unscheduled pods" className="rounded-md border border-border p-3">
+          <p className="mb-2 text-xs font-medium">
+            {unscheduledPods.length} pending pods awaiting node assignment
+          </p>
+          <div className="flex max-h-28 flex-wrap gap-2 overflow-y-auto">
+            {unscheduledPods.map((pod) => (
+              <Button
+                key={`${pod.namespace}/${pod.name}`}
+                variant="outline"
+                size="sm"
+                onClick={() => setSelectedPod({ namespace: pod.namespace, name: pod.name })}
+              >
+                {pod.namespace}/{pod.name}
+              </Button>
+            ))}
+          </div>
+        </section>
+      )}
 
       <div className="flex-1 rounded-lg border border-border overflow-hidden">
         <ReactFlow nodes={graph.nodes} edges={graph.edges} fitView onNodeClick={handleNodeClick}>
