@@ -306,7 +306,7 @@ spec:
         - "--log-level=info"
         - "--log-format=json"
         - "--runner-max-concurrent-reconciles=2"
-        - "--update-strategy=immediate"
+        - "--update-strategy=eventual"
         - "--listener-metrics-addr="
         - "--listener-metrics-endpoint="
         - "--metrics-addr=:8080"
@@ -344,6 +344,13 @@ spec:
       - name: tmp
         emptyDir: {}
       affinity:
+        nodeAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            nodeSelectorTerms:
+            - matchExpressions:
+              - key: role
+                operator: NotIn
+                values: [builder]
         podAntiAffinity:
           preferredDuringSchedulingIgnoredDuringExecution:
           - podAffinityTerm:
