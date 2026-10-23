@@ -1,5 +1,10 @@
 # Dispatch topology inventory
 
+> Boundary checkpoint (2026-10-22, platform engineering): this document covers
+> the public-safe inventory contract and release checks. Live operator identities,
+> raw topology and incident receipts remain in `internal-devops`. Policy:
+> [public repository boundary](../PUBLIC_REPO_BOUNDARY.md).
+
 Dispatch's `/topology` page reads `/api/topology`, which forwards the signed-in
 caller's token to Switchyard's read-only `POST /v1/ops/inventory/topology` adapter.
 Switchyard owns Kubernetes access and checks the server-resolved platform-admin
