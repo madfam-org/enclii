@@ -27,6 +27,26 @@ allowlist. **A new file in this directory is not deployed until it is named
 there.** That is why `monitoring.yaml` sat looking healthy for 82 days
 without ever being applied.
 
+## Capacity recovery without cancelling jobs
+
+Controller pods require non-builder nodes and retain two replicas, leader
+election and a disruption budget. Values and rendered manifests explicitly
+select `updateStrategy: eventual`: a runner-template change waits for assigned
+jobs to finish instead of stopping active runners. ARC configuration validation
+uses the existing dedicated deploy pool, with the same Helm and manifest checks,
+so a blue scheduling backlog cannot block its own repair.
+
+Do not change an active scale set's listener template merely to move its listener.
+Upstream reports a warm-runner listener recreation deadlock for values-only
+changes on the deployed controller version
+([upstream report](https://github.com/actions/actions-runner-controller/issues/4432)).
+A follow-up deploy-pool capacity change must wait until the eventual-strategy
+controller rollout is verified through Enclii. Observe pool assignments before
+and after the change; no active runner deletion or workflow cancellation is part
+of this recovery. The second phase can make the deploy pool start on demand and
+use the existing non-preempting deploy PriorityClass. It must preserve the blue
+worker template and verify actual pickup of previously queued jobs.
+
 ## Controller ownership
 
 The controller excludes `app.kubernetes.io/instance` when copying labels to
