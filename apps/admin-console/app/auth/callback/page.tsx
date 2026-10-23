@@ -44,10 +44,6 @@ function AuthCallbackContent() {
   const router = useRouter()
   const searchParams = useSearchParams()
 
-  useEffect(() => {
-    handleCallback()
-  }, [])
-
   const handleCallback = async () => {
     try {
       // Two-tab focus: if Janua's switch-session?return_sid landed us here with
@@ -169,6 +165,10 @@ function AuthCallbackContent() {
       }, 3000)
     }
   }
+
+  useEffect(() => {
+    handleCallback()
+  }, [])
 
   return (
     <div className="min-h-screen flex items-center justify-center p-4">
