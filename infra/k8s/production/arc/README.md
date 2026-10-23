@@ -16,7 +16,7 @@ halved capacity.
 | `runner-deploy/rendered.yaml` | `madfam-runners-deploy` — the ADR-010a deploy pool, `maxRunners: 2` | `arc-runners-deploy` |
 | `pool-health-alert.yaml` | the detector that pages when the pool stops serving jobs | `arc-watchdog` |
 | `stuck-runner-watchdog.yaml` | purges EphemeralRunners stuck against completed runs | `arc-watchdog` |
-| `priority-classes.yaml` | runner PriorityClasses — declared, **not yet referenced** | `arc-watchdog` |
+| `priority-classes.yaml` | non-preempting deploy priority; other classes declared | `arc-watchdog` |
 | `monitoring.yaml` | ServiceMonitor + PrometheusRule. **Not deployed and not coverage** — see its own header | nothing |
 
 `madfam-runners-green` exists only as Helm values: a dormant standby for
@@ -40,11 +40,12 @@ Do not change an active scale set's listener template merely to move its listene
 Upstream reports a warm-runner listener recreation deadlock for values-only
 changes on the deployed controller version
 ([upstream report](https://github.com/actions/actions-runner-controller/issues/4432)).
-A follow-up deploy-pool capacity change must wait until the eventual-strategy
+The deploy-pool capacity change must wait until the eventual-strategy
 controller rollout is verified through Enclii. Observe pool assignments before
 and after the change; no active runner deletion or workflow cancellation is part
-of this recovery. The second phase can make the deploy pool start on demand and
-use the existing non-preempting deploy PriorityClass. It must preserve the blue
+of this recovery. The deploy pool now starts on demand (`minRunners: 0`, `maxRunners: 2`) and
+uses the existing non-preempting deploy PriorityClass. Its listener requires a
+non-builder node. It must preserve the blue
 worker template and verify actual pickup of previously queued jobs.
 
 ## Controller ownership
@@ -163,9 +164,10 @@ browser matrix — the observed case was ~30 minutes for one deploy job, then
 **priority rule, not a partition**: nothing reserves blue for CI, and
 nothing stops other workflows being pointed at this label later.
 
-It is small on purpose (`minRunners: 1`, `maxRunners: 2`) and lands on the
-same builder nodes as blue, which already sit at 94–95% CPU. Capacity is not
-the point; not queueing is.
+It is small and starts on demand (`minRunners: 0`, `maxRunners: 2`). Workers
+land on builder nodes; the listener stays off builders. This reclaims an idle
+worker reservation when no deploy is waiting. Non-preempting priority lets a
+waiting deploy use the next available slot without evicting a running job.
 
 **Provisioning order matters, and it is the reason this is a separate PR
 from any workflow change.** The scale set must exist and be observed
@@ -182,8 +184,8 @@ the two steps are independently revertible.
 
 `enclii-deploy` > `fragua-paid` > `fragua-trial` > `enclii-internal-ci`
 
-**Nothing sets `priorityClassName` yet**, in this repo or anywhere else, so
-they currently have no runtime effect. They are declared now so the ordering
+The deploy pool sets `priorityClassName: enclii-deploy`; blue CI retains its
+existing default priority. They are declared now so the ordering
 is a reviewed artifact instead of a number invented during the first capacity
 incident. All four use `preemptionPolicy: Never`: they change queue order,
 never evicting a running job — a CI job killed mid-run presents as a lost

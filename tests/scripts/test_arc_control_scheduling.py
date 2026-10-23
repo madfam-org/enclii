@@ -81,3 +81,35 @@ def test_recovery_validation_keeps_checks_on_existing_deploy_pool():
         assert scale_set["spec"]["template"]["spec"]["nodeSelector"] == {
             "role": "builder"
         }
+
+
+def test_on_demand_deploy_workers_wait_without_preempting_active_jobs():
+    values = documents("infra/helm/arc/values-runner-set-deploy.yaml")[0]
+    scale_set = next(
+        d
+        for d in documents("infra/k8s/production/arc/runner-deploy/rendered.yaml")
+        if d["kind"] == "AutoscalingRunnerSet"
+    )
+    spec = scale_set["spec"]
+    assert spec["minRunners"] == values["minRunners"] == 0
+    assert spec["maxRunners"] == values["maxRunners"] == 2
+    assert (
+        spec["template"]["spec"]["priorityClassName"]
+        == values["template"]["spec"]["priorityClassName"]
+        == "enclii-deploy"
+    )
+    priority = next(
+        d
+        for d in documents("infra/k8s/production/arc/priority-classes.yaml")
+        if d["metadata"]["name"] == "enclii-deploy"
+    )
+    assert priority["preemptionPolicy"] == "Never"
+    assert priority["globalDefault"] is False
+    assert (
+        spec["listenerTemplate"]["spec"]["affinity"]
+        == values["listenerTemplate"]["spec"]["affinity"]
+    )
+    expressions = spec["listenerTemplate"]["spec"]["affinity"]["nodeAffinity"][
+        "requiredDuringSchedulingIgnoredDuringExecution"
+    ]["nodeSelectorTerms"][0]["matchExpressions"]
+    assert expressions == [{"key": "role", "operator": "NotIn", "values": ["builder"]}]
