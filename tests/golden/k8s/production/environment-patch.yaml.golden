@@ -87,11 +87,11 @@ spec:
         # Emergency rollback only: re-add the override with value "false" here
         # and in production.env, and record why.
         # Procedure: docs/runbooks/TENANT_SCOPE_ENFORCEMENT_ROLLOUT.md
-        # Stage 2 (2026-10-17), from the dry-run report: the only cross-tenant
-        # platform admin. Other operators keep reach through team membership
-        # (the 55 team-less projects were re-parented first). Read at pod start.
+        # Explicitly authorized platform operators. Reconciled at API startup;
+        # tenant admins remain scoped to their team membership. Keep this list
+        # in step with components/environment/production.env.
         - name: ENCLII_PLATFORM_ADMIN_EMAILS
-          value: "aldo@madfam.io"
+          value: "admin@madfam.io,aldo@madfam.io"
         # Forwarded client-IP headers are believed only from peers in these
         # ranges (#783): the cluster pod network, where cloudflared runs
         # (k3s cluster_cidr, infra/terraform/main.tf). Set 2026-10-18 by the

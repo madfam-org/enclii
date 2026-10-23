@@ -11,7 +11,7 @@ import {
 } from '@xyflow/react'
 import '@xyflow/react/dist/style.css'
 import { Box, Cpu, HardDrive, Network, RefreshCw, Server } from 'lucide-react'
-import { fetchTopology, type TopologyResponse } from '@/lib/topology-api'
+import { fetchTopology, TopologyFetchError, type TopologyResponse } from '@/lib/topology-api'
 import { EmptyState } from '@/components/empty-state'
 import { Button } from "@enclii/ui-components/button"
 import { Badge } from "@enclii/ui-components/badge"
@@ -87,21 +87,21 @@ function buildGraph(data: TopologyResponse): CanvasGraph {
             </div>
             <div className="space-y-1">
               <div className="flex justify-between text-[10px]">
-                <span>CPU</span>
+                <span>CPU requests</span>
                 <span>{cpuPct}%</span>
               </div>
               <div className="h-1 rounded bg-muted overflow-hidden">
                 <div className="h-full bg-blue-500" style={{ width: `${cpuPct}%` }} />
               </div>
               <div className="flex justify-between text-[10px]">
-                <span>Memory</span>
+                <span>Memory requests</span>
                 <span>{memPct}%</span>
               </div>
               <div className="h-1 rounded bg-muted overflow-hidden">
                 <div className="h-full bg-purple-500" style={{ width: `${memPct}%` }} />
               </div>
               <div className="flex justify-between text-[10px] pt-1">
-                <span>Pods</span>
+                <span>Running pods</span>
                 <span>
                   {n.used.pod_count}/{n.allocatable.pods}
                 </span>
@@ -210,6 +210,11 @@ export function TopologyCanvas() {
       setData(fresh)
       setError(null)
     } catch (e) {
+      if (e instanceof TopologyFetchError && (e.status === 401 || e.status === 403)) {
+        setData(null)
+        setSelectedNode(null)
+        setSelectedPod(null)
+      }
       setError(e instanceof Error ? e.message : 'Failed to load topology')
     } finally {
       setLoading(false)
@@ -243,7 +248,14 @@ export function TopologyCanvas() {
   }
 
   if (error && !data) {
-    return <EmptyState icon={Network} title="Topology unavailable" description={error} />
+    return (
+      <div className="space-y-3">
+        <EmptyState icon={Network} title="Topology unavailable" description={error} />
+        <Button variant="outline" onClick={() => load()} disabled={refreshing}>
+          Try again
+        </Button>
+      </div>
+    )
   }
 
   if (!data || graph.nodes.length === 0) {
@@ -308,6 +320,11 @@ export function TopologyCanvas() {
           Last refresh failed: {error}. Showing cached data.
         </div>
       )}
+
+      <p className="text-xs text-muted-foreground">
+        CPU and memory show regular-container requests for running pods, not live utilization
+        or complete scheduler reservations. Pending pods and init containers are excluded.
+      </p>
 
       <div className="flex-1 rounded-lg border border-border overflow-hidden">
         <ReactFlow nodes={graph.nodes} edges={graph.edges} fitView onNodeClick={handleNodeClick}>
