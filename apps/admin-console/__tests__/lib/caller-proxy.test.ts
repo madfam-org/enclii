@@ -10,7 +10,7 @@ global.fetch = mockFetch
 const originalEnv = process.env
 beforeEach(() => {
   mockFetch.mockReset()
-  process.env = { ...originalEnv, NEXT_PUBLIC_API_URL: 'https://api.example.org', SWITCHYARD_API_KEY: 'service-fixture' }
+  process.env = { ...originalEnv, NEXT_PUBLIC_API_URL: 'https://api.example.org', SWITCHYARD_API_KEY: 'service-fixture' } // pragma: allowlist secret (synthetic authority fixture)
 })
 afterAll(() => { process.env = originalEnv })
 
