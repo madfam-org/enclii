@@ -40,7 +40,7 @@ it('shows builder roles and explains that requests are not utilization', async (
   expect(screen.getByText(/not live utilization/)).toBeInTheDocument()
   expect(screen.getByRole('region', { name: 'Unscheduled pods' })).toBeInTheDocument()
   expect(screen.getByRole('button', { name: 'tenant-a/pending-a' })).toBeInTheDocument()
-  expect(screen.getByText('1 pending pods awaiting node assignment')).toBeInTheDocument()
+  expect(screen.getByText('Pending pods awaiting node assignment: 1')).toBeInTheDocument()
 })
 it.each([401, 403])('discards cached inventory after access refusal %s', async (status) => {
   mockFetch.mockResolvedValueOnce(snapshot).mockRejectedValueOnce(new TopologyFetchError('Access refused', status))

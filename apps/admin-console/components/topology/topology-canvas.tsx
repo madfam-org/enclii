@@ -333,7 +333,7 @@ export function TopologyCanvas() {
       {unscheduledPods.length > 0 && (
         <section aria-label="Unscheduled pods" className="rounded-md border border-border p-3">
           <p className="mb-2 text-xs font-medium">
-            {unscheduledPods.length} pending pods awaiting node assignment
+            Pending pods awaiting node assignment: {unscheduledPods.length}
           </p>
           <div className="flex max-h-28 flex-wrap gap-2 overflow-y-auto">
             {unscheduledPods.map((pod) => (
