@@ -74,6 +74,11 @@ const turnoVigenteSQLSHA256 = "b15f76f4097cae69847034406116343d87e8a7aaf25b5af88
 const karafielStageCoreSeedSHA256 = "5da5e466fb830280e050cd4877e7092f19668b69d2859ffd91aa91ee5e127d81"  // pragma: allowlist secret -- public SHA-256 of the reviewed staging seed guard; not a credential
 const karafielStageLegalSeedSHA256 = "d76c9ccc76c3863498a67bdd0eb027596a9171b28c18771401f135bdef5fc221" // pragma: allowlist secret -- public SHA-256 of the reviewed staging seed guard; not a credential
 
+// cierreReconstruccionSQLSHA256 pins crea-sim's fixed step 004
+// (`004-cierre-por-reconstruccion.sql`, crea-sim#112, main 11fbe1c) byte for
+// byte, on the same rule as step 003.
+const cierreReconstruccionSQLSHA256 = "a9ea106ec748408ec39bced9c50686c06552ca58ee0eb1fbf154b598e41227e3" // pragma: allowlist secret -- public SHA-256 of a source file; not a credential
+
 // The training kernels share one Vault path: the Vault writer policy grants
 // exactly five training data paths, and a sixth would need a policy change.
 const initialMAPVaultPath = "secret/crea-sim-map01"
@@ -110,6 +115,17 @@ func isolatedBootstrapProfileFor(name string) (isolatedBootstrapProfile, error) 
 			{Path: "packages/entrenamiento/src/preparar-turno-vigente.ts"},
 		}
 		return profile, nil
+	case "portal-sim-cierre-reconstruccion-paso":
+		// Fixed step 004 (ADR-0007 §2c) on the same portal database, after 003.
+		// Same custody as step 003; the image must already carry 004 and its
+		// preparer, so 004 never runs while the gateway rejects its catalogue.
+		// It adds the close-by-rebuild catalogue and closes no reservation.
+		profile := portalSimProfile(name)
+		profile.SourceRequirements = []bootstrapSourceRequirement{
+			{Path: "packages/entrenamiento/sql/004-cierre-por-reconstruccion.sql", SHA256: cierreReconstruccionSQLSHA256},
+			{Path: "packages/entrenamiento/src/preparar-cierre-reconstruccion.ts"},
+		}
+		return profile, nil
 	default:
 		return isolatedBootstrapProfile{}, fmt.Errorf("unsupported initial bootstrap profile")
 	}
@@ -130,7 +146,7 @@ func portalSimProfile(name string) isolatedBootstrapProfile {
 // portalDatabase reports whether the profile works on the portal database
 // with its four-key migrator custody (CREA_SIM_*), rather than a MAP kernel's.
 func (p isolatedBootstrapProfile) portalDatabase() bool {
-	return p.Name == "portal-sim-initial" || p.Name == "portal-sim-turno-vigente" || k8s.IsProvenanceReadProfile(p.Name)
+	return p.Name == "portal-sim-initial" || k8s.IsFixedStepProfile(p.Name) || k8s.IsProvenanceReadProfile(p.Name)
 }
 
 // mapSimInitialProfile is the one constructor for the three MAP kernels. The

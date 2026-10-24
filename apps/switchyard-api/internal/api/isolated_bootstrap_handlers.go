@@ -172,8 +172,11 @@ func (h *Handler) InitialBootstrapAddon(c *gin.Context) {
 }
 
 func initialBootstrapScope(profile string) string {
-	if k8s.IsFixedStepProfile(profile) {
+	switch profile {
+	case "portal-sim-turno-vigente":
 		return "fixed step 003 (portal turno vigente) only; no reset, delivery or other DDL; the database's own turno_vigente_recibos row remains the authority"
+	case "portal-sim-cierre-reconstruccion-paso":
+		return "fixed step 004 (portal close-by-rebuild catalogue) only; closes no reservation; no reset, delivery or other DDL; the database's own cierre_reconstruccion_recibos row remains the authority"
 	}
 	return "fixed initial migration/seed only; no reset, delivery or inferred VACIO accreditation"
 }
@@ -220,6 +223,8 @@ func (h *Handler) InitialBootstrapAddonStatus(c *gin.Context) {
 	scope := "INITIAL_ONLY retained history; current readiness, kernel control and reset accreditation remain separate"
 	if k8s.IsProvenanceReadProfile(profile.Name) {
 		scope = "PROVENANCE_ONLY retained historical snapshot; no fresh lease, intent, fence, writer exclusion or adoption authority"
+	} else if profile.Name == "portal-sim-cierre-reconstruccion-paso" {
+		scope = "FIXED_STEP retained history of this operation key; the database's own cierre_reconstruccion_recibos row remains the authority"
 	} else if k8s.IsFixedStepProfile(profile.Name) {
 		scope = "FIXED_STEP retained history of this operation key; the database's own turno_vigente_recibos row remains the authority"
 	}
