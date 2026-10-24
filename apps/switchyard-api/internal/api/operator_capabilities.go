@@ -16,6 +16,13 @@ var opsCapabilities = []operatorCapability{
 		Scopes:      []string{"namespace", "project", "service", "environment", "target"},
 	},
 	{
+		Name:        "addons",
+		Status:      "partial",
+		Description: "Hibernate a retired, unbound managed-Postgres addon: CNPG hibernation annotation, instance pods stopped, exporter at zero; plan-hash guarded, audited, never deletes data (platform rank)",
+		Actions:     []string{"hibernate"},
+		Scopes:      []string{"project", "target"},
+	},
+	{
 		Name:        "pods",
 		Status:      "partial",
 		Description: "Pod diagnosis and logs reads; restart is an audited rollout restart of a Deployment, StatefulSet or DaemonSet, or the recreation of one controller-owned pod, in allowlisted namespaces only (platform rank)",

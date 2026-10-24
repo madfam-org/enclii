@@ -26,8 +26,8 @@ func (h *Handler) RequirePlatformOperator() gin.HandlerFunc {
 
 // During the additive inventory rollout, existing operator routes retain
 // their original admin role guard. Inventory is new and requires platform rank
-// immediately, as do jobs suspend, apps bind-target/tracking and pods
-// restart: a tenant admin must not reach another tenant's workloads, and the
+// immediately, as do jobs suspend, apps bind-target/tracking, pods restart
+// and addons hibernate: a tenant admin must not reach another tenant's workloads, and the
 // admin role guard cannot tell a tenant admin from a platform operator. Both
 // this guard and adapter dispatch use the same domain param; an operation name
 // in the body cannot select or authorize another adapter.
@@ -40,7 +40,8 @@ func registerOperatorRoutes(protected *gin.RouterGroup, h *Handler) {
 	ops.POST("/:domain/:action", func(c *gin.Context) {
 		if c.Param("domain") == "inventory" || (c.Param("domain") == "jobs" && (c.Param("action") == "suspend" || c.Param("action") == "run-target")) ||
 			(c.Param("domain") == "apps" && (c.Param("action") == "bind-target" || c.Param("action") == "tracking")) ||
-			(c.Param("domain") == "pods" && c.Param("action") == "restart") {
+			(c.Param("domain") == "pods" && c.Param("action") == "restart") ||
+			(c.Param("domain") == "addons" && c.Param("action") == "hibernate") {
 			platformOperator(c)
 			return
 		}
