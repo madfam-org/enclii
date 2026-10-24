@@ -327,6 +327,9 @@ func main() {
 	// Wire the retention finalizer so the reconciler can tear down retention-hold
 	// addons once their grace window elapses (2026-08-17 audit #10).
 	addonReconciler.SetRetentionFinalizer(addonService)
+	// Converge CNPG NetworkPolicies for every live cluster on start and every
+	// 10 minutes (backfill + repair; internal/reconciler/addon_network_sweep.go).
+	addonReconciler.SetNetworkConverger(addonService)
 	// addon.backup.completed is observed from CNPG cluster status, not
 	// commanded, so it is reported from the reconciler rather than the
 	// service. See internal/reconciler/addon_backup_events.go.

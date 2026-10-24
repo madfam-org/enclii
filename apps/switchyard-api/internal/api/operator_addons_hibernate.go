@@ -26,8 +26,10 @@ import (
 // `ready`, and has no binding that is not `deleted`: an addon a service still
 // reads is never stopped. Platform rank (operator_routes.go). Apply writes an
 // audit row before any mutation and refuses to mutate without it; a second row
-// records the result. It never deletes a Cluster, PVC or Secret, and never
-// changes the addon's status: the CNPG annotation is the record.
+// records the result. It never deletes a Cluster, PVC, Secret or pod, and never
+// changes the addon's status: the CNPG annotation is the record. A cluster the
+// operator is not managing is refused as `blocked`; success means CNPG
+// confirmed, and an unconfirmed apply is `submitted` (HTTP 202).
 const opsAddonsHibernateOperation = "ops.addons.hibernate"
 
 // hibernationRefusal is every refusal that needs only the addon row.
@@ -89,11 +91,14 @@ func (h *Handler) handleOpsAddonsHibernate(ctx context.Context, req operatorOper
 		resp.Summary = "plan not available: " + err.Error()
 		return resp, http.StatusBadGateway
 	}
-	if req.DryRun || plan.Done() {
+	if req.DryRun || plan.Done() || plan.Blocked != "" {
 		resp.Data = plan
 		switch {
 		case plan.Done():
-			resp.Status, resp.Summary = "succeeded", "already hibernated: nothing left to stop"
+			resp.Status, resp.Summary = "succeeded", "already hibernated: CNPG confirms it, nothing left to stop"
+		case plan.Blocked != "":
+			resp.Status, resp.Summary = "blocked", plan.Blocked
+			return resp, http.StatusConflict
 		default:
 			resp.Status, resp.Summary = "ready_to_apply", "review the cluster, pods and exporter, then apply with args.expected_plan=plan_hash"
 		}
@@ -116,7 +121,16 @@ func (h *Handler) handleOpsAddonsHibernate(ctx context.Context, req operatorOper
 		outcome[k] = v
 	}
 	if result != nil {
-		outcome["annotated"], outcome["pods_deleted"], outcome["exporter_scaled_to_zero"] = result.Annotated, result.PodsDeleted, result.ExporterOff
+		outcome["annotated"], outcome["hibernation_confirmed"], outcome["exporter_scaled_to_zero"] = result.Annotated, result.Confirmed, result.ExporterOff
+	}
+	if errors.Is(applyErr, addons.ErrHibernationUnconfirmed) {
+		outcome["pending"] = applyErr.Error()
+		if _, err := h.writeOpsAudit(ctx, actor, opsAddonsHibernateOperation, "submitted", addonID.String(), addon.Name, outcome); err != nil {
+			resp.Warnings = append(resp.Warnings, "the result audit row was not written (the request row "+auditID+" exists): "+err.Error())
+		}
+		resp.Status, resp.Data = "submitted", result
+		resp.Summary = applyErr.Error() + "; run the dry-run again: it reports succeeded once CNPG confirms, or ready_to_apply to stop the exporter"
+		return resp, http.StatusAccepted
 	}
 	if applyErr != nil {
 		outcome["error"] = applyErr.Error()
@@ -126,12 +140,16 @@ func (h *Handler) handleOpsAddonsHibernate(ctx context.Context, req operatorOper
 		if errors.Is(applyErr, addons.ErrHibernationPlanChanged) {
 			return resp, http.StatusConflict
 		}
+		if errors.Is(applyErr, addons.ErrHibernationBlocked) {
+			resp.Status = "blocked"
+			return resp, http.StatusConflict
+		}
 		return resp, http.StatusBadGateway
 	}
 	if _, err := h.writeOpsAudit(ctx, actor, opsAddonsHibernateOperation, "success", addonID.String(), addon.Name, outcome); err != nil {
 		resp.Warnings = append(resp.Warnings, "the result audit row was not written (the request row "+auditID+" exists): "+err.Error())
 	}
-	resp.Status, resp.Summary, resp.Data = "succeeded", "hibernated: annotation on, instance pods stopped, exporter at zero; the PVC is kept", result
+	resp.Status, resp.Summary, resp.Data = "succeeded", "hibernated: CNPG confirms the instances are stopped, exporter at zero; the PVC is kept", result
 	return resp, http.StatusOK
 }
 

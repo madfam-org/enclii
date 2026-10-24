@@ -115,11 +115,12 @@ func (p *PostgresProvisioner) Provision(ctx context.Context, req *ProvisionReque
 	if err := p.ensureRuntimeSecret(ctx, req, resourceName); err != nil {
 		return nil, err
 	}
-	// Before the Cluster exists, so initdb and the instance can reach the API on
-	// any node. Non-fatal like the other policies: the gap is surfaced, and
-	// RefreshStatus converges it later.
-	if npErr := p.ensureControlPlaneEgress(ctx, req.Namespace, resourceName); npErr != nil {
-		logger.WithError(npErr).Error("Failed to create CNPG control-plane egress NetworkPolicy — instances on nodes without an API-server endpoint will crash-loop")
+	// Before the Cluster exists, so initdb and the instance can reach the API,
+	// and the operator can reach the instance, on any node. Non-fatal like the
+	// other policies: the gap is surfaced, and the reconciler's network sweep
+	// converges it later.
+	if npErr := p.ensureCNPGNetworkPolicies(ctx, req.Namespace, resourceName); npErr != nil {
+		logger.WithError(npErr).Error("Failed to create CNPG NetworkPolicies — instances on nodes without an API-server endpoint will crash-loop, and the operator cannot manage instances off its own node")
 	}
 
 	// Build CloudNativePG Cluster manifest
