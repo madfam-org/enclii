@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"testing"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/madfam-org/enclii/packages/sdk-go/pkg/types"
@@ -14,7 +15,6 @@ import (
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
-	k8stypes "k8s.io/apimachinery/pkg/types"
 	dynamicfake "k8s.io/client-go/dynamic/fake"
 	k8sfake "k8s.io/client-go/kubernetes/fake"
 	k8stesting "k8s.io/client-go/testing"
@@ -26,8 +26,19 @@ func hibAddon() *types.DatabaseAddon {
 	return &types.DatabaseAddon{ID: uuid.MustParse("00000000-0000-0000-0000-0000000000a1"), Type: types.DatabaseAddonTypePostgres, K8sNamespace: hibNS, K8sResourceName: "pg-kernel09b-fixture"}
 }
 
+const extractionError = "Instance Status Extraction Error: HTTP communication issue"
+
+// hibCluster is a fixture Cluster in the given CNPG phase; hibernated sets the
+// cnpg.io/hibernation condition to True.
 func hibCluster(annotations map[string]string) *unstructured.Unstructured {
-	u := &unstructured.Unstructured{}
+	return hibClusterIn(annotations, cnpgHealthyPhase, false)
+}
+
+func hibClusterIn(annotations map[string]string, phase string, hibernated bool) *unstructured.Unstructured {
+	u := &unstructured.Unstructured{Object: map[string]interface{}{"status": map[string]interface{}{"phase": phase, "conditions": []interface{}{
+		map[string]interface{}{"type": "Ready", "status": "True"},
+		map[string]interface{}{"type": CNPGHibernationAnnotation, "status": map[bool]string{true: "True", false: "False"}[hibernated]},
+	}}}}
 	u.SetAPIVersion("postgresql.cnpg.io/v1")
 	u.SetKind("Cluster")
 	u.SetNamespace(hibNS)
@@ -57,12 +68,46 @@ func hibClients(t *testing.T, cluster *unstructured.Unstructured, exporterReplic
 
 func one() *int32 { v := int32(1); return &v }
 
+// fastHibernationWait shortens the apply's bounded wait for the test.
+func fastHibernationWait(t *testing.T) {
+	t.Helper()
+	timeout, interval := hibernationConfirmTimeout, hibernationPollInterval
+	hibernationConfirmTimeout, hibernationPollInterval = 300*time.Millisecond, 5*time.Millisecond
+	t.Cleanup(func() { hibernationConfirmTimeout, hibernationPollInterval = timeout, interval })
+}
+
+// cnpgActsOnAnnotation simulates the operator: when the annotation lands, the
+// hibernation condition turns True and the instance pod goes away.
+func cnpgActsOnAnnotation(dyn *dynamicfake.FakeDynamicClient, kube *k8sfake.Clientset) {
+	dyn.PrependReactor("update", "clusters", func(action k8stesting.Action) (bool, runtime.Object, error) {
+		u := action.(k8stesting.UpdateAction).GetObject().(*unstructured.Unstructured)
+		if u.GetAnnotations()[CNPGHibernationAnnotation] == "on" {
+			_ = unstructured.SetNestedSlice(u.Object, []interface{}{map[string]interface{}{"type": CNPGHibernationAnnotation, "status": "True"}}, "status", "conditions")
+			_ = kube.Tracker().Delete(schema.GroupVersionResource{Version: "v1", Resource: "pods"}, hibNS, "pg-kernel09b-fixture-1")
+		}
+		return false, nil, nil
+	})
+}
+
+func writesIn(actions []k8stesting.Action) []string {
+	out := []string{}
+	for _, a := range actions {
+		if a.GetVerb() != "get" && a.GetVerb() != "list" {
+			out = append(out, a.GetVerb()+" "+a.GetResource().Resource)
+		}
+	}
+	return out
+}
+
 func TestPlanPostgresHibernationIsReadOnlyAndDeterministic(t *testing.T) {
 	ctx := context.Background()
 	dyn, kube := hibClients(t, hibCluster(nil), one())
 	plan, err := PlanPostgresHibernation(ctx, dyn, kube, hibAddon())
 	require.NoError(t, err)
 	require.False(t, plan.AlreadyHibernated)
+	require.False(t, plan.Hibernated)
+	require.Equal(t, cnpgHealthyPhase, plan.Phase)
+	require.Empty(t, plan.Blocked)
 	require.Equal(t, []HibernationPod{{Name: "pg-kernel09b-fixture-1", UID: "uid-pod-1"}}, plan.InstancePods)
 	require.Equal(t, "pg-kernel09b-fixture-exporter", plan.Exporter)
 	require.Equal(t, int32(1), plan.ExporterReplicas)
@@ -93,56 +138,108 @@ func TestPlanPostgresHibernationRefusesWhatIsNotAProvisionedPostgres(t *testing.
 	require.Error(t, err)
 }
 
-func TestApplyPostgresHibernationAnnotatesDeletesInstancePodsAndStopsTheExporter(t *testing.T) {
+func TestApplyPostgresHibernationAnnotatesWaitsForCNPGThenStopsTheExporter(t *testing.T) {
+	fastHibernationWait(t)
 	ctx := context.Background()
 	dyn, kube := hibClients(t, hibCluster(map[string]string{"keep": "yes"}), one())
+	cnpgActsOnAnnotation(dyn, kube)
 	plan, err := PlanPostgresHibernation(ctx, dyn, kube, hibAddon())
 	require.NoError(t, err)
 
 	res, err := ApplyPostgresHibernation(ctx, dyn, kube, hibAddon(), plan.PlanHash)
 	require.NoError(t, err)
 	require.True(t, res.Annotated)
-	require.Equal(t, []string{"pg-kernel09b-fixture-1"}, res.PodsDeleted)
+	require.True(t, res.Confirmed)
 	require.True(t, res.ExporterOff)
 
 	cluster, err := dyn.Resource(cnpgGVR).Namespace(hibNS).Get(ctx, "pg-kernel09b-fixture", metav1.GetOptions{})
 	require.NoError(t, err)
 	require.Equal(t, map[string]string{"keep": "yes", CNPGHibernationAnnotation: "on"}, cluster.GetAnnotations(), "only the annotation is added")
-	pods, err := kube.CoreV1().Pods(hibNS).List(ctx, metav1.ListOptions{})
-	require.NoError(t, err)
-	names := []string{}
-	for _, p := range pods.Items {
-		names = append(names, p.Name)
-	}
-	require.ElementsMatch(t, []string{"pg-kernel09b-fixture-backup-x", "pg-other-1"}, names)
 	exporter, err := kube.AppsV1().Deployments(hibNS).Get(ctx, "pg-kernel09b-fixture-exporter", metav1.GetOptions{})
 	require.NoError(t, err)
 	require.Equal(t, int32(0), *exporter.Spec.Replicas)
 
-	// Nothing is ever deleted except instance pods: no Cluster, PVC, Secret or Deployment delete.
-	for _, a := range kube.Actions() {
-		if a.GetVerb() == "delete" {
-			require.Equal(t, "pods", a.GetResource().Resource)
-			require.Equal(t, k8stypes.UID("uid-pod-1"), *a.(k8stesting.DeleteActionImpl).DeleteOptions.Preconditions.UID)
-		}
-	}
-	for _, a := range dyn.Actions() {
-		require.NotEqual(t, "delete", a.GetVerb())
-	}
+	// CNPG stops the instance; the operation itself deletes nothing.
+	require.Equal(t, []string{"patch deployments"}, writesIn(kube.Actions()))
+	require.Equal(t, []string{"update clusters"}, writesIn(dyn.Actions()))
 
 	// The exact retry finds nothing left to stop and writes nothing.
 	kubeBefore, dynBefore := len(kube.Actions()), len(dyn.Actions())
 	again, err := ApplyPostgresHibernation(ctx, dyn, kube, hibAddon(), plan.PlanHash)
 	require.NoError(t, err)
 	require.True(t, again.Plan.Done())
+	require.True(t, again.Confirmed)
 	require.False(t, again.Annotated)
-	writes := 0
-	for _, a := range append(kube.Actions()[kubeBefore:], dyn.Actions()[dynBefore:]...) {
-		if a.GetVerb() != "get" && a.GetVerb() != "list" {
-			writes++
-		}
+	require.Empty(t, writesIn(append(kube.Actions()[kubeBefore:], dyn.Actions()[dynBefore:]...)))
+}
+
+func TestPostgresHibernationIsBlockedWhileTheOperatorCannotReachTheInstance(t *testing.T) {
+	// The 24-oct trap (crea-sim kernel01g): no operator ingress, so CNPG never
+	// acts on the annotation and recreates a deleted pod.
+	for name, annotations := range map[string]map[string]string{"not annotated": nil, "annotated earlier": {CNPGHibernationAnnotation: "on"}} {
+		ctx := context.Background()
+		dyn, kube := hibClients(t, hibClusterIn(annotations, extractionError, false), one())
+		plan, err := PlanPostgresHibernation(ctx, dyn, kube, hibAddon())
+		require.NoError(t, err, name)
+		require.Equal(t, extractionError, plan.Phase, name)
+		require.Contains(t, plan.Blocked, "operator-ingress", name)
+		require.False(t, plan.Done(), name)
+
+		res, err := ApplyPostgresHibernation(ctx, dyn, kube, hibAddon(), plan.PlanHash)
+		require.ErrorIs(t, err, ErrHibernationBlocked, name)
+		require.Nil(t, res, name)
+		require.Empty(t, writesIn(append(kube.Actions(), dyn.Actions()...)), name+": a blocked apply writes nothing")
 	}
-	require.Zero(t, writes)
+}
+
+func TestPostgresHibernationDoneOnlyWhenCNPGConfirms(t *testing.T) {
+	ctx := context.Background()
+	// Annotated, healthy, condition still False: not done, and not blocked.
+	dyn, kube := hibClients(t, hibClusterIn(map[string]string{CNPGHibernationAnnotation: "on"}, cnpgHealthyPhase, false), nil)
+	plan, err := PlanPostgresHibernation(ctx, dyn, kube, hibAddon())
+	require.NoError(t, err)
+	require.True(t, plan.AlreadyHibernated)
+	require.False(t, plan.Done())
+	require.Empty(t, plan.Blocked)
+
+	// Hibernated by CNPG: the phase does not matter once the condition is True.
+	dyn, kube = hibClients(t, hibClusterIn(map[string]string{CNPGHibernationAnnotation: "on"}, "Cluster is hibernated", true), nil)
+	require.NoError(t, kube.CoreV1().Pods(hibNS).Delete(ctx, "pg-kernel09b-fixture-1", metav1.DeleteOptions{}))
+	plan, err = PlanPostgresHibernation(ctx, dyn, kube, hibAddon())
+	require.NoError(t, err)
+	require.Empty(t, plan.Blocked)
+	require.True(t, plan.Done())
+}
+
+func TestApplyPostgresHibernationStopsTheExporterOfAClusterCNPGAlreadyHibernated(t *testing.T) {
+	ctx := context.Background()
+	dyn, kube := hibClients(t, hibClusterIn(map[string]string{CNPGHibernationAnnotation: "on"}, cnpgHealthyPhase, true), one())
+	require.NoError(t, kube.CoreV1().Pods(hibNS).Delete(ctx, "pg-kernel09b-fixture-1", metav1.DeleteOptions{}))
+	plan, err := PlanPostgresHibernation(ctx, dyn, kube, hibAddon())
+	require.NoError(t, err)
+	require.False(t, plan.Done(), "the exporter still runs")
+	before := len(kube.Actions())
+	res, err := ApplyPostgresHibernation(ctx, dyn, kube, hibAddon(), plan.PlanHash)
+	require.NoError(t, err)
+	require.False(t, res.Annotated)
+	require.True(t, res.Confirmed)
+	require.True(t, res.ExporterOff)
+	require.Equal(t, []string{"patch deployments"}, writesIn(kube.Actions()[before:]))
+	require.Empty(t, writesIn(dyn.Actions()))
+}
+
+func TestApplyPostgresHibernationReportsUnconfirmedAndLeavesTheExporter(t *testing.T) {
+	fastHibernationWait(t)
+	ctx := context.Background()
+	dyn, kube := hibClients(t, hibCluster(nil), one()) // CNPG never acts
+	plan, err := PlanPostgresHibernation(ctx, dyn, kube, hibAddon())
+	require.NoError(t, err)
+	res, err := ApplyPostgresHibernation(ctx, dyn, kube, hibAddon(), plan.PlanHash)
+	require.ErrorIs(t, err, ErrHibernationUnconfirmed)
+	require.True(t, res.Annotated)
+	require.False(t, res.Confirmed)
+	require.False(t, res.ExporterOff)
+	require.Empty(t, writesIn(kube.Actions()), "no pod delete, no exporter change")
 }
 
 func TestApplyPostgresHibernationRefusesAStaleOrMissingPlan(t *testing.T) {
@@ -163,31 +260,19 @@ func TestApplyPostgresHibernationRefusesAStaleOrMissingPlan(t *testing.T) {
 	require.Empty(t, c.GetAnnotations()[CNPGHibernationAnnotation], "a refused apply writes nothing")
 }
 
-func TestApplyPostgresHibernationFinishesAPartlyHibernatedClusterAndToleratesNoExporter(t *testing.T) {
-	ctx := context.Background()
-	// The 23-oct trap: annotated, but CNPG could not stop the instance.
-	dyn, kube := hibClients(t, hibCluster(map[string]string{CNPGHibernationAnnotation: "on"}), nil)
-	plan, err := PlanPostgresHibernation(ctx, dyn, kube, hibAddon())
-	require.NoError(t, err)
-	require.True(t, plan.AlreadyHibernated)
-	require.False(t, plan.Done())
-	res, err := ApplyPostgresHibernation(ctx, dyn, kube, hibAddon(), plan.PlanHash)
-	require.NoError(t, err)
-	require.False(t, res.Annotated)
-	require.Equal(t, []string{"pg-kernel09b-fixture-1"}, res.PodsDeleted)
-	require.False(t, res.ExporterOff)
-}
-
 func TestApplyPostgresHibernationReportsAFailedWriteWithWhatAlreadyChanged(t *testing.T) {
+	fastHibernationWait(t)
 	ctx := context.Background()
 	dyn, kube := hibClients(t, hibCluster(nil), one())
+	cnpgActsOnAnnotation(dyn, kube)
 	plan, err := PlanPostgresHibernation(ctx, dyn, kube, hibAddon())
 	require.NoError(t, err)
-	kube.PrependReactor("delete", "pods", func(k8stesting.Action) (bool, runtime.Object, error) {
+	kube.PrependReactor("patch", "deployments", func(k8stesting.Action) (bool, runtime.Object, error) {
 		return true, nil, errors.New("apiserver unavailable")
 	})
 	res, err := ApplyPostgresHibernation(ctx, dyn, kube, hibAddon(), plan.PlanHash)
-	require.ErrorContains(t, err, "cluster already annotated")
+	require.ErrorContains(t, err, "database already stopped")
 	require.True(t, res.Annotated)
-	require.Empty(t, res.PodsDeleted)
+	require.True(t, res.Confirmed)
+	require.False(t, res.ExporterOff)
 }

@@ -44,6 +44,10 @@ type AddonReconciler struct {
 	// backups remembers the last backup timestamp reported per addon so a
 	// steady state is quiet. See addon_backup_events.go.
 	backups *backupObserver
+
+	// network converges CNPG NetworkPolicies for live clusters. May be nil;
+	// the sweep is skipped then. See addon_network_sweep.go.
+	network NetworkConverger
 }
 
 // AddonUsageEmitter is the narrow slice of the usage pipeline this reconciler
@@ -100,11 +104,15 @@ func (r *AddonReconciler) Start(ctx context.Context) {
 
 	// Initial reconciliation
 	r.reconcileAll(ctx)
+	r.sweepCNPGNetworkPolicies(ctx)
 
-	for {
+	for tick := 1; ; tick++ {
 		select {
 		case <-ticker.C:
 			r.reconcileAll(ctx)
+			if tick%networkSweepEveryTicks == 0 {
+				r.sweepCNPGNetworkPolicies(ctx)
+			}
 		case <-r.stopCh:
 			r.logger.Info("Addon reconciler stopped")
 			return
