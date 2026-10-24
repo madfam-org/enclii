@@ -158,6 +158,14 @@ func BuildIsolatedInitialJob(p IsolatedInitialJobPlan) (*batchv1.Job, error) {
 		}
 		command = []string{"node", "packages/entrenamiento/src/preparar-turno-vigente.ts"}
 		allowed["CREA_SIM_MIGRATOR_DATABASE_URL"], allowed["CREA_SIM_PORTAL_DATABASE_URL"], allowed["CREA_SIM_DATABASE_NAMESPACE"] = true, true, true
+	case p.Profile == fixedStepCierreReconstruccionPasoProfile:
+		// Step 004 likewise takes no argument and no SQL; the preparer applies
+		// only the image's own 004 file, and only on an accredited 003.
+		if !strings.HasPrefix(p.Image, "ghcr.io/madfam-org/crea-sim/gateway@sha256:") {
+			return nil, fmt.Errorf("fixed step portal producer mismatch")
+		}
+		command = []string{"node", "packages/entrenamiento/src/preparar-cierre-reconstruccion.ts"}
+		allowed["CREA_SIM_MIGRATOR_DATABASE_URL"], allowed["CREA_SIM_PORTAL_DATABASE_URL"], allowed["CREA_SIM_DATABASE_NAMESPACE"] = true, true, true
 	case IsProvenanceReadProfile(p.Profile):
 		if !strings.HasPrefix(p.Image, "ghcr.io/madfam-org/crea-sim/gateway@sha256:") {
 			return nil, fmt.Errorf("provenance reader producer refused")
