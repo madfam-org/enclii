@@ -260,6 +260,34 @@ are not live yet. For a registered Enclii service the service restart API
 (`POST /v1/services/{id}/restart`) remains available and is target-bound to
 the service's verified Deployment.
 
+## `ops.addons.hibernate` (API only)
+
+Stops a retired managed-Postgres addon's compute and keeps its data. It replaces
+the break-glass `kubectl annotate clusters.postgresql.cnpg.io … cnpg.io/hibernation=on`
+followed by `kubectl delete pod …`. There is no CLI verb yet; call the API.
+
+```
+POST /v1/ops/addons/hibernate
+{"dry_run":true,"scope":{"project":"<slug>"},"args":{"target":"<addon uuid>"}}
+→ status ready_to_apply, data.plan_hash (or status succeeded: already hibernated)
+
+{"dry_run":false,"reason":"…","idempotency_key":"…","scope":{"project":"<slug>"},
+ "args":{"target":"<addon uuid>","expected_plan":"<plan_hash>"}}
+```
+
+- **Who:** platform rank only.
+- **Refused** unless the addon is managed Postgres, `ready`, belongs to the
+  project, and every binding is `deleted`. An addon a service still reads is
+  never stopped.
+- **Apply:** annotates the Cluster (an Update guarded by the reviewed
+  resourceVersion), deletes the instance pods with a UID precondition, and
+  scales `<cluster>-exporter` to 0. A live state that no longer hashes to
+  `expected_plan` is a 409.
+- **Audit:** a row before any mutation (no row, no mutation) and a result row.
+- **Never deletes** a Cluster, PVC or Secret, and never changes the addon's
+  status.
+- **Reverse:** remove the annotation; CNPG recreates the instance from its PVC.
+
 ## Required Mutation Flags
 
 | Flag | Description |
