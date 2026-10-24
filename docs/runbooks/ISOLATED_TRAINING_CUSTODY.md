@@ -1,6 +1,6 @@
 # Isolated training and staging custody
 
-Last Updated: 2026-10-20
+Last Updated: 2026-10-24
 
 > Boundary checkpoint (2026-10-14, platform preparation): public-safe logical
 > target names, namespaces, key names and callbacks only. Actual credentials,
@@ -197,9 +197,10 @@ capabilities to a tenant administrator; unset retains the existing enforcement
 default. Other legacy route policies and the global rollout flag are unchanged.
 The active bound addon must be the exact Ready isolated PostgreSQL profile;
 the owned application stays at zero replicas throughout initial preparation.
-The fixed step `portal-sim-turno-vigente` is the one exception: it runs
-against the live portal database, so the gateway may serve, but its rollout
-must have converged on its pinned image.
+The fixed steps `portal-sim-turno-vigente` and
+`portal-sim-cierre-reconstruccion-paso` are the exception: they run against
+the live portal database, so the gateway may serve, but its rollout must have
+converged on its pinned image.
 
 | Profile | Workload | Fixed operation |
 | --- | --- | --- |
@@ -208,6 +209,7 @@ must have converged on its pinned image.
 | `map03-sim-initial` | `crea-sim-map03` | Same fixed MAP operation, on kernel 03's own database and runtime role |
 | `portal-sim-initial` | `crea-sim-gateway` | Bundled `001-portal.sql` through the fixed owner-only initial migrator |
 | `portal-sim-turno-vigente` | `crea-sim-gateway` | Fixed step 003 (`003-turno-vigente-por-persona.sql`) on the database `portal-sim-initial` prepared; re-runnable under a new key; answers `APLICADO` or `YA_APLICADO` |
+| `portal-sim-cierre-reconstruccion-paso` | `crea-sim-gateway` | Fixed step 004 (`004-cierre-por-reconstruccion.sql`) after an accredited 003; adds the close-by-rebuild catalogue and closes no reservation; re-runnable under a new key; answers `APLICADO` or `YA_APLICADO` |
 
 The three MAP profiles share one definition. The profile name alone selects
 the kernel's service, database and runtime role from a closed list. Each
@@ -288,6 +290,27 @@ with an operator login, in three steps, against the portal addon and the
 
 A re-run uses a new key, once the earlier Job has finished. It never reuses
 or rewrites an earlier key's records.
+
+### Fixed step 004 (`portal-sim-cierre-reconstruccion-paso`)
+
+The contract is in
+[Fixed initial custody](../architecture/INITIAL_BOOTSTRAP_CUSTODY.md#fixed-step-portal-sim-cierre-reconstruccion-paso).
+Run it once per portal database, only after the crea-sim gateway image that
+carries step 004 (crea-sim#112) is merged, pinned on main and rolled out, and
+only after step 003 has been applied there; the request refuses otherwise.
+The sequence is step 003's, with the profile `portal-sim-cierre-reconstruccion-paso`:
+
+1. **Dry run.** Expect `job.classification=FIXED_STEP_EXECUTION` and
+   `producer.verified_sources` naming the 004 SQL and
+   `preparar-cierre-reconstruccion.ts`.
+2. **Apply once** with a new `idempotency_key` and a `reason`; poll the GET
+   route until the Job finishes.
+3. **Collect with the same key.** Expect `FIXED_STEP_APPLIED` with
+   `native_receipt.cierre_reconstruccion_paso.estado` `APLICADO` (or
+   `YA_APLICADO`). `FIXED_STEP_HELD` names its `held_reason`.
+
+This prepares the catalogue only. A reservation left `RESTABLECIENDO` stays
+retained until the separate close profile exists and runs.
 
 Inspect the same operation with
 `GET /v1/admin/projects/:slug/addons/:id/initial-bootstrap/:job_name`. It returns
