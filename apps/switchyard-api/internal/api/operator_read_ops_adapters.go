@@ -3,6 +3,7 @@ package api
 import (
 	"context"
 	"fmt"
+	"net/url"
 	"sort"
 	"strconv"
 	"strings"
@@ -69,12 +70,145 @@ func (h *Handler) readDynamicResources(ctx context.Context, namespace, target st
 		if status, ok, _ := unstructured.NestedMap(item.Object, "status"); ok {
 			entry["status"] = status
 		}
+		if gvr == (schema.GroupVersionResource{Group: "argoproj.io", Version: "v1alpha1", Resource: "applications"}) {
+			addArgoApplicationReleaseReadback(entry, item)
+		}
 		out = append(out, entry)
 	}
 	sort.Slice(out, func(left, right int) bool {
 		return fmt.Sprint(out[left]["name"]) < fmt.Sprint(out[right]["name"])
 	})
 	return out, nil
+}
+
+// Release readback is deliberately a projection, never a copy of Application
+// spec/annotations. Other dynamic-resource adapters retain their existing wire shape.
+func addArgoApplicationReleaseReadback(entry map[string]any, item unstructured.Unstructured) {
+	entry["uid"] = string(item.GetUID())
+	entry["resourceVersion"] = item.GetResourceVersion()
+	entry["ownerReferences"] = item.GetOwnerReferences()
+	if tracking := item.GetAnnotations()["argocd.argoproj.io/tracking-id"]; tracking != "" {
+		entry["annotations"] = map[string]string{"argocd.argoproj.io/tracking-id": tracking}
+	}
+
+	spec := map[string]any{}
+	if source, ok, _ := unstructured.NestedMap(item.Object, "spec", "source"); ok {
+		spec["source"] = argoApplicationPublicSource(source)
+	}
+	if destination, ok, _ := unstructured.NestedMap(item.Object, "spec", "destination"); ok {
+		public := map[string]any{}
+		if namespace, ok := destination["namespace"].(string); ok {
+			public["namespace"] = namespace
+		}
+		if server, ok := destination["server"].(string); ok && argoApplicationPublicURL(server) {
+			public["server"] = server
+		}
+		spec["destination"] = public
+	}
+	if policy, ok, _ := unstructured.NestedMap(item.Object, "spec", "syncPolicy"); ok {
+		public := map[string]any{}
+		if automated, ok := policy["automated"].(map[string]any); ok {
+			flags := map[string]any{}
+			for _, key := range []string{"enabled", "prune", "selfHeal", "allowEmpty"} {
+				if value, ok := automated[key].(bool); ok {
+					flags[key] = value
+				}
+			}
+			public["automated"] = flags
+		}
+		if options, ok := policy["syncOptions"].([]any); ok {
+			safe := []string{}
+			for _, raw := range options {
+				if value, ok := raw.(string); ok && argoApplicationPublicSyncOption(value) {
+					safe = append(safe, value)
+				}
+			}
+			public["syncOptions"] = safe
+		}
+		spec["syncPolicy"] = public
+	}
+	entry["spec"] = spec
+
+	if status, ok := entry["status"].(map[string]any); ok {
+		// Argo snapshots sources in status too. Sanitize only those documented
+		// source locations, preserving health, revision, resources and result data.
+		for _, path := range [][]string{
+			{"sync", "comparedTo"},
+			{"operationState", "operation", "sync"},
+			{"operationState", "syncResult"},
+		} {
+			if snapshot, ok, _ := unstructured.NestedMap(status, path...); ok {
+				projectArgoApplicationSnapshotSources(snapshot)
+				_ = unstructured.SetNestedMap(status, snapshot, path...)
+			}
+		}
+		if history, ok, _ := unstructured.NestedSlice(status, "history"); ok {
+			for _, raw := range history {
+				if snapshot, ok := raw.(map[string]any); ok {
+					projectArgoApplicationSnapshotSources(snapshot)
+				}
+			}
+			_ = unstructured.SetNestedSlice(status, history, "history")
+		}
+	}
+}
+
+func projectArgoApplicationSnapshotSources(snapshot map[string]any) {
+	if raw, exists := snapshot["source"]; exists {
+		if source, ok := raw.(map[string]any); ok {
+			snapshot["source"] = argoApplicationPublicSource(source)
+		} else {
+			delete(snapshot, "source")
+		}
+	}
+	if raw, exists := snapshot["sources"]; exists {
+		sources := []any{}
+		if items, ok := raw.([]any); ok {
+			for _, item := range items {
+				if source, ok := item.(map[string]any); ok {
+					sources = append(sources, argoApplicationPublicSource(source))
+				}
+			}
+		}
+		snapshot["sources"] = sources
+	}
+}
+
+func argoApplicationPublicSource(source map[string]any) map[string]any {
+	public := map[string]any{}
+	for _, key := range []string{"repoURL", "path", "targetRevision", "chart"} {
+		if value, ok := source[key].(string); ok && (key != "repoURL" || argoApplicationPublicURL(value)) {
+			public[key] = value
+		}
+	}
+	return public
+}
+
+// Repository and cluster identities are public only when they contain no URL
+// credentials, query strings or fragments. Omission cannot be mistaken for proof.
+func argoApplicationPublicURL(value string) bool {
+	parsed, err := url.Parse(value)
+	return err == nil && parsed.Host != "" && parsed.User == nil && parsed.RawQuery == "" && !parsed.ForceQuery &&
+		parsed.Fragment == "" && !strings.Contains(value, "#") &&
+		(parsed.Scheme == "https" || parsed.Scheme == "http" || parsed.Scheme == "ssh" || parsed.Scheme == "git")
+}
+
+func argoApplicationPublicSyncOption(value string) bool {
+	key, setting, found := strings.Cut(value, "=")
+	if !found {
+		return false
+	}
+	switch key {
+	case "CreateNamespace", "PruneLast", "ApplyOutOfSyncOnly", "ServerSideApply", "RespectIgnoreDifferences",
+		"FailOnSharedResource", "Validate", "SkipDryRunOnMissingResource", "Replace", "Force", "DisableClientSideApplyMigration":
+		return setting == "true" || setting == "false"
+	case "PrunePropagationPolicy":
+		return setting == "foreground" || setting == "background" || setting == "orphan"
+	case "Prune", "Delete":
+		return setting == "false" || setting == "confirm"
+	default:
+		return false
+	}
 }
 
 func (h *Handler) readArgoApplications(ctx context.Context, req operatorOperationRequest) (gin.H, error) {
