@@ -8,11 +8,16 @@
 
 runnerScaleSetName: "madfam-runners-blue"
 
-# Scale configuration — runners are intentionally pinned to the dedicated
-# builder node. On 2026-05-21 the blue pool saturated at 9 assigned jobs while
-# private-repo workflows stayed queued. The shared runner CPU request is kept
-# at 400m so 12 runners remain schedulable on the 8 vCPU builder without
-# creating Pending EphemeralRunner capacity starvation.
+# Scale configuration — runners are intentionally pinned to the builder
+# nodes. On 2026-05-21 the blue pool saturated at 9 assigned jobs while
+# private-repo workflows stayed queued, and the CPU request was cut to 400m so
+# 12 runners fit on the 8 vCPU builder. That over-packing is what took the
+# node down on 2026-10-24 (15 runners, memory thrash, NotReady twice). Since
+# 2026-10-26 the request is 1 CPU / 4Gi (values-runner-set.yaml) and the node
+# holds 6. maxRunners stays 20: runners beyond what the nodes hold wait as
+# Pending pods and their jobs wait queued at GitHub. That is the intended
+# back-pressure, not starvation; the pool-health alert pages only when
+# running == 0.
 #
 # 2026-08-27 reconcile: a second builder node EXISTS,
 # and commit b6352294 raised blue to 20 for it — but only in
