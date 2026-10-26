@@ -27,6 +27,30 @@ allowlist. **A new file in this directory is not deployed until it is named
 there.** That is why `monitoring.yaml` sat looking healthy for 82 days
 without ever being applied.
 
+## Runner requests are the per-node cap
+
+The scheduler packs builder nodes by **request**, so the runner and dind
+requests are what decide how many runners share a node. Until 2026-10-26 the
+runner asked for 400m / 2Gi and dind for nothing; on 2026-10-24 that let 15
+runners onto an 8 vCPU / 31Gi builder (the other builder was at its pod cap).
+The node ran out of memory without ever crossing a pod limit (node-level OOM
+kills, no cgroup OOMs), stopped answering the control plane and went NotReady
+twice. The taint-eviction controller then deleted its runners and its Longhorn
+instance-manager, and the volume replicas on that node had to be rebuilt.
+
+Since then both pools request runner `1` CPU / `4Gi` and dind `100m` /
+`512Mi`: the p90 per-pod peak measured over the following week. That holds
+the 8 vCPU builder to 6 runners. `maxRunners` stays 20, so the extra runners
+wait as Pending pods and their jobs wait queued at GitHub; the pool-health
+alert pages only when nothing is running. Concurrency is lower in a wave, and
+each job runs at full speed instead of dying with the node.
+
+`tests/scripts/test_arc_runner_requests.py` keeps the Helm values and both
+rendered pools in agreement and refuses requests below the measured floor.
+More capacity is a hardware or node-role decision (see the ARC items in the
+[engineering backlog](../../../../ROADMAP.md#engineering-backlog-platform-and-fleet-wide)),
+not a request cut.
+
 ## Capacity recovery without cancelling jobs
 
 Controller pods require non-builder nodes and retain two replicas, leader

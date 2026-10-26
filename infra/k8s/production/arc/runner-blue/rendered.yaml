@@ -199,9 +199,14 @@ spec:
             # named BOTH ("Container dind was using 80Ki, request is 0"). The
             # figure is small because the shared `work` volume holds the bulk,
             # but a container with request 0 is always an eviction candidate.
-            # Deliberately no cpu/memory request added here — the builder nodes
-            # already sit at 94-95% CPU and changing their scheduling weight is
-            # a separate decision from stopping disk evictions.
+            # cpu/memory requests added 2026-10-26 (see the runner container's
+            # requests below for the incident). dind runs every `services:` and
+            # `docker run` container of the job; its 7-day peak was 0.56Gi and
+            # 0.52 CPU. Requests only, no cpu/memory limit: a limit here would
+            # OOM-kill a job's service containers or image build, a new failure
+            # mode the data does not justify.
+            cpu: 100m
+            memory: 512Mi
             ephemeral-storage: 2Gi
           limits:
             ephemeral-storage: 8Gi
@@ -249,8 +254,30 @@ spec:
             # 12Gi left too little headroom above that for a heavier E2E shard.
             ephemeral-storage: 16Gi
           requests:
-            cpu: 400m
-            memory: 2Gi
+            # LOAD-BEARING, like the ephemeral-storage request below, and for
+            # the same reason: the scheduler packs by REQUEST, not by use.
+            #
+            # 2026-10-24 ~23:00-23:56Z a builder node (8 vCPU / 31Gi) went
+            # NotReady twice. At 400m/2Gi the scheduler fit 15 runners on it
+            # (15 x 2Gi = 30Gi of 30.6Gi allocatable) because the other builder
+            # was at its pod cap. Real use was ~10 cores of demand on 8 (load1
+            # up to 139), MemAvailable down to 1.8Gi, ~8k major page faults/s,
+            # node-level OOM kills (62 in 7 days, 0 cgroup OOMs: the pods never
+            # reached their own limits). The kubelet stopped answering, the
+            # taint-eviction controller deleted 8 runners and the node's
+            # Longhorn instance-manager, and the volume replicas on it faulted.
+            #
+            # 7-day per-pod peaks (2026-10-19..26): runner memory p90 3.87Gi,
+            # p99 5.04Gi, max 5.98Gi; runner CPU (5m rate) p90 1.03 cores.
+            # 1 CPU / 4Gi (plus dind's 100m / 512Mi) is the p90 peak. It caps
+            # that node at 6 runners by both CPU and memory, so a wave queues
+            # at GitHub instead of taking the node down. Trade-off, stated
+            # plainly: pool concurrency drops from ~18 to ~8 and a wave's queue
+            # gets longer; each job runs at full speed and is not killed with
+            # the node. Raising capacity is a hardware or node-role decision,
+            # not a request cut.
+            cpu: "1"
+            memory: 4Gi
             # LOAD-BEARING. Without an ephemeral-storage REQUEST the scheduler
             # scores this pod's disk usage as zero, packs runners onto a node
             # without accounting for their checkouts, and kubelet then evicts
