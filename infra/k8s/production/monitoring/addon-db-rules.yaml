@@ -72,11 +72,14 @@ spec:
             summary: "Managed database {{ $labels.namespace }}/{{ $labels.pod }} has no completed backup"
             description: |
               CloudNativePG reports no available backup for this addon cluster
-              two hours after the condition first held. Provisioning is allowed
-              to proceed without a configured backup store (it is logged at
-              ERROR on every provision), so the most likely causes are an unset
-              ENCLII_ADDON_BACKUP_DESTINATION_BASE or a missing
-              enclii-db-backup-credentials Secret in the addon namespace.
+              two hours after the condition first held. switchyard-api's backup
+              sweep (every 10 min) wires backups onto every live, awake cluster
+              once the store is configured AND enclii/enclii-db-backup-credentials
+              exists; until then it logs the unprotected count at ERROR. Most
+              likely causes, in order: the credential was never submitted
+              (intake target enclii/addon-db-backups), the cluster carries a
+              backup stanza Enclii did not write (logged as drift), or the
+              first backup failed (kubectl get backups -n <namespace>).
               Runbook: docs/runbooks/ADDON_BACKUPS.md
 
         - alert: AddonBackupStale

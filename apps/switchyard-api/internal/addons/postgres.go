@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"os"
 	"strconv"
-	"strings"
 
 	"github.com/sirupsen/logrus"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -128,6 +127,9 @@ func (p *PostgresProvisioner) Provision(ctx context.Context, req *ProvisionReque
 	if cluster == nil {
 		return nil, fmt.Errorf("invalid isolated PostgreSQL profile")
 	}
+	// Decided BEFORE the Cluster exists: a stanza whose credential is absent
+	// would start a database whose WAL archiving fails from its first segment.
+	wireBackups := p.prepareProvisionBackups(ctx, cluster, logger)
 
 	// Convert to unstructured
 	clusterJSON, err := json.Marshal(cluster)
@@ -184,28 +186,22 @@ func (p *PostgresProvisioner) Provision(ctx context.Context, req *ProvisionReque
 	}
 
 	// Backups. Same non-fatal posture as the netpol above: the cluster is up
-	// either way, and each gap is surfaced rather than swallowed — but unlike
-	// the netpol, an UNCONFIGURED backup store is an operator-level ERROR on
-	// every provision, because 28 addons shipped quietly unprotected before
-	// this existed.
-	if backup := backupConfigFromEnv(); backup.enabled() {
+	// either way, and each gap is surfaced rather than swallowed. Order matters
+	// (postgres_backup.go): credential and egress rule before the first WAL
+	// segment needs them, then the ScheduledBackup. Anything that fails here is
+	// retried by the reconciler's backup sweep.
+	if wireBackups {
 		if err := p.k8sClient.EnsureSecretCopiedFrom(
 			ctx, BackupCredentialsSourceNS, BackupCredentialsSecretName, req.Namespace, clusterOwner,
 		); err != nil {
 			logger.WithError(err).Error("Failed to replicate backup credentials — barman will not be able to write backups")
 		}
-		sb := p.buildScheduledBackupManifest(req, resourceName)
-		sbJSON, _ := json.Marshal(sb)
-		var sbObj unstructured.Unstructured
-		if err := json.Unmarshal(sbJSON, &sbObj.Object); err == nil {
-			if _, err := p.dynamicClient.Resource(cnpgScheduledBackupGVR).Namespace(req.Namespace).Create(
-				ctx, &sbObj, metav1.CreateOptions{},
-			); err != nil {
-				logger.WithError(err).Error("Failed to create ScheduledBackup — cluster has no recurring backups")
-			}
+		if err := p.k8sClient.EnsureNetworkPolicy(ctx, buildBackupEgressPolicy(req.Namespace, resourceName)); err != nil {
+			logger.WithError(err).Error("Failed to create backup egress NetworkPolicy — barman cannot reach the object store")
 		}
-	} else {
-		logger.Error("ENCLII_ADDON_BACKUP_DESTINATION_BASE is not set — this cluster is being provisioned WITHOUT backups")
+		if _, err := p.ensureScheduledBackup(ctx, req, resourceName); err != nil {
+			logger.WithError(err).Error("Failed to create ScheduledBackup — cluster has no recurring backups")
+		}
 	}
 
 	// Per-addon observability: exporter, PodMonitor and the two NetworkPolicies
@@ -344,26 +340,10 @@ func (p *PostgresProvisioner) buildClusterManifest(req *ProvisionRequest, resour
 	}
 
 	// Backups: barman object store, per-cluster path, retention. Absent when
-	// unconfigured — Provision logs that absence loudly.
+	// unconfigured — Provision logs that absence loudly, and also strips the
+	// stanza when the credential is not ready (prepareProvisionBackups).
 	if backup := backupConfigFromEnv(); backup.enabled() {
-		spec["backup"] = map[string]interface{}{
-			"retentionPolicy": BackupRetention,
-			"barmanObjectStore": map[string]interface{}{
-				"destinationPath": fmt.Sprintf("%s/%s/%s",
-					strings.TrimRight(backup.DestinationBase, "/"), req.Namespace, resourceName),
-				"endpointURL": backup.EndpointURL,
-				"s3Credentials": map[string]interface{}{
-					"accessKeyId": map[string]interface{}{
-						"name": BackupCredentialsSecretName,
-						"key":  "ACCESS_KEY_ID",
-					},
-					"secretAccessKey": map[string]interface{}{
-						"name": BackupCredentialsSecretName,
-						"key":  "SECRET_ACCESS_KEY",
-					},
-				},
-			},
-		}
+		spec["backup"] = backup.backupStanza(req.Namespace, resourceName)
 	}
 
 	return cluster

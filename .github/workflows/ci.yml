@@ -442,6 +442,14 @@ jobs:
       - name: Run pgBackRest restore drill tests
         run: pytest tests/scripts/test_pgbackrest_restore_drill.py tests/scripts/test_pgbackrest_version_parity.py -v
 
+      # Managed-Postgres addon backups: the intake target, ExternalSecret,
+      # switchyard-api env and ScheduledBackup RBAC must agree with each other
+      # and with the provisioner (no addon was ever backed up while any one was
+      # missing), and the addon restore drill must refuse an apply not bound to
+      # the reviewed --dry-run fingerprint.
+      - name: Run addon backup wiring and restore-drill plan tests
+        run: pytest tests/scripts/test_addon_backup_wiring.py tests/scripts/test_restore_addon_plan.py -v
+
       # Runs scripts/commercial-ga-proof.sh against a local stub. A 404/5xx on
       # signup or checkout must fail; a checkout that lands on the sales
       # booking page must be a CHECK (not a pass, and not an exit 1 that would
