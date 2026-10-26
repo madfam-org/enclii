@@ -15,6 +15,10 @@ func (h *Handler) readKarafielProductionTargetSnapshots(ctx context.Context) ([]
 }
 
 func (h *Handler) readKarafielProductionTargetSnapshotsWithDiagnostic(ctx context.Context, diagnostic *workloadtargets.ProductionFenceDiagnostic) ([]workloadtargets.Snapshot, error) {
+	return h.readKarafielProductionTargetSnapshotsWithSource(ctx, diagnostic, newKarafielProductionSourceReader())
+}
+
+func (h *Handler) readKarafielProductionTargetSnapshotsWithSource(ctx context.Context, diagnostic *workloadtargets.ProductionFenceDiagnostic, source *karafielProductionSourceReader) ([]workloadtargets.Snapshot, error) {
 	if h.repos == nil || h.repos.DB() == nil || h.repos.Projects == nil || h.repos.Services == nil || h.repos.Environments == nil || h.repos.Onboardings == nil ||
 		h.opsKubeClient() == nil || h.k8sClient == nil || h.k8sClient.DynamicClient == nil || h.config == nil || h.config.GitHubToken == "" {
 		return nil, diagnostic.SnapshotFailure("prerequisites", workloadtargets.ErrUnavailable)
@@ -77,7 +81,7 @@ func (h *Handler) readKarafielProductionTargetSnapshotsWithDiagnostic(ctx contex
 	if err != nil || !workloadtargets.ValidRevision(rootRevision) {
 		return nil, diagnostic.SnapshotFailure("root_revision", workloadtargets.ErrOwnership)
 	}
-	content, _, err := getGitHubFileContent(ctx, h.config.GitHubToken, "madfam-org", "enclii", "infra/argocd/projects/karafiel/config.json", rootRevision)
+	content, err := source.configuration(ctx, h.config.GitHubToken, rootRevision)
 	if err != nil || len(content) > 8192 || k8s.DecodeInitialBootstrapJSON([]byte(content), &base.SourceConfiguration) != nil {
 		return nil, diagnostic.SnapshotFailure("source_configuration", workloadtargets.ErrOwnership)
 	}
@@ -90,7 +94,7 @@ func (h *Handler) readKarafielProductionTargetSnapshotsWithDiagnostic(ctx contex
 	if err != nil || !workloadtargets.ValidRevision(revision) {
 		return nil, diagnostic.SnapshotFailure("application_revision", workloadtargets.ErrOwnership)
 	}
-	files, err := h.fetchManifestFiles(ctx, "madfam-org", "karafiel", "infra/k8s/production", revision)
+	files, err := source.manifestFiles(ctx, h.config.GitHubToken, revision)
 	if err != nil {
 		return nil, diagnostic.SnapshotFailure("manifest_fetch", workloadtargets.ErrOwnership)
 	}
