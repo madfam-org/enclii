@@ -56,25 +56,29 @@ func intent(s Snapshot, namespace, deployment string) (Identity, error) {
 // names must agree with persisted intent, native UIDs, tracking and a declared
 // source object; labels alone cannot adopt a workload.
 func ValidateSnapshot(s Snapshot, namespace, deployment string) (Plan, error) {
+	return validateSnapshotWithDiagnostic(s, namespace, deployment, nil)
+}
+
+func validateSnapshotWithDiagnostic(s Snapshot, namespace, deployment string, diagnostic *ProductionFenceDiagnostic) (Plan, error) {
 	i, err := intent(s, namespace, deployment)
 	if err != nil {
-		return Plan{}, err
+		return Plan{}, diagnostic.ValidationFailure("persisted_intent", err)
 	}
 	if !s.NamespaceIntentExclusive {
-		return Plan{}, ErrIntent
+		return Plan{}, diagnostic.ValidationFailure("persisted_intent", ErrIntent)
 	}
 	n, d, a, declared := s.Namespace, s.Deployment, s.Application, s.Declared
 	if n == nil || d == nil || a == nil || declared == nil || n.Name != namespace || d.Namespace != namespace || d.Name != deployment ||
 		n.DeletionTimestamp != nil || d.DeletionTimestamp != nil || a.GetDeletionTimestamp() != nil ||
 		n.UID == "" || d.UID == "" || a.GetUID() == "" || n.ResourceVersion == "" || d.ResourceVersion == "" || a.GetResourceVersion() == "" ||
 		a.GetName() != i.Application || a.GetNamespace() != "argocd" {
-		return Plan{}, ErrOwnership
+		return Plan{}, diagnostic.ValidationFailure("native_identity", ErrOwnership)
 	}
 	if project := n.Labels["enclii.dev/project"]; project != "" && project != i.ProjectID.String() {
-		return Plan{}, ErrOwnership
+		return Plan{}, diagnostic.ValidationFailure("namespace_owner", ErrOwnership)
 	}
 	if _, exists, e := unstructured.NestedFieldNoCopy(a.Object, "spec", "sources"); e != nil || exists {
-		return Plan{}, ErrOwnership
+		return Plan{}, diagnostic.ValidationFailure("application_source", ErrOwnership)
 	}
 	for _, field := range []struct {
 		path  []string
@@ -85,28 +89,28 @@ func ValidateSnapshot(s Snapshot, namespace, deployment string) (Plan, error) {
 	} {
 		actual, _, e := unstructured.NestedString(a.Object, field.path...)
 		if e != nil || actual != field.value {
-			return Plan{}, ErrOwnership
+			return Plan{}, diagnostic.ValidationFailure("application_source", ErrOwnership)
 		}
 	}
 	source, _, err := unstructured.NestedString(a.Object, "spec", "source", "repoURL")
 	canonical, _, repoErr := CanonicalRepo(source)
 	if err != nil || repoErr != nil || canonical != i.Repo {
-		return Plan{}, ErrOwnership
+		return Plan{}, diagnostic.ValidationFailure("application_source", ErrOwnership)
 	}
 	comparedRepo, _, err := unstructured.NestedString(a.Object, "status", "sync", "comparedTo", "source", "repoURL")
 	comparedCanonical, _, comparedErr := CanonicalRepo(comparedRepo)
 	comparedPath, _, pathErr := unstructured.NestedString(a.Object, "status", "sync", "comparedTo", "source", "path")
 	comparedRef, _, refErr := unstructured.NestedString(a.Object, "status", "sync", "comparedTo", "source", "targetRevision")
 	if err != nil || comparedErr != nil || pathErr != nil || refErr != nil || comparedCanonical != i.Repo || comparedPath != i.Path || comparedRef != i.Ref {
-		return Plan{}, ErrOwnership
+		return Plan{}, diagnostic.ValidationFailure("compared_source", ErrOwnership)
 	}
 	revision, _, err := unstructured.NestedString(a.Object, "status", "sync", "revision")
 	if err != nil || !sha40.MatchString(revision) {
-		return Plan{}, ErrOwnership
+		return Plan{}, diagnostic.ValidationFailure("application_revision", ErrOwnership)
 	}
 	config := s.ArgoConfig
 	if config == nil || config.Namespace != "argocd" || config.Name != "argocd-cm" || config.UID == "" || config.ResourceVersion == "" || config.DeletionTimestamp != nil {
-		return Plan{}, ErrOwnership
+		return Plan{}, diagnostic.ValidationFailure("tracking_configuration", ErrOwnership)
 	}
 	i.ArgoConfigUID = string(config.UID)
 	i.TrackingMethod = config.Data["application.resourceTrackingMethod"]
@@ -116,7 +120,7 @@ func ValidateSnapshot(s Snapshot, namespace, deployment string) (Plan, error) {
 	case "annotation", "annotation+label":
 		tracking := i.Application + ":apps/Deployment:" + namespace + "/" + deployment
 		if d.Annotations["argocd.argoproj.io/tracking-id"] != tracking || d.Annotations["argocd.argoproj.io/installation-id"] != i.InstallationID {
-			return Plan{}, ErrOwnership
+			return Plan{}, diagnostic.ValidationFailure("tracking_marker", ErrOwnership)
 		}
 	case "label":
 		// Declared label tracking: Argo stamps every resource it manages with the
@@ -128,15 +132,15 @@ func ValidateSnapshot(s Snapshot, namespace, deployment string) (Plan, error) {
 			key = "app.kubernetes.io/instance" // Argo's documented instance label key
 		}
 		if len(validation.IsQualifiedName(key)) != 0 || i.InstallationID != "" || d.Labels[key] != i.Application {
-			return Plan{}, ErrOwnership
+			return Plan{}, diagnostic.ValidationFailure("tracking_marker", ErrOwnership)
 		}
 		i.InstanceLabelKey = key
 	default:
-		return Plan{}, ErrTrackingMethod
+		return Plan{}, diagnostic.ValidationFailure("tracking_configuration", ErrTrackingMethod)
 	}
 	resources, _, err := unstructured.NestedSlice(a.Object, "status", "resources")
 	if err != nil {
-		return Plan{}, ErrOwnership
+		return Plan{}, diagnostic.ValidationFailure("resource_inventory", ErrOwnership)
 	}
 	matches := 0
 	for _, raw := range resources {
@@ -146,18 +150,18 @@ func ValidateSnapshot(s Snapshot, namespace, deployment string) (Plan, error) {
 		}
 	}
 	if matches != 1 || declared.Namespace != namespace || declared.Name != deployment || !reflect.DeepEqual(d.Spec.Selector, declared.Spec.Selector) {
-		return Plan{}, ErrOwnership
+		return Plan{}, diagnostic.ValidationFailure("resource_inventory", ErrOwnership)
 	}
 	for _, labels := range []map[string]string{d.Labels, d.Spec.Template.Labels, declared.Labels, declared.Spec.Template.Labels} {
 		if service := labels["enclii.dev/service"]; service != "" && service != s.Service.Name {
-			return Plan{}, ErrOwnership
+			return Plan{}, diagnostic.ValidationFailure("declared_labels", ErrOwnership)
 		}
 		if project := labels["enclii.dev/project"]; project != "" && project != i.ProjectID.String() {
-			return Plan{}, ErrOwnership
+			return Plan{}, diagnostic.ValidationFailure("declared_labels", ErrOwnership)
 		}
 	}
 	if !declaredLabelsMatch(declared.Labels, d.Labels) || !declaredLabelsMatch(declared.Spec.Template.Labels, d.Spec.Template.Labels) {
-		return Plan{}, ErrOwnership
+		return Plan{}, diagnostic.ValidationFailure("declared_labels", ErrOwnership)
 	}
 	names, actualNames := []string{}, []string{}
 	images := []string{}
@@ -166,7 +170,7 @@ func ValidateSnapshot(s Snapshot, namespace, deployment string) (Plan, error) {
 	}
 	for _, container := range d.Spec.Template.Spec.Containers {
 		if !imagePattern.MatchString(container.Image) {
-			return Plan{}, ErrOwnership
+			return Plan{}, diagnostic.ValidationFailure("image_shape", ErrOwnership)
 		}
 		actualNames = append(actualNames, container.Name)
 		images = append(images, container.Image)
@@ -174,7 +178,7 @@ func ValidateSnapshot(s Snapshot, namespace, deployment string) (Plan, error) {
 	sort.Strings(names)
 	sort.Strings(actualNames)
 	if len(names) == 0 || !reflect.DeepEqual(names, actualNames) {
-		return Plan{}, ErrOwnership
+		return Plan{}, diagnostic.ValidationFailure("container_set", ErrOwnership)
 	}
 	identityHash, err := hash(struct {
 		Namespace, Name string
@@ -182,23 +186,23 @@ func ValidateSnapshot(s Snapshot, namespace, deployment string) (Plan, error) {
 		Containers      []string
 	}{namespace, deployment, declared.Spec.Selector, names})
 	if err != nil {
-		return Plan{}, err
+		return Plan{}, diagnostic.ValidationFailure("declared_identity", err)
 	}
 	i.NamespaceUID, i.DeploymentUID, i.ApplicationUID = string(n.UID), string(d.UID), string(a.GetUID())
 	i.Revision, i.DeclaredIdentitySHA = revision, identityHash
 	if err = i.Validate(); err != nil {
-		return Plan{}, err
+		return Plan{}, diagnostic.ValidationFailure("plan_identity", err)
 	}
 	if s.Incumbent != nil {
 		if s.Incumbent.Validate() != nil || !SameOwner(s.Incumbent.Identity, i) {
-			return Plan{}, ErrConflict
+			return Plan{}, diagnostic.ValidationFailure("incumbent_binding", ErrConflict)
 		}
 	}
 	plan := Plan{Version: "service-deployment-target-plan-v1", Identity: i,
 		Versions:  ReviewedVersions{Namespace: n.ResourceVersion, Application: a.GetResourceVersion(), Deployment: d.ResourceVersion, ArgoConfig: config.ResourceVersion},
 		Incumbent: s.Incumbent, ActualImages: images}
 	plan.SHA, err = plan.Fingerprint()
-	return plan, err
+	return plan, diagnostic.ValidationFailure("plan_fingerprint", err)
 }
 
 func declaredLabelsMatch(expected, actual map[string]string) bool {
