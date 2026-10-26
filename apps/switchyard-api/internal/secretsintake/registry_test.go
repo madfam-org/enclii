@@ -814,6 +814,7 @@ func TestEncliiAddonDBBackupsTarget(t *testing.T) {
 	assert.True(t, tgt.Generate.Disabled, "an R2 token is minted by Cloudflare, never generated")
 	assert.Contains(t, tgt.Description, "never generated")
 	assert.Contains(t, tgt.Description, "bucket only")
+	assert.Contains(t, tgt.Description, "enclii ops addons backup-credential", "the provisioned path, not a human, supplies it")
 }
 
 // S-Gate 1 synthetic buyer (2026-10-14). The journeys CronJob reads exactly

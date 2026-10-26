@@ -360,3 +360,21 @@ func TestNewClusterIsBackedUpFromCreationWhenTheCredentialExists(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, "uid-new", string(copied.OwnerReferences[0].UID))
 }
+
+func TestBackupStoreBucketIsTheS3URLsFirstSegment(t *testing.T) {
+	for base, want := range map[string]string{
+		"s3://enclii-addon-db-backups":         "enclii-addon-db-backups",
+		"s3://enclii-addon-db-backups/":        "enclii-addon-db-backups",
+		"s3://enclii-addon-db-backups/tenants": "enclii-addon-db-backups",
+	} {
+		got, err := BackupStore{DestinationBase: base}.Bucket()
+		require.NoError(t, err, base)
+		require.Equal(t, want, got, base)
+	}
+	_, err := BackupStore{}.Bucket()
+	require.ErrorIs(t, err, ErrBackupStoreNotConfigured)
+	for _, bad := range []string{"https://bucket", "s3://", "s3:///x"} {
+		_, err := BackupStore{DestinationBase: bad}.Bucket()
+		require.Error(t, err, bad)
+	}
+}

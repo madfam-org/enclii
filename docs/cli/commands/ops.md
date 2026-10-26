@@ -33,6 +33,7 @@ encouraging direct `kubectl`.
 | `enclii ops jobs list|trigger|suspend` | CronJob inspection, audited triggers and durable service-job holds; independent verified-target Jobs use the [closed API request](../../runbooks/ENCLII_VERIFIED_TARGET_JOBS.md) |
 | `enclii ops storage volumes|pvc|longhorn|repair-plan|settings-apply|prune-detached|storageclass-apply|r2-audit` | PVC/PV/Longhorn inspection, repair planning, CPU settings (O-5), orphan prune (O-4), StorageClass reconcile, R2 credential audit (incomplete, shared, or mismatched buckets) |
 | `enclii ops secrets external|vault|refresh|sync|sync-sweep|rotate|vault-backfill` | ExternalSecrets and Vault readiness workflows |
+| `enclii ops addons backup-credential` | Server-side provisioning of the addon backup bucket and its bucket-scoped R2 credential into Vault; no human holds it ([below](#ops-addons-backup-credential)) |
 | `enclii ops secrets provision-kalya-feed` | Server-side kalya standing-feed credential provisioning ([below](#ops-secrets-provision-kalya-feed)) |
 | `enclii ops domains reconcile` | Declared-vs-live hostname reconcile for a service ([below](#ops-domains-reconcile)) |
 | `enclii secrets intake` | Chat-safe operator credential handoff into Vault ([secrets.md](./secrets.md#enclii-secrets-intake)) |
@@ -351,6 +352,34 @@ POST /v1/ops/addons/hibernate
 - **Never deletes** a Cluster, PVC, Secret or pod, and never changes the
   addon's status.
 - **Reverse:** remove the annotation; CNPG recreates the instance from its PVC.
+
+## `ops addons backup-credential`
+
+Provisions the object-store credential every managed-Postgres addon backs up
+with, so no human ever holds it (`POST /v1/ops/addons/backup-credential`,
+platform rank). Switchyard ensures the bucket named by
+`ENCLII_ADDON_BACKUP_DESTINATION_BASE`, mints a Cloudflare token scoped to that
+bucket only ("Workers R2 Storage Bucket Item Write"), merges the S3 pair into
+the Vault path and keys of the intake target `enclii/addon-db-backups`, and
+force-syncs the `enclii-db-backup-credentials` ExternalSecret. The value is
+never returned or logged.
+
+```bash
+enclii ops addons backup-credential                       # dry run: plan + plan_hash
+enclii ops addons backup-credential --apply --expect-plan <plan_hash> \
+  --idempotency-key <key> --reason "..."
+enclii ops addons backup-credential --rotate              # plan a rotation
+```
+
+- A plan of `keep` (Vault already holds both keys) writes nothing on apply; a
+  new token is minted only with `--rotate` on both the dry run and the apply.
+- Apply requires `--expect-plan`, `--idempotency-key` and `--reason`; it writes
+  an audit row before any mutation and a result row after.
+- A Cloudflare refusal is `blocked` (HTTP 424) and names the permission the
+  switchyard-api token lacks; nothing is written to Vault.
+- A failed Vault write revokes the newly minted token.
+
+Runbook: [ADDON_BACKUPS.md](../../runbooks/ADDON_BACKUPS.md#provisioning-the-credential-one-time-no-human-holds-it).
 
 ## Required Mutation Flags
 
