@@ -79,8 +79,12 @@ credential is absent or lacks a key. `Provision` makes the same decision
 before the Cluster exists and strips the stanza rather than start a database
 that cannot archive.
 
-Never touched: a **hibernated** cluster (`cnpg.io/hibernation=on`; it
-converges when it wakes), a cluster Enclii does not manage (labels
+Never wired: a **hibernated** cluster (`cnpg.io/hibernation=on`; it is wired
+when it wakes). Its Enclii ScheduledBackup, if it has one, is suspended
+(`spec.suspend: true`, annotated `enclii.dev/suspended-for-hibernation`) so it
+does not produce a failed Backup every night, and resumed when the cluster
+wakes; a schedule an operator suspended is never resumed. Never touched: a
+cluster Enclii does not manage (labels
 `managed-by=enclii` and `enclii.dev/addon-id` must match the addon), the
 Karafiel/Janua staging profiles (backup-free by design), and a cluster whose
 existing `spec.backup` differs from the one Enclii writes (logged at ERROR as
@@ -160,6 +164,11 @@ kubectl get backups.postgresql.cnpg.io -n project-<id>     # phase completed
 kubectl get clusters.postgresql.cnpg.io -n project-<id> <cluster> \
   -o jsonpath='{.status.lastSuccessfulBackup} {.status.firstRecoverabilityPoint}{"\n"}'
 ```
+
+Check every **live, awake** addon, including any provisioned before the
+credential existed (those were created without a stanza and are wired by the
+sweep, not by `Provision`). Retired addons that are hibernated show no
+schedule or a suspended one; that is by design.
 
 `AddonBackupNeverCompleted` clears for a cluster once CNPG reports its first
 available backup (the alert has `for: 2h`, so allow for it). Hibernated
@@ -259,7 +268,16 @@ move.
 Exit codes: `0` verified, `10` preflight, refused target or plan mismatch,
 `20` no usable backup, `30` restore failed, `40` verification failed.
 
+**Capacity.** The recovery Cluster asks for a 10Gi volume from the default
+StorageClass in the scratch namespace. Check free Longhorn capacity first; a
+recovery that cannot bind its volume fails with exit `30` and says nothing
+about the backup.
+
 The platform's own Postgres has separate drills: `enclii ops jobs trigger
 postgres-restore-drill -n data --apply --reason "..."` (see
 `scripts/wave1-ga-ops.sh --backup-drill`) and the monthly pgBackRest drill in
-`infra/k8s/platform-infra/postgres-pgbackrest-restore-drill.yaml`.
+`infra/k8s/platform-infra/postgres-pgbackrest-restore-drill.yaml`. Before
+reading a failure of the pgBackRest drill as a backup failure, check its
+scratch volume's health: on 2026-10-26 its PVC was found running on one
+replica although the StorageClass asks for two (a degraded volume, tracked by
+the storage lane), so a drill failure there may be storage, not backup.

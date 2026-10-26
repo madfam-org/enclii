@@ -191,17 +191,7 @@ func (p *PostgresProvisioner) Provision(ctx context.Context, req *ProvisionReque
 	// segment needs them, then the ScheduledBackup. Anything that fails here is
 	// retried by the reconciler's backup sweep.
 	if wireBackups {
-		if err := p.k8sClient.EnsureSecretCopiedFrom(
-			ctx, BackupCredentialsSourceNS, BackupCredentialsSecretName, req.Namespace, clusterOwner,
-		); err != nil {
-			logger.WithError(err).Error("Failed to replicate backup credentials — barman will not be able to write backups")
-		}
-		if err := p.k8sClient.EnsureNetworkPolicy(ctx, buildBackupEgressPolicy(req.Namespace, resourceName)); err != nil {
-			logger.WithError(err).Error("Failed to create backup egress NetworkPolicy — barman cannot reach the object store")
-		}
-		if _, err := p.ensureScheduledBackup(ctx, req, resourceName); err != nil {
-			logger.WithError(err).Error("Failed to create ScheduledBackup — cluster has no recurring backups")
-		}
+		p.wireNewClusterBackups(ctx, req, resourceName, clusterOwner, logger)
 	}
 
 	// Per-addon observability: exporter, PodMonitor and the two NetworkPolicies

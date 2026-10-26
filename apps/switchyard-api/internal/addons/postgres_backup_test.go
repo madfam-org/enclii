@@ -255,3 +255,108 @@ func TestPrepareProvisionBackupsStripsTheStanzaWhileTheCredentialIsMissing(t *te
 	require.True(t, ready.prepareProvisionBackups(context.Background(), cluster, logger))
 	require.Contains(t, cluster["spec"], "backup")
 }
+
+func bkSchedule(annotations map[string]string, suspended bool) *unstructured.Unstructured {
+	u := &unstructured.Unstructured{Object: map[string]interface{}{"spec": map[string]interface{}{
+		"schedule": BackupSchedule, "immediate": true, "suspend": suspended,
+		"cluster": map[string]interface{}{"name": bkCluster},
+	}}}
+	u.SetAPIVersion(CloudNativePGAPIVersion)
+	u.SetKind("ScheduledBackup")
+	u.SetNamespace(bkNS)
+	u.SetName(bkCluster + "-daily")
+	u.SetAnnotations(annotations)
+	return u
+}
+
+func bkProvisionerWith(t *testing.T, dynObjects []runtime.Object, kubeObjects ...runtime.Object) (*PostgresProvisioner, *dynamicfake.FakeDynamicClient, *kubefake.Clientset) {
+	t.Helper()
+	dyn := dynamicfake.NewSimpleDynamicClientWithCustomListKinds(runtime.NewScheme(), map[schema.GroupVersionResource]string{
+		cnpgGVR:                "ClusterList",
+		cnpgScheduledBackupGVR: "ScheduledBackupList",
+	}, dynObjects...)
+	kube := kubefake.NewSimpleClientset(kubeObjects...)
+	return &PostgresProvisioner{k8sClient: &k8s.Client{KubeClient: kube}, dynamicClient: dyn, logger: testLogger()}, dyn, kube
+}
+
+func TestHibernationSuspendsTheScheduleAndWakingResumesIt(t *testing.T) {
+	bkStore(t)
+	ctx := context.Background()
+	hibernated := bkClusterObj(func(u *unstructured.Unstructured) {
+		u.SetAnnotations(map[string]string{CNPGHibernationAnnotation: "on"})
+	})
+	p, dyn, kube := bkProvisionerWith(t, []runtime.Object{hibernated, bkSchedule(nil, false)}, bkCredential(backupCredentialKeys...))
+
+	out, err := p.convergeBackups(ctx, bkAddon())
+	require.ErrorIs(t, err, ErrBackupConvergenceNotApplicable, "a hibernated cluster is never wired")
+	require.True(t, out.ScheduleSuspended)
+	require.Empty(t, writes(kube.Actions()), "no credential copy, no egress rule for a stopped cluster")
+	sb, err := dyn.Resource(cnpgScheduledBackupGVR).Namespace(bkNS).Get(ctx, bkCluster+"-daily", metav1.GetOptions{})
+	require.NoError(t, err)
+	suspended, _, _ := unstructured.NestedBool(sb.Object, "spec", "suspend")
+	require.True(t, suspended, "no failed Backup every night for a cluster with no instance")
+	require.Equal(t, "true", sb.GetAnnotations()[suspendedForHibernation])
+
+	dyn.ClearActions()
+	out, err = p.convergeBackups(ctx, bkAddon())
+	require.ErrorIs(t, err, ErrBackupConvergenceNotApplicable)
+	require.False(t, out.ScheduleSuspended)
+	require.Empty(t, writes(dyn.Actions()), "already suspended: no second write")
+
+	// The cluster wakes.
+	awake, err := dyn.Resource(cnpgGVR).Namespace(bkNS).Get(ctx, bkCluster, metav1.GetOptions{})
+	require.NoError(t, err)
+	awake.SetAnnotations(nil)
+	_, err = dyn.Resource(cnpgGVR).Namespace(bkNS).Update(ctx, awake, metav1.UpdateOptions{})
+	require.NoError(t, err)
+	out, err = p.convergeBackups(ctx, bkAddon())
+	require.NoError(t, err)
+	require.True(t, out.ScheduleResumed)
+	require.True(t, out.StanzaPatched, "a cluster that slept through the wiring is wired on waking")
+	sb, err = dyn.Resource(cnpgScheduledBackupGVR).Namespace(bkNS).Get(ctx, bkCluster+"-daily", metav1.GetOptions{})
+	require.NoError(t, err)
+	suspended, _, _ = unstructured.NestedBool(sb.Object, "spec", "suspend")
+	require.False(t, suspended)
+	require.NotContains(t, sb.GetAnnotations(), suspendedForHibernation)
+}
+
+func TestAnOperatorSuspendedScheduleIsNeverResumed(t *testing.T) {
+	bkStore(t)
+	p, dyn, _ := bkProvisionerWith(t, []runtime.Object{bkClusterObj(nil), bkSchedule(nil, true)}, bkCredential(backupCredentialKeys...))
+	out, err := p.convergeBackups(context.Background(), bkAddon())
+	require.NoError(t, err)
+	require.False(t, out.ScheduleResumed)
+	sb, err := dyn.Resource(cnpgScheduledBackupGVR).Namespace(bkNS).Get(context.Background(), bkCluster+"-daily", metav1.GetOptions{})
+	require.NoError(t, err)
+	suspended, _, _ := unstructured.NestedBool(sb.Object, "spec", "suspend")
+	require.True(t, suspended, "a schedule a human suspended stays suspended")
+}
+
+// A new addon gets backups FROM CREATION when the credential exists: the
+// manifest Provision creates carries spec.backup (prepareProvisionBackups) and,
+// once the Cluster exists, wireNewClusterBackups lays down the credential copy
+// owned by it, the egress rule and the schedule. (Provision as a whole needs a
+// concrete clientset for EnsureNamespace, so the two halves are tested here.)
+func TestNewClusterIsBackedUpFromCreationWhenTheCredentialExists(t *testing.T) {
+	bkStore(t)
+	ctx := context.Background()
+	logger := logrus.NewEntry(testLogger())
+	p, dyn, kube := bkProvisionerWith(t, nil, bkCredential(backupCredentialKeys...))
+	req := &ProvisionRequest{Addon: &types.DatabaseAddon{ID: bkAddonID, Name: "kernel09", Type: types.DatabaseAddonTypePostgres}, Namespace: bkNS, ProjectID: uuid.New()}
+
+	manifest := p.buildClusterManifest(req, bkCluster)
+	require.True(t, p.prepareProvisionBackups(ctx, manifest, logger))
+	dest, _, _ := unstructured.NestedString(manifest, "spec", "backup", "barmanObjectStore", "destinationPath")
+	require.Equal(t, "s3://addon-backups-fixture/"+bkNS+"/"+bkCluster, dest, "the very first WAL segment is archived")
+
+	p.wireNewClusterBackups(ctx, req, bkCluster, k8s.SecretCopyOwner{APIVersion: CloudNativePGAPIVersion, Kind: CloudNativePGKind, Name: bkCluster, UID: "uid-new"}, logger)
+	sb, err := dyn.Resource(cnpgScheduledBackupGVR).Namespace(bkNS).Get(ctx, bkCluster+"-daily", metav1.GetOptions{})
+	require.NoError(t, err)
+	immediate, _, _ := unstructured.NestedBool(sb.Object, "spec", "immediate")
+	require.True(t, immediate)
+	_, err = kube.NetworkingV1().NetworkPolicies(bkNS).Get(ctx, bkCluster+"-backup-egress", metav1.GetOptions{})
+	require.NoError(t, err)
+	copied, err := kube.CoreV1().Secrets(bkNS).Get(ctx, BackupCredentialsSecretName, metav1.GetOptions{})
+	require.NoError(t, err)
+	require.Equal(t, "uid-new", string(copied.OwnerReferences[0].UID))
+}

@@ -55,12 +55,18 @@ func (r *AddonReconciler) sweepAddonBackups(ctx context.Context) backupSweepResu
 		fields := logrus.Fields{"addon_id": addon.ID, "namespace": addon.K8sNamespace, "resource": addon.K8sResourceName}
 		switch {
 		case err == nil:
+			if out.ScheduleResumed {
+				r.logger.WithFields(fields).Info("Addon backup schedule resumed: cluster woke from hibernation")
+			}
 			if out.StanzaPatched || out.ScheduledBackupCreated {
 				res.Wired++
 				r.logger.WithFields(fields).WithFields(logrus.Fields{"stanza_patched": out.StanzaPatched, "scheduled_backup_created": out.ScheduledBackupCreated}).Info("Addon backups wired")
 			}
 		case errors.Is(err, addons.ErrBackupConvergenceNotApplicable):
 			res.Skipped++
+			if out.ScheduleSuspended {
+				r.logger.WithFields(fields).Info("Addon backup schedule suspended: cluster is hibernated")
+			}
 		case errors.Is(err, addons.ErrBackupStoreNotConfigured):
 			res.StoreUnconfigured = true
 			res.Unprotected++

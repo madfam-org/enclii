@@ -54,8 +54,13 @@ import (
 //
 // What is never done here: overwrite a backup stanza that differs from the one
 // Enclii would write (ErrBackupStanzaDrift: a human chose it, a human changes
-// it), touch a hibernated cluster (its instances are stopped; it converges
-// when it wakes), or touch a cluster Enclii does not manage.
+// it), wire a hibernated cluster (its instances are stopped; it converges when
+// it wakes), or touch a cluster Enclii does not manage.
+//
+// The one write a hibernated cluster gets: its Enclii ScheduledBackup, if it
+// has one, is SUSPENDED (and marked as suspended for hibernation), because a
+// schedule on a cluster with no instance produces a failed Backup every night.
+// When the cluster wakes, the sweep resumes only a schedule it suspended.
 
 var (
 	// ErrBackupConvergenceNotApplicable: nothing to converge. Not a live
@@ -78,6 +83,11 @@ var backupCredentialKeys = []string{"ACCESS_KEY_ID", "SECRET_ACCESS_KEY"}
 
 // backupFieldManager names Enclii's writes to the Cluster and ScheduledBackup.
 const backupFieldManager = "enclii-addon-backups"
+
+// suspendedForHibernation marks a ScheduledBackup Enclii suspended because its
+// cluster hibernated, so waking resumes it and never a schedule an operator
+// suspended on purpose.
+const suspendedForHibernation = "enclii.dev/suspended-for-hibernation"
 
 // backupStanza is the spec.backup Enclii writes for one cluster: barman object
 // store at a per-cluster prefix, the replicated credential, and retention.
@@ -216,6 +226,49 @@ func (p *PostgresProvisioner) ensureScheduledBackup(ctx context.Context, req *Pr
 type BackupConvergence struct {
 	StanzaPatched          bool `json:"stanza_patched"`
 	ScheduledBackupCreated bool `json:"scheduled_backup_created"`
+	// ScheduleSuspended / ScheduleResumed: the cluster hibernated / woke and
+	// its Enclii schedule followed.
+	ScheduleSuspended bool `json:"schedule_suspended,omitempty"`
+	ScheduleResumed   bool `json:"schedule_resumed,omitempty"`
+}
+
+// setScheduleSuspended suspends (hibernated) or resumes (awake) the cluster's
+// Enclii ScheduledBackup. It resumes only a schedule it suspended itself, and
+// reports whether it wrote. A cluster with no schedule is left alone.
+func (p *PostgresProvisioner) setScheduleSuspended(ctx context.Context, namespace, resourceName string, suspend bool) (bool, error) {
+	client := p.dynamicClient.Resource(cnpgScheduledBackupGVR).Namespace(namespace)
+	sb, err := client.Get(ctx, resourceName+"-daily", metav1.GetOptions{})
+	if err != nil {
+		if isNotFoundError(err) {
+			return false, nil
+		}
+		return false, fmt.Errorf("read ScheduledBackup %s/%s-daily: %w", namespace, resourceName, err)
+	}
+	suspended, _, _ := unstructured.NestedBool(sb.Object, "spec", "suspend")
+	ours := sb.GetAnnotations()[suspendedForHibernation] == "true"
+	var patch map[string]interface{}
+	switch {
+	case suspend && !suspended:
+		patch = map[string]interface{}{
+			"metadata": map[string]interface{}{"annotations": map[string]interface{}{suspendedForHibernation: "true"}},
+			"spec":     map[string]interface{}{"suspend": true},
+		}
+	case !suspend && suspended && ours:
+		patch = map[string]interface{}{
+			"metadata": map[string]interface{}{"annotations": map[string]interface{}{suspendedForHibernation: nil}},
+			"spec":     map[string]interface{}{"suspend": false},
+		}
+	default:
+		return false, nil
+	}
+	raw, err := json.Marshal(patch)
+	if err != nil {
+		return false, fmt.Errorf("marshal ScheduledBackup patch: %w", err)
+	}
+	if _, err := client.Patch(ctx, resourceName+"-daily", k8stypes.MergePatchType, raw, metav1.PatchOptions{FieldManager: backupFieldManager}); err != nil {
+		return false, fmt.Errorf("set suspend=%t on ScheduledBackup %s/%s-daily: %w", suspend, namespace, resourceName, err)
+	}
+	return true, nil
 }
 
 // convergeBackups wires backups onto one existing cluster, in the order the
@@ -242,6 +295,11 @@ func (p *PostgresProvisioner) convergeBackups(ctx context.Context, addon *types.
 		return out, fmt.Errorf("%w: Cluster %s/%s is not managed by Enclii for this addon", ErrBackupConvergenceNotApplicable, ns, name)
 	}
 	if cluster.GetAnnotations()[CNPGHibernationAnnotation] == "on" {
+		suspended, err := p.setScheduleSuspended(ctx, ns, name, true)
+		if err != nil {
+			return out, err
+		}
+		out.ScheduleSuspended = suspended
 		return out, fmt.Errorf("%w: Cluster %s/%s is hibernated", ErrBackupConvergenceNotApplicable, ns, name)
 	}
 	desired := cfg.backupStanza(ns, name)
@@ -275,6 +333,13 @@ func (p *PostgresProvisioner) convergeBackups(ctx context.Context, addon *types.
 		return out, err
 	}
 	out.ScheduledBackupCreated = created
+	if !created {
+		resumed, err := p.setScheduleSuspended(ctx, ns, name, false)
+		if err != nil {
+			return out, err
+		}
+		out.ScheduleResumed = resumed
+	}
 	return out, nil
 }
 
@@ -296,6 +361,22 @@ func (p *PostgresProvisioner) prepareProvisionBackups(ctx context.Context, clust
 		return false
 	}
 	return true
+}
+
+// wireNewClusterBackups is Provision's half, right after the Cluster exists
+// (its UID owns the credential copy): credential, egress rule, schedule. The
+// stanza is already in the manifest. Each failure is logged at ERROR and left
+// for the backup sweep, which converges the same three objects.
+func (p *PostgresProvisioner) wireNewClusterBackups(ctx context.Context, req *ProvisionRequest, resourceName string, owner k8s.SecretCopyOwner, logger *logrus.Entry) {
+	if err := p.k8sClient.EnsureSecretCopiedFrom(ctx, BackupCredentialsSourceNS, BackupCredentialsSecretName, req.Namespace, owner); err != nil {
+		logger.WithError(err).Error("Failed to replicate backup credentials — barman will not be able to write backups")
+	}
+	if err := p.k8sClient.EnsureNetworkPolicy(ctx, buildBackupEgressPolicy(req.Namespace, resourceName)); err != nil {
+		logger.WithError(err).Error("Failed to create backup egress NetworkPolicy — barman cannot reach the object store")
+	}
+	if _, err := p.ensureScheduledBackup(ctx, req, resourceName); err != nil {
+		logger.WithError(err).Error("Failed to create ScheduledBackup — cluster has no recurring backups")
+	}
 }
 
 // ConvergeAddonBackups wires backups onto one live managed-Postgres addon

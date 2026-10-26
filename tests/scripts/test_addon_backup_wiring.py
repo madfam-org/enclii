@@ -17,7 +17,8 @@ live addon cluster. Four links were missing, each enough on its own:
        writing Secret enclii/enclii-db-backup-credentials with ACCESS_KEY_ID
        and SECRET_ACCESS_KEY, the names the provisioner puts in s3Credentials
     -> switchyard-api env ENCLII_ADDON_BACKUP_DESTINATION_BASE (store on)
-    -> switchyard-api ClusterRole may create/get/delete scheduledbackups
+    -> switchyard-api ClusterRole may create/get/patch/delete scheduledbackups
+       (patch: a hibernated cluster's schedule is suspended, then resumed)
     -> per-cluster backup-egress NetworkPolicy, spec.backup, ScheduledBackup
        (Go: internal/addons/postgres_backup.go, tested there).
 
@@ -132,7 +133,7 @@ def problems(state: dict) -> list[str]:
             for rule in doc.get("rules", []):
                 if "postgresql.cnpg.io" in rule.get("apiGroups", []) and "scheduledbackups" in rule.get("resources", []):
                     verbs.update(rule.get("verbs", []))
-    for verb in ("create", "get", "delete"):
+    for verb in ("create", "get", "patch", "delete"):
         if verb not in verbs:
             out.append(f"switchyard-api ClusterRole cannot {verb} scheduledbackups")
     return out
