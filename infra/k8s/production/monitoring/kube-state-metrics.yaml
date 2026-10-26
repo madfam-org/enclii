@@ -79,6 +79,17 @@ rules:
   - apiGroups: ["networking.k8s.io"]
     resources: ["networkpolicies", "ingresses"]
     verbs: ["list", "watch"]
+  # CloudNativePG Cluster state (the --custom-resource-state-config below).
+  # The custom-resource discoverer watches CRDs to learn when the Cluster kind
+  # exists; the second rule is the one kind it then lists. Cluster objects hold
+  # no credentials (they reference Secrets by name), and only phase, instance
+  # counts and the hibernation marker are published.
+  - apiGroups: ["apiextensions.k8s.io"]
+    resources: ["customresourcedefinitions"]
+    verbs: ["list", "watch"]
+  - apiGroups: ["postgresql.cnpg.io"]
+    resources: ["clusters"]
+    verbs: ["list", "watch"]
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRoleBinding
@@ -144,6 +155,59 @@ spec:
             # Only the collectors the shipped alert rules query. Fewer
             # collectors = less memory and a smaller metrics surface.
             - --resources=cronjobs,daemonsets,deployments,horizontalpodautoscalers,jobs,namespaces,nodes,persistentvolumeclaims,persistentvolumes,poddisruptionbudgets,pods,replicasets,statefulsets
+            # CloudNativePG Cluster state, for the per-project CNPG alerts in
+            # addon-db-rules.yaml (group enclii-addon-db.cnpg-health). The
+            # instance pods' own metrics (cnpg_collector_*) cannot say that the
+            # OPERATOR has lost a cluster: on 2026-10-24 every crea-sim cluster
+            # sat in «Instance Status Extraction Error» while its PostgreSQL
+            # answered and cnpg_collector_up stayed 1. The phase lives only on
+            # the Cluster object, so it is read here. Inline (not a mounted
+            # file) so a change rolls the pod: kube-state-metrics does not
+            # reload this config. Series, one per Cluster in every namespace:
+            #   kube_cnpg_cluster_info{namespace, cluster, phase,
+            #       hibernation (annotation cnpg.io/hibernation),
+            #       hibernated (condition cnpg.io/hibernation status)} 1
+            #   kube_cnpg_cluster_spec_instances{namespace, cluster}
+            #   kube_cnpg_cluster_status_ready_instances{namespace, cluster}
+            #       (0 when status.readyInstances is unset, as on a
+            #       hibernated cluster)
+            # tests/scripts/test_cnpg_project_rules.py pins these names
+            # against the rules that read them.
+            - |-
+              --custom-resource-state-config=kind: CustomResourceStateMetrics
+              spec:
+                resources:
+                  - groupVersionKind:
+                      group: postgresql.cnpg.io
+                      version: v1
+                      kind: Cluster
+                    metricNamePrefix: kube_cnpg_cluster
+                    labelsFromPath:
+                      namespace: [metadata, namespace]
+                      cluster: [metadata, name]
+                    metrics:
+                      - name: info
+                        help: "CloudNativePG Cluster phase and hibernation state (value is always 1)."
+                        each:
+                          type: Info
+                          info:
+                            labelsFromPath:
+                              phase: [status, phase]
+                              hibernation: [metadata, annotations, cnpg.io/hibernation]
+                              hibernated: [status, conditions, "[type=cnpg.io/hibernation]", status]
+                      - name: spec_instances
+                        help: "Instances the CloudNativePG Cluster is configured to run (spec.instances)."
+                        each:
+                          type: Gauge
+                          gauge:
+                            path: [spec, instances]
+                      - name: status_ready_instances
+                        help: "Ready instances CloudNativePG reports (status.readyInstances; 0 when unset)."
+                        each:
+                          type: Gauge
+                          gauge:
+                            path: [status, readyInstances]
+                            nilIsZero: true
           ports:
             - name: http-metrics
               containerPort: 8080
