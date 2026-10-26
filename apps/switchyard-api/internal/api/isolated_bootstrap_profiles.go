@@ -71,6 +71,9 @@ type bootstrapSourceRequirement struct {
 // new step), so a different file at the verified revision is refused, not run.
 const turnoVigenteSQLSHA256 = "b15f76f4097cae69847034406116343d87e8a7aaf25b5af88d0ddf912bef0594" // pragma: allowlist secret -- public SHA-256 of a source file; not a credential
 
+const karafielStageCoreSeedSHA256 = "5da5e466fb830280e050cd4877e7092f19668b69d2859ffd91aa91ee5e127d81"  // pragma: allowlist secret -- public SHA-256 of the reviewed staging seed guard; not a credential
+const karafielStageLegalSeedSHA256 = "d76c9ccc76c3863498a67bdd0eb027596a9171b28c18771401f135bdef5fc221" // pragma: allowlist secret -- public SHA-256 of the reviewed staging seed guard; not a credential
+
 // The training kernels share one Vault path: the Vault writer policy grants
 // exactly five training data paths, and a sixth would need a policy change.
 const initialMAPVaultPath = "secret/crea-sim-map01"
@@ -87,7 +90,7 @@ func isolatedBootstrapProfileFor(name string) (isolatedBootstrapProfile, error) 
 	}
 	switch name {
 	case k8s.KarafielSchemaProfile:
-		return isolatedBootstrapProfile{Name: k8s.KarafielSchemaProfile, Project: "karafiel", Service: "karafiel-api-staging", Namespace: "enclii-karafiel-staging", Database: "karafiel_staging_sim", RuntimeRole: "karafiel_staging_runtime", Producer: "madfam-org/karafiel", Workflow: "release-build-candidate.yml", PinPath: "infra/k8s/overlays/staging/kustomization.yaml", Image: "ghcr.io/madfam-org/karafiel/api", CIWorkflow: "ci.yml", SignerIdentity: `^https://github\.com/madfam-org/karafiel/\.github/workflows/release-build-candidate\.yml@refs/heads/main$`, RequiredChecks: []string{"NetworkPolicy port consistency", "Celery task signature consistency", "Ops script unit tests", "API lint and test", "lint-and-test"}, SourceRequirements: []bootstrapSourceRequirement{{Path: "apps/api/core/migrations/0009_seed_madfam_admin_access.py", SHA256: "5da5e466fb830280e050cd4877e7092f19668b69d2859ffd91aa91ee5e127d81"}, {Path: "apps/api/legalgen/migrations/0003_seed_madfam_data.py", SHA256: "d76c9ccc76c3863498a67bdd0eb027596a9171b28c18771401f135bdef5fc221"}}}, nil
+		return isolatedBootstrapProfile{Name: k8s.KarafielSchemaProfile, Project: "karafiel", Service: "karafiel-api-staging", Namespace: "enclii-karafiel-staging", Database: "karafiel_staging_sim", RuntimeRole: "karafiel_staging_runtime", Producer: "madfam-org/karafiel", Workflow: "release-build-candidate.yml", PinPath: "infra/k8s/overlays/staging/kustomization.yaml", Image: "ghcr.io/madfam-org/karafiel/api", CIWorkflow: "ci.yml", SignerIdentity: `^https://github\.com/madfam-org/karafiel/\.github/workflows/release-build-candidate\.yml@refs/heads/main$`, RequiredChecks: []string{"NetworkPolicy port consistency", "Celery task signature consistency", "Ops script unit tests", "API lint and test", "lint-and-test"}, SourceRequirements: []bootstrapSourceRequirement{{Path: "apps/api/core/migrations/0009_seed_madfam_admin_access.py", SHA256: karafielStageCoreSeedSHA256}, {Path: "apps/api/legalgen/migrations/0003_seed_madfam_data.py", SHA256: karafielStageLegalSeedSHA256}}}, nil
 	case k8s.PortalGenerationReadProfile:
 		profile := portalSimProfile(name)
 		profile.SourceRequirements = []bootstrapSourceRequirement{

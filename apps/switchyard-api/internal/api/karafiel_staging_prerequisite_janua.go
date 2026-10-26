@@ -198,8 +198,8 @@ func qualifiedKarafielJanuaClient(client karafielJanuaClient, role, id string) b
 	}
 	// Janua may expose client_key as an audience alias. Identity comes from the
 	// selected internal/public IDs and exact name, never that shared alias.
-	keyOK := client.ClientKey == nil || *client.ClientKey == "karafiel-staging-"+role || *client.ClientKey == "karafiel-staging-api"
-	return client.ClientID == id && id != "" && client.Name == name && client.ClientSecret == nil && client.IsConfidential && client.IsActive && client.Audience != nil && *client.Audience == "karafiel-staging-api" && keyOK && (client.OrganizationID == nil || *client.OrganizationID == "") && exactKarafielStrings(client.RedirectURIs, []string{origin + "/api/auth/callback"}) && exactKarafielStrings(client.AllowedScopes, []string{"openid", "profile", "email", "offline_access"}) && exactKarafielStrings(client.GrantTypes, []string{"authorization_code", "refresh_token"})
+	keyOK := client.ClientKey == nil || *client.ClientKey == "karafiel-staging-"+role || *client.ClientKey == "karafiel-staging-api"                                                                                                                                                                                                                                                                                                                                                                                                                                                       // pragma: allowlist secret -- public client-key/audience aliases; not a client credential
+	return client.ClientID == id && id != "" && client.Name == name && client.ClientSecret == nil && client.IsConfidential && client.IsActive && client.Audience != nil && *client.Audience == "karafiel-staging-api" && keyOK && (client.OrganizationID == nil || *client.OrganizationID == "") && exactKarafielStrings(client.RedirectURIs, []string{origin + "/api/auth/callback"}) && exactKarafielStrings(client.AllowedScopes, []string{"openid", "profile", "email", "offline_access"}) && exactKarafielStrings(client.GrantTypes, []string{"authorization_code", "refresh_token"}) // pragma: allowlist secret -- metadata predicate with absent client secret and fixed public scopes; no credential literal
 }
 
 func readKarafielJanuaRegistration(ctx context.Context, client *http.Client, token, role, id string) (string, error) {
@@ -222,7 +222,7 @@ func readKarafielJanuaRegistration(ctx context.Context, client *http.Client, tok
 			return "", errKarafielStage
 		}
 		for _, candidate := range result.Clients {
-			if candidate.ClientSecret != nil {
+			if candidate.ClientSecret != nil { // pragma: allowlist secret -- reject a credential-bearing provider response; no credential literal
 				return "", errKarafielStage
 			}
 			if candidate.ClientID == id || candidate.Name == "Karafiel Staging "+map[string]string{"web": "Web", "admin": "Admin"}[role] {

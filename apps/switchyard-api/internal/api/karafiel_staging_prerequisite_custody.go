@@ -15,18 +15,18 @@ import (
 )
 
 var karafielStageBridgeKeys = map[string]string{
-	"DJANGO_SECRET_KEY": "django_secret_key", "ENCRYPTION_MASTER_KEY": "encryption_master_key",
+	"DJANGO_SECRET_KEY": "django_secret_key", "ENCRYPTION_MASTER_KEY": "encryption_master_key", // pragma: allowlist secret -- public Secret/Vault property-name mapping only; no values
 	"WEB_JANUA_CLIENT_ID": "web_oidc_client_id", "WEB_OIDC_CLIENT_ID": "web_oidc_client_id", "WEB_JANUA_SECRET_KEY": "web_janua_secret_key",
 	"ADMIN_JANUA_CLIENT_ID": "admin_oidc_client_id", "ADMIN_OIDC_CLIENT_ID": "admin_oidc_client_id", "ADMIN_JANUA_SECRET_KEY": "admin_janua_secret_key",
-	"KARAFIEL_ADMIN_SESSION_SECRET": "admin_session_secret",
+	"KARAFIEL_ADMIN_SESSION_SECRET": "admin_session_secret", // pragma: allowlist secret -- public Secret/Vault property-name mapping only; no values
 }
 var karafielStageProjectionKeys = map[string]map[string]string{
-	"karafiel-secrets":       {"DJANGO_SECRET_KEY": "DJANGO_SECRET_KEY", "ENCRYPTION_MASTER_KEY": "ENCRYPTION_MASTER_KEY"},
+	"karafiel-secrets":       {"DJANGO_SECRET_KEY": "DJANGO_SECRET_KEY", "ENCRYPTION_MASTER_KEY": "ENCRYPTION_MASTER_KEY"}, // pragma: allowlist secret -- public Kubernetes Secret and key names only; no values
 	"karafiel-web-oidc":      {"JANUA_CLIENT_ID": "WEB_JANUA_CLIENT_ID", "OIDC_CLIENT_ID": "WEB_OIDC_CLIENT_ID"},
-	"karafiel-web-auth":      {"JANUA_SECRET_KEY": "WEB_JANUA_SECRET_KEY"},
+	"karafiel-web-auth":      {"JANUA_SECRET_KEY": "WEB_JANUA_SECRET_KEY"}, // pragma: allowlist secret -- public Kubernetes Secret and key names only; no values
 	"karafiel-admin-oidc":    {"JANUA_CLIENT_ID": "ADMIN_JANUA_CLIENT_ID", "OIDC_CLIENT_ID": "ADMIN_OIDC_CLIENT_ID"},
-	"karafiel-admin-auth":    {"JANUA_SECRET_KEY": "ADMIN_JANUA_SECRET_KEY"},
-	"karafiel-admin-session": {"KARAFIEL_ADMIN_SESSION_SECRET": "KARAFIEL_ADMIN_SESSION_SECRET"},
+	"karafiel-admin-auth":    {"JANUA_SECRET_KEY": "ADMIN_JANUA_SECRET_KEY"},                     // pragma: allowlist secret -- public Kubernetes Secret and key names only; no values
+	"karafiel-admin-session": {"KARAFIEL_ADMIN_SESSION_SECRET": "KARAFIEL_ADMIN_SESSION_SECRET"}, // pragma: allowlist secret -- public Kubernetes Secret and key names only; no values
 }
 
 func karafielMaterialHash(value []byte) string {

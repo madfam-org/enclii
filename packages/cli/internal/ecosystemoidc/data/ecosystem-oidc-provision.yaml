@@ -81,7 +81,7 @@ platforms:
       web_oidc_issuer: issuer
     janua_client:
       name: Karafiel Staging Web
-      client_key: karafiel-staging-web
+      client_key: karafiel-staging-web # pragma: allowlist secret -- public OAuth client-key alias; not a client credential
       audience: karafiel-staging-api
       description: Isolated staging web client; no production callbacks or audience aliases
       is_confidential: true
@@ -99,7 +99,7 @@ platforms:
       admin_oidc_issuer: issuer
     janua_client:
       name: Karafiel Staging Admin
-      client_key: karafiel-staging-admin
+      client_key: karafiel-staging-admin # pragma: allowlist secret -- public OAuth client-key alias; not a client credential
       audience: karafiel-staging-api
       description: Isolated staging admin client; no production callbacks or audience aliases
       is_confidential: true

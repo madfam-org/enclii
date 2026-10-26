@@ -43,7 +43,7 @@ func generatedProfileValues(target secretsintake.Target, generate []string, supp
 		if err != nil {
 			return nil, nil, fmt.Errorf("could not generate staging core")
 		}
-		values["django_secret_key"] = value
+		values["django_secret_key"] = value // pragma: allowlist secret -- public property name for a server-generated private value; no credential literal
 		material := make([]byte, 32)
 		if _, err := rand.Read(material); err != nil {
 			return nil, nil, fmt.Errorf("could not generate staging encryption key")
@@ -54,7 +54,7 @@ func generatedProfileValues(target secretsintake.Target, generate []string, supp
 		if err != nil {
 			return nil, nil, fmt.Errorf("could not generate staging session")
 		}
-		values["admin_session_secret"] = value
+		values["admin_session_secret"] = value // pragma: allowlist secret -- public property name for a server-generated private value; no credential literal
 	case secretsintake.JanuaStagingCryptoProfile:
 		key, err := rsa.GenerateKey(rand.Reader, 2048)
 		if err != nil {

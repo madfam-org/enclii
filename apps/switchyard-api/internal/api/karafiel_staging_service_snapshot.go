@@ -144,7 +144,7 @@ func validateKarafielRegistrationQuarantine(files []checks.ManifestFile) error {
 		object := &unstructured.Unstructured{Object: o}
 		allowed := map[string]bool{
 			"apps/v1/Deployment": true, "v1/Service": true, "v1/ConfigMap": true, "v1/ResourceQuota": true, "v1/LimitRange": true,
-			"networking.k8s.io/v1/NetworkPolicy": true, "external-secrets.io/v1beta1/ExternalSecret": true, "external-secrets.io/v1/ExternalSecret": true, "monitoring.coreos.com/v1/ServiceMonitor": true,
+			"networking.k8s.io/v1/NetworkPolicy": true, "external-secrets.io/v1beta1/ExternalSecret": true, "external-secrets.io/v1/ExternalSecret": true, "monitoring.coreos.com/v1/ServiceMonitor": true, // pragma: allowlist secret -- public Kubernetes API kind names; not credentials
 		}
 		if !allowed[object.GetAPIVersion()+"/"+kind] || object.GetNamespace() != workloadtargets.KarafielStagingNamespace || object.GetName() == "" {
 			return workloadtargets.ErrOwnership

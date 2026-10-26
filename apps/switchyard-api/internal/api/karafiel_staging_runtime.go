@@ -56,7 +56,7 @@ func karafielStageBackendRuntimeClosed(d *appsv1.Deployment) bool {
 	foundCA := false
 	for _, volume := range d.Spec.Template.Spec.Volumes {
 		if volume.Name == "staging-db-ca" {
-			if volume.Secret == nil || volume.Secret.SecretName != "karafiel-staging-database-runtime" || len(volume.Secret.Items) != 1 || volume.Secret.Items[0].Key != "ca.crt" || volume.Secret.Items[0].Path != "ca.crt" || (volume.Secret.Optional != nil && *volume.Secret.Optional) {
+			if volume.Secret == nil || volume.Secret.SecretName != "karafiel-staging-database-runtime" || len(volume.Secret.Items) != 1 || volume.Secret.Items[0].Key != "ca.crt" || volume.Secret.Items[0].Path != "ca.crt" || (volume.Secret.Optional != nil && *volume.Secret.Optional) { // pragma: allowlist secret -- fixed Kubernetes Secret reference and public CA key/path; no credential literal
 				return false
 			}
 			foundCA = true

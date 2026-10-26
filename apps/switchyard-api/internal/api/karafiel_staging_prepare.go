@@ -266,7 +266,7 @@ func (h *Handler) prepareKarafielStaging(ctx context.Context, serviceID uuid.UUI
 		addon.Status = types.DatabaseAddonStatusProvisioning
 		addon.K8sNamespace = addonNS
 		addon.K8sResourceName = result.K8sResourceName
-		addon.ConnectionSecret = result.ConnectionSecret
+		addon.ConnectionSecret = result.ConnectionSecret // pragma: allowlist secret -- owned Kubernetes Secret name reference; no credential literal
 		addon.UpdatedAt = time.Now()
 		if e = h.repos.DatabaseAddons.Update(ctx, addon); e != nil {
 			return nil, fmt.Errorf("typed addon create outcome requires readback")

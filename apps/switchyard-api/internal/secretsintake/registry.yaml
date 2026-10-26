@@ -6,7 +6,7 @@ targets:
     description: Fresh server-generated staging Django and encryption group; create once without rotation
     vault_path: secret/karafiel-staging
     namespace: enclii
-    external_secret: karafiel-staging-core-source
+    external_secret: karafiel-staging-core-source # pragma: allowlist secret -- Kubernetes ExternalSecret object name; not a credential
     keys: [django_secret_key, encryption_master_key]
     generate:
       profile: karafiel-staging-core-v1
@@ -16,7 +16,7 @@ targets:
     description: Fresh server-generated staging admin session key; create once without rotation
     vault_path: secret/karafiel-staging
     namespace: enclii
-    external_secret: karafiel-staging-core-source
+    external_secret: karafiel-staging-core-source # pragma: allowlist secret -- Kubernetes ExternalSecret object name; not a credential
     keys: [admin_session_secret]
     generate:
       profile: karafiel-staging-session-v1
@@ -26,7 +26,7 @@ targets:
     description: Dedicated staging web registration from managed Janua provisioning
     vault_path: secret/karafiel-staging
     namespace: enclii
-    external_secret: karafiel-staging-core-source
+    external_secret: karafiel-staging-core-source # pragma: allowlist secret -- Kubernetes ExternalSecret object name; not a credential
     keys: [web_oidc_client_id, web_janua_secret_key, web_oidc_issuer]
     generate:
       disabled: true
@@ -36,7 +36,7 @@ targets:
     description: Dedicated staging admin registration from managed Janua provisioning
     vault_path: secret/karafiel-staging
     namespace: enclii
-    external_secret: karafiel-staging-core-source
+    external_secret: karafiel-staging-core-source # pragma: allowlist secret -- Kubernetes ExternalSecret object name; not a credential
     keys: [admin_oidc_client_id, admin_janua_secret_key, admin_oidc_issuer]
     generate:
       disabled: true

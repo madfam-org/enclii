@@ -326,7 +326,7 @@ func karafielLegacyResourceInventoryClosed(app *unstructured.Unstructured, detac
 			"/Service":                            "karafiel-admin karafiel-api karafiel-web karafiel-worker-metrics",
 			"apps/Deployment":                     "karafiel-admin karafiel-api karafiel-beat karafiel-web karafiel-worker",
 			"autoscaling/HorizontalPodAutoscaler": "karafiel-api-hpa karafiel-worker-hpa", "batch/Job": "karafiel-migrate",
-			"external-secrets.io/ExternalSecret":   "ghcr-credentials karafiel-admin-auth karafiel-admin-oidc karafiel-admin-session karafiel-secrets karafiel-web-auth karafiel-web-oidc r2-credentials",
+			"external-secrets.io/ExternalSecret":   "ghcr-credentials karafiel-admin-auth karafiel-admin-oidc karafiel-admin-session karafiel-secrets karafiel-web-auth karafiel-web-oidc r2-credentials", // pragma: allowlist secret -- reviewed Kubernetes object names only; not credentials
 			"monitoring.coreos.com/ServiceMonitor": "karafiel-api-monitor karafiel-worker-monitor",
 			"policy/PodDisruptionBudget":           "karafiel-api-pdb karafiel-web-pdb",
 			"networking.k8s.io/NetworkPolicy":      "allow-cloudflared-ingress allow-data-egress allow-dns-egress allow-https-egress allow-intra-namespace allow-monitoring-ingress allow-monitoring-ingress-worker allow-symbiosis-hcm-ingress default-deny-all karafiel-dhanam-egress karafiel-tezca-egress staging-default-deny-all staging-dns-egress staging-cloudflared-ingress staging-frontend-api-egress staging-api-frontend-ingress staging-janua-egress staging-monitoring-ingress",

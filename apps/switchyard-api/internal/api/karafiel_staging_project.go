@@ -41,7 +41,7 @@ func validateKarafielStageProject(project *unstructured.Unstructured) error {
 		return fail
 	}
 	expected := map[string]bool{"apps/Deployment": true, "/Service": true, "/ConfigMap": true, "/LimitRange": true, "/ResourceQuota": true,
-		"networking.k8s.io/NetworkPolicy": true, "external-secrets.io/ExternalSecret": true, "autoscaling/HorizontalPodAutoscaler": true,
+		"networking.k8s.io/NetworkPolicy": true, "external-secrets.io/ExternalSecret": true, "autoscaling/HorizontalPodAutoscaler": true, // pragma: allowlist secret -- public Kubernetes API kind names; not credentials
 		"policy/PodDisruptionBudget": true, "monitoring.coreos.com/ServiceMonitor": true}
 	list, ok := spec["namespaceResourceWhitelist"].([]any)
 	if !ok || len(list) != len(expected) {
