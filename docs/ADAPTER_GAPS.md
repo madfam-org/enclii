@@ -223,7 +223,7 @@ Documented separate AGPL repo `madfam-org/coupler` for Composio-class agent tool
 - `enclii projects reconcile-services <slug>` — admin POST `/v1/admin/projects/:slug/reconcile-services`
 - `enclii db schema` + `GET /v1/admin/db/schema` — migration version, dirty flag, GA column checks (migration 030 `rollout_blocked_reason`)
 - `enclii ops storage settings-apply` — Longhorn CPU settings from helm values (O-5)
-- `enclii ops storage prune-detached` — delete detached Longhorn orphan volumes (O-4)
+- `enclii ops storage prune-detached` — delete orphaned Longhorn volumes (O-4): detached with a Released PV or none; Bound claims refused; apply needs `--expect-plan` (2026-10-26)
 - `enclii admin ga-verify` — Wave 0 security + schema + Longhorn plan smoke
 - `scripts/wave0-ga-ops.sh` — Enclii-first Wave 0 orchestration (O-4–O-6)
 

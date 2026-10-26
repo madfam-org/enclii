@@ -122,6 +122,11 @@ func (h *Handler) handleOperatorOperation(c *gin.Context, prefix, domain, action
 		c.JSON(status, resp)
 		return
 	}
+	if prefix == "ops" && domain == "storage" && action == "prune-detached" {
+		resp, status := h.handleOpsStoragePruneDetached(c.Request.Context(), req, opsActorFromContext(c))
+		c.JSON(status, resp)
+		return
+	}
 	if prefix == "ops" && domain == "pods" && action == "restart" {
 		resp, status := h.handleOpsPodsRestart(c.Request.Context(), req, opsActorFromContext(c))
 		c.JSON(status, resp)
@@ -226,9 +231,6 @@ func (h *Handler) handleApplyOperatorDryRun(ctx context.Context, prefix, domain,
 	}
 	if prefix == "ops" && domain == "storage" && action == "settings-apply" {
 		return h.handleOpsStorageSettingsApplyDryRun(ctx, operation, req), true
-	}
-	if prefix == "ops" && domain == "storage" && action == "prune-detached" {
-		return h.handleOpsStoragePruneDetachedDryRun(ctx, operation, req), true
 	}
 	if prefix != "ops" {
 		return operatorOperationResponse{}, false
@@ -407,10 +409,6 @@ func (h *Handler) handleApplyOperatorOperation(ctx context.Context, prefix, doma
 	}
 	if prefix == "ops" && domain == "storage" && action == "settings-apply" && h.k8sClient != nil && h.k8sClient.DynamicClient != nil {
 		resp, statusCode := h.handleOpsStorageSettingsApply(ctx, operation, req)
-		return resp, statusCode, true
-	}
-	if prefix == "ops" && domain == "storage" && action == "prune-detached" && h.k8sClient != nil && h.k8sClient.DynamicClient != nil {
-		resp, statusCode := h.handleOpsStoragePruneDetachedApply(ctx, operation, req)
 		return resp, statusCode, true
 	}
 	return operatorOperationResponse{}, 0, false

@@ -153,8 +153,14 @@ func (h *Handler) handleOpsAddonsHibernate(ctx context.Context, req operatorOper
 	return resp, http.StatusOK
 }
 
-// writeOpsAudit inserts one audit row for an ops adapter and returns its ID.
+// writeOpsAudit inserts one audit row for an addon ops adapter and returns its ID.
 func (h *Handler) writeOpsAudit(ctx context.Context, actor opsActor, action, outcome, resourceID, name string, details map[string]any) (string, error) {
+	return h.writeOpsAuditResource(ctx, actor, action, outcome, "database_addon", resourceID, name, details)
+}
+
+// writeOpsAuditResource inserts one audit row for an ops adapter acting on any
+// resource type and returns its ID.
+func (h *Handler) writeOpsAuditResource(ctx context.Context, actor opsActor, action, outcome, resourceType, resourceID, name string, details map[string]any) (string, error) {
 	if h.repos == nil || h.repos.AuditLogs == nil {
 		return "", fmt.Errorf("audit store unavailable")
 	}
@@ -164,7 +170,7 @@ func (h *Handler) writeOpsAudit(ctx context.Context, actor opsActor, action, out
 	}
 	entry := &types.AuditLog{
 		ActorID: &actorID, ActorEmail: actor.Email, ActorRole: types.Role(auth.RolePlatformAdmin),
-		Action: action, ResourceType: "database_addon", ResourceID: resourceID, ResourceName: name,
+		Action: action, ResourceType: resourceType, ResourceID: resourceID, ResourceName: name,
 		IPAddress: actor.IP, UserAgent: actor.UserAgent, Outcome: outcome, Context: details,
 	}
 	if actor.TokenName != "" {

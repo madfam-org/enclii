@@ -51,7 +51,7 @@ enclii ops jobs trigger forgesight-mexico-wave-seed -n forgesight --apply --reas
 enclii ops storage settings-apply
 enclii ops storage settings-apply --apply --reason "GA O-5 Longhorn CPU"
 enclii ops storage prune-detached
-enclii ops storage prune-detached --apply --reason "GA O-4 orphan cleanup"
+enclii ops storage prune-detached --expect-plan <plan_hash> --apply --reason "GA O-4 orphan cleanup"
 enclii ops storage storageclass-apply
 enclii ops storage storageclass-apply --apply --reason "GA Longhorn StorageClass reconcile"
 enclii ops policy cosign-enable
