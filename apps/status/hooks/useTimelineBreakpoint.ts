@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useSyncExternalStore } from 'react'
 
 interface TimelineBreakpoint {
   windowMinutes: number
@@ -19,7 +19,7 @@ function resolve(): TimelineBreakpoint {
   if (typeof window === 'undefined') return FALLBACK
   for (const tier of TIERS) {
     if (window.matchMedia(tier.query).matches) {
-      return { windowMinutes: tier.windowMinutes, gapClass: tier.gapClass }
+      return tier // Stable snapshot identity until a breakpoint actually changes.
     }
   }
   return FALLBACK
@@ -29,25 +29,16 @@ function resolve(): TimelineBreakpoint {
  * Returns adaptive timeline window size based on viewport width.
  * Uses matchMedia listeners — fires only on threshold crossings (no debounce needed).
  */
+function subscribe(notify: () => void) {
+  const mediaLists = TIERS.map(tier => window.matchMedia(tier.query))
+  for (const mql of mediaLists) mql.addEventListener('change', notify)
+  return () => {
+    for (const mql of mediaLists) mql.removeEventListener('change', notify)
+  }
+}
+
+const serverSnapshot = () => FALLBACK
+
 export function useTimelineBreakpoint(): TimelineBreakpoint {
-  const [breakpoint, setBreakpoint] = useState<TimelineBreakpoint>(FALLBACK)
-
-  useEffect(() => {
-    setBreakpoint(resolve())
-
-    const mediaLists = TIERS.map(tier => window.matchMedia(tier.query))
-    const handler = () => setBreakpoint(resolve())
-
-    for (const mql of mediaLists) {
-      mql.addEventListener('change', handler)
-    }
-
-    return () => {
-      for (const mql of mediaLists) {
-        mql.removeEventListener('change', handler)
-      }
-    }
-  }, [])
-
-  return breakpoint
+  return useSyncExternalStore(subscribe, resolve, serverSnapshot)
 }

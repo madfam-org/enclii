@@ -144,10 +144,15 @@ FROM public.ecr.aws/docker/library/alpine:3.24 AS runtime-base
 # The `libexpat>=2.9.0-r0` constraint is a belt-and-braces assertion: if the
 # mirror ever serves a package set older than the fix, the build fails loudly
 # here instead of silently producing an image the scan gate later rejects.
-ARG APK_SECURITY_REFRESH=2026-10-17
+# 2026-10-26: CVE-2026-92392 affected curl/libcurl 8.22.0-r0 in both
+# API/docs images. Alpine v3.24 main publishes the fix at 8.23.0-r0.
+# Keep both hard floors and refresh the cached upgrade; no scan waiver.
+# https://curl.se/docs/CVE-2026-92392.html
+# https://secdb.alpinelinux.org/v3.24/main.json
+ARG APK_SECURITY_REFRESH=2026-10-26
 RUN echo "apk security refresh: ${APK_SECURITY_REFRESH}" && \
     apk --no-cache upgrade && \
-    apk --no-cache add ca-certificates tzdata wget git curl bash 'libexpat>=2.9.0-r0'
+    apk --no-cache add ca-certificates tzdata wget git 'curl>=8.23.0-r0' 'libcurl>=8.23.0-r0' bash 'libexpat>=2.9.0-r0'
 
 # Copy cosign (built from source in the builder stage) so the API can verify
 # signed image digests before committing production GitOps pins from platform

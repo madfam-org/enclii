@@ -8,12 +8,21 @@
   "//pnpm-overrides": "apps/status/Dockerfile installs this package STANDALONE (COPY package.json pnpm-lock.yaml; pnpm install --frozen-lockfile), so the workspace-root overrides in /package.json do not reach the production image. These mirror the root list for the transitives that ship in the status image. Keep the two lists in sync. EXCEPTION (#549): the sharp entry here is widened to <0.35.5 (GHSA-wq5f-xc86-pv6w, 2026-10-22; was <0.35.4) while /package.json still reads <0.35.0. Next 16.3.3 pulls sharp as an optionalDependency and the old range stopped below the 0.35.x line, so 0.35.3 (GHSA-rgj7-g3m4-5g8c, HIGH) shipped in the standalone runner. Widening /package.json too requires regenerating the workspace lockfile, which cannot resolve @janua/ui without NPM_MADFAM_TOKEN; do that in a follow-up with registry access.",
   "pnpm": {
     "overrides": {
+      "brace-expansion@>=1.0.0 <1.1.21": "1.1.21",
+      "browserslist@>=4.0.0 <4.28.7": "4.28.7",
+      "flatted@>=3.0.0 <3.4.2": "3.4.2",
+      "form-data@>=4.0.0 <4.0.6": "4.0.6",
+      "js-yaml@>=3.0.0 <3.15.2": "3.15.2",
+      "js-yaml@>=4.0.0 <4.3.2": "4.3.2",
+      "minimatch@>=3.0.0 <3.1.4": "3.1.4",
       "nanoid@>=3.0.0 <3.3.18": "^3.3.18",
       "nanoid@>=4.0.0 <5.1.6": "^5.1.6",
       "picomatch@>=2.0.0 <2.3.2": "~2.3.2",
       "picomatch@>=4.0.0 <4.0.4": "^4.0.4",
       "postcss@>=8.0.0 <8.5.18": "^8.5.18",
-      "sharp@>=0.30.0 <0.35.5": "^0.35.5"
+      "sharp@>=0.30.0 <0.35.5": "^0.35.5",
+      "source-map-js@>=1.0.0 <1.2.2": "1.2.2",
+      "zod@>=4.0.0 <4.6.6": "4.6.6"
     }
   },
   "scripts": {

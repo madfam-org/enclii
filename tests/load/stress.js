@@ -14,6 +14,7 @@ import http from 'k6/http';
 import { check, sleep, group } from 'k6';
 import { Rate, Trend, Counter } from 'k6/metrics';
 import { CONFIG, STAGES } from './config.js';
+import { SUMMARY_TREND_STATS, renderSummary } from './summary.js';
 
 // Custom metrics
 const errorRate = new Rate('errors');
@@ -22,6 +23,7 @@ const p99Trend = new Trend('custom_p99');
 
 // Stress test stages - ramping up to 1000 RPS
 export const options = {
+  summaryTrendStats: SUMMARY_TREND_STATS,
   scenarios: {
     stress_test: {
       executor: 'ramping-arrival-rate',
@@ -127,62 +129,6 @@ export default function (data) {
 }
 
 export function handleSummary(data) {
-  const metrics = data.metrics;
-  const httpDuration = metrics.http_req_duration;
-  const reqs = metrics.http_reqs;
-
-  // Calculate actual RPS
-  const testDuration = (data.state.testRunDurationMs || 660000) / 1000;
-  const actualRPS = reqs.values.count / testDuration;
-
-  const summary = `
-================================================================================
-                          ENCLII STRESS TEST RESULTS
-================================================================================
-
-TARGET: ${CONFIG.baseUrl}
-GOAL: 1,000 RPS with P95 < 1s
-
-THROUGHPUT
-----------
-Total Requests:    ${reqs.values.count.toLocaleString()}
-Test Duration:     ${testDuration.toFixed(0)} seconds
-Average RPS:       ${actualRPS.toFixed(0)}
-Peak RPS:          ~1,000 (target)
-
-RESPONSE TIMES (ms)
--------------------
-  Min:    ${httpDuration.values.min.toFixed(2)}
-  Avg:    ${httpDuration.values.avg.toFixed(2)}
-  Med:    ${httpDuration.values.med.toFixed(2)}
-  P90:    ${httpDuration.values['p(90)'].toFixed(2)}
-  P95:    ${httpDuration.values['p(95)'].toFixed(2)}
-  P99:    ${httpDuration.values['p(99)'].toFixed(2)}
-  Max:    ${httpDuration.values.max.toFixed(2)}
-
-ERROR ANALYSIS
---------------
-Error Rate:        ${(metrics.http_req_failed.values.rate * 100).toFixed(2)}%
-Failed Requests:   ${Math.round(metrics.http_req_failed.values.rate * reqs.values.count).toLocaleString()}
-
-SLO COMPLIANCE (Under Stress)
------------------------------
-  1,000 RPS Achieved:  ${actualRPS >= 900 ? 'PASS' : 'FAIL'} (${actualRPS.toFixed(0)} RPS)
-  P95 < 1000ms:        ${httpDuration.values['p(95)'] < 1000 ? 'PASS' : 'FAIL'} (${httpDuration.values['p(95)'].toFixed(0)}ms)
-  P99 < 2000ms:        ${httpDuration.values['p(99)'] < 2000 ? 'PASS' : 'FAIL'} (${httpDuration.values['p(99)'].toFixed(0)}ms)
-  Error Rate < 5%:     ${metrics.http_req_failed.values.rate < 0.05 ? 'PASS' : 'FAIL'} (${(metrics.http_req_failed.values.rate * 100).toFixed(2)}%)
-
-BREAKING POINT ANALYSIS
------------------------
-${httpDuration.values['p(99)'] > 2000 || metrics.http_req_failed.values.rate > 0.05 ?
-  'System showed signs of stress. Consider scaling resources.' :
-  'System handled stress well. Capacity appears adequate.'}
-
-================================================================================
-`;
-
-  return {
-    stdout: summary,
-    'tests/load/results/stress-summary.json': JSON.stringify(data, null, 2),
-  };
+  return renderSummary(data, 'ENCLII STRESS TEST RESULTS', 'stress',
+    'Controlled stress observations; achieved generator request rate is not proof of sustained platform capacity.');
 }

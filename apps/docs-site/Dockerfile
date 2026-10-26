@@ -10,7 +10,7 @@ WORKDIR /app
 FROM base AS deps
 WORKDIR /app/docs-site
 COPY apps/docs-site/package.json apps/docs-site/package-lock.json* ./
-RUN npm install --legacy-peer-deps
+RUN npm ci --ignore-scripts --legacy-peer-deps --no-audit --no-fund
 
 # Build the application
 FROM base AS builder
@@ -55,10 +55,15 @@ FROM docker.io/library/nginx:alpine AS runner
 # failed docs-site on main run 39243201232. Alpine v3.24 main secdb confirms
 # the floor, which also covers CVE-2026-94283/94284/94285. Refresh the cached
 # upgrade layer; retain the scan/signature gate without a vulnerability waiver.
-ARG APK_SECURITY_REFRESH=2026-10-19
+# 2026-10-26: CVE-2026-92392 affected curl/libcurl 8.22.0-r0 in both
+# API/docs images. Alpine v3.24 main publishes the fix at 8.23.0-r0.
+# Keep both hard floors and refresh the cached upgrade; no scan waiver.
+# https://curl.se/docs/CVE-2026-92392.html
+# https://secdb.alpinelinux.org/v3.24/main.json
+ARG APK_SECURITY_REFRESH=2026-10-26
 RUN echo "apk security refresh: ${APK_SECURITY_REFRESH}" && \
     apk upgrade --no-cache && \
-    apk add --no-cache 'libexpat>=2.9.0-r0' 'pcre2>=10.49-r0' 'libuuid>=2.42.3-r0' 'libx11>=1.8.14-r0'
+    apk add --no-cache 'libexpat>=2.9.0-r0' 'pcre2>=10.49-r0' 'libuuid>=2.42.3-r0' 'libx11>=1.8.14-r0' 'curl>=8.23.0-r0' 'libcurl>=8.23.0-r0'
 
 # Copy custom nginx config (standard port 80)
 # Security headers applied at origin (defense-in-depth; Cloudflare may also set some).

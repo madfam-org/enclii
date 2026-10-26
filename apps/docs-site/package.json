@@ -12,7 +12,8 @@
     "clear": "docusaurus clear",
     "serve": "docusaurus serve --port 4203",
     "write-translations": "docusaurus write-translations",
-    "write-heading-ids": "docusaurus write-heading-ids"
+    "write-heading-ids": "docusaurus write-heading-ids",
+    "typecheck": "tsc --noEmit"
   },
   "dependencies": {
     "@docusaurus/core": "3.10.2",
@@ -21,29 +22,41 @@
     "clsx": "^2.1.0",
     "prism-react-renderer": "^2.3.0",
     "react": "^18.2.0",
-    "react-dom": "^18.2.0",
-    "redocusaurus": "^2.1.1"
+    "react-dom": "^18.2.0"
   },
   "devDependencies": {
     "@docusaurus/module-type-aliases": "3.10.2",
+    "@docusaurus/tsconfig": "3.10.2",
     "@docusaurus/types": "3.10.2",
+    "@types/react": "18.3.31",
+    "@types/react-dom": "18.3.7",
     "typescript": "^5.3.0"
   },
-  "//overrides": "Transitive CVE remediation. This app is a standalone npm project (not a pnpm workspace member), so the pnpm.overrides in the repo-root package.json do not reach it; npm `overrides` is the equivalent idiom. Every entry stays inside the dependency's current major. Drop an entry once the upstream dependency ships the fixed range on its own.",
+  "//overrides": "Patched transitive floors for this standalone npm app; root pnpm overrides do not apply. Docusaurus 3.10.2 keeps its current API while scoped Tinypool 2 and update-notifier 7 upgrades remove vulnerable worker options and the unpatched got/cacheable-request/http-cache-semantics chain. See README.md for compatibility and removal criteria.",
   "overrides": {
-    "brace-expansion@^1.0.0": "^1.1.18",
-    "brace-expansion@^2.0.0": "^2.1.4",
-    "fast-uri": "^3.1.5",
+    "@docusaurus/core": {
+      "tinypool": "2.1.2",
+      "update-notifier": "7.3.1"
+    },
+    "body-parser": "^1.20.9",
+    "brace-expansion@^1.0.0": "^1.1.21",
+    "brace-expansion@^2.0.0": "^2.1.7",
+    "compression": "^1.8.2",
+    "fast-uri": "^3.1.9",
     "fast-xml-builder": "^1.1.7",
+    "joi": "^17.13.8",
     "js-yaml": "^4.3.1",
     "lodash": "^4.18.0",
     "nanoid": "^3.3.18",
     "postcss": "^8.5.18",
+    "proxy-addr": "^2.0.8",
     "serialize-javascript": "^7.0.3",
+    "shell-quote": "^1.12.0",
+    "source-map-js": "^1.2.2",
     "ws": "^7.5.11"
   },
   "engines": {
-    "node": ">=18.0"
+    "node": "^20.0.0 || >=22.0.0"
   },
   "browserslist": {
     "production": [

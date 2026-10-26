@@ -1540,13 +1540,16 @@ jobs:
           echo "$CHANGED_FILES"
           echo ""
 
+          # Drain each matcher input instead of grep -q: an early match can
+          # SIGPIPE its writer under pipefail and silently skip a required build
+          # when the changed-file/request list exceeds a pipe buffer.
           # Build matrix of changed services
           SERVICES_JSON=$(cat services.json)
           MATRIX_INCLUDE="[]"
           FORCE_ALL=false
           REQUESTED_SERVICES="${{ github.event.inputs.services || '' }}"
 
-          if echo "$CHANGED_FILES" | grep -q "^services.json$"; then
+          if printf '%s\n' "$CHANGED_FILES" | grep -Fx 'services.json' >/dev/null; then
             echo "services.json changed; rebuilding every registered service"
             FORCE_ALL=true
           fi
@@ -1600,18 +1603,29 @@ jobs:
             if [ "$FORCE_ALL" == "true" ]; then
               CHANGED=true
             elif [ -n "$REQUESTED_SERVICES" ]; then
-              if echo "$REQUESTED_SERVICES" | tr ',' '\n' | sed 's/^ *//;s/ *$//' | grep -qx "$NAME"; then
+              if printf '%s\n' "$REQUESTED_SERVICES" | tr ',' '\n' | sed 's/^ *//;s/ *$//' | grep -Fx "$NAME" >/dev/null; then
                 CHANGED=true
               fi
             else
-              if echo "$CHANGED_FILES" | grep -q "^${PATH_PREFIX}/"; then
+              if printf '%s\n' "$CHANGED_FILES" | grep "^${PATH_PREFIX}/" >/dev/null; then
                 CHANGED=true
               fi
               for dep in $DEPS; do
-                if echo "$CHANGED_FILES" | grep -q "^${dep}/"; then
+                if printf '%s\n' "$CHANGED_FILES" | grep "^${dep}/" >/dev/null; then
                   CHANGED=true
                 fi
               done
+              # These two images install from the root pnpm workspace. Root
+              # dependency/config changes must reach their browser bundles;
+              # status/docs/landing have independent Docker install inputs.
+              # The COPY-consumer regression test guards this bounded list.
+              case "$NAME" in
+                switchyard-ui|dispatch)
+                  if printf '%s\n' "$CHANGED_FILES" | grep -E '^(package\.json|pnpm-lock\.yaml|pnpm-workspace\.yaml|\.npmrc)$' >/dev/null; then
+                    CHANGED=true
+                  fi
+                  ;;
+              esac
             fi
 
             if [ "$CHANGED" == "true" ]; then
@@ -2560,4 +2574,4 @@ jobs:
         run: pip install --quiet pyyaml pytest
 
       - name: Run workflow contract tests
-        run: pytest tests/scripts/test_digest_pin_push_retry.py tests/scripts/test_arc_runner_image_promotion.py tests/scripts/test_commit_digests_unpinned_gate.py tests/scripts/test_arc_control_scheduling.py tests/scripts/test_check_arc_runner_render_env.py -v -rs
+        run: pytest tests/scripts/test_digest_pin_push_retry.py tests/scripts/test_arc_runner_image_promotion.py tests/scripts/test_commit_digests_unpinned_gate.py tests/scripts/test_arc_control_scheduling.py tests/scripts/test_check_arc_runner_render_env.py tests/scripts/test_conservation_root_dependencies.py -v -rs
