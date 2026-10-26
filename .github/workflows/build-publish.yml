@@ -943,6 +943,7 @@ jobs:
           import datetime
           import hashlib
           import json
+          import math
           import os
           from pathlib import Path
           import re
@@ -956,6 +957,10 @@ jobs:
           POLICY = "enclii-image-os-language-high-critical-unfixed-v1"
           VERSION = "0.76.1"
           LIMIT = 32 * 1024 * 1024
+          RELATIONSHIPS = ("unknown", "root", "workspace", "direct", "indirect")
+          RECEIPT_SCHEMA = "enclii-prepin-image-scan-receipt-v1"
+          MONEY_REPOSITORY = "madfam-org/money-moves"
+          MONEY_FLAT_PREFIX = "ghcr.io/madfam-org"
           # Trivy v0.76.1 pkg/fanal/types/const.go; unknown OS is not a clean scan.
           OS_FAMILIES = {"activestate", "alma", "alpine", "amazon", "azurelinux", "bottlerocket",
                          "cbl-mariner", "centos", "centos-stream", "chainguard", "coreos", "debian",
@@ -967,10 +972,17 @@ jobs:
               raise ValueError("pre-pin image evidence refused")
 
 
-          def read_json(path, limit=LIMIT):
+          def read_bytes(path, limit=LIMIT):
               if path.is_symlink() or not path.is_file() or path.stat().st_size > limit:
                   refuse()
-              return json.loads(path.read_text())
+              data = path.read_bytes()
+              if len(data) > limit:
+                  refuse()
+              return data
+
+
+          def read_json(path, limit=LIMIT):
+              return json.loads(read_bytes(path, limit))
 
 
           def digest(path):
@@ -992,9 +1004,23 @@ jobs:
                       or not re.fullmatch(r"[1-9][0-9]*", run)
                       or not re.fullmatch(r"[1-9][0-9]*", attempt)
                       or not re.fullmatch(r"madfam-org/[a-z0-9_.-]+", repo)
-                      or prefix != "ghcr.io/" + repo):
+                      or not (prefix == "ghcr.io/" + repo
+                              or (repo == MONEY_REPOSITORY and prefix == MONEY_FLAT_PREFIX))):
                   refuse()
-              return {"source": source, "run": run, "attempt": attempt, "prefix": prefix}
+              return {"source": source, "run": run, "attempt": attempt,
+                      "repository": repo, "prefix": prefix}
+
+
+          def approved_services(bound, names):
+              if (bound != identity() or not isinstance(names, list) or not names
+                      or any(not isinstance(n, str) or not re.fullmatch(r"[a-z0-9][a-z0-9_.-]{0,62}", n) for n in names)
+                      or len(set(names)) != len(names)):
+                  refuse()
+              # The existing Money caller publishes exactly org/money-moves.
+              # Bind its org-level prefix to that repository and sole service.
+              if bound["prefix"] == MONEY_FLAT_PREFIX and (
+                      bound["repository"] != MONEY_REPOSITORY or names != ["money-moves"]):
+                  refuse()
 
 
           def context():
@@ -1003,10 +1029,12 @@ jobs:
                       or c["version"] != VERSION or digest(ROOT / "trivy") != c["binary_sha256"]
                       or not 0 <= time.time() - c["created_at"] <= 3600):
                   refuse()
+              approved_services(c["identity"], c["services"])
               return c
 
 
           def inventory(c):
+              approved_services(c["identity"], c["services"])
               directory = Path(os.environ["GITHUB_WORKSPACE"]) / "digests"
               if directory.is_symlink():
                   refuse()
@@ -1025,7 +1053,18 @@ jobs:
 
 
           def epoch(value):
-              return datetime.datetime.fromisoformat(value.replace("Z", "+00:00")).timestamp()
+              if not isinstance(value, str) or len(value) > 40:
+                  refuse()
+              parsed = datetime.datetime.fromisoformat(value.replace("Z", "+00:00"))
+              if parsed.tzinfo is None:
+                  refuse()
+              return parsed.timestamp()
+
+
+          def timestamp(value):
+              if type(value) not in (int, float) or not math.isfinite(value):
+                  refuse()
+              return datetime.datetime.fromtimestamp(value, datetime.timezone.utc).isoformat(timespec="microseconds").replace("+00:00", "Z")
 
 
           def no_suppression(value):
@@ -1057,6 +1096,7 @@ jobs:
                   refuse()
               os_packages = False
               findings = []
+              counts = {"os_packages": 0, "language_packages": 0}
               for result in results:
                   if (result.get("Class") not in ["os-pkgs", "lang-pkgs"]
                           or not isinstance(result.get("Target"), str) or not result["Target"]
@@ -1067,6 +1107,7 @@ jobs:
                       if result["Type"] != operating_system["Family"] or not result["Packages"]:
                           refuse()
                       os_packages = True
+                  counts["os_packages" if result["Class"] == "os-pkgs" else "language_packages"] += len(result["Packages"])
                   for package in result["Packages"]:
                       if not isinstance(package.get("Name"), str) or not package["Name"] or not isinstance(package.get("Version"), str) or not package["Version"]:
                           refuse()
@@ -1080,7 +1121,7 @@ jobs:
                           refuse()
               if not os_packages:
                   refuse()
-              return findings
+              return findings, counts
 
 
           def bounded_summary(findings):
@@ -1091,8 +1132,16 @@ jobs:
                   if len(value) > 128 or not re.fullmatch(pattern, value) or any(s and s in value for s in credentials):
                       return "redacted"
                   return value
+              def package(value):
+                  value = safe(value, r"[A-Za-z0-9@._/+:-]{1,120}")
+                  if (value.startswith("/") or "\\" in value or "://" in value
+                          or re.match(r"^[A-Za-z]:", value)
+                          or value.lower().startswith("file:")
+                          or any(part in ["", ".", ".."] for part in value.split("/"))):
+                      return "redacted"
+                  return value
               for v in findings[:20]:
-                  print(json.dumps({"package": safe(v.get("PkgName", ""), r"[A-Za-z0-9@._/+:-]{1,120}"),
+                  print(json.dumps({"package": package(v.get("PkgName", "")),
                                     "vulnerability": safe(v.get("VulnerabilityID", ""), r"(?:CVE-[0-9]{4}-[0-9]+|GHSA-[a-z0-9-]+)"),
                                     "severity": v["Severity"],
                                     "fixed_version": safe(v["FixedVersion"], r"[0-9][A-Za-z0-9.+:~,_ -]{0,79}") if v.get("FixedVersion") else "unfixed"}))
@@ -1163,7 +1212,8 @@ jobs:
               command = [str(ROOT / "trivy"), "image", "--config", str(ROOT / "config.yaml"),
                          "--cache-dir", str(ROOT / "cache"), "--ignorefile", str(ROOT / "empty.ignore"),
                          "--image-src", "remote", "--scanners", "vuln", "--pkg-types", "os,library",
-                         "--include-dev-deps=true", "--db-repository", "ghcr.io/aquasecurity/trivy-db:2",
+                         "--pkg-relationships", ",".join(RELATIONSHIPS),
+                         "--db-repository", "ghcr.io/aquasecurity/trivy-db:2",
                          "--java-db-repository", "ghcr.io/aquasecurity/trivy-java-db:1",
                          "--severity", "HIGH,CRITICAL", "--ignore-unfixed=false", "--show-suppressed",
                          "--list-all-pkgs=true", "--skip-db-update=false", "--skip-java-db-update=false",
@@ -1176,9 +1226,10 @@ jobs:
               if report_path.exists():
                   report_path.chmod(0o600)
               report = read_json(report_path)
-              findings = inspect_report(report, ref, started, finished)
+              findings, counts = inspect_report(report, ref, started, finished)
               db = read_json(ROOT / "cache/db/metadata.json", 16384)
-              if (db.get("Version") != 2 or not c["created_at"] - 10 <= epoch(db["DownloadedAt"]) <= finished + 10
+              if (type(db.get("Version")) is not int or db["Version"] != 2
+                      or not c["created_at"] - 10 <= epoch(db["DownloadedAt"]) <= finished + 10
                       or not 0 <= finished - epoch(db["UpdatedAt"]) <= 48 * 3600
                       or epoch(db["NextUpdate"]) <= finished):
                   refuse()
@@ -1186,24 +1237,61 @@ jobs:
                   bounded_summary(findings)
               if returncode != 0 or findings:
                   refuse()
-              write_json(receipt_path, {"ref": ref, "policy": POLICY, "version": VERSION,
-                                       "identity": c["identity"], "finished": finished,
-                                       "report_sha256": digest(report_path), "db_sha256": digest(ROOT / "cache/db/metadata.json"),
-                                       "db_next_update": epoch(db["NextUpdate"])})
+              write_json(receipt_path, {"schema": RECEIPT_SCHEMA,
+                                       **{k: c["identity"][k] for k in ("source", "repository", "run", "attempt")},
+                                       "ref": ref, "policy": POLICY, "trivy_version": VERSION,
+                                       "include_unfixed": True, "all_installed_os_and_language_packages": True,
+                                       "package_relationships": list(RELATIONSHIPS), "high": 0, "critical": 0,
+                                       "inventory": counts, "report_sha256": digest(report_path),
+                                       "db": {"version": db["Version"], "updated_at": timestamp(epoch(db["UpdatedAt"])),
+                                              "downloaded_at": timestamp(epoch(db["DownloadedAt"])),
+                                              "next_update": timestamp(epoch(db["NextUpdate"])),
+                                              "metadata_sha256": digest(ROOT / "cache/db/metadata.json")},
+                                       "scan_finished_at": timestamp(finished)})
               print("Full image scan accepted for immutable digest")
+
+
+          def projection(path, c, ref):
+              raw = read_bytes(path, 16384)
+              r = json.loads(raw)
+              keys = {"schema", "source", "repository", "run", "attempt", "ref", "policy", "trivy_version",
+                      "include_unfixed", "all_installed_os_and_language_packages", "package_relationships",
+                      "high", "critical", "inventory", "report_sha256", "db", "scan_finished_at"}
+              if (not isinstance(r, dict) or set(r) != keys or r["schema"] != RECEIPT_SCHEMA
+                      or any(r[k] != c["identity"][k] for k in ("source", "repository", "run", "attempt"))
+                      or r["ref"] != ref or r["policy"] != POLICY or r["trivy_version"] != VERSION
+                      or r["include_unfixed"] is not True or r["all_installed_os_and_language_packages"] is not True
+                      or r["package_relationships"] != list(RELATIONSHIPS)
+                      or any(type(r[k]) is not int or r[k] != 0 for k in ("high", "critical"))
+                      or raw != json.dumps(r, sort_keys=True, separators=(",", ":")).encode()):
+                  refuse()
+              counts = r["inventory"]
+              if (not isinstance(counts, dict) or set(counts) != {"os_packages", "language_packages"}
+                      or any(type(n) is not int or not 0 <= n <= 1000000 for n in counts.values())
+                      or counts["os_packages"] == 0):
+                  refuse()
+              db = r["db"]
+              if (not isinstance(db, dict) or set(db) != {"version", "updated_at", "downloaded_at", "next_update", "metadata_sha256"}
+                      or type(db["version"]) is not int or db["version"] != 2
+                      or not isinstance(db["metadata_sha256"], str) or not re.fullmatch(r"[0-9a-f]{64}", db["metadata_sha256"])
+                      or any(timestamp(epoch(db[k])) != db[k] for k in ("updated_at", "downloaded_at", "next_update"))):
+                  refuse()
+              finished = epoch(r["scan_finished_at"])
+              if (timestamp(finished) != r["scan_finished_at"] or not c["created_at"] <= finished
+                      or not 0 <= time.time() - finished <= 3600 or time.time() >= epoch(db["next_update"])
+                      or not 0 <= finished - epoch(db["updated_at"]) <= 48 * 3600
+                      or not c["created_at"] - 10 <= epoch(db["downloaded_at"]) <= finished + 10
+                      or not isinstance(r["report_sha256"], str) or not re.fullmatch(r"[0-9a-f]{64}", r["report_sha256"])
+                      or r["report_sha256"] != digest(ROOT / (path.name.removesuffix(".receipt.json") + ".report.json"))):
+                  refuse()
+              return r, hashlib.sha256(raw).hexdigest()
 
 
           def receipts(c, items):
               result = {}
               for name, value in items.items():
                   path = ROOT / (name + ".receipt.json")
-                  r = read_json(path, 16384)
-                  if (r["ref"] != value["ref"] or r["identity"] != c["identity"]
-                          or r["policy"] != POLICY or r["version"] != VERSION
-                          or not 0 <= time.time() - r["finished"] <= 3600 or time.time() >= r["db_next_update"]
-                          or r["report_sha256"] != digest(ROOT / (name + ".report.json"))):
-                      refuse()
-                  result[name] = digest(path)
+                  _, result[name] = projection(path, c, value["ref"])
               return result
 
 
@@ -1211,9 +1299,9 @@ jobs:
               action = sys.argv[1]
               if action == "init":
                   names = [r["name"] for r in json.loads(os.environ["SERVICES_MATRIX"])]
-                  if not names or len(set(names)) != len(names) or any(not re.fullmatch(r"[a-z0-9][a-z0-9_.-]{0,62}", n) for n in names):
-                      refuse()
-                  write_json(ROOT / "context.json", {"identity": identity(), "services": sorted(names),
+                  bound = identity()
+                  approved_services(bound, names)
+                  write_json(ROOT / "context.json", {"identity": bound, "services": sorted(names),
                              "policy": POLICY, "version": VERSION, "created_at": time.time(), "binary_sha256": digest(ROOT / "trivy")})
                   return
               c = context()
@@ -1228,9 +1316,25 @@ jobs:
               if action == "seal":
                   write_json(ledger, current)
                   print(digest(ledger))
-              elif action == "check":
+              elif action in ("check", "emit"):
                   if not re.fullmatch(r"[0-9a-f]{64}", sys.argv[2]) or digest(ledger) != sys.argv[2] or read_json(ledger, 131072) != current:
                       refuse()
+                  if action == "emit":
+                      projections = []
+                      images = []
+                      for name, value in sorted(items.items()):
+                          receipt, receipt_sha = projection(ROOT / (name + ".receipt.json"), c, value["ref"])
+                          if receipt_sha != current["receipts"][name]:
+                              refuse()
+                          projections.append({**receipt, "ledger_sha256": sys.argv[2]})
+                          images.append({"ref": value["ref"], "receipt_sha256": receipt_sha})
+                      checkpoint = {"schema": "enclii-prepin-all-images-verified-v1",
+                                    **{k: c["identity"][k] for k in ("source", "repository", "run", "attempt")},
+                                    "policy": POLICY, "trivy_version": VERSION, "ledger_sha256": sys.argv[2],
+                                    "image_count": len(images), "images": images, "high": 0, "critical": 0}
+                      for receipt in projections:
+                          print("ENCLII_PREPIN_SCAN_RECEIPT " + json.dumps(receipt, sort_keys=True, separators=(",", ":")))
+                      print("ENCLII_PREPIN_ALL_IMAGES_VERIFIED " + json.dumps(checkpoint, sort_keys=True, separators=(",", ":")))
               else:
                   refuse()
 
@@ -1317,6 +1421,7 @@ jobs:
           if [ "$REQUIRE_IMAGE_SCAN" = true ]; then
             scan_ledger_sha=$(python3 "$PREPIN_SCAN_ROOT/scan.py" seal)
             python3 "$PREPIN_SCAN_ROOT/scan.py" check "$scan_ledger_sha"
+            python3 "$PREPIN_SCAN_ROOT/scan.py" emit "$scan_ledger_sha"
             printf 'PREPIN_SCAN_LEDGER_SHA256=%s\n' "$scan_ledger_sha" >> "$GITHUB_ENV"
           fi
           for f in "$GITHUB_WORKSPACE"/digests/*.txt; do
