@@ -1,6 +1,7 @@
 'use client'
 
-import { useEffect, useRef, useState } from 'react'
+import { useRef } from 'react'
+import { useClientReady } from '@/hooks/useClientReady'
 import { createPortal } from 'react-dom'
 import type { ServiceStatus, TimelineSlot } from '@/lib/types'
 import { STATUS_COLORS, STATUS_LABELS } from '@/lib/status-config'
@@ -25,11 +26,7 @@ function formatSlotTime(iso: string): string {
 
 export function SharedTooltip({ visible, slot, anchor }: SharedTooltipProps) {
   const tooltipRef = useRef<HTMLDivElement>(null)
-  const [mounted, setMounted] = useState(false)
-
-  useEffect(() => {
-    setMounted(true)
-  }, [])
+  const mounted = useClientReady()
 
   if (!mounted || !slot || !anchor) return null
 

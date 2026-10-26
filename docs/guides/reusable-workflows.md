@@ -73,6 +73,40 @@ jobs:
       id-token: write
 ```
 
+### Opt-in scan before digest pinning
+
+Set `with.require_image_scan: true` to require the fixed Trivy 0.76.1 policy in
+this publisher's pin job. The default is `false` for existing callers. Pin a
+reviewed immutable reusable-workflow commit that contains this input; do not
+add a downstream scan after the publisher has already written production pins.
+
+The gate verifies each registry-derived digest with the existing signer rules,
+then scans all installed OS and language packages and package relationships for
+HIGH/CRITICAL findings, including unfixed vulnerabilities. All services must pass
+before any manifest edit. Private GHCR credentials are passed only through the
+scanner environment.
+The fixed checksum, private empty configuration/ignore file and sanitized child
+environment prevent caller suppression. Missing images, scanner/auth/database
+errors, unrecognized or incomplete reports and stale evidence fail closed.
+
+A source/run-bound private ledger binds each exact digest and scan receipt.
+Initial writes and push retries revalidate it; retries retain those digests and
+never rederive an unchecked tag. Before the first manifest edit, closed JSON
+receipts bind each accepted digest, zero HIGH/CRITICAL counts, inventory counts,
+validated database metadata and report hashes to the sealed cohort ledger.
+Raw reports, image configuration and scanner logs are ephemeral, private,
+bounded and never uploaded. Output contains bounded vulnerability coordinates
+and sanitized acceptance receipts. Normal CI checks the actual fixed scanner's
+image command arguments without accessing an image or database.
+
+Strict callers normally use `ghcr.io/<owner>/<repository>/<service>`. The
+existing flat Money Moves package is limited to repository
+`madfam-org/money-moves`, prefix `ghcr.io/madfam-org` and sole service
+`money-moves`; other flat mappings are refused.
+
+This gate does not provide staging, soak,
+runtime acceptance or authority for financial or fiscal actions.
+
 ### Required repo setup
 
 1. **Dockerfiles**: use `FROM public.ecr.aws/docker/library/<image>`
