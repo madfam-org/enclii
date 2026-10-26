@@ -25,7 +25,7 @@ var opsCapabilities = []operatorCapability{
 	{
 		Name:        "pods",
 		Status:      "partial",
-		Description: "Pod diagnosis and logs reads; restart is an audited rollout restart of a Deployment, StatefulSet or DaemonSet, or the recreation of one controller-owned pod, in allowlisted namespaces only (platform rank)",
+		Description: "Pod diagnosis and logs reads; restart is an audited rollout restart of a Deployment, StatefulSet or DaemonSet, or the recreation of one controller-owned pod, in allowlisted namespaces only; in Enclii project namespaces only the recreation of one CloudNativePG instance pod (platform rank)",
 		Actions:     []string{"diagnose", "logs", "restart"},
 		Scopes:      []string{"namespace", "service", "target"},
 	},

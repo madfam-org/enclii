@@ -29,7 +29,7 @@ encouraging direct `kubectl`.
 | `enclii ops apps tracking` | Declare Argo CD's annotation tracking default once in `argocd-cm` ([below](#argo-tracking-declaration)) |
 | `enclii ops apps staging-intent [read OPERATION_UUID]` | Plan, retain or read an inert Janua staging intent; never creates a service or activation authority ([below](#held-janua-staging-intent)) |
 | `enclii ops pods diagnose|logs` | Pod diagnosis and logs |
-| `enclii ops pods restart` | Audited rollout restart of a Deployment, StatefulSet or DaemonSet, or recreation of one controller-owned pod ([below](#ops-pods-restart)) |
+| `enclii ops pods restart` | Audited rollout restart of a Deployment, StatefulSet or DaemonSet, or recreation of one controller-owned pod; in project namespaces, of one CloudNativePG instance pod ([below](#ops-pods-restart)) |
 | `enclii ops jobs list|trigger|suspend` | CronJob inspection, audited triggers and durable service-job holds; independent verified-target Jobs use the [closed API request](../../runbooks/ENCLII_VERIFIED_TARGET_JOBS.md) |
 | `enclii ops storage volumes|pvc|longhorn|repair-plan|settings-apply|prune-detached|storageclass-apply|r2-audit` | PVC/PV/Longhorn inspection, repair planning, CPU settings (O-5), orphan prune (O-4), StorageClass reconcile, R2 credential audit (incomplete, shared, or mismatched buckets) |
 | `enclii ops secrets external|vault|refresh|sync|sync-sweep|rotate|vault-backfill` | ExternalSecrets and Vault readiness workflows |
@@ -222,7 +222,9 @@ Guards, all enforced by the API:
   `switchyard-api` Deployment in `infra/k8s/base/switchyard-api.yaml`). An
   empty list refuses every namespace. `kube-*` namespaces are refused even
   when listed. A refused namespace is answered with HTTP 409 `refused` before
-  anything is read from the cluster. Add a namespace by PR.
+  anything is read from the cluster. Add a namespace by PR. The one
+  exception is a CloudNativePG instance pod in an Enclii project namespace
+  ([below](#cnpg-instance-pods-in-project-namespaces)).
 - **Controller-owned pods only.** `pod/<name>` refuses a pod without a
   ReplicaSet, StatefulSet or DaemonSet controller (bare pods, Job pods,
   operator-managed pods), a pod already terminating, and a paused Deployment.
@@ -259,6 +261,54 @@ accepted, not that the new pods are Ready. Follow it with
 are not live yet. For a registered Enclii service the service restart API
 (`POST /v1/services/{id}/restart`) remains available and is target-bound to
 the service's verified Deployment.
+
+### CNPG instance pods in project namespaces
+
+Project namespaces (`project-<first 8 of the project id>`) are created per
+project and are never in `ENCLII_OPS_RESTART_NAMESPACES`. In them,
+`pod/<name>` may still recreate **one CloudNativePG instance pod** of an
+Enclii managed-Postgres addon. It replaces the break-glass `kubectl delete pod`
+used on 2026-10-24, when an instance kept a broken volume mount after a node
+fault (`global/pg_filenode.map: Input/output error`) and only a new pod
+mounted the volume again. Everything else in a project namespace stays
+refused: workload rollouts (refused before anything is read), application
+pods, poolers and Job pods.
+
+The API checks, in order, and refuses (HTTP 409, nothing changed) unless:
+
+- the namespace is named `project-<8>`, carries `managed-by=enclii` and an
+  `enclii.dev/project` UUID whose first 8 characters are that suffix;
+- the pod's controller is a `postgresql.cnpg.io` `Cluster`, and its labels say
+  the same thing: `cnpg.io/cluster` = that Cluster, `cnpg.io/podRole=instance`
+  and `cnpg.io/instanceName` = the pod;
+- that Cluster is the pod's live owner (same UID), is not being deleted, is an
+  Enclii addon of the same project (`managed-by=enclii`,
+  `enclii.dev/project-id`), and is not hibernating (`cnpg.io/hibernation=on`;
+  use [`ops.addons.hibernate`](#opsaddonshibernate-api-only) for those);
+- the pod is not already terminating.
+
+The dry run reports mode `cnpg-instance-recreate`, the Cluster's phase,
+`instances`, `readyInstances`, the pod's `instanceRole` and `pvcsKept` (the
+PVCs CNPG mounts in the replacement; the delete never touches them). It warns
+when the pod is still Ready (a database that answers would be interrupted),
+when the Cluster runs one instance (the database is down until the new pod is
+Ready) and when the pod is the primary of a multi-instance cluster (CNPG fails
+over). **The apply requires `--expect-uid`** from the dry run, as well as
+`--reason`; the delete carries that UID as a precondition and uses the pod's
+own grace period. The audit rows add the Cluster UID, phase, instance role and
+project.
+
+```bash
+enclii ops pods restart pod/<cluster>-1 -n project-<id>
+enclii ops pods restart pod/<cluster>-1 -n project-<id> --expect-uid <reviewed-uid> \
+  --apply --reason "remount the data volume after the node fault"
+```
+
+Do not use it for «Instance Status Extraction Error»: there the operator cannot
+reach the instance's status port, and CNPG recreates the pod into the same
+state. That case is the `<cluster>-operator-ingress` NetworkPolicy (see
+`ops.addons.hibernate` below). The alerts that point here are in
+[`ADDON_CNPG_HEALTH.md`](../../runbooks/ADDON_CNPG_HEALTH.md).
 
 ## `ops.addons.hibernate` (API only)
 

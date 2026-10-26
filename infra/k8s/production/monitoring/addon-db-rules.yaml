@@ -3,8 +3,10 @@
 #
 # WHAT THESE READ, AND WHY THEY CAN NOW READ IT
 # =============================================
-# Every series below comes from the CNPG instance pods of a per-addon Cluster
-# in a `project-*` namespace. Until this change those pods were not scraped at
+# The backup, WAL and exporter groups read series from the CNPG instance pods
+# of a per-addon Cluster in a `project-*` namespace. (The cnpg-health group at
+# the end also reads kube-state-metrics' view of the Cluster objects; its
+# header explains why.) Until this change those pods were not scraped at
 # all: `spec.monitoring.enablePodMonitor` was hardcoded `false`
 # (apps/switchyard-api/internal/addons/postgres.go), so no PodMonitor existed;
 # and even with one, `rules-eval`'s egress policy did not reach `project-*`
@@ -178,3 +180,145 @@ spec:
               `enclii.dev/addon-metrics` namespaces before assuming the database
               itself is at fault.
               Runbook: docs/runbooks/ADDON_BACKUPS.md
+
+    # PER-PROJECT CLUSTER HEALTH (stabilization wave 2026-10-26).
+    #
+    # Until this group, the only CNPG health rules watched the platform
+    # `postgres-ha` cluster (../postgres-ha/podmonitor.yaml), so two incidents
+    # on 2026-10-24 paged nobody:
+    #   1. every crea-sim cluster sat in «Instance Status Extraction Error»
+    #      (the operator could not reach the instances' status port 8000) while
+    #      PostgreSQL itself answered and cnpg_collector_up stayed 1;
+    #   2. after a node went NotReady, one instance kept a broken volume mount
+    #      (`global/pg_filenode.map: Input/output error`).
+    # The first is visible only on the Cluster object, so its phase, instance
+    # counts and hibernation state come from kube-state-metrics
+    # (kube-state-metrics.yaml, --custom-resource-state-config), which lists
+    # EVERY Cluster, including addons whose instance pods have no PodMonitor.
+    # The second shows as ready instances below spec, or as the instance's own
+    # collector reporting PostgreSQL down.
+    #
+    # HIBERNATED CLUSTERS legitimately run 0 instances. They are excluded by
+    # CNPG's own confirmation, the `cnpg.io/hibernation` condition being True
+    # (label `hibernated`), not by the annotation alone: a cluster annotated
+    # for hibernation that CNPG never acted on (exactly incident 1) must still
+    # page.
+    #
+    # Labels: `namespace` and `cluster` on every alert. Selva's infra
+    # self-healing intake (selva-office RFC 0047) keys on alertname +
+    # namespace and reads `cluster`; its replay fixture uses
+    # CNPGInstanceStatusUnreachable by name. Do not rename it.
+    # Routing: severity critical → critical-receiver (Courier + email);
+    # project-* namespaces match none of the staging routes. Courier's
+    # identity for these is the namespace, so two clusters failing in one
+    # project in the same episode page once, with both in the payload.
+    # Tests: tests/scripts/test_cnpg_project_rules.py.
+    - name: enclii-addon-db.cnpg-health
+      interval: 60s
+      rules:
+        # The operator reports a phase other than healthy. `phase` is not part
+        # of the alert's identity (it is dropped by the max), so a cluster that
+        # moves between two unhealthy phases keeps one alert and its `for`
+        # clock; the phase is read back into the annotations. 10 minutes rides
+        # out a normal switchover, a rolling restart and a fresh cluster's
+        # initdb; a phase still unhealthy after that will not clear alone.
+        - alert: CNPGInstanceStatusUnreachable
+          expr: |
+            max by (namespace, cluster) (
+              kube_cnpg_cluster_info{namespace=~"project-.*", phase!~"Cluster in healthy state|", hibernated!="True"}
+            )
+          for: 10m
+          labels:
+            severity: critical
+            component: managed-db-addon
+          annotations:
+            phase: '{{ with printf "kube_cnpg_cluster_info{namespace=%q,cluster=%q}" $labels.namespace $labels.cluster | query }}{{ . | first | label "phase" }}{{ end }}'
+            summary: 'CNPG reports cluster {{ $labels.namespace }}/{{ $labels.cluster }} unhealthy: {{ with printf "kube_cnpg_cluster_info{namespace=%q,cluster=%q}" $labels.namespace $labels.cluster | query }}{{ . | first | label "phase" }}{{ end }}'
+            description: |
+              The CloudNativePG operator has not reported «Cluster in healthy
+              state» for this cluster for 10 minutes, and the cluster is not
+              hibernated. «Instance Status Extraction Error» means the operator
+              cannot reach the instances' status port (TCP 8000): check the
+              `<cluster>-operator-ingress` NetworkPolicy (read it with
+              POST /v1/ops/inventory/network-policies), which the addon
+              reconciler converges on start and every 10 minutes. Deleting the pod does not fix that
+              case. Other phases: read the operator's view with
+              `enclii ops pods diagnose <cluster>-1 -n <namespace>`.
+              Runbook: docs/runbooks/ADDON_CNPG_HEALTH.md
+
+        # Fewer ready instances than configured. Every project addon runs one
+        # instance today, so this is the database being unavailable. The value
+        # is the number of instances missing.
+        - alert: CNPGReadyInstancesBelowSpec
+          expr: |
+            (
+              max by (namespace, cluster) (kube_cnpg_cluster_spec_instances{namespace=~"project-.*"})
+              -
+              max by (namespace, cluster) (kube_cnpg_cluster_status_ready_instances{namespace=~"project-.*"})
+            ) > 0
+            unless on (namespace, cluster)
+              kube_cnpg_cluster_info{hibernated="True"}
+          for: 10m
+          labels:
+            severity: critical
+            component: managed-db-addon
+          annotations:
+            summary: "Managed database {{ $labels.namespace }}/{{ $labels.cluster }} has {{ $value }} instance(s) not ready"
+            description: |
+              CloudNativePG reports fewer ready instances than spec.instances
+              for 10 minutes, and the cluster is not hibernated. Read the
+              instance pod first (`enclii ops pods diagnose <pod> -n
+              <namespace>`). A pod that is Running but never Ready after a node
+              or volume fault (an I/O error in the postgres log) is recreated
+              through Enclii, not by hand:
+              `enclii ops pods restart pod/<pod> -n <namespace>` (dry run),
+              then the printed `--expect-uid … --apply --reason` command.
+              Runbook: docs/runbooks/ADDON_CNPG_HEALTH.md
+
+        # The instance's own collector says PostgreSQL is not answering, from
+        # inside the pod. This is the signal that can precede (or, with a
+        # readiness probe that still passes, replace) the two above. Only
+        # instances with a PodMonitor report it; the two rules above cover the
+        # rest.
+        - alert: CNPGInstancePostgresDown
+          expr: |
+            max by (namespace, cluster, pod) (
+              cnpg_collector_up{namespace=~"project-.*"}
+            ) == 0
+          for: 5m
+          labels:
+            severity: critical
+            component: managed-db-addon
+          annotations:
+            summary: "PostgreSQL in {{ $labels.namespace }}/{{ $labels.pod }} is not answering its own instance manager"
+            description: |
+              cnpg_collector_up has been 0 for 5 minutes: the CloudNativePG
+              instance manager in this pod cannot query its PostgreSQL. Read
+              the pod's postgres log (`enclii ops pods diagnose <pod> -n
+              <namespace>`). An `Input/output error` on a data file after a
+              node or Longhorn fault needs the pod recreated so the volume is
+              mounted again: `enclii ops pods restart pod/<pod> -n
+              <namespace>` (dry run first).
+              Runbook: docs/runbooks/ADDON_CNPG_HEALTH.md
+
+        # The detector's own detector. postgres-ha (namespace data) always
+        # exists, so no kube_cnpg_cluster_info series at all means
+        # kube-state-metrics is not publishing Cluster state, and the first two
+        # rules above are evaluating over nothing.
+        - alert: CNPGClusterStateMetricsAbsent
+          expr: |
+            absent(kube_cnpg_cluster_info)
+          for: 30m
+          labels:
+            severity: warning
+            component: managed-db-addon
+          annotations:
+            summary: "kube-state-metrics publishes no CloudNativePG Cluster state"
+            description: |
+              No kube_cnpg_cluster_info series for 30 minutes, so
+              CNPGInstanceStatusUnreachable and CNPGReadyInstancesBelowSpec
+              cannot fire for any project database. Check the
+              kube-state-metrics pod log for custom-resource-state errors and
+              its ClusterRole's postgresql.cnpg.io and
+              customresourcedefinitions rules (kube-state-metrics.yaml).
+              Runbook: docs/runbooks/ADDON_CNPG_HEALTH.md
