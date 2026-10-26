@@ -49,7 +49,7 @@ import (
 // apply writes nothing. A new token is minted only with args.rotate=true, and
 // the previous access key id is reported (not revoked: running clusters still
 // archive with it until the sweep replaces their copies).
-const opsAddonsBackupCredentialOperation = "ops.addons.backup-credential"
+const opsAddonsBackupCredentialOperation = "ops.addons.backup-credential" // #nosec G101 -- operation name, not a credential
 
 // addonBackupIntakeTarget is the intake target whose Vault path and keys this
 // operation writes.
