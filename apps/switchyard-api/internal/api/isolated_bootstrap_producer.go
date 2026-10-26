@@ -13,6 +13,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/madfam-org/enclii/apps/switchyard-api/internal/k8s"
 	"gopkg.in/yaml.v3"
 )
 
@@ -69,7 +70,11 @@ func (h *Handler) verifyBootstrapProducer(ctx context.Context, profile isolatedB
 		GitHubToken: h.config.GitHubToken, User: h.config.RegistryUsername, Password: h.config.RegistryPassword, // pragma: allowlist secret -- runtime credential references; no literal credential
 		ReadPin: func(ctx context.Context, p isolatedBootstrapProfile) (string, error) {
 			parts := strings.Split(p.Producer, "/")
-			text, _, err := getGitHubFileContent(ctx, h.config.GitHubToken, parts[0], parts[1], p.PinPath, "main")
+			ref := "main"
+			if p.Name == k8s.KarafielSchemaProfile {
+				ref = "release/karafiel-staging"
+			}
+			text, _, err := getGitHubFileContent(ctx, h.config.GitHubToken, parts[0], parts[1], p.PinPath, ref)
 			return text, err
 		},
 		ReadSource: func(ctx context.Context, p isolatedBootstrapProfile, path, revision string) (string, error) {
@@ -255,12 +260,16 @@ func (a bootstrapProducerIO) verify(ctx context.Context, profile isolatedBootstr
 	if config.Architecture != "amd64" || config.OS != "linux" || !bootstrapSHA.MatchString(revision) || config.Config.Labels["org.opencontainers.image.source"] != "https://github.com/"+profile.Producer {
 		return nil, fmt.Errorf("producer OCI identity mismatch")
 	}
-	if err = a.verifyRevisionTag(ctx, base, token, revision, digest); err != nil {
-		return nil, err
+	if profile.Name != k8s.KarafielSchemaProfile {
+		if err = a.verifyRevisionTag(ctx, base, token, revision, digest); err != nil {
+			return nil, err
+		}
 	}
+
 	var runs struct {
 		WorkflowRuns []struct {
 			ID                        int64  `json:"id"`
+			RunAttempt                int    `json:"run_attempt"`
 			HeadSHA                   string `json:"head_sha"`
 			HeadBranch                string `json:"head_branch"`
 			Status, Conclusion, Event string
@@ -272,62 +281,84 @@ func (a bootstrapProducerIO) verify(ctx context.Context, profile isolatedBootstr
 	}
 	runID, event := int64(0), ""
 	for _, run := range runs.WorkflowRuns {
-		if run.ID > runID && run.HeadSHA == revision && run.HeadBranch == "main" && run.Status == "completed" && run.Conclusion == "success" && (run.Event == "push" || run.Event == "workflow_dispatch") {
+		if (profile.CIWorkflow == "" || run.RunAttempt == 1) && run.ID > runID && run.HeadSHA == revision && run.HeadBranch == "main" && run.Status == "completed" && run.Conclusion == "success" && (run.Event == "push" || run.Event == "workflow_dispatch") {
 			runID, event = run.ID, run.Event
 		}
 	}
 	if runID == 0 {
 		return nil, fmt.Errorf("successful exact main producer run missing")
 	}
-	var checks struct {
-		TotalCount int                                         `json:"total_count"`
-		CheckRuns  []struct{ Name, Status, Conclusion string } `json:"check_runs"`
+	if profile.Name == k8s.KarafielSchemaProfile {
+		if config.Config.Labels["io.karafiel.candidate-run"] != strconv.FormatInt(runID, 10) {
+			return nil, fmt.Errorf("candidate image run binding differs from completed producer")
+		}
+		if err = a.verifyRevisionTag(ctx, base, token, "candidate-"+strconv.FormatInt(runID, 10), digest); err != nil {
+			return nil, err
+		}
 	}
-	if err = a.readJSON(ctx, "https://api.github.com/repos/"+profile.Producer+"/commits/"+revision+"/check-runs?per_page=100", a.GitHubToken, &checks); err != nil {
-		return nil, err
-	}
-	if checks.TotalCount == 0 || checks.TotalCount != len(checks.CheckRuns) {
-		return nil, fmt.Errorf("complete exact-source CI matrix missing or exceeds bounded page")
-	}
-	requiredChecks := make(map[string]int, len(profile.RequiredChecks))
-	for _, name := range profile.RequiredChecks {
-		requiredChecks[name] = 0
-	}
-	for _, check := range checks.CheckRuns {
-		if _, required := requiredChecks[check.Name]; required {
-			if check.Status != "completed" || check.Conclusion != "success" {
-				return nil, fmt.Errorf("mandatory exact-source CI check is not successful")
+
+	checked := 0
+	if profile.CIWorkflow != "" {
+		checked, err = a.verifyClosedBootstrapCI(ctx, profile, revision)
+		if err != nil {
+			return nil, err
+		}
+	} else {
+		var checks struct {
+			TotalCount int                                         `json:"total_count"`
+			CheckRuns  []struct{ Name, Status, Conclusion string } `json:"check_runs"`
+		}
+		if err = a.readJSON(ctx, "https://api.github.com/repos/"+profile.Producer+"/commits/"+revision+"/check-runs?per_page=100", a.GitHubToken, &checks); err != nil {
+			return nil, err
+		}
+		if checks.TotalCount == 0 || checks.TotalCount != len(checks.CheckRuns) {
+			return nil, fmt.Errorf("complete exact-source CI matrix missing or exceeds bounded page")
+		}
+		requiredChecks := make(map[string]int, len(profile.RequiredChecks))
+		for _, name := range profile.RequiredChecks {
+			requiredChecks[name] = 0
+		}
+		for _, check := range checks.CheckRuns {
+			if _, required := requiredChecks[check.Name]; required {
+				if check.Status != "completed" || check.Conclusion != "success" {
+					return nil, fmt.Errorf("mandatory exact-source CI check is not successful")
+				}
+				requiredChecks[check.Name]++
 			}
-			requiredChecks[check.Name]++
+			if check.Status != "completed" || (check.Conclusion != "success" && check.Conclusion != "skipped") {
+				return nil, fmt.Errorf("exact-source CI matrix is not closed successfully")
+			}
 		}
-		if check.Status != "completed" || (check.Conclusion != "success" && check.Conclusion != "skipped") {
-			return nil, fmt.Errorf("exact-source CI matrix is not closed successfully")
+		for _, count := range requiredChecks {
+			if count != 1 {
+				return nil, fmt.Errorf("mandatory exact-source CI check missing or ambiguous")
+			}
 		}
-	}
-	for _, count := range requiredChecks {
-		if count != 1 {
-			return nil, fmt.Errorf("mandatory exact-source CI check missing or ambiguous")
+		var status struct {
+			State      string
+			TotalCount int `json:"total_count"`
 		}
-	}
-	var status struct {
-		State      string
-		TotalCount int `json:"total_count"`
-	}
-	if err = a.readJSON(ctx, "https://api.github.com/repos/"+profile.Producer+"/commits/"+revision+"/status", a.GitHubToken, &status); err != nil {
-		return nil, err
-	}
-	if status.TotalCount > 0 && status.State != "success" {
-		return nil, fmt.Errorf("producer commit status is not successful")
+		if err = a.readJSON(ctx, "https://api.github.com/repos/"+profile.Producer+"/commits/"+revision+"/status", a.GitHubToken, &status); err != nil {
+			return nil, err
+		}
+		if status.TotalCount > 0 && status.State != "success" {
+			return nil, fmt.Errorf("producer commit status is not successful")
+		}
+		checked = checks.TotalCount
 	}
 	verified, err := a.verifySources(ctx, profile, revision)
 	if err != nil {
 		return nil, err
 	}
-	if err = a.VerifySignature(ctx, profile, image, revision, event); err != nil {
+	signatureProfile := profile
+	if profile.Name == k8s.KarafielSchemaProfile {
+		signatureProfile.CandidateRun = runID
+	}
+	if err = a.VerifySignature(ctx, signatureProfile, image, revision, event); err != nil {
 		return nil, fmt.Errorf("closed producer keyless signature verification failed")
 	}
 	sum := sha256.Sum256([]byte(pin))
-	return &bootstrapProducerProof{Image: image, Revision: revision, Producer: profile.Producer, RunID: runID, Checks: checks.TotalCount, SignatureVerified: true, PinPayloadSHA256: hex.EncodeToString(sum[:]), PinMatch: pinMatch, PinRevision: pinRevision, VerifiedSources: verified}, nil
+	return &bootstrapProducerProof{Image: image, Revision: revision, Producer: profile.Producer, RunID: runID, Checks: checked, SignatureVerified: true, PinPayloadSHA256: hex.EncodeToString(sum[:]), PinMatch: pinMatch, PinRevision: pinRevision, VerifiedSources: verified}, nil
 }
 
 // bootstrapPinEntries parses one kustomize pin payload and returns its

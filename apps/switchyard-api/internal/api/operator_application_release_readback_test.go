@@ -36,7 +36,7 @@ func releaseReadbackFixture() *unstructured.Unstructured {
 			"managedFields":   []any{map[string]any{"manager": "private-manager-marker"}},
 		},
 		"spec": map[string]any{
-			"project": "private-project-marker", "source": releaseReadbackPrivateSource(),
+			"project": "fixture-project", "source": releaseReadbackPrivateSource(),
 			"sources":     []any{releaseReadbackPrivateSource()},
 			"destination": map[string]any{"namespace": "fixture-stage", "server": "https://kubernetes.default.svc", "privateExtension": "private-destination-marker"},
 			"syncPolicy": map[string]any{
@@ -86,9 +86,12 @@ func TestApplicationReleaseReadbackGetAndListExposeOnlyProjectedMetadata(t *test
 			require.Equal(t, map[string]string{"argocd.argoproj.io/tracking-id": "fixture-root:argoproj.io/Application:argocd/fixture-app"}, entry["annotations"])
 			spec := entry["spec"].(map[string]any)
 			require.Equal(t, map[string]any{
-				"source":      map[string]any{"repoURL": "https://example.org/fixture/repo.git", "path": "infra/fixture", "targetRevision": "reviewed-fixture-ref", "chart": "fixture-chart"},
-				"destination": map[string]any{"namespace": "fixture-stage", "server": "https://kubernetes.default.svc"},
-				"syncPolicy":  map[string]any{"automated": map[string]any{"enabled": false, "prune": false, "selfHeal": false, "allowEmpty": false}, "syncOptions": []string{"CreateNamespace=true", "PruneLast=true", "ServerSideApply=false", "PrunePropagationPolicy=foreground"}},
+				"deploymentReplicasIgnoredOrUnknown":    false,
+				"sourceConfigurationAmbiguousOrUnknown": true,
+				"project":                               "fixture-project",
+				"source":                                map[string]any{"repoURL": "https://example.org/fixture/repo.git", "path": "infra/fixture", "targetRevision": "reviewed-fixture-ref", "chart": "fixture-chart"},
+				"destination":                           map[string]any{"namespace": "fixture-stage", "server": "https://kubernetes.default.svc"},
+				"syncPolicy":                            map[string]any{"automated": map[string]any{"enabled": false, "prune": false, "selfHeal": false, "allowEmpty": false}, "syncOptions": []string{"CreateNamespace=true", "PruneLast=true", "ServerSideApply=false", "PrunePropagationPolicy=foreground"}},
 			}, spec)
 			encoded, err := json.Marshal(entry)
 			require.NoError(t, err)
@@ -203,4 +206,90 @@ func TestApplicationReleaseReadbackLeavesOtherResourcesUnchanged(t *testing.T) {
 	require.Equal(t, []map[string]any{{"name": "fixture-widget", "namespace": "fixture-space", "labels": map[string]string{"fixture": "yes"}, "status": map[string]any{"state": "ready", "source": "existing-wire-value"}}}, entries)
 	require.Len(t, client.Actions(), 1)
 	require.Equal(t, "get", client.Actions()[0].GetVerb())
+}
+
+func TestApplicationReleaseReadbackDriftProjectsComparedSources(t *testing.T) {
+	app := releaseReadbackFixture()
+	original, err := json.Marshal(app.Object)
+	require.NoError(t, err)
+	summary, drifted := argoApplicationDriftSummary(*app)
+	require.Equal(t, 0, drifted)
+	require.Equal(t, "Synced", summary["syncStatus"])
+	require.Equal(t, "Healthy", summary["healthStatus"])
+	require.Equal(t, "observed-fixture-revision", summary["revision"])
+	require.Equal(t, 1, summary["conditionCount"])
+	require.Equal(t, 1, summary["resourceSyncCount"])
+	require.Equal(t, true, summary["drifted"], "existing conditions still contribute to drift")
+	comparedTo := summary["comparedTo"].(map[string]any)
+	require.Equal(t, map[string]any{"namespace": "fixture-stage"}, comparedTo["destination"])
+	publicSource := map[string]any{"repoURL": "https://example.org/fixture/repo.git", "path": "infra/fixture", "targetRevision": "reviewed-fixture-ref", "chart": "fixture-chart"}
+	require.Equal(t, publicSource, comparedTo["source"])
+	require.Equal(t, []any{publicSource}, comparedTo["sources"])
+	encoded, err := json.Marshal(summary)
+	require.NoError(t, err)
+	for _, private := range []string{"private-", "helm", "parameters", "kustomize", "plugin", "privateExtension"} {
+		require.NotContains(t, string(encoded), private)
+	}
+	after, err := json.Marshal(app.Object)
+	require.NoError(t, err)
+	require.JSONEq(t, string(original), string(after), "drift projection must not alter the Application")
+}
+
+func TestApplicationReleaseReadbackReplicaIgnoreProofFailsClosed(t *testing.T) {
+	safePointers := []any{"/metadata/annotations/kyverno.io~1verify-images", "/spec/template/metadata/annotations/kubectl.kubernetes.io~1restartedAt"}
+	for _, test := range []struct {
+		name  string
+		rules any
+		want  bool
+	}{
+		{name: "empty", rules: []any{}, want: false},
+		{name: "safe-deployment-metadata", rules: []any{map[string]any{"group": "apps", "kind": "Deployment", "jsonPointers": safePointers}}, want: false},
+		{name: "empty-pointers", rules: []any{map[string]any{"group": "apps", "kind": "Deployment", "jsonPointers": []any{}}}, want: false},
+		{name: "unrelated-kind-jq", rules: []any{map[string]any{"group": "apps", "kind": "StatefulSet", "jqPathExpressions": []any{"private-jq-fixture"}}}, want: false},
+		{name: "unrelated-group", rules: []any{map[string]any{"group": "fixture.example", "kind": "Deployment", "jsonPointers": []any{"/spec/replicas"}}}, want: false},
+		{name: "replicas", rules: []any{map[string]any{"group": "apps", "kind": "Deployment", "jsonPointers": []any{"/spec/replicas"}}}, want: true},
+		{name: "spec-parent", rules: []any{map[string]any{"group": "apps", "kind": "Deployment", "jsonPointers": []any{"/spec"}}}, want: true},
+		{name: "root-parent", rules: []any{map[string]any{"group": "apps", "kind": "Deployment", "jsonPointers": []any{"/"}}}, want: true},
+		{name: "empty-root-pointer", rules: []any{map[string]any{"group": "apps", "kind": "Deployment", "jsonPointers": []any{""}}}, want: true},
+		{name: "wildcards", rules: []any{map[string]any{"group": "*", "kind": "*", "jsonPointers": []any{"/spec/replicas"}}}, want: true},
+		{name: "empty-scopes", rules: []any{map[string]any{"group": "", "kind": "", "jsonPointers": []any{"/spec/replicas"}}}, want: true},
+		{name: "missing-scopes", rules: []any{map[string]any{"jsonPointers": []any{"/spec/replicas"}}}, want: true},
+		{name: "jq", rules: []any{map[string]any{"group": "apps", "kind": "Deployment", "jqPathExpressions": []any{"private-jq-fixture"}}}, want: true},
+		{name: "empty-jq-unknown", rules: []any{map[string]any{"group": "apps", "kind": "Deployment", "jqPathExpressions": []any{}}}, want: true},
+		{name: "managed-fields", rules: []any{map[string]any{"group": "apps", "kind": "Deployment", "managedFieldsManagers": []any{"private-manager-fixture"}}}, want: true},
+		{name: "unknown-rule-field", rules: []any{map[string]any{"group": "apps", "kind": "Deployment", "privateFutureMechanism": "private-mechanism-fixture"}}, want: true},
+		{name: "null-policy", rules: nil, want: true},
+		{name: "wrong-policy-type", rules: "private-policy-fixture", want: true},
+		{name: "wrong-rule-type", rules: []any{"private-rule-fixture"}, want: true},
+		{name: "empty-rule", rules: []any{map[string]any{}}, want: true},
+		{name: "wrong-group-type", rules: []any{map[string]any{"group": true, "kind": "Deployment"}}, want: true},
+		{name: "wrong-kind-type", rules: []any{map[string]any{"group": "apps", "kind": true}}, want: true},
+		{name: "wrong-name-type", rules: []any{map[string]any{"group": "apps", "kind": "Deployment", "name": []any{"fixture"}}}, want: true},
+		{name: "wrong-pointer-list", rules: []any{map[string]any{"group": "apps", "kind": "Deployment", "jsonPointers": "private-pointer-fixture"}}, want: true},
+		{name: "wrong-pointer-item", rules: []any{map[string]any{"group": "apps", "kind": "Deployment", "jsonPointers": []any{true}}}, want: true},
+		{name: "invalid-pointer", rules: []any{map[string]any{"group": "apps", "kind": "Deployment", "jsonPointers": []any{"spec/replicas"}}}, want: true},
+		{name: "invalid-pointer-escape", rules: []any{map[string]any{"group": "apps", "kind": "Deployment", "jsonPointers": []any{"/metadata/~2private"}}}, want: true},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			app := releaseReadbackFixture()
+			app.Object["spec"].(map[string]any)["ignoreDifferences"] = test.rules
+			entry := map[string]any{}
+			addArgoApplicationReleaseReadback(entry, *app)
+			require.Equal(t, test.want, entry["spec"].(map[string]any)["deploymentReplicasIgnoredOrUnknown"])
+			encoded, err := json.Marshal(entry)
+			require.NoError(t, err)
+			require.NotContains(t, string(encoded), "private-")
+			require.NotContains(t, string(encoded), "ignoreDifferences")
+		})
+	}
+	t.Run("absent-actual-field", func(t *testing.T) {
+		entry := map[string]any{}
+		addArgoApplicationReleaseReadback(entry, *releaseReadbackFixture())
+		require.Equal(t, false, entry["spec"].(map[string]any)["deploymentReplicasIgnoredOrUnknown"])
+	})
+	t.Run("invalid-spec-shape", func(t *testing.T) {
+		entry := map[string]any{}
+		addArgoApplicationReleaseReadback(entry, unstructured.Unstructured{Object: map[string]any{"spec": "private-spec-fixture"}})
+		require.Equal(t, true, entry["spec"].(map[string]any)["deploymentReplicasIgnoredOrUnknown"])
+	})
 }

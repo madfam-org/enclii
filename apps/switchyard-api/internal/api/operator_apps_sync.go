@@ -54,6 +54,10 @@ func (h *Handler) handleOpsAppsSyncApply(ctx context.Context, operation string, 
 			Warnings:    []string{err.Error()},
 		}, statusCode
 	}
+	if req.validateApplication != nil && req.validateApplication(app) != nil {
+		return operatorOperationResponse{OperationID: operationID, Operation: operation,
+			Status: "conflict", Summary: "Application release binding changed; no operation submitted"}, http.StatusConflict
+	}
 
 	if activeOperation, found, _ := unstructured.NestedMap(app.Object, "operation"); found && len(activeOperation) > 0 {
 		return operatorOperationResponse{
@@ -106,6 +110,9 @@ func (h *Handler) handleOpsAppsSyncApply(ctx context.Context, operation string, 
 	}
 	if req.IdempotencyKey != "" {
 		annotations["enclii.dev/last-ops-idempotency-key"] = req.IdempotencyKey
+	}
+	for key, value := range req.auditAnnotations {
+		annotations[key] = value
 	}
 	// Replace the complete operation on the version we just inspected. A merge
 	// patch can inherit a concurrent auto-sync's revision/resources/automated

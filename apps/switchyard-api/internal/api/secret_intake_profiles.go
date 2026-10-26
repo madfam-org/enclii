@@ -5,6 +5,7 @@ import (
 	"crypto/rsa"
 	"crypto/x509"
 	"encoding/base64"
+	"encoding/hex"
 	"encoding/pem"
 	"fmt"
 	"net/url"
@@ -37,6 +38,23 @@ func generatedProfileValues(target secretsintake.Target, generate []string, supp
 	}
 	values := make(map[string]interface{}, len(keys))
 	switch target.Generate.Profile {
+	case secretsintake.KarafielStagingCoreProfile:
+		value, err := generateSecretValue(32)
+		if err != nil {
+			return nil, nil, fmt.Errorf("could not generate staging core")
+		}
+		values["django_secret_key"] = value
+		material := make([]byte, 32)
+		if _, err := rand.Read(material); err != nil {
+			return nil, nil, fmt.Errorf("could not generate staging encryption key")
+		}
+		values["encryption_master_key"] = hex.EncodeToString(material)
+	case secretsintake.KarafielStagingSessionProfile:
+		value, err := generateSecretValue(32)
+		if err != nil {
+			return nil, nil, fmt.Errorf("could not generate staging session")
+		}
+		values["admin_session_secret"] = value
 	case secretsintake.JanuaStagingCryptoProfile:
 		key, err := rsa.GenerateKey(rand.Reader, 2048)
 		if err != nil {

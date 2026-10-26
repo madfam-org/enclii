@@ -1,0 +1,408 @@
+{
+  "backend": {
+    "karafiel-api": {
+      "env": [
+        {
+          "name": "JANUA_AUDIENCE",
+          "value": "karafiel-staging-api"
+        },
+        {
+          "name": "JANUA_ADDITIONAL_AUDIENCES",
+          "value": ""
+        },
+        {
+          "name": "DJANGO_SECRET_KEY",
+          "valueFrom": {
+            "secretKeyRef": {
+              "key": "DJANGO_SECRET_KEY",
+              "name": "karafiel-secrets"
+            }
+          }
+        },
+        {
+          "name": "ENCRYPTION_MASTER_KEY",
+          "valueFrom": {
+            "secretKeyRef": {
+              "key": "ENCRYPTION_MASTER_KEY",
+              "name": "karafiel-secrets"
+            }
+          }
+        },
+        {
+          "name": "DB_HOST",
+          "valueFrom": {
+            "secretKeyRef": {
+              "key": "DB_HOST",
+              "name": "karafiel-staging-database-runtime"
+            }
+          }
+        },
+        {
+          "name": "DB_PORT",
+          "valueFrom": {
+            "secretKeyRef": {
+              "key": "DB_PORT",
+              "name": "karafiel-staging-database-runtime"
+            }
+          }
+        },
+        {
+          "name": "DB_NAME",
+          "valueFrom": {
+            "secretKeyRef": {
+              "key": "DB_NAME",
+              "name": "karafiel-staging-database-runtime"
+            }
+          }
+        },
+        {
+          "name": "DB_USER",
+          "valueFrom": {
+            "secretKeyRef": {
+              "key": "DB_USER",
+              "name": "karafiel-staging-database-runtime"
+            }
+          }
+        },
+        {
+          "name": "DB_PASSWORD",
+          "valueFrom": {
+            "secretKeyRef": {
+              "key": "DB_PASSWORD",
+              "name": "karafiel-staging-database-runtime"
+            }
+          }
+        },
+        {
+          "name": "PGSSLMODE",
+          "value": "verify-full"
+        },
+        {
+          "name": "PGSSLROOTCERT",
+          "value": "/var/run/karafiel-staging-db/ca.crt"
+        },
+        {
+          "name": "BANK_ALLOCATION_LEDGER_ENABLED",
+          "value": "false"
+        },
+        {
+          "name": "DHANAM_SOURCE_CURRENTNESS_ENABLED",
+          "value": "false"
+        },
+        {
+          "name": "ENVIRONMENT",
+          "value": "staging"
+        },
+        {
+          "name": "SAT_ENVIRONMENT",
+          "value": "staging"
+        },
+        {
+          "name": "FEATURE_CFDI_AUTO_ISSUE",
+          "value": "false"
+        },
+        {
+          "name": "SENTRY_ENVIRONMENT",
+          "value": "staging"
+        },
+        {
+          "name": "FEATURE_GRANT_COMPLIANCE",
+          "value": "false"
+        },
+        {
+          "name": "POD_IP",
+          "valueFrom": {
+            "fieldRef": {
+              "fieldPath": "status.podIP"
+            }
+          }
+        },
+        {
+          "name": "ALLOWED_HOSTS",
+          "value": "staging-api.karafiel.mx,karafiel-api,karafiel-api.enclii-karafiel-staging,karafiel-api.enclii-karafiel-staging.svc,karafiel-api.enclii-karafiel-staging.svc.cluster.local,localhost,127.0.0.1,$(POD_IP)"
+        },
+        {
+          "name": "PROMETHEUS_MULTIPROC_DIR",
+          "value": "/tmp/prometheus-multiproc"
+        }
+      ],
+      "envFrom": [
+        {
+          "configMapRef": {
+            "name": "karafiel-cfdi-config"
+          }
+        }
+      ]
+    },
+    "karafiel-beat": {
+      "env": [
+        {
+          "name": "DJANGO_SECRET_KEY",
+          "valueFrom": {
+            "secretKeyRef": {
+              "key": "DJANGO_SECRET_KEY",
+              "name": "karafiel-secrets"
+            }
+          }
+        },
+        {
+          "name": "ENCRYPTION_MASTER_KEY",
+          "valueFrom": {
+            "secretKeyRef": {
+              "key": "ENCRYPTION_MASTER_KEY",
+              "name": "karafiel-secrets"
+            }
+          }
+        },
+        {
+          "name": "DB_HOST",
+          "valueFrom": {
+            "secretKeyRef": {
+              "key": "DB_HOST",
+              "name": "karafiel-staging-database-runtime"
+            }
+          }
+        },
+        {
+          "name": "DB_PORT",
+          "valueFrom": {
+            "secretKeyRef": {
+              "key": "DB_PORT",
+              "name": "karafiel-staging-database-runtime"
+            }
+          }
+        },
+        {
+          "name": "DB_NAME",
+          "valueFrom": {
+            "secretKeyRef": {
+              "key": "DB_NAME",
+              "name": "karafiel-staging-database-runtime"
+            }
+          }
+        },
+        {
+          "name": "DB_USER",
+          "valueFrom": {
+            "secretKeyRef": {
+              "key": "DB_USER",
+              "name": "karafiel-staging-database-runtime"
+            }
+          }
+        },
+        {
+          "name": "DB_PASSWORD",
+          "valueFrom": {
+            "secretKeyRef": {
+              "key": "DB_PASSWORD",
+              "name": "karafiel-staging-database-runtime"
+            }
+          }
+        },
+        {
+          "name": "PGSSLMODE",
+          "value": "verify-full"
+        },
+        {
+          "name": "PGSSLROOTCERT",
+          "value": "/var/run/karafiel-staging-db/ca.crt"
+        },
+        {
+          "name": "BANK_ALLOCATION_LEDGER_ENABLED",
+          "value": "false"
+        },
+        {
+          "name": "DHANAM_SOURCE_CURRENTNESS_ENABLED",
+          "value": "false"
+        },
+        {
+          "name": "ENVIRONMENT",
+          "value": "staging"
+        },
+        {
+          "name": "SAT_ENVIRONMENT",
+          "value": "staging"
+        },
+        {
+          "name": "FEATURE_CFDI_AUTO_ISSUE",
+          "value": "false"
+        },
+        {
+          "name": "FEATURE_GRANT_COMPLIANCE",
+          "value": "false"
+        },
+        {
+          "name": "SENTRY_ENVIRONMENT",
+          "value": "staging"
+        }
+      ],
+      "envFrom": [
+        {
+          "configMapRef": {
+            "name": "karafiel-cfdi-config"
+          }
+        }
+      ]
+    },
+    "karafiel-worker": {
+      "env": [
+        {
+          "name": "DJANGO_SECRET_KEY",
+          "valueFrom": {
+            "secretKeyRef": {
+              "key": "DJANGO_SECRET_KEY",
+              "name": "karafiel-secrets"
+            }
+          }
+        },
+        {
+          "name": "ENCRYPTION_MASTER_KEY",
+          "valueFrom": {
+            "secretKeyRef": {
+              "key": "ENCRYPTION_MASTER_KEY",
+              "name": "karafiel-secrets"
+            }
+          }
+        },
+        {
+          "name": "DB_HOST",
+          "valueFrom": {
+            "secretKeyRef": {
+              "key": "DB_HOST",
+              "name": "karafiel-staging-database-runtime"
+            }
+          }
+        },
+        {
+          "name": "DB_PORT",
+          "valueFrom": {
+            "secretKeyRef": {
+              "key": "DB_PORT",
+              "name": "karafiel-staging-database-runtime"
+            }
+          }
+        },
+        {
+          "name": "DB_NAME",
+          "valueFrom": {
+            "secretKeyRef": {
+              "key": "DB_NAME",
+              "name": "karafiel-staging-database-runtime"
+            }
+          }
+        },
+        {
+          "name": "DB_USER",
+          "valueFrom": {
+            "secretKeyRef": {
+              "key": "DB_USER",
+              "name": "karafiel-staging-database-runtime"
+            }
+          }
+        },
+        {
+          "name": "DB_PASSWORD",
+          "valueFrom": {
+            "secretKeyRef": {
+              "key": "DB_PASSWORD",
+              "name": "karafiel-staging-database-runtime"
+            }
+          }
+        },
+        {
+          "name": "PGSSLMODE",
+          "value": "verify-full"
+        },
+        {
+          "name": "PGSSLROOTCERT",
+          "value": "/var/run/karafiel-staging-db/ca.crt"
+        },
+        {
+          "name": "BANK_ALLOCATION_LEDGER_ENABLED",
+          "value": "false"
+        },
+        {
+          "name": "DHANAM_SOURCE_CURRENTNESS_ENABLED",
+          "value": "false"
+        },
+        {
+          "name": "ENVIRONMENT",
+          "value": "staging"
+        },
+        {
+          "name": "SAT_ENVIRONMENT",
+          "value": "staging"
+        },
+        {
+          "name": "FEATURE_CFDI_AUTO_ISSUE",
+          "value": "false"
+        },
+        {
+          "name": "FEATURE_GRANT_COMPLIANCE",
+          "value": "false"
+        },
+        {
+          "name": "SENTRY_ENVIRONMENT",
+          "value": "staging"
+        },
+        {
+          "name": "PROMETHEUS_MULTIPROC_DIR",
+          "value": "/tmp/prometheus-multiproc"
+        },
+        {
+          "name": "KARAFIEL_WORKER_METRICS_PORT",
+          "value": "9808"
+        }
+      ],
+      "envFrom": [
+        {
+          "configMapRef": {
+            "name": "karafiel-cfdi-config"
+          }
+        }
+      ]
+    }
+  },
+  "config": {
+    "ALLOWED_HOSTS": "staging-api.karafiel.mx,karafiel-api,karafiel-api.enclii-karafiel-staging,karafiel-api.enclii-karafiel-staging.svc,karafiel-api.enclii-karafiel-staging.svc.cluster.local,localhost,127.0.0.1",
+    "BANK_ALLOCATION_LEDGER_ENABLED": "false",
+    "CELERY_BROKER_URL": "memory://",
+    "CELERY_RESULT_BACKEND": "cache+memory://",
+    "CORS_ALLOWED_ORIGINS": "https://staging-app.karafiel.mx,https://staging-admin.karafiel.mx",
+    "DB_ENGINE": "django.db.backends.postgresql",
+    "DHANAM_API_TOKEN": "",
+    "DHANAM_API_URL": "http://127.0.0.1:9/v1",
+    "DHANAM_BILLING_WEBHOOK_SECRET": "",
+    "DHANAM_CREDIT_WEBHOOK_SECRET": "",
+    "DHANAM_KARAFIEL_SIGNING_SECRET": "",
+    "DHANAM_REHEARSAL_WEBHOOK_SECRET": "",
+    "DHANAM_SOURCE_CURRENTNESS_ENABLED": "false",
+    "EMAIL_BACKEND": "core.email_backends.UnconfiguredEmailBackend",
+    "ENVIRONMENT": "staging",
+    "FEATURE_CFDI_AUTO_ISSUE": "false",
+    "FEATURE_GRANT_COMPLIANCE": "false",
+    "JANUA_ADDITIONAL_AUDIENCES": "",
+    "JANUA_AUDIENCE": "karafiel-staging-api",
+    "JANUA_ISSUER_URL": "https://auth.madfam.io",
+    "JANUA_JWKS_URL": "http://janua-api.janua.svc.cluster.local:8080/.well-known/jwks.json",
+    "KARAFIEL_ACCEPT_LEGACY_DHANAM_SIGNATURE": "false",
+    "KARAFIEL_DHANAM_SIGNING_SECRET": "",
+    "MEDIA_ROOT": "/tmp/karafiel-staging-synthetic",
+    "MIFIEL_API_ID": "",
+    "MIFIEL_API_SECRET": "",
+    "PAC_API_KEY": "",
+    "PAC_API_KEY_EXPIRES_ON": "",
+    "PAC_API_URL": "http://127.0.0.1:9",
+    "PAC_RETENTIONS_ENABLED": "false",
+    "PAC_SANDBOX": "true",
+    "R2_ACCESS_KEY_ID": "",
+    "R2_BUCKET_NAME": "",
+    "R2_ENDPOINT_URL": "",
+    "R2_SECRET_ACCESS_KEY": "",
+    "SAT_ENVIRONMENT": "staging",
+    "STORAGE_BACKEND": "local",
+    "TEZCA_API_KEY": "",
+    "TEZCA_API_URL": "http://127.0.0.1:9/api/v1",
+    "TEZCA_WEBHOOK_SECRET": ""
+  }
+}

@@ -1,11 +1,9 @@
 package api
 
 import (
-	"context"
 	"net/http"
 
 	"github.com/gin-gonic/gin"
-	"github.com/google/uuid"
 	"github.com/madfam-org/enclii/apps/switchyard-api/internal/logging"
 	"github.com/madfam-org/enclii/packages/sdk-go/pkg/types"
 )
@@ -164,41 +162,34 @@ func (h *Handler) ReconcileServicesFromCluster(c *gin.Context) {
 				AutoDeploy:   true,
 				BuildConfig:  types.BuildConfig{Type: types.BuildTypeAuto},
 			}
-			if err := h.repos.Services.Create(newSvc); err != nil {
+			if err := h.reconcileCreateServiceMetadata(ctx, project, newSvc, deployment.DesiredReplicas, deployment.ReadyReplicas); err != nil {
 				h.logger.Error(ctx, "Create service failed",
 					logging.String("name", name), logging.Error("error", err))
 				resp.RecordError(name, ns, "inserted", err)
 				continue
 			}
-			if err := h.refreshReconciledServiceHealth(ctx, newSvc.ID, name, deployment.DesiredReplicas, deployment.ReadyReplicas); err != nil {
-				resp.RecordError(name, ns, "refreshed", err)
-			} else {
-				resp.Refreshed++
-			}
+			resp.Refreshed++
 			resp.Inserted++
 			resp.Services = append(resp.Services, ReconcileServicesServiceOK{
 				Name: name, Namespace: ns, Action: "inserted",
 			})
 		case svc.K8sNamespace == nil || *svc.K8sNamespace == "":
 			// Row exists but lost its namespace — repair it.
-			if err := h.repos.Services.UpdateK8sNamespace(ctx, svc.ID, nsUsed); err != nil {
+			if err := h.reconcileExistingServiceMetadata(ctx, project, svc.ID, name, nsUsed, deployment.DesiredReplicas, deployment.ReadyReplicas, true); err != nil {
 				h.logger.Error(ctx, "UpdateK8sNamespace failed",
 					logging.String("name", name), logging.Error("error", err))
 				resp.RecordError(name, nsUsed, "updated_namespace", err)
 				continue
 			}
-			if err := h.refreshReconciledServiceHealth(ctx, svc.ID, name, deployment.DesiredReplicas, deployment.ReadyReplicas); err != nil {
-				resp.RecordError(name, nsUsed, "refreshed", err)
-			} else {
-				resp.Refreshed++
-			}
+			resp.Refreshed++
 			resp.Updated++
 			resp.Services = append(resp.Services, ReconcileServicesServiceOK{
 				Name: name, Namespace: nsUsed, Action: "updated_namespace",
 			})
 		default:
-			if err := h.refreshReconciledServiceHealth(ctx, svc.ID, name, deployment.DesiredReplicas, deployment.ReadyReplicas); err != nil {
+			if err := h.reconcileExistingServiceMetadata(ctx, project, svc.ID, name, nsUsed, deployment.DesiredReplicas, deployment.ReadyReplicas, false); err != nil {
 				resp.RecordError(name, *svc.K8sNamespace, "refreshed", err)
+				continue
 			} else {
 				resp.Refreshed++
 			}
@@ -233,16 +224,4 @@ func (r *ReconcileServicesResponse) RecordError(name, namespace, action string, 
 		Action:    action,
 		Error:     err.Error(),
 	})
-}
-
-func (h *Handler) refreshReconciledServiceHealth(ctx context.Context, serviceID uuid.UUID, name string, desiredReplicas, readyReplicas int32) error {
-	if h == nil || h.repos == nil || h.repos.Services == nil {
-		return nil
-	}
-	if err := h.repos.Services.MarkReconciledHealthy(ctx, serviceID, desiredReplicas, readyReplicas); err != nil {
-		h.logger.Error(ctx, "MarkReconciledHealthy failed",
-			logging.String("name", name), logging.Error("error", err))
-		return err
-	}
-	return nil
 }

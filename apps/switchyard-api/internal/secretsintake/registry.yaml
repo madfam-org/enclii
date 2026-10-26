@@ -1,6 +1,46 @@
 # Secret intake routing registry — friendly target id → Vault + ESO.
 # Values are NEVER stored here. Add entries via PR review.
 targets:
+  karafiel-staging/core:
+    label: Karafiel isolated staging core
+    description: Fresh server-generated staging Django and encryption group; create once without rotation
+    vault_path: secret/karafiel-staging
+    namespace: enclii
+    external_secret: karafiel-staging-core-source
+    keys: [django_secret_key, encryption_master_key]
+    generate:
+      profile: karafiel-staging-core-v1
+
+  karafiel-staging/admin-session:
+    label: Karafiel isolated staging session
+    description: Fresh server-generated staging admin session key; create once without rotation
+    vault_path: secret/karafiel-staging
+    namespace: enclii
+    external_secret: karafiel-staging-core-source
+    keys: [admin_session_secret]
+    generate:
+      profile: karafiel-staging-session-v1
+
+  karafiel-staging/web-oidc:
+    label: Karafiel isolated staging web OIDC
+    description: Dedicated staging web registration from managed Janua provisioning
+    vault_path: secret/karafiel-staging
+    namespace: enclii
+    external_secret: karafiel-staging-core-source
+    keys: [web_oidc_client_id, web_janua_secret_key, web_oidc_issuer]
+    generate:
+      disabled: true
+
+  karafiel-staging/admin-oidc:
+    label: Karafiel isolated staging admin OIDC
+    description: Dedicated staging admin registration from managed Janua provisioning
+    vault_path: secret/karafiel-staging
+    namespace: enclii
+    external_secret: karafiel-staging-core-source
+    keys: [admin_oidc_client_id, admin_janua_secret_key, admin_oidc_issuer]
+    generate:
+      disabled: true
+
   ceq/vast-api-key:
     label: CEQ VAST API Key
     description: Orchestrator worker VAST provider key

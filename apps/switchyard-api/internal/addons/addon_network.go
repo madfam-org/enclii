@@ -30,6 +30,9 @@ func networkConvergible(addon *types.DatabaseAddon) bool {
 // clusters provisioned before a policy existed, or whose policy was rewritten,
 // heal without an operator.
 func (s *AddonService) ConvergeCNPGNetworkPolicies(ctx context.Context, addon *types.DatabaseAddon) error {
+	if isKarafielStagingAddon(addon) {
+		return ErrNetworkConvergenceNotApplicable
+	}
 	if !networkConvergible(addon) {
 		return ErrNetworkConvergenceNotApplicable
 	}

@@ -74,6 +74,10 @@ type CreateAddonRequest struct {
 // plan row. Every lifecycle transition also writes a row to
 // managed_db_addon_events for audit and (Sprint 3) billing.
 func (s *AddonService) CreateAddon(ctx context.Context, req *CreateAddonRequest) (*types.DatabaseAddon, error) {
+	if req != nil && req.Name == KarafielStagingAddon {
+		return nil, fmt.Errorf("reserved staging profile requires typed platform preparation")
+	}
+
 	if err := ValidatePostgresRuntimeConfig(req.Type, req.Config); err != nil {
 		return nil, err
 	}
@@ -535,7 +539,7 @@ func (s *AddonService) RefreshStatus(ctx context.Context, addonID uuid.UUID) (*t
 	// rescheduled onto a node with no API-server endpoint otherwise
 	// crash-loops; an operator on another node cannot manage the instance).
 	// Best effort: a failure is logged, never returned.
-	if pg, ok := s.provisioners[types.DatabaseAddonTypePostgres].(*PostgresProvisioner); ok && pg.k8sClient != nil && networkConvergible(addon) {
+	if pg, ok := s.provisioners[types.DatabaseAddonTypePostgres].(*PostgresProvisioner); ok && pg.k8sClient != nil && networkConvergible(addon) && !isKarafielStagingAddon(addon) {
 		if err := s.ConvergeCNPGNetworkPolicies(ctx, addon); err != nil {
 			s.logger.WithError(err).WithField("addon_id", addon.ID.String()).Warn("CNPG NetworkPolicies not converged")
 		}

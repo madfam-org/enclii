@@ -37,6 +37,9 @@ import (
 
 // Handler contains all dependencies for HTTP handlers
 type Handler struct {
+	karafielReleaseAuth         karafielReleaseAuthorizer
+	karafielReleaseRefRead      func(context.Context) (string, error)
+	karafielReleaseAdoptionRead func(context.Context) (*karafielStageAdoptionObservation, error)
 	// Repositories (legacy - prefer using services)
 	repos *db.Repositories
 
@@ -458,6 +461,7 @@ func SetupRoutes(router *gin.Engine, h *Handler) {
 	// API v1 routes
 	v1 := router.Group("/v1")
 	{
+		registerKarafielReleaseRoutes(v1, h)
 		// Self-serve signup (P3.2 Sprint 1). See signup_handlers.go.
 		registerSignupRoutes(v1, h, authRateLimiter, strictAuthRateLimiter)
 

@@ -137,6 +137,7 @@ func (h *Handler) registerAdminRoutes(protected *gin.RouterGroup) {
 	registerJanuaStagingAddonPlanRoutes(platform, h)
 	registerJanuaStagingAdmissionRoutes(platform, h)
 	registerJanuaStagingIntentRoutes(platform, h)
+	registerKarafielStagingDatabaseRoutes(platform, h)
 	platform.POST("/projects/:slug/addons/:id/initial-bootstrap", h.RequirePlatformOperator(), h.InitialBootstrapAddon)
 	platform.GET("/projects/:slug/addons/:id/initial-bootstrap/:job_name", h.RequirePlatformOperator(), h.InitialBootstrapAddonStatus)
 	registerPortalGenerationReadRoutes(platform, h)

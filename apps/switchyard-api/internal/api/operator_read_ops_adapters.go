@@ -14,6 +14,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime/schema"
+	"k8s.io/apimachinery/pkg/util/validation"
 	"k8s.io/client-go/dynamic"
 )
 
@@ -83,6 +84,48 @@ func (h *Handler) readDynamicResources(ctx context.Context, namespace, target st
 
 // Release readback is deliberately a projection, never a copy of Application
 // spec/annotations. Other dynamic-resource adapters retain their existing wire shape.
+// A sanitized source projection must never imply a single plain Git source
+// when Argo actually uses multiple sources or private rendering overrides.
+func argoApplicationSourceConfigurationAmbiguousOrUnknown(object map[string]any) bool {
+	if _, found, err := unstructured.NestedFieldNoCopy(object, "spec", "sources"); err != nil || found {
+		return true
+	}
+	source, found, err := unstructured.NestedMap(object, "spec", "source")
+	if err != nil || !found || len(source) != 3 {
+		return true
+	}
+	for _, key := range []string{"repoURL", "path", "targetRevision"} {
+		if value, ok := source[key].(string); !ok || value == "" {
+			return true
+		}
+	}
+	destination, found, err := unstructured.NestedMap(object, "spec", "destination")
+	if err != nil || !found || len(destination) != 2 {
+		return true
+	}
+	for _, key := range []string{"namespace", "server"} {
+		if value, ok := destination[key].(string); !ok || value == "" {
+			return true
+		}
+	}
+	if _, found, err := unstructured.NestedFieldNoCopy(object, "status", "sync", "comparedTo", "sources"); err != nil || found {
+		return true
+	}
+	if compared, found, err := unstructured.NestedMap(object, "status", "sync", "comparedTo", "source"); err != nil {
+		return true
+	} else if found {
+		if len(compared) != 3 {
+			return true
+		}
+		for _, key := range []string{"repoURL", "path", "targetRevision"} {
+			if value, ok := compared[key].(string); !ok || value == "" {
+				return true
+			}
+		}
+	}
+	return false
+}
+
 func addArgoApplicationReleaseReadback(entry map[string]any, item unstructured.Unstructured) {
 	entry["uid"] = string(item.GetUID())
 	entry["resourceVersion"] = item.GetResourceVersion()
@@ -91,7 +134,10 @@ func addArgoApplicationReleaseReadback(entry map[string]any, item unstructured.U
 		entry["annotations"] = map[string]string{"argocd.argoproj.io/tracking-id": tracking}
 	}
 
-	spec := map[string]any{}
+	spec := map[string]any{"deploymentReplicasIgnoredOrUnknown": argoApplicationDeploymentReplicasIgnoredOrUnknown(item.Object), "sourceConfigurationAmbiguousOrUnknown": argoApplicationSourceConfigurationAmbiguousOrUnknown(item.Object)}
+	if project, found, _ := unstructured.NestedString(item.Object, "spec", "project"); found && len(validation.IsDNS1123Subdomain(project)) == 0 {
+		spec["project"] = project
+	}
 	if source, ok, _ := unstructured.NestedMap(item.Object, "spec", "source"); ok {
 		spec["source"] = argoApplicationPublicSource(source)
 	}
@@ -151,6 +197,82 @@ func addArgoApplicationReleaseReadback(entry map[string]any, item unstructured.U
 			_ = unstructured.SetNestedSlice(status, history, "history")
 		}
 	}
+}
+
+// A bounded proof bit, not an export of potentially private jq expressions.
+// This covers this Application's policy only; global Argo configuration and
+// actual zero-workload convergence still require separate runtime evidence.
+func argoApplicationDeploymentReplicasIgnoredOrUnknown(object map[string]any) bool {
+	raw, found, err := unstructured.NestedFieldNoCopy(object, "spec", "ignoreDifferences")
+	if err != nil {
+		return true
+	}
+	if !found {
+		return false
+	}
+	rules, ok := raw.([]any)
+	if !ok {
+		return true
+	}
+	for _, rawRule := range rules {
+		rule, ok := rawRule.(map[string]any)
+		if !ok || len(rule) == 0 {
+			return true
+		}
+		group, groupOK := rule["group"].(string)
+		kind, kindOK := rule["kind"].(string)
+		if _, exists := rule["group"]; exists && !groupOK {
+			return true
+		}
+		if _, exists := rule["kind"]; exists && !kindOK {
+			return true
+		}
+		if (group != "" && group != "*" && group != "apps") || (kind != "" && kind != "*" && kind != "Deployment") {
+			continue
+		}
+		for key, value := range rule {
+			switch key {
+			case "group", "kind", "name", "namespace":
+				if _, ok := value.(string); !ok {
+					return true
+				}
+			case "jsonPointers":
+				pointers, ok := value.([]any)
+				if !ok {
+					return true
+				}
+				for _, rawPointer := range pointers {
+					pointer, ok := rawPointer.(string)
+					if !ok || argoApplicationPointerMayIgnoreReplicas(pointer) {
+						return true
+					}
+				}
+			default:
+				// Includes jqPathExpressions, managedFieldsManagers and any
+				// future/unknown policy mechanism. Never assume it is harmless.
+				return true
+			}
+		}
+	}
+	return false
+}
+
+func argoApplicationPointerMayIgnoreReplicas(pointer string) bool {
+	if pointer == "" || pointer == "/" {
+		return true
+	}
+	if !strings.HasPrefix(pointer, "/") {
+		return true
+	}
+	for index := 0; index < len(pointer); index++ {
+		if pointer[index] == '~' {
+			if index+1 >= len(pointer) || (pointer[index+1] != '0' && pointer[index+1] != '1') {
+				return true
+			}
+			index++
+		}
+	}
+	return pointer == "/spec" || pointer == "/spec/replicas" || strings.HasPrefix(pointer, "/spec/replicas/")
 }
 
 func projectArgoApplicationSnapshotSources(snapshot map[string]any) {
@@ -319,6 +441,9 @@ func argoApplicationDriftSummary(app unstructured.Unstructured) (gin.H, int) {
 	revision, _, _ := unstructured.NestedString(app.Object, "status", "sync", "revision")
 	healthStatus, _, _ := unstructured.NestedString(app.Object, "status", "health", "status")
 	comparedTo, _, _ := unstructured.NestedMap(app.Object, "status", "sync", "comparedTo")
+	// Drift is another public read surface for the same Argo source snapshot.
+	// Retain destination and comparison evidence without private renderer inputs.
+	projectArgoApplicationSnapshotSources(comparedTo)
 	resources, driftedResources := argoApplicationResourceDrift(app)
 	conditions := argoApplicationConditions(app)
 	drifted := !strings.EqualFold(syncStatus, "Synced") || driftedResources > 0 || len(conditions) > 0

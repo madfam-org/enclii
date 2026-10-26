@@ -73,6 +73,42 @@ platforms:
         - authorization_code
         - refresh_token
 
+  karafiel-staging-web:
+    intake_target: karafiel-staging/web-oidc
+    intake_key_map:
+      web_oidc_client_id: client_id
+      web_janua_secret_key: client_secret
+      web_oidc_issuer: issuer
+    janua_client:
+      name: Karafiel Staging Web
+      client_key: karafiel-staging-web
+      audience: karafiel-staging-api
+      description: Isolated staging web client; no production callbacks or audience aliases
+      is_confidential: true
+      website_url: https://staging-app.karafiel.mx
+      redirect_uris:
+        - https://staging-app.karafiel.mx/api/auth/callback
+      allowed_scopes: [openid, profile, email, offline_access]
+      grant_types: [authorization_code, refresh_token]
+
+  karafiel-staging-admin:
+    intake_target: karafiel-staging/admin-oidc
+    intake_key_map:
+      admin_oidc_client_id: client_id
+      admin_janua_secret_key: client_secret
+      admin_oidc_issuer: issuer
+    janua_client:
+      name: Karafiel Staging Admin
+      client_key: karafiel-staging-admin
+      audience: karafiel-staging-api
+      description: Isolated staging admin client; no production callbacks or audience aliases
+      is_confidential: true
+      website_url: https://staging-admin.karafiel.mx
+      redirect_uris:
+        - https://staging-admin.karafiel.mx/api/auth/callback
+      allowed_scopes: [openid, profile, email, offline_access]
+      grant_types: [authorization_code, refresh_token]
+
   phynd-crm:
     intake_target: phynd-crm/oidc-janua
     janua_client:

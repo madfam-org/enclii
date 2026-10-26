@@ -145,6 +145,10 @@ func (h *Handler) SubmitSecretIntake(c *gin.Context) {
 	}
 
 	ctx := c.Request.Context()
+	if err := appendKarafielIntakeOrigin(target, updates); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid_staging_origin"})
+		return
+	}
 	var vaultVersion int
 	if target.Generate != nil && target.Generate.Profile != "" {
 		initializer, ok := h.vaultClient.(vaultSecretInitializer)

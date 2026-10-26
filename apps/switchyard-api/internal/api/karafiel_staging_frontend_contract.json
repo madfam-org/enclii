@@ -1,0 +1,114 @@
+{
+  "karafiel-admin": {
+    "env": [
+      {
+        "name": "ENVIRONMENT",
+        "value": "staging"
+      },
+      {
+        "name": "API_PROXY_URL",
+        "value": "http://karafiel-api.enclii-karafiel-staging.svc.cluster.local/api/v1"
+      },
+      {
+        "name": "APP_ORIGIN",
+        "value": "https://staging-admin.karafiel.mx"
+      },
+      {
+        "name": "NEXT_PUBLIC_API_URL",
+        "value": "/api/v1"
+      },
+      {
+        "name": "NEXT_PUBLIC_APP_URL",
+        "value": "https://staging-admin.karafiel.mx"
+      },
+      {
+        "name": "JANUA_ISSUER_URL",
+        "value": "https://auth.madfam.io"
+      },
+      {
+        "name": "JANUA_INTERNAL_URL",
+        "value": "http://janua-api.janua.svc.cluster.local:8080"
+      },
+      {
+        "name": "SENTRY_ENVIRONMENT",
+        "value": "staging"
+      },
+      {
+        "name": "NEXT_PUBLIC_JANUA_ISSUER_URL",
+        "value": "https://auth.madfam.io"
+      }
+    ],
+    "envFrom": [
+      {
+        "secretRef": {
+          "name": "karafiel-admin-auth"
+        }
+      },
+      {
+        "secretRef": {
+          "name": "karafiel-admin-oidc",
+          "optional": true
+        }
+      },
+      {
+        "secretRef": {
+          "name": "karafiel-admin-session",
+          "optional": true
+        }
+      }
+    ]
+  },
+  "karafiel-web": {
+    "env": [
+      {
+        "name": "ENVIRONMENT",
+        "value": "staging"
+      },
+      {
+        "name": "API_PROXY_URL",
+        "value": "http://karafiel-api.enclii-karafiel-staging.svc.cluster.local/api/v1"
+      },
+      {
+        "name": "APP_ORIGIN",
+        "value": "https://staging-app.karafiel.mx"
+      },
+      {
+        "name": "NEXT_PUBLIC_API_URL",
+        "value": "/api/v1"
+      },
+      {
+        "name": "NEXT_PUBLIC_APP_URL",
+        "value": "https://staging-app.karafiel.mx"
+      },
+      {
+        "name": "JANUA_ISSUER_URL",
+        "value": "https://auth.madfam.io"
+      },
+      {
+        "name": "JANUA_INTERNAL_URL",
+        "value": "http://janua-api.janua.svc.cluster.local:8080"
+      },
+      {
+        "name": "SENTRY_ENVIRONMENT",
+        "value": "staging"
+      },
+      {
+        "name": "NEXT_PUBLIC_JANUA_ISSUER_URL",
+        "value": "https://auth.madfam.io"
+      }
+    ],
+    "envFrom": [
+      {
+        "secretRef": {
+          "name": "karafiel-web-auth"
+        }
+      },
+      {
+        "secretRef": {
+          "name": "karafiel-web-oidc",
+          "optional": true
+        }
+      }
+    ]
+  }
+}

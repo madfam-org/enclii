@@ -5,18 +5,24 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"github.com/madfam-org/enclii/apps/switchyard-api/internal/k8s"
 	"os"
 	"os/exec"
+	"strconv"
 	"time"
 )
 
 func bootstrapSignatureArgs(p isolatedBootstrapProfile, image, revision, event string) []string {
-	return []string{"verify", "--certificate-identity-regexp", p.SignerIdentity,
+	args := []string{"verify", "--certificate-identity-regexp", p.SignerIdentity,
 		"--certificate-oidc-issuer", cosignOIDCIssuer,
 		"--certificate-github-workflow-repository", p.Producer,
 		"--certificate-github-workflow-sha", revision,
 		"--certificate-github-workflow-ref", "refs/heads/main",
-		"--certificate-github-workflow-trigger", event, image}
+		"--certificate-github-workflow-trigger", event}
+	if p.Name == k8s.KarafielSchemaProfile {
+		args = append(args, "--annotations", "source_sha="+revision, "--annotations", "candidate_run_id="+strconv.FormatInt(p.CandidateRun, 10))
+	}
+	return append(args, image)
 }
 
 // Reuse the existing writable-cache environment, but bind the signer to the
@@ -50,11 +56,15 @@ func verifyBootstrapImageSignature(ctx context.Context, p isolatedBootstrapProfi
 				Digest string `json:"docker-manifest-digest"`
 			} `json:"image"`
 		} `json:"critical"`
+		Optional map[string]interface{} `json:"optional"`
 	}
 	if json.Unmarshal(output, &verified) != nil || len(verified) == 0 {
 		return fmt.Errorf("producer signature evidence missing")
 	}
 	for _, claim := range verified {
+		if p.Name == k8s.KarafielSchemaProfile && (p.CandidateRun <= 0 || claim.Optional["source_sha"] != revision || claim.Optional["candidate_run_id"] != strconv.FormatInt(p.CandidateRun, 10)) {
+			continue
+		}
 		if image == p.Image+"@"+claim.Critical.Image.Digest {
 			return nil
 		}

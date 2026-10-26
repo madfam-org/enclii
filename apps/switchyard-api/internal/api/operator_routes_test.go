@@ -18,6 +18,10 @@ func TestOperatorRoutesRequireDatabasePlatformRank(t *testing.T) {
 	routes := []struct{ method, path string }{
 		{http.MethodPost, "/v1/ops/jobs/suspend"},
 		{http.MethodPost, "/v1/ops/apps/tracking"},
+		{http.MethodPost, "/v1/ops/apps/sync"},
+		{http.MethodPost, "/v1/ops/apps/sync-sweep"},
+		{http.MethodPost, "/v1/ops/apps/retire"},
+		{http.MethodPost, "/v1/ops/apps/rollback"},
 		{http.MethodPost, "/v1/ops/pods/restart"},
 		{http.MethodPost, "/v1/ops/pods/%72estart"},
 		{http.MethodPost, "/v1/ops/inventory/topology"},
@@ -112,7 +116,6 @@ func TestOperatorRoutesFailClosedWithoutRank(t *testing.T) {
 func TestLegacyOperatorRoutesRetainAdminRoleDuringInventoryRollout(t *testing.T) {
 	routes := []struct{ method, path string }{
 		{http.MethodGet, "/v1/ops/capabilities"},
-		{http.MethodPost, "/v1/ops/apps/sync"},
 		// Pod reads stay on the admin role guard; only restart needs the rank.
 		{http.MethodPost, "/v1/ops/pods/diagnose"},
 		{http.MethodGet, "/v1/providers/capabilities"},

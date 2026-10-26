@@ -14,6 +14,8 @@ import (
 type isolatedBootstrapProfile struct {
 	Name, Project, Service, Namespace, Database, RuntimeRole string
 	Producer, Workflow, PinPath, Image, SignerIdentity       string
+	CIWorkflow                                               string
+	CandidateRun                                             int64
 	EnvironmentKeys, RequiredChecks                          []string
 	// VaultPath is the only Vault path the held workload's ExternalSecret may
 	// read for a key the initial Job copies.
@@ -84,6 +86,8 @@ func isolatedBootstrapProfileFor(name string) (isolatedBootstrapProfile, error) 
 		return profile, nil
 	}
 	switch name {
+	case k8s.KarafielSchemaProfile:
+		return isolatedBootstrapProfile{Name: k8s.KarafielSchemaProfile, Project: "karafiel", Service: "karafiel-api-staging", Namespace: "enclii-karafiel-staging", Database: "karafiel_staging_sim", RuntimeRole: "karafiel_staging_runtime", Producer: "madfam-org/karafiel", Workflow: "release-build-candidate.yml", PinPath: "infra/k8s/overlays/staging/kustomization.yaml", Image: "ghcr.io/madfam-org/karafiel/api", CIWorkflow: "ci.yml", SignerIdentity: `^https://github\.com/madfam-org/karafiel/\.github/workflows/release-build-candidate\.yml@refs/heads/main$`, RequiredChecks: []string{"NetworkPolicy port consistency", "Celery task signature consistency", "Ops script unit tests", "API lint and test", "lint-and-test"}, SourceRequirements: []bootstrapSourceRequirement{{Path: "apps/api/core/migrations/0009_seed_madfam_admin_access.py", SHA256: "5da5e466fb830280e050cd4877e7092f19668b69d2859ffd91aa91ee5e127d81"}, {Path: "apps/api/legalgen/migrations/0003_seed_madfam_data.py", SHA256: "d76c9ccc76c3863498a67bdd0eb027596a9171b28c18771401f135bdef5fc221"}}}, nil
 	case k8s.PortalGenerationReadProfile:
 		profile := portalSimProfile(name)
 		profile.SourceRequirements = []bootstrapSourceRequirement{

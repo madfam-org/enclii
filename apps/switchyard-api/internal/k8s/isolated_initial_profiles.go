@@ -18,7 +18,7 @@ func IsProvenanceReadProfile(profile string) bool { return profile == PortalGene
 
 // IsRepeatedProfile uses one retained Job per key for fixed steps and reads.
 func IsRepeatedProfile(profile string) bool {
-	return IsFixedStepProfile(profile) || IsProvenanceReadProfile(profile)
+	return IsFixedStepProfile(profile) || IsProvenanceReadProfile(profile) || profile == KarafielSchemaProfile
 }
 
 // IsFixedStepProfile reports whether a profile is a re-runnable fixed step
@@ -58,6 +58,9 @@ var provenanceReadKind = bootstrapKind{
 }
 
 func bootstrapKindFor(profile string) bootstrapKind {
+	if profile == KarafielSchemaProfile {
+		return karafielSchemaKind
+	}
 	if IsProvenanceReadProfile(profile) {
 		return provenanceReadKind
 	}
@@ -104,6 +107,9 @@ type initialProvenance struct {
 }
 
 func initialProvenanceFor(profile string) (initialProvenance, bool) {
+	if profile == KarafielSchemaProfile {
+		return initialProvenance{Producer: "madfam-org/karafiel", ImagePrefix: "ghcr.io/madfam-org/karafiel/api@sha256:", Database: "karafiel_staging_sim", RuntimeRole: "karafiel_staging_runtime", Checks: 5}, true
+	}
 	if kernel, ok := InitialMAPKernelFor(profile); ok {
 		return initialProvenance{Producer: "madfam-org/crea-map", ImagePrefix: "ghcr.io/madfam-org/crea-map/crea-map-web@sha256:", Database: kernel.Database, RuntimeRole: kernel.RuntimeRole, Checks: 15}, true
 	}
