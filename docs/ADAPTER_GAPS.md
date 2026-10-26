@@ -27,6 +27,18 @@ When closing a gap, remove the row and link the PR that added the adapter.
 
 ## Progress log
 
+### 2026-10-26 — `ops pods restart` recreates CNPG instance pods in project namespaces
+
+On 2026-10-24 a project database instance kept a broken volume mount after a
+node fault, and the fix was a break-glass `kubectl delete pod`:
+`ENCLII_OPS_RESTART_NAMESPACES` lists platform namespaces, and project
+namespaces are never listed. `pod/<name>` in an Enclii `project-<id>`
+namespace now recreates a CloudNativePG instance pod of an Enclii addon of
+that project, and nothing else; apply needs `--expect-uid`
+(`apps/switchyard-api/internal/api/operator_pods_restart_cnpg.go`). No RBAC
+change: pod `delete` and Cluster `get` were already in the ClusterRole.
+Procedure: [`docs/cli/commands/ops.md`](cli/commands/ops.md#cnpg-instance-pods-in-project-namespaces).
+
 ### 2026-10-17 — Longhorn replica count: drift is visible, changing it is not wired (gap open)
 
 `storageclass-apply` now asks for 2 replicas on `longhorn` and
