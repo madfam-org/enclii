@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"net/url"
 	"regexp"
+	"strconv"
 	"time"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
@@ -100,7 +101,7 @@ func (r *R2Client) ReadArgoBackupCiphertext(ctx context.Context, ref argocdbacku
 		(out.ContentEncoding != nil && *out.ContentEncoding != "" && *out.ContentEncoding != "identity") {
 		return nil, ErrArgoBackupHeld
 	}
-	body, err := io.ReadAll(io.LimitReader(out.Body, ref.Size()+1))
+	body, err := readArgoBackupResponseBytes(out.Body, ref.Size())
 	if err != nil || !ref.Matches(body) {
 		clear(body)
 		return nil, ErrArgoBackupHeld
@@ -174,7 +175,7 @@ func (r *R2Client) argoBackupOptions(ref argocdbackup.Reference, method string) 
 		client.Timeout = 35 * time.Second
 	}
 	client.CheckRedirect = func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }
-	client.Transport = argoBackupTransport{next: transport, origin: origin, path: "/" + r.bucket + "/" + key, method: method}
+	client.Transport = argoBackupTransport{next: transport, origin: origin, path: "/" + r.bucket + "/" + key, method: method, getBodyLimit: ref.Size()}
 	return func(o *s3.Options) {
 		o.HTTPClient = &client
 		o.Retryer = aws.NopRetryer{}
@@ -189,6 +190,7 @@ func (r *R2Client) argoBackupOptions(ref argocdbackup.Reference, method string) 
 type argoBackupTransport struct {
 	next                 http.RoundTripper
 	origin, path, method string
+	getBodyLimit         int64
 }
 
 func (t argoBackupTransport) RoundTrip(req *http.Request) (*http.Response, error) {
@@ -206,11 +208,101 @@ func (t argoBackupTransport) RoundTrip(req *http.Request) (*http.Response, error
 	}
 
 	response, err := t.next.RoundTrip(req)
-	if response != nil && response.Uncompressed {
-		if response.Body != nil {
+	if err != nil || response == nil {
+		if response != nil && response.Body != nil {
 			_ = response.Body.Close()
 		}
 		return nil, ErrArgoBackupHeld
 	}
-	return response, err
+	return t.boundResponse(response)
+}
+
+// All provider bodies must be bounded BEFORE the SDK sees them. S3 error
+// deserializers buffer response bodies, and successful PutObject cleanup drains
+// them while ignoring drain errors. A limiting Reader alone would therefore
+// still permit an overflowing acknowledgement to be classified as success.
+const argoBackupControlBodyLimit int64 = 64 << 10
+const argoBackupEmptyReadLimit = 16
+
+func (t argoBackupTransport) boundResponse(response *http.Response) (*http.Response, error) {
+	if response.Body == nil {
+		return nil, ErrArgoBackupHeld
+	}
+	upstream := response.Body
+	limit := argoBackupControlBodyLimit
+	if t.method == http.MethodGet && response.StatusCode >= 200 && response.StatusCode < 300 {
+		limit = t.getBodyLimit
+	}
+	invalid := response.Uncompressed || limit <= 0 || limit > argocdbackup.MaxCiphertextBytes ||
+		response.ContentLength < -1 || response.ContentLength > limit || response.StatusCode < 100 || response.StatusCode > 999
+	if len(response.TransferEncoding) != 0 && (len(response.TransferEncoding) != 1 || response.TransferEncoding[0] != "chunked" || response.ContentLength != -1) {
+		invalid = true
+	}
+	if declared, exists := response.Header["Content-Length"]; exists {
+		if len(declared) != 1 {
+			invalid = true
+		} else {
+			length, err := strconv.ParseInt(declared[0], 10, 64)
+			if err != nil || length < 0 || length > limit || strconv.FormatInt(length, 10) != declared[0] || length != response.ContentLength {
+				invalid = true
+			}
+		}
+	}
+	if invalid {
+		_ = upstream.Close()
+		return nil, ErrArgoBackupHeld
+	}
+	readLimit := limit
+	if response.ContentLength >= 0 {
+		readLimit = response.ContentLength
+	}
+	body, readErr := readArgoBackupResponseBytes(upstream, readLimit)
+	closeErr := upstream.Close()
+	if readErr != nil || closeErr != nil || (response.ContentLength >= 0 && int64(len(body)) != response.ContentLength) {
+		clear(body)
+		return nil, ErrArgoBackupHeld
+	}
+	// Only a complete finite buffer reaches SDK parsing/draining. The original
+	// body has already been closed exactly once; later SDK Close is a no-op.
+	response.Body = io.NopCloser(bytes.NewReader(body))
+	return response, nil
+}
+
+// One fixed allocation and at most limit+1 observed bytes. Only io.EOF proves
+// a complete body; an upstream io.ErrUnexpectedEOF is not accepted as ordinary
+// EOF. Zero-progress readers hold instead of spinning until a timeout.
+func readArgoBackupResponseBytes(reader io.Reader, limit int64) ([]byte, error) {
+	if reader == nil || limit < 0 || limit > argocdbackup.MaxCiphertextBytes {
+		return nil, ErrArgoBackupHeld
+	}
+	buffer := make([]byte, int(limit)+1)
+	used, emptyReads := 0, 0
+	for {
+		count, err := reader.Read(buffer[used:])
+		if count < 0 || count > len(buffer)-used {
+			clear(buffer)
+			return nil, ErrArgoBackupHeld
+		}
+		used += count
+		if int64(used) > limit {
+			clear(buffer)
+			return nil, ErrArgoBackupHeld
+		}
+		if err == io.EOF {
+			return buffer[:used], nil
+		}
+		if err != nil {
+			clear(buffer)
+			return nil, ErrArgoBackupHeld
+		}
+		if count == 0 {
+			emptyReads++
+			if emptyReads >= argoBackupEmptyReadLimit {
+				clear(buffer)
+				return nil, ErrArgoBackupHeld
+			}
+		} else {
+			emptyReads = 0
+		}
+	}
 }

@@ -292,7 +292,7 @@ func TestArgoBackupTransportGuardRejectsUnexpectedSDKDestination(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			calls := 0
 			next := argoBackupFakeTransport(func(*http.Request) (*http.Response, error) { calls++; return argoBackupResponse(200, nil), nil })
-			guard := argoBackupTransport{next, "https://fixture.example.invalid", "/fixture-key", http.MethodGet}
+			guard := argoBackupTransport{next: next, origin: "https://fixture.example.invalid", path: "/fixture-key", method: http.MethodGet}
 			req, _ := http.NewRequest(http.MethodGet, "https://fixture.example.invalid/fixture-key?x-id=GetObject", nil)
 			switch name {
 			case "origin":
