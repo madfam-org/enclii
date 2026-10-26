@@ -42,7 +42,8 @@ func registerOperatorRoutes(protected *gin.RouterGroup, h *Handler) {
 			(c.Param("domain") == "apps" && (c.Param("action") == "bind-target" || c.Param("action") == "tracking" ||
 				c.Param("action") == "sync" || c.Param("action") == "sync-sweep" || c.Param("action") == "retire" || c.Param("action") == "rollback")) ||
 			(c.Param("domain") == "pods" && c.Param("action") == "restart") ||
-			(c.Param("domain") == "addons" && c.Param("action") == "hibernate") {
+			(c.Param("domain") == "addons" && c.Param("action") == "hibernate") ||
+			(c.Param("domain") == "storage" && c.Param("action") == "prune-detached") {
 			platformOperator(c)
 			return
 		}

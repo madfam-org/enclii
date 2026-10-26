@@ -178,7 +178,7 @@ func newOpsStorageCommand(cfg *config.Config) *cobra.Command {
 	cmd.AddCommand(newOpsReadCommand(cfg, "storage", "r2-audit", "Audit R2 credentials: incomplete, shared, or mismatched buckets"))
 	cmd.AddCommand(newOpsActionCommand(cfg, "storage", "repair-plan", "Generate or apply a storage repair plan"))
 	cmd.AddCommand(newOpsActionCommand(cfg, "storage", "settings-apply", "Apply Longhorn CPU settings from helm values (GA O-5)"))
-	cmd.AddCommand(newOpsActionCommand(cfg, "storage", "prune-detached", "Delete detached Longhorn orphan volumes (GA O-4)"))
+	cmd.AddCommand(newOpsStoragePruneDetachedCommand(cfg))
 	cmd.AddCommand(newOpsActionCommand(cfg, "storage", "storageclass-apply", "Create missing Longhorn StorageClasses (GA storage reconcile)"))
 	return cmd
 }
