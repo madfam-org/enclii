@@ -114,6 +114,17 @@ type FixedStepTurnoVigenteReceipt struct {
 	DatabaseIdentitySHA256 string `json:"databaseIdentitySha256"`
 }
 
+// FixedStepCierreReconstruccionPasoReceipt is crea-sim step 004's one stdout
+// line: the same five fields as step 003, under step 004's own source and
+// version. It is accredited only on that exact pair and an applied state.
+type FixedStepCierreReconstruccionPasoReceipt struct {
+	Source                 string `json:"fuente"`
+	Version                string `json:"version"`
+	State                  string `json:"estado"`
+	SchemaSHA256           string `json:"schemaSha256"`
+	DatabaseIdentitySHA256 string `json:"databaseIdentitySha256"`
+}
+
 // A fixed step's held receipt names one closed reason, never output content.
 const (
 	fixedStepHeldJobFailed    = "job_failed"
@@ -149,9 +160,10 @@ type InitialNativeReceipt struct {
 	KarafielRuntime  *KarafielSchemaRuntime    `json:"runtime,omitempty"`
 	// Fixed step only: the typed step output when accredited, or the closed
 	// reason its terminal receipt is held.
-	TurnoVigente   *FixedStepTurnoVigenteReceipt `json:"turno_vigente,omitempty"`
-	HeldReason     string                        `json:"held_reason,omitempty"`
-	GenerationRead *PortalGenerationReadReceipt  `json:"generation_read,omitempty"`
+	TurnoVigente             *FixedStepTurnoVigenteReceipt             `json:"turno_vigente,omitempty"`
+	CierreReconstruccionPaso *FixedStepCierreReconstruccionPasoReceipt `json:"cierre_reconstruccion_paso,omitempty"`
+	HeldReason               string                                    `json:"held_reason,omitempty"`
+	GenerationRead           *PortalGenerationReadReceipt              `json:"generation_read,omitempty"`
 }
 
 func initialHash(b []byte) string { s := sha256.Sum256(b); return hex.EncodeToString(s[:]) }
@@ -428,7 +440,7 @@ func validInitialNative(r InitialNativeReceipt, p IsolatedInitialJobPlan, cm *co
 	// Evidence of the one Pod that ran and its bounded main stdout.
 	observed := initialUID.MatchString(r.PodUID) && initialSHA.MatchString(r.StdoutSHA256)
 	if p.Profile == KarafielSchemaProfile {
-		if r.MAP != nil || r.Portal001 != nil || r.Portal002 != nil || r.TurnoVigente != nil || r.GenerationRead != nil || r.InitStdoutSHA256 != "" {
+		if r.MAP != nil || r.Portal001 != nil || r.Portal002 != nil || !fixedStepOutputAbsent(r) || r.GenerationRead != nil || r.InitStdoutSHA256 != "" {
 			return false
 		}
 		if r.Classification == kind.retained {
@@ -440,7 +452,7 @@ func validInitialNative(r InitialNativeReceipt, p IsolatedInitialJobPlan, cm *co
 		return false
 	}
 	if IsProvenanceReadProfile(p.Profile) {
-		if r.MAP != nil || r.Portal001 != nil || r.Portal002 != nil || r.TurnoVigente != nil || r.InitStdoutSHA256 != "" || !validGenerationInput(in.GenerationRead) {
+		if r.MAP != nil || r.Portal001 != nil || r.Portal002 != nil || !fixedStepOutputAbsent(r) || r.InitStdoutSHA256 != "" || !validGenerationInput(in.GenerationRead) {
 			return false
 		}
 		if r.Classification == kind.retained {
@@ -457,9 +469,9 @@ func validInitialNative(r InitialNativeReceipt, p IsolatedInitialJobPlan, cm *co
 		}
 		switch r.Classification {
 		case kind.retained:
-			return observed && r.HeldReason == "" && validTurnoVigente(r.TurnoVigente)
+			return observed && r.HeldReason == "" && validFixedStepOutput(r, p.Profile)
 		case kind.held:
-			if r.TurnoVigente != nil {
+			if !fixedStepOutputAbsent(r) {
 				return false
 			}
 			// A failed Job is held from its native terminal status alone.
@@ -467,7 +479,7 @@ func validInitialNative(r InitialNativeReceipt, p IsolatedInitialJobPlan, cm *co
 		}
 		return false
 	}
-	if r.Classification != kind.retained || !observed || r.TurnoVigente != nil || r.HeldReason != "" {
+	if r.Classification != kind.retained || !observed || !fixedStepOutputAbsent(r) || r.HeldReason != "" {
 		return false
 	}
 	if p.Profile == initialPortalProfile {
@@ -480,6 +492,49 @@ func validInitialNative(r InitialNativeReceipt, p IsolatedInitialJobPlan, cm *co
 // applied state; YA_APLICADO is the idempotent re-run answer.
 func validTurnoVigente(r *FixedStepTurnoVigenteReceipt) bool {
 	return r != nil && r.Source == "portal-sim-turno-vigente" && r.Version == "crea-sim-turno-vigente-v1" && (r.State == "APLICADO" || r.State == "YA_APLICADO") && initialSHA.MatchString(r.SchemaSHA256) && initialSHA.MatchString(r.DatabaseIdentitySHA256)
+}
+
+// validCierreReconstruccionPaso accepts only step 004's exact source and
+// version and an applied state; YA_APLICADO is the idempotent re-run answer.
+func validCierreReconstruccionPaso(r *FixedStepCierreReconstruccionPasoReceipt) bool {
+	return r != nil && r.Source == "portal-sim-cierre-reconstruccion-paso" && r.Version == "crea-sim-cierre-reconstruccion-paso-v1" && (r.State == "APLICADO" || r.State == "YA_APLICADO") && initialSHA.MatchString(r.SchemaSHA256) && initialSHA.MatchString(r.DatabaseIdentitySHA256)
+}
+
+// fixedStepOutputAbsent reports that no fixed step's typed output is set.
+func fixedStepOutputAbsent(r InitialNativeReceipt) bool {
+	return r.TurnoVigente == nil && r.CierreReconstruccionPaso == nil
+}
+
+// validFixedStepOutput accepts exactly the profile's own typed output and no
+// other step's: a 003 line never accredits 004, nor the reverse.
+func validFixedStepOutput(r InitialNativeReceipt, profile string) bool {
+	switch profile {
+	case fixedStepTurnoVigenteProfile:
+		return r.CierreReconstruccionPaso == nil && validTurnoVigente(r.TurnoVigente)
+	case fixedStepCierreReconstruccionPasoProfile:
+		return r.TurnoVigente == nil && validCierreReconstruccionPaso(r.CierreReconstruccionPaso)
+	}
+	return false
+}
+
+// decodeFixedStepOutput sets the profile's typed output from its one stdout
+// line, or reports false when that line is not the step's exact contract.
+func decodeFixedStepOutput(r *InitialNativeReceipt, profile string, b []byte) bool {
+	switch profile {
+	case fixedStepTurnoVigenteProfile:
+		out := &FixedStepTurnoVigenteReceipt{}
+		if DecodeInitialBootstrapJSON(b, out) == nil && validTurnoVigente(out) {
+			r.TurnoVigente = out
+			return true
+		}
+	case fixedStepCierreReconstruccionPasoProfile:
+		out := &FixedStepCierreReconstruccionPasoReceipt{}
+		if DecodeInitialBootstrapJSON(b, out) == nil && validCierreReconstruccionPaso(out) {
+			r.CierreReconstruccionPaso = out
+			return true
+		}
+	}
+	return false
 }
 func validPortal001(r *InitialPortal001Receipt) bool {
 	return r != nil && r.Profile == "crea-sim-portal-inicial" && r.Version == "portal-inicial-v1" && r.State == "PREPARADO"
@@ -622,10 +677,7 @@ func (c *Client) collectInitialReceipt(ctx context.Context, p IsolatedInitialJob
 	} else if IsFixedStepProfile(p.Profile) {
 		// Classify only the exact typed line; anything else is retained as a
 		// terminal held receipt carrying the stdout hash, never its content.
-		out := &FixedStepTurnoVigenteReceipt{}
-		if DecodeInitialBootstrapJSON(b, out) == nil && validTurnoVigente(out) {
-			r.TurnoVigente = out
-		} else {
+		if !decodeFixedStepOutput(&r, p.Profile, b) {
 			r.Classification, r.HeldReason = kind.held, fixedStepHeldUnclassified
 		}
 	} else if p.Profile == initialPortalProfile {

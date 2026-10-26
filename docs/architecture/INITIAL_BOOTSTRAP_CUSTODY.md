@@ -145,6 +145,41 @@ The GET status route accepts `step-<24 hex>` names. A live operation reads
 succeeded Job not yet collected reads `FIXED_STEP_UNRETAINED`. A retained
 receipt reads its own class.
 
+## Fixed step `portal-sim-cierre-reconstruccion-paso`
+
+`portal-sim-cierre-reconstruccion-paso` applies crea-sim's fixed portal step
+004 (`sql/004-cierre-por-reconstruccion.sql`, crea-sim ADR-0007 §2c) on the
+same portal database, after an accredited 003. It adds the close-by-rebuild
+catalogue (the owner-only `cierres_reconstruccion` receipts, the gateway's
+`sucesores_reconstruccion` link and the `cierre_reconstruccion_recibos`
+witness). It **closes no reservation**: closing a reservation is the separate
+`portal-sim-cierre-reconstruccion` profile, which does not exist yet (see the
+[engineering backlog](../../ROADMAP.md#this-repository)).
+
+It is step 003's profile in every respect (route, five-field request,
+producer, signer, checks, live-workload rule, custody, records, re-run gate,
+held receipts) except:
+
+- **Command.** `network-ready`, then
+  `node packages/entrenamiento/src/preparar-cierre-reconstruccion.ts`, with no
+  argument and no SQL. crea-sim's preparer applies 004 only when the catalogue
+  is exactly 003's, and answers `YA_APLICADO` when 004 is already there.
+- **Ordering guard.** The image's verified revision must carry
+  `packages/entrenamiento/sql/004-cierre-por-reconstruccion.sql`, with its
+  SHA-256 pinned in code, and `packages/entrenamiento/src/preparar-cierre-reconstruccion.ts`.
+- **Classification.** `FIXED_STEP_APPLIED` only for `fuente` =
+  `portal-sim-cierre-reconstruccion-paso`, `version` =
+  `crea-sim-cierre-reconstruccion-paso-v1`, `estado` `APLICADO` or
+  `YA_APLICADO` and the two 64-hex hashes, reported as
+  `native_receipt.cierre_reconstruccion_paso`. A step 003 line is never
+  accepted as 004, nor the reverse; any other output is `FIXED_STEP_HELD`
+  (`output_unclassified`). The database's own
+  `sim_capacitacion_custodia.cierre_reconstruccion_recibos` row remains the
+  authority on whether 004 is applied.
+
+Both fixed steps share the manager label, so the re-run gate also keeps 003
+and 004 from running side by side on the portal addon.
+
 ## Immutable history and uncertainty
 
 The desired spec explicitly sets the public CA Secret volume's `defaultMode=0644`

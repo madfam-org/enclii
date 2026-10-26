@@ -247,7 +247,7 @@ func initialNativeHTTPProfile(t *testing.T, profile string) (*Client, *initialHT
 		}
 	} else if profile == KarafielSchemaProfile {
 		p = karafielSchemaPlan()
-	} else if profile == fixedStepTurnoVigenteProfile {
+	} else if IsFixedStepProfile(profile) {
 		// Same portal custody; a live workload is bound by generation.
 		p.Profile = profile
 		p.Identity.DeploymentResourceVersion, p.Identity.DeploymentGeneration = "", 3
@@ -296,6 +296,9 @@ func initialNativeHTTPProfile(t *testing.T, profile string) (*Client, *initialHT
 	}
 	if profile == fixedStepTurnoVigenteProfile {
 		f.stdout, f.initStdout = fixedStepStdout("APLICADO"), ""
+	}
+	if profile == fixedStepCierreReconstruccionPasoProfile {
+		f.stdout, f.initStdout = cierrePasoStdout("APLICADO"), ""
 	}
 	if IsProvenanceReadProfile(profile) {
 		b, err := json.Marshal(generationReceiptFixture())
