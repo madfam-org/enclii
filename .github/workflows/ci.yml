@@ -2574,4 +2574,4 @@ jobs:
         run: pip install --quiet pyyaml pytest
 
       - name: Run workflow contract tests
-        run: pytest tests/scripts/test_digest_pin_push_retry.py tests/scripts/test_arc_runner_image_promotion.py tests/scripts/test_commit_digests_unpinned_gate.py tests/scripts/test_arc_control_scheduling.py tests/scripts/test_check_arc_runner_render_env.py tests/scripts/test_conservation_root_dependencies.py -v -rs
+        run: pytest tests/scripts/test_digest_pin_push_retry.py tests/scripts/test_arc_runner_image_promotion.py tests/scripts/test_commit_digests_unpinned_gate.py tests/scripts/test_arc_control_scheduling.py tests/scripts/test_check_arc_runner_render_env.py tests/scripts/test_conservation_root_dependencies.py tests/scripts/test_build_publish_scan_gate.py -v -rs

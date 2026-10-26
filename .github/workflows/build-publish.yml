@@ -9,13 +9,15 @@ name: Reusable — Build, sign, publish, pin
 #   3. Sign keyless with cosign (Fulcio + Rekor OIDC)
 # Then, across all services once:
 #   4. Re-derive each service's digest FROM THE REGISTRY (see below)
-#   5. kustomize edit set image → @sha256:<digest> in kustomization.yaml
-#   6. Commit the digest pin back to main (triggers ArgoCD sync)
+#   5. When require_image_scan=true, scan ALL verified digests before any pin edit.
+#      Fixed Trivy policy includes unfixed OS/language HIGH+CRITICAL; legacy default is false.
+#   6. kustomize edit set image → @sha256:<digest> in kustomization.yaml
+#   7. Commit the digest pin back to main (triggers ArgoCD sync)
 #      Partial success: if the build matrix has mixed results, pin still runs
 #      and commits digests for every service whose :${SHA} tag resolves in
 #      GHCR. Sibling build failures must not block deploy of successful builds
 #      (RFC 0017 Tier B — forj-api 4-day outage class).
-#   7. (optional) POST an Enclii lifecycle callback
+#   8. (optional) POST an Enclii lifecycle callback
 #
 # WHY THE PIN JOB READS THE REGISTRY INSTEAD OF AN ARTIFACT
 #
@@ -158,6 +160,11 @@ on:
         description: Directory containing the kustomization.yaml to pin.
         required: true
         type: string
+      require_image_scan:
+        description: Require the fixed full OS/language HIGH+CRITICAL pre-pin policy, including unfixed findings.
+        required: false
+        type: boolean
+        default: false
       cosign_release:
         description: cosign release tag.
         required: false
@@ -661,14 +668,24 @@ jobs:
         env:
           SERVICES_MATRIX: ${{ needs.detect-changes.outputs.matrix }}
           IMAGE_PREFIX: ${{ inputs.image_prefix }}
+          REQUIRE_IMAGE_SCAN: ${{ inputs.require_image_scan }}
         run: |
           set -euo pipefail
-          mkdir -p digests
+          case "$REQUIRE_IMAGE_SCAN" in true|false) ;; *) exit 1 ;; esac
+          if [ "$REQUIRE_IMAGE_SCAN" = true ]; then
+            [ ! -e digests ] || { echo "::error::Strict pin refuses stale digest files."; exit 1; }
+            mkdir digests
+          else
+            mkdir -p digests
+          fi
           count=0
           missing=""
 
           while IFS= read -r svc; do
             [ -n "$svc" ] || continue
+            if [ "$REQUIRE_IMAGE_SCAN" = true ] && [[ ! "$svc" =~ ^[a-z0-9][a-z0-9_.-]{0,62}$ ]]; then
+              echo "::error::Invalid strict scan service identity."; exit 1
+            fi
             ref="${IMAGE_PREFIX}/${svc}:${GITHUB_SHA}"
 
             # Transient registry 5xx/timeouts must not look like "this service
@@ -686,6 +703,9 @@ jobs:
               digest=""
             done
 
+            if [ -z "$digest" ] && [ "$REQUIRE_IMAGE_SCAN" = true ]; then
+              echo "::error::Strict pin refuses a missing or unreadable candidate image."; exit 1
+            fi
             if [ -z "$digest" ]; then
               echo "::notice::No image found at ${ref}; treating '${svc}' as not built in this run."
               head -c 300 /tmp/inspect-"$svc".err 2>/dev/null || true; echo
@@ -703,6 +723,9 @@ jobs:
             count=$((count + 1))
           done < <(printf '%s' "$SERVICES_MATRIX" | jq -r '.[].name')
 
+          if [ "$REQUIRE_IMAGE_SCAN" = true ] && [ "$count" -eq 0 ]; then
+            echo "::error::Strict pin requires a nonempty image cohort."; exit 1
+          fi
           echo "count=$count" >> "$GITHUB_OUTPUT"
           {
             echo "### Digests resolved from GHCR"
@@ -882,11 +905,356 @@ jobs:
           echo "identity_regexp=${regexp}"
           echo "identity_regexp=${regexp}" >> "$GITHUB_OUTPUT"
 
+      - name: Prepare fixed pre-pin image scanner
+        if: inputs.require_image_scan && steps.digests.outputs.count != '0'
+        env:
+          IMAGE_PREFIX: ${{ inputs.image_prefix }}
+          SERVICES_MATRIX: ${{ needs.detect-changes.outputs.matrix }}
+        run: |
+          set -euo pipefail
+          umask 077
+          [ "$(uname -s)/$(uname -m)" = Linux/x86_64 ] || { echo "::error::Unsupported fixed scanner platform."; exit 1; }
+          scan_root=$(mktemp -d "${RUNNER_TEMP:?}/enclii-prepin-scan.XXXXXXXX")
+          trap 'rm -rf "$scan_root"' EXIT
+          mkdir "$scan_root/cache" "$scan_root/config" "$scan_root/docker"
+          printf '{}\n' > "$scan_root/config.yaml"
+          : > "$scan_root/empty.ignore"
+          # Public official release; no inherited proxy/config/auth environment.
+          if ! env -i PATH="$PATH" curl -q --fail --silent --show-error --location \
+            --proto '=https' --tlsv1.2 --max-redirs 3 --connect-timeout 15 --max-time 180 \
+            --max-filesize 268435456 --retry 2 \
+            https://github.com/aquasecurity/trivy/releases/download/v0.76.1/trivy_0.76.1_Linux-64bit.tar.gz \
+            --output "$scan_root/trivy.tar.gz" >"$scan_root/install.log" 2>&1; then
+            echo "::error::Fixed scanner download failed."; exit 1
+          fi
+          # SHA256 from the official v0.76.1 checksums asset, source-reviewed.
+          printf '%s  %s\n' c7cbe3137fb8a48a17574bede3dd6beb16742d1e9772929940fc90082c39d9c0 "$scan_root/trivy.tar.gz" \
+            | sha256sum --check --status
+          tar -xzf "$scan_root/trivy.tar.gz" -C "$scan_root" trivy
+          chmod 700 "$scan_root/trivy"
+          env -i PATH="$PATH" "$scan_root/trivy" --version > "$scan_root/version.log" 2>&1
+          grep -Fx 'Version: 0.76.1' "$scan_root/version.log" >/dev/null
+          rm "$scan_root/trivy.tar.gz"
+          # Inline because reusable-workflow checkout is the CALLER repo.
+          # >>> prepin-scan-driver
+          cat > "$scan_root/scan.py" <<'PY_SCAN'
+          #!/usr/bin/env python3
+          """Closed pre-pin policy. Raw reports and registry credentials never leave this directory."""
+          import datetime
+          import hashlib
+          import json
+          import os
+          from pathlib import Path
+          import re
+          import selectors
+          import signal
+          import subprocess
+          import sys
+          import time
+
+          ROOT = Path(__file__).resolve().parent
+          POLICY = "enclii-image-os-language-high-critical-unfixed-v1"
+          VERSION = "0.76.1"
+          LIMIT = 32 * 1024 * 1024
+          # Trivy v0.76.1 pkg/fanal/types/const.go; unknown OS is not a clean scan.
+          OS_FAMILIES = {"activestate", "alma", "alpine", "amazon", "azurelinux", "bottlerocket",
+                         "cbl-mariner", "centos", "centos-stream", "chainguard", "coreos", "debian",
+                         "echo", "fedora", "minimos", "opensuse", "opensuse-leap", "opensuse-tumbleweed",
+                         "oracle", "photon", "redhat", "rocky", "slem", "sles", "ubuntu", "wolfi"}
+
+
+          def refuse():
+              raise ValueError("pre-pin image evidence refused")
+
+
+          def read_json(path, limit=LIMIT):
+              if path.is_symlink() or not path.is_file() or path.stat().st_size > limit:
+                  refuse()
+              return json.loads(path.read_text())
+
+
+          def digest(path):
+              return hashlib.file_digest(path.open("rb"), "sha256").hexdigest()
+
+
+          def write_json(path, data):
+              with open(path, "x", opener=lambda p, f: os.open(p, f, 0o600)) as stream:
+                  json.dump(data, stream, sort_keys=True, separators=(",", ":"))
+
+
+          def identity():
+              source = os.environ["GITHUB_SHA"]
+              run = os.environ["GITHUB_RUN_ID"]
+              attempt = os.environ["GITHUB_RUN_ATTEMPT"]
+              prefix = os.environ["IMAGE_PREFIX"]
+              repo = os.environ["GITHUB_REPOSITORY"].lower()
+              if (not re.fullmatch(r"[0-9a-f]{40}", source)
+                      or not re.fullmatch(r"[1-9][0-9]*", run)
+                      or not re.fullmatch(r"[1-9][0-9]*", attempt)
+                      or not re.fullmatch(r"madfam-org/[a-z0-9_.-]+", repo)
+                      or prefix != "ghcr.io/" + repo):
+                  refuse()
+              return {"source": source, "run": run, "attempt": attempt, "prefix": prefix}
+
+
+          def context():
+              c = read_json(ROOT / "context.json", 65536)
+              if (c["identity"] != identity() or c["policy"] != POLICY
+                      or c["version"] != VERSION or digest(ROOT / "trivy") != c["binary_sha256"]
+                      or not 0 <= time.time() - c["created_at"] <= 3600):
+                  refuse()
+              return c
+
+
+          def inventory(c):
+              directory = Path(os.environ["GITHUB_WORKSPACE"]) / "digests"
+              if directory.is_symlink():
+                  refuse()
+              files = list(directory.iterdir())
+              if sorted(p.name for p in files) != sorted(n + ".txt" for n in c["services"]):
+                  refuse()
+              result = {}
+              for path in files:
+                  if path.is_symlink() or not path.is_file() or path.stat().st_size > 256:
+                      refuse()
+                  match = re.fullmatch(r"([a-z0-9][a-z0-9_.-]{0,62})=(sha256:[0-9a-f]{64})\n", path.read_text())
+                  if not match or path.name != match[1] + ".txt":
+                      refuse()
+                  result[path.name] = {"sha256": digest(path), "ref": c["identity"]["prefix"] + "/" + match[1] + "@" + match[2]}
+              return result
+
+
+          def epoch(value):
+              return datetime.datetime.fromisoformat(value.replace("Z", "+00:00")).timestamp()
+
+
+          def no_suppression(value):
+              if isinstance(value, dict):
+                  for key, item in value.items():
+                      if ((any(word in key.lower() for word in ["suppress", "ignore", "modifiedfinding"])
+                              or key.lower() in ["error", "errors"])
+                              and item):
+                          refuse()
+                      no_suppression(item)
+              elif isinstance(value, list):
+                  for item in value:
+                      no_suppression(item)
+
+
+          def inspect_report(report, ref, started, finished):
+              no_suppression(report)
+              if (report.get("SchemaVersion") != 2 or report.get("ArtifactName") != ref
+                      or report.get("Trivy", {}).get("Version") != VERSION
+                      or report.get("ArtifactType") != "container_image"
+                      or not started - 10 <= epoch(report["CreatedAt"]) <= finished + 10):
+                  refuse()
+              operating_system = report["Metadata"]["OS"]
+              if (operating_system.get("Family") not in OS_FAMILIES
+                      or not operating_system.get("Name") or operating_system.get("EOSL", False)):
+                  refuse()
+              results = report["Results"]
+              if not isinstance(results, list) or not results:
+                  refuse()
+              os_packages = False
+              findings = []
+              for result in results:
+                  if (result.get("Class") not in ["os-pkgs", "lang-pkgs"]
+                          or not isinstance(result.get("Target"), str) or not result["Target"]
+                          or not isinstance(result.get("Type"), str) or not result["Type"]
+                          or not isinstance(result.get("Packages"), list)):
+                      refuse()
+                  if result["Class"] == "os-pkgs":
+                      if result["Type"] != operating_system["Family"] or not result["Packages"]:
+                          refuse()
+                      os_packages = True
+                  for package in result["Packages"]:
+                      if not isinstance(package.get("Name"), str) or not package["Name"] or not isinstance(package.get("Version"), str) or not package["Version"]:
+                          refuse()
+                  vulnerabilities = result.get("Vulnerabilities", [])
+                  if not isinstance(vulnerabilities, list):
+                      refuse()
+                  for v in vulnerabilities:
+                      if v.get("Severity") in ["HIGH", "CRITICAL"]:
+                          findings.append(v)
+                      elif v.get("Severity") not in ["UNKNOWN", "LOW", "MEDIUM"]:
+                          refuse()
+              if not os_packages:
+                  refuse()
+              return findings
+
+
+          def bounded_summary(findings):
+              # Only vulnerability coordinates; never ImageConfig.Env, paths, stdout or exceptions.
+              credentials = [os.environ.get("GHCR_SCAN_TOKEN", ""), os.environ.get("GHCR_SCAN_USERNAME", "")]
+              def safe(value, pattern):
+                  value = str(value)
+                  if len(value) > 128 or not re.fullmatch(pattern, value) or any(s and s in value for s in credentials):
+                      return "redacted"
+                  return value
+              for v in findings[:20]:
+                  print(json.dumps({"package": safe(v.get("PkgName", ""), r"[A-Za-z0-9@._/+:-]{1,120}"),
+                                    "vulnerability": safe(v.get("VulnerabilityID", ""), r"(?:CVE-[0-9]{4}-[0-9]+|GHSA-[a-z0-9-]+)"),
+                                    "severity": v["Severity"],
+                                    "fixed_version": safe(v["FixedVersion"], r"[0-9][A-Za-z0-9.+:~,_ -]{0,79}") if v.get("FixedVersion") else "unfixed"}))
+
+
+          def capture(command, clean, report_path, log_path):
+              # Bound ONLY captured output. Trivy's database, cache and layer files can
+              # legitimately be much larger than a report (the DB alone exceeds 1 GiB).
+              process = None
+              deadline = time.monotonic() + 1230
+              with open(report_path, "xb", opener=lambda p, f: os.open(p, f, 0o600)) as report, \
+                      open(log_path, "xb", opener=lambda p, f: os.open(p, f, 0o600)) as log, \
+                      selectors.DefaultSelector() as selector:
+                  try:
+                      process = subprocess.Popen(command, cwd=ROOT, env=clean, stdout=subprocess.PIPE,
+                                                 stderr=subprocess.PIPE, start_new_session=True, umask=0o077)
+                      selector.register(process.stdout, selectors.EVENT_READ, [report, 0])
+                      selector.register(process.stderr, selectors.EVENT_READ, [log, 0])
+                      while selector.get_map():
+                          remaining = deadline - time.monotonic()
+                          if remaining <= 0:
+                              refuse()
+                          for key, _ in selector.select(min(remaining, 1)):
+                              chunk = os.read(key.fileobj.fileno(), 65536)
+                              if not chunk:
+                                  selector.unregister(key.fileobj)
+                                  continue
+                              output, count = key.data
+                              if count + len(chunk) > LIMIT:
+                                  refuse()
+                              output.write(chunk)
+                              key.data[1] += len(chunk)
+                      remaining = deadline - time.monotonic()
+                      if remaining <= 0:
+                          refuse()
+                      return process.wait(timeout=remaining)
+                  except BaseException:
+                      if process is not None:
+                          try:
+                              os.killpg(process.pid, signal.SIGKILL)
+                          except ProcessLookupError:
+                              pass
+                          process.wait(timeout=10)
+                      raise
+                  finally:
+                      if process is not None:
+                          process.stdout.close()
+                          process.stderr.close()
+
+
+          def scan(c, ref):
+              items = inventory(c)
+              matches = [name for name, value in items.items() if value["ref"] == ref]
+              if len(matches) != 1:
+                  refuse()
+              name = matches[0]
+              report_path = ROOT / (name + ".report.json")
+              receipt_path = ROOT / (name + ".receipt.json")
+              if report_path.exists() or receipt_path.exists():
+                  refuse()
+              username, registry_credential = os.environ["GHCR_SCAN_USERNAME"], os.environ["GHCR_SCAN_TOKEN"]
+              if not username or not registry_credential:
+                  refuse()
+              clean = {"PATH": os.environ["PATH"],
+                       "XDG_CONFIG_HOME": str(ROOT / "config"), "XDG_CACHE_HOME": str(ROOT / "cache"),
+                       "DOCKER_CONFIG": str(ROOT / "docker")}
+              clean.update((("TRIVY_USERNAME", username), ("TRIVY_PASSWORD", registry_credential)))
+              command = [str(ROOT / "trivy"), "image", "--config", str(ROOT / "config.yaml"),
+                         "--cache-dir", str(ROOT / "cache"), "--ignorefile", str(ROOT / "empty.ignore"),
+                         "--image-src", "remote", "--scanners", "vuln", "--pkg-types", "os,library",
+                         "--include-dev-deps=true", "--db-repository", "ghcr.io/aquasecurity/trivy-db:2",
+                         "--java-db-repository", "ghcr.io/aquasecurity/trivy-java-db:1",
+                         "--severity", "HIGH,CRITICAL", "--ignore-unfixed=false", "--show-suppressed",
+                         "--list-all-pkgs=true", "--skip-db-update=false", "--skip-java-db-update=false",
+                         "--offline-scan=false", "--skip-version-check", "--disable-telemetry",
+                         "--quiet", "--no-progress", "--timeout", "20m", "--exit-code", "1",
+                         "--exit-on-eol", "1", "--format", "json", ref]
+              started = time.time()
+              returncode = capture(command, clean, report_path, ROOT / (name + ".log"))
+              finished = time.time()
+              if report_path.exists():
+                  report_path.chmod(0o600)
+              report = read_json(report_path)
+              findings = inspect_report(report, ref, started, finished)
+              db = read_json(ROOT / "cache/db/metadata.json", 16384)
+              if (db.get("Version") != 2 or not c["created_at"] - 10 <= epoch(db["DownloadedAt"]) <= finished + 10
+                      or not 0 <= finished - epoch(db["UpdatedAt"]) <= 48 * 3600
+                      or epoch(db["NextUpdate"]) <= finished):
+                  refuse()
+              if findings:
+                  bounded_summary(findings)
+              if returncode != 0 or findings:
+                  refuse()
+              write_json(receipt_path, {"ref": ref, "policy": POLICY, "version": VERSION,
+                                       "identity": c["identity"], "finished": finished,
+                                       "report_sha256": digest(report_path), "db_sha256": digest(ROOT / "cache/db/metadata.json"),
+                                       "db_next_update": epoch(db["NextUpdate"])})
+              print("Full image scan accepted for immutable digest")
+
+
+          def receipts(c, items):
+              result = {}
+              for name, value in items.items():
+                  path = ROOT / (name + ".receipt.json")
+                  r = read_json(path, 16384)
+                  if (r["ref"] != value["ref"] or r["identity"] != c["identity"]
+                          or r["policy"] != POLICY or r["version"] != VERSION
+                          or not 0 <= time.time() - r["finished"] <= 3600 or time.time() >= r["db_next_update"]
+                          or r["report_sha256"] != digest(ROOT / (name + ".report.json"))):
+                      refuse()
+                  result[name] = digest(path)
+              return result
+
+
+          def main():
+              action = sys.argv[1]
+              if action == "init":
+                  names = [r["name"] for r in json.loads(os.environ["SERVICES_MATRIX"])]
+                  if not names or len(set(names)) != len(names) or any(not re.fullmatch(r"[a-z0-9][a-z0-9_.-]{0,62}", n) for n in names):
+                      refuse()
+                  write_json(ROOT / "context.json", {"identity": identity(), "services": sorted(names),
+                             "policy": POLICY, "version": VERSION, "created_at": time.time(), "binary_sha256": digest(ROOT / "trivy")})
+                  return
+              c = context()
+              if action == "scan":
+                  scan(c, sys.argv[2])
+                  return
+              items = inventory(c)
+              if action == "validate":
+                  return
+              current = {"context_sha256": digest(ROOT / "context.json"), "files": items, "receipts": receipts(c, items)}
+              ledger = ROOT / "approved.json"
+              if action == "seal":
+                  write_json(ledger, current)
+                  print(digest(ledger))
+              elif action == "check":
+                  if not re.fullmatch(r"[0-9a-f]{64}", sys.argv[2]) or digest(ledger) != sys.argv[2] or read_json(ledger, 131072) != current:
+                      refuse()
+              else:
+                  refuse()
+
+
+          if __name__ == "__main__":
+              try:
+                  main()
+              except Exception:
+                  print("::error::Fixed pre-pin image policy failed closed; no raw report or scanner log is published.", file=sys.stderr)
+                  sys.exit(1)
+          PY_SCAN
+          # <<< prepin-scan-driver
+          python3 "$scan_root/scan.py" init
+          printf 'PREPIN_SCAN_ROOT=%s\n' "$scan_root" >> "$GITHUB_ENV"
+          trap - EXIT
+
       - name: Update kustomization image digests
         if: steps.digests.outputs.count != '0'
         env:
           IMAGE_PREFIX: ${{ inputs.image_prefix }}
           KUSTOMIZATION_PATH: ${{ inputs.kustomization_path }}
+          REQUIRE_IMAGE_SCAN: ${{ inputs.require_image_scan }}
+          GHCR_SCAN_USERNAME: ${{ github.actor }}
+          GHCR_SCAN_TOKEN: ${{ secrets.GHCR_PAT || github.token }}
           CERT_IDENTITY_REGEXP: ${{ steps.selfref.outputs.identity_regexp }}
         run: |
           set -euo pipefail
@@ -894,6 +1262,12 @@ jobs:
           # this caller's SHA identity only when that SHA was proven to be on
           # madfam-org/enclii main or a v* tag. Never verify against empty.
           : "${CERT_IDENTITY_REGEXP:?signer identity regexp was not resolved}"
+          case "$REQUIRE_IMAGE_SCAN" in true|false) ;; *) exit 1 ;; esac
+          if [ "$REQUIRE_IMAGE_SCAN" = true ]; then
+            umask 077
+            : "${PREPIN_SCAN_ROOT:?fixed scanner was not prepared}"
+            python3 "$PREPIN_SCAN_ROOT/scan.py" validate
+          fi
           cd "$KUSTOMIZATION_PATH"
           shopt -s nullglob
           # Absolute path only. The old relative `../../../digests/*.txt` glob
@@ -911,16 +1285,18 @@ jobs:
             fi
             ref="${IMAGE_PREFIX}/${name}@${digest}"
             echo "Verifying cosign signature for $ref"
+            verify_root=/tmp
+            if [ "$REQUIRE_IMAGE_SCAN" = true ]; then verify_root="$PREPIN_SCAN_ROOT"; fi
             verified=0
             for wait in 0 5 10 20 30 60; do
               if [ "$wait" -gt 0 ]; then
                 echo "Signature not visible yet for $ref, retrying in ${wait}s..."
                 sleep "$wait"
               fi
-              if COSIGN_EXPERIMENTAL=1 cosign verify \
+              if (ulimit -f 1024; COSIGN_EXPERIMENTAL=1 cosign verify \
                 --certificate-identity-regexp="${CERT_IDENTITY_REGEXP}" \
                 --certificate-oidc-issuer='https://token.actions.githubusercontent.com' \
-                "$ref" >"/tmp/cosign-verify-${name}.json" 2>"/tmp/cosign-verify-${name}.err"; then
+                "$ref" >"$verify_root/cosign-verify-${name}.json" 2>"$verify_root/cosign-verify-${name}.err"); then
                 verified=1
                 break
               fi
@@ -928,9 +1304,25 @@ jobs:
             if [ "$verified" -ne 1 ]; then
               echo "ERROR: Refusing to pin unsigned or unverifiable digest $ref"
               echo "Accepted signer identities: ${CERT_IDENTITY_REGEXP}"
-              cat "/tmp/cosign-verify-${name}.err" || true
+              if [ "$REQUIRE_IMAGE_SCAN" != true ]; then
+                cat "/tmp/cosign-verify-${name}.err" || true
+              fi
               exit 1
             fi
+            if [ "$REQUIRE_IMAGE_SCAN" = true ]; then
+              python3 "$PREPIN_SCAN_ROOT/scan.py" scan "$ref"
+            fi
+          done
+          # Every service must pass before the first local manifest edit.
+          if [ "$REQUIRE_IMAGE_SCAN" = true ]; then
+            scan_ledger_sha=$(python3 "$PREPIN_SCAN_ROOT/scan.py" seal)
+            python3 "$PREPIN_SCAN_ROOT/scan.py" check "$scan_ledger_sha"
+            printf 'PREPIN_SCAN_LEDGER_SHA256=%s\n' "$scan_ledger_sha" >> "$GITHUB_ENV"
+          fi
+          for f in "$GITHUB_WORKSPACE"/digests/*.txt; do
+            line=$(cat "$f")
+            name="${line%%=*}"
+            digest="${line#*=}"
             echo "Pinning signed digest $name to $digest"
             kustomize edit set image "${IMAGE_PREFIX}/${name}=${IMAGE_PREFIX}/${name}@${digest}"
           done
@@ -939,12 +1331,21 @@ jobs:
         id: commit
         if: steps.digests.outputs.count != '0'
         env:
+          REQUIRE_IMAGE_SCAN: ${{ inputs.require_image_scan }}
           CI_USER_NAME: ${{ inputs.ci_user_name }}
           CI_USER_EMAIL: ${{ inputs.ci_user_email }}
           IMAGE_PREFIX: ${{ inputs.image_prefix }}
           KUSTOMIZATION_PATH: ${{ inputs.kustomization_path }}
         run: |
           set -euo pipefail
+          check_scan_ledger() {
+            case "$REQUIRE_IMAGE_SCAN" in
+              true) python3 "${PREPIN_SCAN_ROOT:?fixed scanner missing}/scan.py" check "${PREPIN_SCAN_LEDGER_SHA256:?scan was not accepted}" ;;
+              false) ;;
+              *) exit 1 ;;
+            esac
+          }
+          check_scan_ledger
           git config user.name "$CI_USER_NAME"
           git config user.email "$CI_USER_EMAIL"
           target="${KUSTOMIZATION_PATH}/kustomization.yaml"
@@ -956,9 +1357,11 @@ jobs:
           # tree is pristine or already carries a competitor's pin. The digests
           # were persisted to $GITHUB_WORKSPACE/digests/*.txt by the derive
           # step and verified (signature-gated) by "Update kustomization image
-          # digests"; we do NOT re-verify here, we only re-materialize the edit.
+          # digests". Strict mode revalidates the sealed scan ledger before
+          # initial commit, every retry, and every re-materialization.
           apply_our_digests() {
             ( set -euo pipefail
+              check_scan_ledger
               cd "$KUSTOMIZATION_PATH"
               shopt -s nullglob
               for f in "$GITHUB_WORKSPACE"/digests/*.txt; do
@@ -1010,6 +1413,7 @@ jobs:
           # kustomization structure so `kustomize edit` can't parse it — still
           # fails loudly, because apply_our_digests runs under `set -e`.
           for attempt in 1 2 3 4 5; do
+            check_scan_ledger
             if git push; then
               echo "pin_commit=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
               exit 0
@@ -1170,6 +1574,17 @@ jobs:
             exit 1
           fi
           echo "registered $sent release event(s)"
+
+      - name: Remove private pre-pin scan evidence
+        if: always() && inputs.require_image_scan
+        run: |
+          set -euo pipefail
+          if [ -n "${PREPIN_SCAN_ROOT:-}" ]; then
+            case "$PREPIN_SCAN_ROOT" in
+              "$RUNNER_TEMP"/enclii-prepin-scan.*) rm -rf -- "$PREPIN_SCAN_ROOT" ;;
+              *) echo "::error::Unexpected scanner cleanup path."; exit 1 ;;
+            esac
+          fi
 
   # ---------------------------------------------------------------------------
   # The silent-stale-deploy guard.
