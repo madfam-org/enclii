@@ -131,6 +131,7 @@ func (h *Handler) registerAdminRoutes(protected *gin.RouterGroup) {
 	platform.POST("/onboard/ensure", h.EnsureOnboarding)
 	platform.POST("/onboard/preflight", h.PreflightOnboard)
 	platform.GET("/preflight", h.PreflightImageGates) // image gates preflight, see onboarding_image_gates.go
+	registerArgoUpgradeInventoryRoutes(platform, h)
 	platform.GET("/onboard", h.ListOnboardings)
 	platform.GET("/onboard/:owner/:repo", h.GetOnboarding)
 	platform.POST("/projects/:slug/environments/:env_name/bootstrap", h.RequirePlatformOperator(), h.BootstrapStagingNamespace)
