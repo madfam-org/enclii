@@ -90,6 +90,7 @@ type Config struct {
 
 	// ArgoCD Integration
 	ArgocdWebhookSecret           string
+	ArgocdProtectedBackupEnabled  bool   // ARGOCD_PROTECTED_BACKUP_ENABLED; source preparation defaults disabled
 	ArgocdRegistrationMode        string // "runtime" (default zero-touch reconciliation) or "gitops" (legacy Enclii config write)
 	AllowLegacyGitOpsRegistration bool   // Explicit break-glass gate for legacy Enclii repo ArgoCD writes
 	ArgocdNamespace               string // Namespace containing ArgoCD Application CRs (default: argocd)
@@ -321,6 +322,8 @@ func Load() (*Config, error) {
 	viper.SetDefault("github-webhook-secret", "")            // Webhook disabled until secret configured
 	viper.SetDefault("github-webhook-builds-enabled", false) // Roundhouse push-builds are opt-in
 	viper.SetDefault("argocd-webhook-secret", "")
+	viper.SetDefault("argocd-protected-backup-enabled", false)
+	_ = viper.BindEnv("argocd-protected-backup-enabled", "ARGOCD_PROTECTED_BACKUP_ENABLED")
 	viper.SetDefault("argocd-registration-mode", "runtime") // "runtime" or legacy "gitops"
 	viper.SetDefault("allow-legacy-gitops-registration", false)
 	viper.SetDefault("argocd-namespace", "argocd")
@@ -439,6 +442,7 @@ func Load() (*Config, error) {
 		GitHubWebhookSecret:               viper.GetString("github-webhook-secret"),
 		GitHubWebhookBuildsEnabled:        viper.GetBool("github-webhook-builds-enabled"),
 		ArgocdWebhookSecret:               viper.GetString("argocd-webhook-secret"),
+		ArgocdProtectedBackupEnabled:      viper.GetBool("argocd-protected-backup-enabled"),
 		ArgocdRegistrationMode:            viper.GetString("argocd-registration-mode"),
 		AllowLegacyGitOpsRegistration:     viper.GetBool("allow-legacy-gitops-registration"),
 		ArgocdNamespace:                   viper.GetString("argocd-namespace"),

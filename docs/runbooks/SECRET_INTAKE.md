@@ -842,12 +842,14 @@ cache entries are ephemeral metadata, not durable operation evidence. No key,
 private value hash, raw origin record, ESO projection, or pod environment is
 returned. This group has no ExternalSecret destination.
 
-The unwired internal read adapter requires that exact retained KV version and
+The internal read adapter requires that exact retained KV version and
 origin and returns only the 32-byte key in backend memory. It refuses missing,
 deleted, destroyed, ambiguous, oversized, or mismatched custody without a latest
 version fallback, redirect, or retry. Actual ACL and version-retention authority,
 durable SQL intent, provider ciphertext custody, isolated restore proof, and
-no-force SSA qualification remain release gates. This profile supplies no backup,
+no-force SSA qualification remain release gates. The separate [fixed backup preparation adapter](ARGOCD_PROTECTED_BACKUP.md)
+ships disabled, includes a reason-only fixed initialization/exact-reference
+recovery binding without general rotation activation, and retains those holds. This profile supplies no direct
 restore, controller upgrade, or financial/fiscal execution endpoint. The existing
 vCluster service is metadata-only and cannot establish isolated restore proof.
 

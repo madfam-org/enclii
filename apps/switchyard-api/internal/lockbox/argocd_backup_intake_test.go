@@ -544,3 +544,31 @@ func TestArgocdBackupActualNativeTransportHasNoHTTPReplay(t *testing.T) {
 		})
 	}
 }
+
+func TestArgocdBackupUnknownACKRetainsExpectedVersionWithoutQualifyingCommit(t *testing.T) {
+	calls := 0
+	client := backupTestClient(func(req *http.Request) (*http.Response, error) {
+		calls++
+		if req.Method == http.MethodGet {
+			return &http.Response{StatusCode: 200, ContentLength: -1, Body: io.NopCloser(strings.NewReader(`{"data":{"data":{"unrelated":"retained"},"metadata":{"version":6,"destroyed":false,"deletion_time":""}}}`))}, nil
+		}
+		return nil, errors.New("private-lost-ack-canary")
+	})
+	expected, err := client.InitializeArgocdBackupEnvelope(t.Context(), backupOriginFixture, backupCustodyUpdates(t))
+	require.ErrorIs(t, err, ErrSecretInitializationOutcomeUnknown)
+	require.Equal(t, 7, expected)
+	require.Equal(t, 2, calls)
+	require.NotContains(t, err.Error(), "canary")
+	calls = 0
+	legacy := backupTestClient(func(req *http.Request) (*http.Response, error) {
+		calls++
+		if req.Method == http.MethodGet {
+			return &http.Response{StatusCode: 404, ContentLength: 0, Body: http.NoBody}, nil
+		}
+		return nil, errors.New("private-lost-ack-canary")
+	})
+	version, err := legacy.InitializeSecretData(t.Context(), "secret/legacy", map[string]interface{}{"new_key": "fixture"})
+	require.ErrorIs(t, err, ErrSecretInitializationOutcomeUnknown)
+	require.Zero(t, version)
+	require.Equal(t, 2, calls)
+}

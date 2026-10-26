@@ -2,16 +2,16 @@ package api
 
 import (
 	"context"
-	"encoding/base64"
-	"encoding/json"
 	"errors"
 	"net/http"
+	"net/http/httptest"
 	"strings"
 	"testing"
-	"time"
 
+	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/require"
 
+	"github.com/madfam-org/enclii/apps/switchyard-api/internal/config"
 	"github.com/madfam-org/enclii/apps/switchyard-api/internal/lockbox"
 	"github.com/madfam-org/enclii/apps/switchyard-api/internal/secretsintake"
 )
@@ -41,44 +41,49 @@ func (w *backupIntakeWriter) InitializeArgocdBackupEnvelope(_ context.Context, o
 	return 7, nil
 }
 
-func TestArgocdBackupNativeIntakeCreatesOnlyOpaqueHeldCustody(t *testing.T) {
-	writer := &backupIntakeWriter{}
-	h := &Handler{vaultClient: writer}
-	w := postIntake(t, h, backupIntakeBody)
-	require.Equal(t, http.StatusAccepted, w.Code)
-	require.Equal(t, 1, writer.writes)
-	require.Zero(t, writer.legacy)
-	require.False(t, writer.merged)
-	require.Equal(t, "secret/enclii", writer.path)
-	require.Len(t, writer.updates, 2)
-	encoded := writer.updates[secretsintake.ArgocdBackupKey].(string)
-	key, err := base64.RawURLEncoding.Strict().DecodeString(encoded)
-	require.NoError(t, err)
-	require.Len(t, key, 32)
-	clear(key)
-	var status secretIntakeStatus
-	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &status))
-	require.Equal(t, "initialized_held", status.Status)
-	require.NotNil(t, status.NativeReady)
-	require.False(t, *status.NativeReady)
-	require.Equal(t, 7, status.VaultVersion)
-	require.Empty(t, status.ExternalSecret)
-	require.False(t, status.ExternalSecretRefreshed)
-	require.Equal(t, []string{secretsintake.ArgocdBackupKey}, status.KeysWritten)
-	require.Equal(t, status.KeysWritten, status.KeysGenerated)
-	origin := writer.updates[secretsintake.ArgocdBackupOriginKey].(string)
-	require.NoError(t, secretsintake.ValidateArgocdBackupOrigin(origin, status.OriginID, time.Now().UTC()))
-	require.NotContains(t, w.Body.String(), encoded)
-	require.NotContains(t, w.Body.String(), origin)
-	require.NotContains(t, w.Body.String(), "sha256")
-	stored, err := h.loadIntakeStatus(t.Context(), status.IntakeID)
-	require.NoError(t, err)
-	metadata, err := json.Marshal(stored)
-	require.NoError(t, err)
-	require.NotContains(t, string(metadata), encoded)
-	require.NotContains(t, string(metadata), origin)
-	require.Equal(t, status.OriginID, stored.OriginID)
-	require.False(t, *stored.NativeReady)
+type availabilityBackupIntakeWriter struct {
+	backupIntakeWriter
+	enabled bool
+}
+
+func (w *availabilityBackupIntakeWriter) IsEnabled() bool { return w.enabled }
+
+func TestArgocdBackupGenericIntakeRequiresDedicatedRouteBeforeAnySideEffect(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	for _, broadWriter := range []bool{false, true} {
+		for _, backupFlag := range []bool{false, true} {
+			for _, token := range []bool{false, true} {
+				writer := &availabilityBackupIntakeWriter{enabled: broadWriter}
+				h := &Handler{vaultClient: writer, config: &config.Config{ArgocdProtectedBackupEnabled: backupFlag}}
+				r := gin.New()
+				r.POST("/intake", func(c *gin.Context) {
+					c.Set("user_id", protectedActor)
+					c.Set("user_role", "admin")
+					if token {
+						c.Set("auth_type", "api_token")
+						c.Set("api_token_name", "fixture")
+					}
+					h.SubmitSecretIntake(c)
+				})
+				w := httptest.NewRecorder()
+				request := httptest.NewRequest(http.MethodPost, "/intake", strings.NewReader(backupIntakeBody))
+				request.Header.Set("Content-Type", "application/json")
+				r.ServeHTTP(w, request)
+				if broadWriter {
+					require.Equal(t, http.StatusBadRequest, w.Code)
+					require.Contains(t, w.Body.String(), "fixed_backup_intake_endpoint_required")
+				} else {
+					require.Equal(t, http.StatusServiceUnavailable, w.Code)
+					require.Contains(t, w.Body.String(), "vault_writer_disabled")
+				}
+				require.Zero(t, writer.writes)
+				require.Zero(t, writer.legacy)
+				require.False(t, writer.merged)
+				require.Nil(t, writer.updates)
+				require.Empty(t, writer.path)
+			}
+		}
+	}
 }
 
 func TestArgocdBackupIntakeRefusesImportPartialAliasesAndRotation(t *testing.T) {
@@ -111,19 +116,22 @@ func TestArgocdBackupIntakeRefusesImportPartialAliasesAndRotation(t *testing.T) 
 		writer := &backupIntakeWriter{err: tc.err}
 		// An extra rotate field never changes native whole-group CAS semantics.
 		w := postIntake(t, &Handler{vaultClient: writer}, strings.Replace(backupIntakeBody, `"reason":`, `"rotate":true,"reason":`, 1))
-		require.Equal(t, tc.status, w.Code)
-		require.Equal(t, 1, writer.writes)
+		require.Equal(t, http.StatusBadRequest, w.Code)
+		require.Contains(t, w.Body.String(), "fixed_backup_intake_endpoint_required")
+		require.Zero(t, writer.writes)
 		require.Zero(t, writer.legacy)
 		require.False(t, writer.merged)
 		require.NotContains(t, w.Body.String(), "private-provider-canary")
 	}
 	mergeOnly := &mergeOnlyWriter{}
 	w := postIntake(t, &Handler{vaultClient: mergeOnly}, backupIntakeBody)
-	require.Equal(t, http.StatusServiceUnavailable, w.Code)
+	require.Equal(t, http.StatusBadRequest, w.Code)
+	require.Contains(t, w.Body.String(), "fixed_backup_intake_endpoint_required")
 	require.False(t, mergeOnly.merged)
 	legacyOnly := &initializerWriter{}
 	w = postIntake(t, &Handler{vaultClient: legacyOnly}, backupIntakeBody)
-	require.Equal(t, http.StatusServiceUnavailable, w.Code)
+	require.Equal(t, http.StatusBadRequest, w.Code)
+	require.Contains(t, w.Body.String(), "fixed_backup_intake_endpoint_required")
 	require.False(t, legacyOnly.initialized)
 	require.False(t, legacyOnly.merged)
 }

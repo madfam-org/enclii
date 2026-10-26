@@ -123,20 +123,27 @@ func (v *VaultClient) initializeSecretData(ctx context.Context, path string, upd
 	}
 	v.setInitializationHeaders(write)
 	write.Close = bounded
+	// Only the fixed backup wrapper retains this expected (not committed)
+	// version after an ambiguous POST, permitting exact origin/version readback.
+	// Legacy/staging callers keep their original zero-on-error semantics.
+	unknownVersion := 0
+	if bounded {
+		unknownVersion = snapshot.Data.Metadata.Version + 1
+	}
 	resp, err = client.Do(write)
 	if err != nil {
-		return 0, ErrSecretInitializationOutcomeUnknown
+		return unknownVersion, ErrSecretInitializationOutcomeUnknown
 	}
 	if bounded {
 		raw, boundErr := readBoundedIntakeResponse(resp)
 		if boundErr != nil {
-			return 0, ErrSecretInitializationOutcomeUnknown
+			return unknownVersion, ErrSecretInitializationOutcomeUnknown
 		}
 		defer clear(raw)
 		resp.Body = io.NopCloser(bytes.NewReader(raw))
 		if resp.StatusCode >= 200 && resp.StatusCode < 300 {
 			if _, err := decodeBackupCustodyJSON(raw); err != nil {
-				return 0, ErrSecretInitializationOutcomeUnknown
+				return unknownVersion, ErrSecretInitializationOutcomeUnknown
 			}
 		}
 	}
@@ -149,11 +156,11 @@ func (v *VaultClient) initializeSecretData(ctx context.Context, path string, upd
 	}
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		// Gateway/server failures may arrive after Vault committed the CAS.
-		return 0, ErrSecretInitializationOutcomeUnknown
+		return unknownVersion, ErrSecretInitializationOutcomeUnknown
 	}
 	var written vaultKVWriteResponse
 	if err := decodeInitializationJSON(resp.Body, &written); err != nil || written.Data.Version != snapshot.Data.Metadata.Version+1 {
-		return 0, ErrSecretInitializationOutcomeUnknown
+		return unknownVersion, ErrSecretInitializationOutcomeUnknown
 	}
 	return written.Data.Version, nil
 }

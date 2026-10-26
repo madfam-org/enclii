@@ -40,8 +40,8 @@ func appendArgocdBackupIntakeOrigin(target secretsintake.Target, updates map[str
 }
 
 // No generic path, latest version, raw-map, or alternate credential fallback.
-// This optional internal consumer is deliberately unwired to release/apply
-// endpoints until durable intent and retained-version authority are qualified.
+// A separate backup-only read binding can be wired without enabling generic
+// intake writes or rotation. No controller-upgrade or restore endpoint uses it.
 type vaultArgocdBackupEnvelopeReader interface {
 	ReadArgocdBackupEnvelopeKey(context.Context, string, int) ([]byte, error)
 }
@@ -51,12 +51,21 @@ type vaultArgocdBackupEnvelopeInitializer interface {
 }
 
 func (h *Handler) argocdBackupEnvelopeKey(ctx context.Context, originID string, version int) ([]byte, error) {
-	if h.vaultClient == nil || !h.vaultClient.IsEnabled() || !secretsintake.ValidArgocdBackupOriginID(originID) || version <= 0 {
+	if !secretsintake.ValidArgocdBackupOriginID(originID) || version <= 0 {
 		return nil, fmt.Errorf("backup envelope custody unavailable")
 	}
-	reader, ok := h.vaultClient.(vaultArgocdBackupEnvelopeReader)
-	if !ok {
-		return nil, fmt.Errorf("backup envelope custody unavailable")
+	var reader vaultArgocdBackupEnvelopeReader
+	if h.argocdBackup != nil && h.argocdBackup.keyReader != nil {
+		reader = h.argocdBackup.keyReader
+	} else {
+		if h.vaultClient == nil || !h.vaultClient.IsEnabled() {
+			return nil, fmt.Errorf("backup envelope custody unavailable")
+		}
+		var ok bool
+		reader, ok = h.vaultClient.(vaultArgocdBackupEnvelopeReader)
+		if !ok {
+			return nil, fmt.Errorf("backup envelope custody unavailable")
+		}
 	}
 	key, err := reader.ReadArgocdBackupEnvelopeKey(ctx, originID, version)
 	if err != nil || len(key) != 32 {

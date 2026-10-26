@@ -66,12 +66,17 @@ func wireTenantExport(
 		logrus.WithError(err).Warn("⚠ Tenant export: R2 client init failed; /v1/exports endpoints will return 503")
 		return
 	}
+	// Reuse server-held native storage only after explicit operator activation.
+	// This source wiring is not proof of prefix ACL, retention or backup custody.
+	if cfg.ArgocdProtectedBackupEnabled {
+		apiHandler.SetArgocdBackupStorage(r2Client)
+	}
 
 	exportSvc, err := export.NewService(export.Config{
 		Repo:           repos.TenantExports,
 		Projects:       repos.Projects,
 		ProjectAccess:  repos.ProjectAccess,
-		Storage:        r2Client,
+		Storage:        r2Client.TenantExportStorage(),
 		BundleProvider: export.NewRepoBundleProvider(repos, logrus.StandardLogger()),
 		DumpProvider:   export.NewJobPgDumpProvider(logrus.StandardLogger(), k8sClient, r2Client, prefix),
 		BlobProvider:   export.NewR2BlobProvider(r2Client, nil, logrus.StandardLogger()),

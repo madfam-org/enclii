@@ -129,6 +129,12 @@ func (h *Handler) SubmitSecretIntake(c *gin.Context) {
 		c.JSON(http.StatusNotFound, gin.H{"error": "unknown_target", "message": err.Error()})
 		return
 	}
+	// This purpose-bound profile has its own default-off, active-human route.
+	// Broad writer activation must never authorize it through generic intake.
+	if target.ID == secretsintake.ArgocdBackupTargetID || (target.Generate != nil && target.Generate.Profile == secretsintake.ArgocdBackupProfile) {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "fixed_backup_intake_endpoint_required"})
+		return
+	}
 
 	updates, keysWritten, err := validateIntakeValues(target, req.Values)
 	if err != nil {

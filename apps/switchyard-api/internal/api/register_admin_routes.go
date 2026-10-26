@@ -61,6 +61,7 @@ func (h *Handler) registerAdminRoutes(protected *gin.RouterGroup) {
 	// Everything under /v1/admin/* is platform-only except the one route
 	// re-registered on `admin` at the bottom of this function.
 	platform := admin.Group("", h.RequirePlatformAdmin())
+	registerArgoProtectedBackupRoutes(platform, h)
 
 	// Fleet Management (Bare Metal Hosts)
 	platform.GET("/fleet", h.ListBareMetalHosts)

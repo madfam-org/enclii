@@ -3,6 +3,7 @@ package storage
 import (
 	"bytes"
 	"context"
+	"crypto/tls"
 	"errors"
 	"io"
 	"net/http"
@@ -28,6 +29,31 @@ var (
 )
 var argoBackupAccount = regexp.MustCompile(`^[a-f0-9]{32}$`)
 var argoBackupBucket = regexp.MustCompile(`^[a-z0-9][a-z0-9.-]{1,61}[a-z0-9]$`)
+
+// Package-private, deterministic fake seam. Production opaque transports cannot
+// claim the native physical single-attempt contract.
+type argoBackupSingleAttemptTransport interface {
+	http.RoundTripper
+	argoBackupSingleAttempt()
+}
+
+func argoBackupNativeTransport(native *http.Transport) (*http.Transport, error) {
+	if native == nil || (native.TLSClientConfig != nil && native.TLSClientConfig.InsecureSkipVerify) {
+		return nil, ErrArgoBackupHeld
+	}
+	owned := native.Clone()
+	owned.DisableCompression = true
+	owned.DisableKeepAlives = true
+	owned.ForceAttemptHTTP2 = false
+	owned.TLSNextProto = make(map[string]func(string, *tls.Conn) http.RoundTripper)
+	owned.Protocols = new(http.Protocols)
+	owned.Protocols.SetHTTP1(true)
+	if owned.TLSClientConfig == nil {
+		owned.TLSClientConfig = &tls.Config{}
+	}
+	owned.TLSClientConfig.NextProtos = []string{"http/1.1"}
+	return owned, nil
+}
 
 // PutArgoBackupCiphertextOnce sends one conditional put through the existing
 // server-held R2 client. It accepts only a sealed envelope, never plaintext,
@@ -140,11 +166,10 @@ func (r *R2Client) argoBackupOptions(ref argocdbackup.Reference, method string) 
 		if current == nil {
 			return nil, nil, ErrArgoBackupHeld
 		}
-		owned := current.GetTransport()
-		if owned.TLSClientConfig != nil && owned.TLSClientConfig.InsecureSkipVerify {
+		owned, err := argoBackupNativeTransport(current.GetTransport())
+		if err != nil {
 			return nil, nil, ErrArgoBackupHeld
 		}
-		owned.DisableCompression = true
 		transport = owned
 		cleanup = owned.CloseIdleConnections
 	case *http.Client:
@@ -156,17 +181,17 @@ func (r *R2Client) argoBackupOptions(ref argocdbackup.Reference, method string) 
 		if transport == nil {
 			transport = http.DefaultTransport
 		}
-		if current, ok := transport.(*http.Transport); ok {
-			if current == nil {
+		switch current := transport.(type) {
+		case *http.Transport:
+			owned, err := argoBackupNativeTransport(current)
+			if err != nil {
 				return nil, nil, ErrArgoBackupHeld
 			}
-			owned := current.Clone()
-			if owned.TLSClientConfig != nil && owned.TLSClientConfig.InsecureSkipVerify {
-				return nil, nil, ErrArgoBackupHeld
-			}
-			owned.DisableCompression = true
 			transport = owned
 			cleanup = owned.CloseIdleConnections
+		case argoBackupSingleAttemptTransport:
+		default:
+			return nil, nil, ErrArgoBackupHeld
 		}
 	default:
 		return nil, nil, ErrArgoBackupHeld
@@ -175,6 +200,7 @@ func (r *R2Client) argoBackupOptions(ref argocdbackup.Reference, method string) 
 		client.Timeout = 35 * time.Second
 	}
 	client.CheckRedirect = func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }
+	client.Jar = nil
 	client.Transport = argoBackupTransport{next: transport, origin: origin, path: "/" + r.bucket + "/" + key, method: method, getBodyLimit: ref.Size()}
 	return func(o *s3.Options) {
 		o.HTTPClient = &client

@@ -63,6 +63,7 @@ type Handler struct {
 	builder         *builder.Service
 	k8sClient       *k8s.Client
 	vaultClient     VaultSecretWriter
+	argocdBackup    *argoProtectedBackupDependencies
 
 	// kalyaFeedMinter overrides the live kalya internal feed-token client.
 	// Nil uses the real HTTP client; tests substitute a fake endpoint.
