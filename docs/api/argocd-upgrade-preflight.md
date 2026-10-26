@@ -36,8 +36,9 @@ atomic installation-wide snapshot or a mutation precondition.
 ConfigMap values are limited to explicit tracking-mode, default instance-label,
 log-level, boolean and numeric settings. Container templates expose only exact
 public image references from the frozen Argo 3.2.5/3.3.17 cohorts; custom tags
-and unqualified digest references are withheld. They also expose a small fixed command/argument list,
-and explicit nonsecret log settings. Unknown values and credential references
+and unqualified digest references are withheld. Container templates also expose
+a small fixed command/argument list and explicit nonsecret log settings.
+Unknown values and credential references
 produce counts, presence indicators and holds. No unknown inline value, config
 value, node-selection value, or raw managed-field selector is fingerprinted.
 Secret, Pod and Node resources are never requested. Provider, OIDC, RBAC policy,
@@ -47,8 +48,14 @@ Transport errors are reduced to fixed classifications.
 The three CRDs expose bounded served/storage/stored-version and Established
 metadata. Full schemas, conversion URLs and provider data remain private.
 Unknown or oversized projections remain held; no truncated projection counts
-as complete evidence. The reader adds no RBAC grant. Missing existing read
-permission remains an explicit per-object hold.
+as complete evidence. The declarative policy in
+`infra/k8s/cross-namespace-rbac/rbac.yaml` grants missing reads only for named
+fixed inventory objects. Namespaced reads remain in `argocd`; cluster-scoped
+reads cover named Argo CRDs and install RBAC objects. The additional list
+permission covers only StatefulSets in `argocd`, which the bounded layout
+observation requires. Existing Deployment list authority is reused. The
+reader itself never writes RBAC. A missing actual permission still produces
+an explicit hold; desired policy is not evidence of deployed authority.
 
 Before an actual upgrade, separate native mechanisms still need to establish:
 

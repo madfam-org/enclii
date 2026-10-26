@@ -22,11 +22,19 @@ resource identity, source hash, configuration or upstream error text. The
 complete whitelist is in
 [`karafiel_production_diagnostics.go`](../../apps/switchyard-api/internal/workloadtargets/karafiel_production_diagnostics.go).
 
-There is no diagnostic request flag, additional permission, extra resource
-read or mutation. HTTP statuses and the existing refusal fields retain their
+The diagnostic fields use the endpoint's existing operator permission and
+resource reads. There is no diagnostic request flag or extra resource read.
+HTTP statuses and the existing refusal fields retain their
 meaning. Authentication and malformed-request refusals are unchanged. A
 successful dry plan, plan fingerprint, apply, replay or commit-unknown response
 is unchanged. Diagnostic data never enters a persisted binding or audit event.
+
+Production enrollment requires `get` on the named
+`ApplicationSet/project-applications` in `argocd`. Later staging authority
+checks require `get` on `AppProject/karafiel-staging` in that namespace. The
+cross-namespace policy grants these reads through the existing Switchyard
+binding. These read permissions do not authorize ownership repair or a
+resource mutation, and their desired manifest is not live proof.
 
 A refusal remains a hold. A code identifies a failed check; it does not prove
 that other checks passed or authorize a retry, metadata repair, source change,
