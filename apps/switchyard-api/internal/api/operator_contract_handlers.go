@@ -117,6 +117,11 @@ func (h *Handler) handleOperatorOperation(c *gin.Context, prefix, domain, action
 		c.JSON(status, resp)
 		return
 	}
+	if prefix == "ops" && domain == "addons" && action == "backup-credential" {
+		resp, status := h.handleOpsAddonsBackupCredential(c.Request.Context(), req, opsActorFromContext(c))
+		c.JSON(status, resp)
+		return
+	}
 	if prefix == "ops" && domain == "addons" && action == "hibernate" {
 		resp, status := h.handleOpsAddonsHibernate(c.Request.Context(), req, opsActorFromContext(c))
 		c.JSON(status, resp)

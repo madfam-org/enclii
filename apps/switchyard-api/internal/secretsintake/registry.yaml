@@ -187,22 +187,28 @@ targets:
   # addon cluster backs up with. Until this target existed the Secret the
   # provisioner replicates (enclii/enclii-db-backup-credentials) had no writer,
   # so no addon had ever been backed up (AddonBackupNeverCompleted on every
-  # live cluster). An R2 API token minted on Cloudflare's side, Object Read &
-  # Write, scoped to the enclii-addon-db-backups bucket ONLY: the copy lands in
-  # every addon namespace, so a bucket-wide or account-wide token there would
-  # expose the platform backups too. Never generated. Create the bucket BEFORE
-  # submitting: the submit is what arms WAL archiving on every live cluster
-  # within one reconciler sweep, and archiving into a missing bucket fails.
+  # live cluster). An R2 token scoped to the enclii-addon-db-backups bucket
+  # ONLY: the copy lands in every addon namespace, so a bucket-wide or
+  # account-wide token there would expose the platform backups too.
+  #
+  # NO HUMAN HOLDS IT (owner rule, 2026-10-26: only the Vault admin token is
+  # handled by a person). `enclii ops addons backup-credential` ensures the
+  # bucket and mints the token server-side through R2Provisioner, then merges
+  # the two keys into this path; dry run, plan hash, audit, idempotent
+  # (apps/switchyard-api/internal/api/operator_addons_backup_credential.go).
+  # This entry stays the routing contract (path and key names) that the
+  # operation and the ExternalSecret share. A hand submit here is break-glass
+  # only and needs a token minted outside Enclii.
   # The enclii-db-backup-credentials ExternalSecret
   # (infra/k8s/production/enclii-db-backup-credentials.externalsecret.yaml)
-  # projects the two properties as ACCESS_KEY_ID / SECRET_ACCESS_KEY on its
-  # 15-minute refresh; this target names no external_secret, so intake does
-  # not force-sync it (run `enclii ops secrets sync-sweep` to hurry it). Same
-  # Vault path as the other enclii targets (the intake write is a merge), so
+  # projects the two properties as ACCESS_KEY_ID / SECRET_ACCESS_KEY. This
+  # target names no external_secret (a hand submit lands on the 15-minute
+  # refresh); the ops operation force-syncs it itself. Same
+  # Vault path as the other enclii targets (the write is a merge), so
   # the writer policy needs no new path (scripts/check-intake-policy-parity.sh).
   enclii/addon-db-backups:
     label: Addon database backups (R2 token for enclii-addon-db-backups)
-    description: S3 access key id and secret of a Cloudflare R2 API token with Object Read & Write on the enclii-addon-db-backups bucket only; minted in Cloudflare and typed at the masked prompt, never generated. Create the bucket first. Projected to enclii/enclii-db-backup-credentials on the ExternalSecret's 15-minute refresh (not force-synced), which Switchyard replicates into each addon namespace; the reconciler's backup sweep then wires backups onto every live addon cluster within about ten more minutes.
+    description: S3 access key id and secret of a Cloudflare R2 token with Object Read & Write on the enclii-addon-db-backups bucket only. Provisioned server-side by `enclii ops addons backup-credential` (bucket ensured, token minted and stored by Switchyard, never generated here and never seen by a human); do not submit by hand except as break-glass. Projected to enclii/enclii-db-backup-credentials, which Switchyard replicates into each addon namespace; the reconciler's backup sweep then wires backups onto every live addon cluster.
     vault_path: secret/enclii
     namespace: enclii
     keys:

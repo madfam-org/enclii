@@ -27,6 +27,7 @@ once the server-side adapter supports the operation.`,
 	cmd.AddCommand(newOpsPodsCommand(cfg))
 	cmd.AddCommand(newOpsJobsCommand(cfg))
 	cmd.AddCommand(newOpsStorageCommand(cfg))
+	cmd.AddCommand(newOpsAddonsCommand(cfg))
 	cmd.AddCommand(newOpsSecretsCommand(cfg))
 	cmd.AddCommand(newOpsPolicyCommand(cfg))
 	cmd.AddCommand(newOpsRunnersCommand(cfg))

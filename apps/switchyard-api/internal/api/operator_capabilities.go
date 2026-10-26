@@ -18,8 +18,8 @@ var opsCapabilities = []operatorCapability{
 	{
 		Name:        "addons",
 		Status:      "partial",
-		Description: "Hibernate a retired, unbound managed-Postgres addon: CNPG hibernation annotation, instance pods stopped, exporter at zero; plan-hash guarded, audited, never deletes data (platform rank)",
-		Actions:     []string{"hibernate"},
+		Description: "Hibernate a retired, unbound managed-Postgres addon: CNPG hibernation annotation, instance pods stopped, exporter at zero; plan-hash guarded, audited, never deletes data. backup-credential ensures the addon backup bucket and mints a token scoped to it only, merged into Vault and never returned; plan-hash guarded, audited, idempotent (platform rank)",
+		Actions:     []string{"hibernate", "backup-credential"},
 		Scopes:      []string{"project", "target"},
 	},
 	{

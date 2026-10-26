@@ -89,6 +89,39 @@ const backupFieldManager = "enclii-addon-backups"
 // suspended on purpose.
 const suspendedForHibernation = "enclii.dev/suspended-for-hibernation"
 
+// BackupStore is the configured addon backup object store, as the provisioner
+// and the backup sweep see it. Exported for ops.addons.backup-credential,
+// which provisions the store's credential and must target exactly the bucket
+// and endpoint the clusters will use.
+type BackupStore struct {
+	DestinationBase string
+	EndpointURL     string
+}
+
+// BackupStoreFromEnv reads ENCLII_ADDON_BACKUP_DESTINATION_BASE and
+// ENCLII_ADDON_BACKUP_ENDPOINT_URL.
+func BackupStoreFromEnv() BackupStore {
+	return BackupStore(backupConfigFromEnv())
+}
+
+// Bucket returns the bucket of an s3://<bucket>[/<prefix>] destination base,
+// or an error when the base is unset or not of that form.
+func (b BackupStore) Bucket() (string, error) {
+	base := strings.TrimSpace(b.DestinationBase)
+	if base == "" {
+		return "", ErrBackupStoreNotConfigured
+	}
+	rest, ok := strings.CutPrefix(base, "s3://")
+	if !ok {
+		return "", fmt.Errorf("ENCLII_ADDON_BACKUP_DESTINATION_BASE %q is not an s3:// URL", base)
+	}
+	bucket, _, _ := strings.Cut(rest, "/")
+	if bucket == "" {
+		return "", fmt.Errorf("ENCLII_ADDON_BACKUP_DESTINATION_BASE %q names no bucket", base)
+	}
+	return bucket, nil
+}
+
 // backupStanza is the spec.backup Enclii writes for one cluster: barman object
 // store at a per-cluster prefix, the replicated credential, and retention.
 // CNPG archives WAL to the same destination, so this is base backups AND

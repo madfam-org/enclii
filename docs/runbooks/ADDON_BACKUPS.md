@@ -1,5 +1,9 @@
 # Managed Postgres Addon Backups
 
+> **Boundary checkpoint (2026-10-26, provisioning):** the credential is
+> provisioned by `ops.addons.backup-credential`; this page names Cloudflare
+> permission-group names and object names only, never a token or key.
+>
 > **Boundary checkpoint (2026-10-26, platform on-call):** adds an intake target
 > id, Vault property NAMES, Kubernetes object names, a bucket name and the
 > drill's plan-hash procedure. No credential value, account identifier beyond
@@ -94,50 +98,71 @@ Fail visible: while the store or its credential is missing, every sweep logs
 one ERROR line with the unprotected count, and `AddonBackupNeverCompleted`
 keeps paging.
 
-## Operator prerequisites (one-time, owner)
+## Provisioning the credential (one-time; no human holds it)
 
-Merged and synced, the code and manifests are inert until the credential
-exists. In this order:
+Owner rule (2026-10-26): a person handles only the Vault admin token; every
+other credential is provisioned by Enclii. The addon backup credential is no
+exception. Nobody creates the bucket, mints a token or types a key. Switchyard
+does all three through `ops.addons.backup-credential`:
 
-1. **Create the R2 bucket** `enclii-addon-db-backups` in the platform
-   Cloudflare account. It is separate from the platform `enclii-backups`
-   bucket so tenant retention and the tenant-facing credential stay apart.
-   Create it first: submitting the credential is what arms WAL archiving on
-   every live cluster within one sweep, and archiving into a missing bucket
-   fails.
-2. **Mint an R2 API token**: permission Object Read & Write, scoped to the
-   `enclii-addon-db-backups` bucket **only**.
+1. ensure the bucket that `ENCLII_ADDON_BACKUP_DESTINATION_BASE` names
+   (`enclii-addon-db-backups`), adopting it if it exists;
+2. mint a Cloudflare API token scoped to **that bucket only**, permission
+   group "Workers R2 Storage Bucket Item Write" (Object Read & Write), through
+   the same `R2Provisioner` that project buckets use;
+3. merge the S3 pair into `secret/enclii` (`addon_backup_access_key_id` = the
+   token id, `addon_backup_secret_access_key` = sha256 of the token value), the
+   path and keys of the intake target `enclii/addon-db-backups`;
+4. force-sync the `enclii-db-backup-credentials` ExternalSecret
+   (`infra/k8s/production/enclii-db-backup-credentials.externalsecret.yaml`),
+   which templates exactly `ACCESS_KEY_ID` / `SECRET_ACCESS_KEY`.
 
-   > [!WARNING]
-   > **Least-privilege the R2 token.** The copy's lifetime and tamper surface
-   > are bounded in code, but the *credential itself* is only as scoped as the
-   > R2 token you mint. The copy lands in every addon namespace, so a
-   > bucket-wide or account-wide token there would expose other backups.
-   > Mint a token scoped to the addon-backups bucket ONLY, and prefer a
-   > per-prefix token as the object store gains per-tenant paths. Remaining
-   > leg of audit finding #1.
-3. **Submit it through intake** (masked prompt; never paste it in chat or git):
+The secret is never returned, printed, logged or written to an audit row. The
+token id (the access key id) is reported: it is not secret, and it is the
+handle for revoking the token.
 
-   ```bash
-   enclii secrets intake submit enclii/addon-db-backups \
-     --reason "addon backups: R2 token for enclii-addon-db-backups"
-   enclii secrets intake status int_<id>
-   ```
+It is a dry run, a review, then an apply bound to the reviewed plan. Never
+paste the two as one block.
 
-   The prompt asks for `addon_backup_access_key_id` and
-   `addon_backup_secret_access_key` (the token's S3 access key id and secret).
-   Intake merges them into `secret/enclii`. The `enclii-db-backup-credentials`
-   ExternalSecret
-   (`infra/k8s/production/enclii-db-backup-credentials.externalsecret.yaml`)
-   picks them up on its 15-minute refresh and writes exactly
-   `ACCESS_KEY_ID` / `SECRET_ACCESS_KEY` (a template, so no other
-   `secret/enclii` property reaches a Secret that is copied into every addon
-   namespace). Intake does not force-sync it; to hurry it:
+```bash
+# 1. Dry run: writes nothing. Shows bucket create|adopt, token mint|keep,
+#    the Vault path and keys, and plan_hash.
+enclii ops addons backup-credential
 
-   ```bash
-   enclii ops secrets sync-sweep                       # dry run: review the plan
-   enclii ops secrets sync-sweep --apply --reason "addon backups credential"
-   ```
+# 2. Review the plan.
+
+# 3. Apply, bound to it.
+enclii ops addons backup-credential --apply \
+  --expect-plan <plan_hash> \
+  --idempotency-key addon-backups-credential-1 \
+  --reason "addon backups: provision the bucket-scoped R2 credential"
+```
+
+Properties:
+
+- **Platform rank** only. Apply writes an audit row before any Cloudflare or
+  Vault mutation and refuses to start without one; a second row records the
+  result (token name and id, bucket created or adopted, Vault version).
+- **Idempotent.** When Vault already holds both keys the plan is `keep`, the
+  dry run reports `succeeded`, and an apply writes nothing. Replaying a spent
+  plan never mints a second token.
+- **Rotation only when asked:** pass `--rotate` to both the dry run and the
+  apply. The previous token is reported, not revoked: running clusters keep
+  archiving with their copies until the sweep replaces them. Revoke it in
+  Cloudflare once `AddonWALArchiveFailing` has stayed quiet for a day.
+- **A refused mint names the missing permission.** If Cloudflare refuses, the
+  result is `blocked` (HTTP 424) and names the exact permission the
+  switchyard-api `CLOUDFLARE_API_TOKEN` lacks on the account: "API Tokens
+  Write" plus "Workers R2 Storage Bucket Item Write" to mint, or "Workers R2
+  Storage Write" to create or read the bucket. Nothing is written to Vault.
+  The dry run cannot prove the mint permission; only the apply exercises it.
+- **A failed Vault write revokes the new token,** so no unrecorded credential
+  is left behind.
+- **Endpoint guard.** The plan is refused if `ENCLII_ADDON_BACKUP_ENDPOINT_URL`
+  is not the account switchyard-api provisions in.
+
+Within one ExternalSecret sync (forced by the apply) plus one backup sweep
+(about 10 minutes), every live, awake addon cluster is wired.
 
 switchyard-api already carries, in git
 (`infra/k8s/production/environment-patch.yaml`):
@@ -147,12 +172,15 @@ switchyard-api already carries, in git
   one `postgres-ha` uses)
 
 Empty destination base = backups disabled (ERROR on every provision and every
-sweep). Rotation: submit the target again; ESO updates the source Secret
-within its refresh interval and the next sweep replaces every copy.
+sweep).
+
+**Break-glass only:** `enclii secrets intake submit enclii/addon-db-backups`
+still writes the same two keys, but it needs a token minted outside Enclii.
+It is not the procedure.
 
 ## Verify
 
-Within about 25 minutes of the submit (one ExternalSecret refresh plus one
+Within about 10 minutes of the apply (the forced ExternalSecret sync plus one
 sweep), then again after the first
 immediate backup completes. Read-only; raw `kubectl` here is break-glass
 **read** because no Enclii read returns CNPG backup objects yet:
