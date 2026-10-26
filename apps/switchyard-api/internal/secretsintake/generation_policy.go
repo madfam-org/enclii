@@ -15,6 +15,12 @@ const (
 // Typed profiles are deliberately scoped to the isolated staging destination.
 // A copied policy must not silently turn into a production key generator.
 func validateGenerationPolicy(t Target) error {
+	if err := validateArgocdBackupReservation(t); err != nil {
+		return err
+	}
+	if t.ID == ArgocdBackupTargetID {
+		return nil
+	}
 	if keys, fixed := map[string][]string{
 		"karafiel-staging/web-oidc":   {"web_oidc_client_id", "web_janua_secret_key", "web_oidc_issuer"},
 		"karafiel-staging/admin-oidc": {"admin_oidc_client_id", "admin_janua_secret_key", "admin_oidc_issuer"},

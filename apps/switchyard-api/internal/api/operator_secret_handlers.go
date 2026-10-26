@@ -9,6 +9,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/madfam-org/enclii/apps/switchyard-api/internal/secretsintake"
+
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
@@ -425,24 +427,7 @@ func normalizedVaultUpdates(data map[string][]byte) (map[string]interface{}, []s
 }
 
 func normalizeVaultSecretKey(key string) string {
-	var b strings.Builder
-	lastUnderscore := true
-	for i := 0; i < len(key); i++ {
-		ch := key[i]
-		if ch >= 'A' && ch <= 'Z' {
-			ch += 'a' - 'A'
-		}
-		if (ch >= 'a' && ch <= 'z') || (ch >= '0' && ch <= '9') {
-			b.WriteByte(ch)
-			lastUnderscore = false
-			continue
-		}
-		if !lastUnderscore {
-			b.WriteByte('_')
-			lastUnderscore = true
-		}
-	}
-	return strings.Trim(b.String(), "_")
+	return secretsintake.NormalizeVaultSecretKey(key)
 }
 
 var externalSecretGVR = schema.GroupVersionResource{

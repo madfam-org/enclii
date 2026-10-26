@@ -36,6 +36,8 @@ type secretIntakeStatus struct {
 	KeysWritten             []string  `json:"keys_written"`
 	KeysGenerated           []string  `json:"keys_generated,omitempty"`
 	VaultVersion            int       `json:"vault_version,omitempty"`
+	OriginID                string    `json:"origin_id,omitempty"`
+	NativeReady             *bool     `json:"native_ready,omitempty"`
 	ExternalSecretRefreshed bool      `json:"external_secret_refreshed"`
 	Reason                  string    `json:"reason,omitempty"`
 	ActorSub                string    `json:"actor_sub,omitempty"`
@@ -102,7 +104,12 @@ func (h *Handler) SubmitSecretIntake(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid_request", "message": err.Error()})
 		return
 	}
+	rawTarget := req.Target
 	req.Target = strings.TrimSpace(req.Target)
+	if req.Target == secretsintake.ArgocdBackupTargetID && rawTarget != req.Target {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid_request", "message": "backup intake target must be canonical"})
+		return
+	}
 	req.Reason = strings.TrimSpace(req.Reason)
 	if req.Target == "" {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid_request", "message": "target is required"})
@@ -149,8 +156,20 @@ func (h *Handler) SubmitSecretIntake(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid_staging_origin"})
 		return
 	}
+	originID, err := appendArgocdBackupIntakeOrigin(target, updates)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid_backup_origin"})
+		return
+	}
 	var vaultVersion int
-	if target.Generate != nil && target.Generate.Profile != "" {
+	if target.ID == secretsintake.ArgocdBackupTargetID {
+		initializer, ok := h.vaultClient.(vaultArgocdBackupEnvelopeInitializer)
+		if !ok {
+			c.JSON(http.StatusServiceUnavailable, gin.H{"error": "vault_initializer_disabled", "message": "bounded backup initialization is unavailable"})
+			return
+		}
+		vaultVersion, err = initializer.InitializeArgocdBackupEnvelope(ctx, originID, updates)
+	} else if target.Generate != nil && target.Generate.Profile != "" {
 		initializer, ok := h.vaultClient.(vaultSecretInitializer)
 		if !ok {
 			c.JSON(http.StatusServiceUnavailable, gin.H{"error": "vault_initializer_disabled", "message": "atomic staging initialization is unavailable"})
@@ -210,10 +229,18 @@ func (h *Handler) SubmitSecretIntake(c *gin.Context) {
 		ExpiresAt:               now.Add(24 * time.Hour),
 		Message:                 intakeStatusMessage(keysGenerated),
 	}
+	if target.ID == secretsintake.ArgocdBackupTargetID {
+		held := false
+		status.Status, status.OriginID, status.NativeReady = "initialized_held", originID, &held
+		status.Message = argocdBackupCustodyHold
+	}
 
 	if err := h.saveIntakeStatus(ctx, status); err != nil {
 		// Vault write succeeded; status cache failure is non-fatal
 		status.Message = "Secret merged into Vault; status cache unavailable"
+		if target.ID == secretsintake.ArgocdBackupTargetID {
+			status.Message = argocdBackupCustodyHold + "; ephemeral status cache unavailable"
+		}
 	}
 
 	c.JSON(http.StatusAccepted, status)
@@ -268,7 +295,7 @@ func validateIntakeValues(target secretsintake.Target, values map[string]string)
 // into updates. Generated values are returned to nobody: they go into the Vault
 // merge map and the key NAMES come back for the audit record.
 func applyGeneratedIntakeValues(target secretsintake.Target, generate []string, updates map[string]interface{}) ([]string, error) {
-	if target.Generate != nil && target.Generate.Profile != "" {
+	if target.ID == secretsintake.ArgocdBackupTargetID || (target.Generate != nil && target.Generate.Profile != "") {
 		values, keys, err := generatedProfileValues(target, generate, updates)
 		if err != nil {
 			return nil, err

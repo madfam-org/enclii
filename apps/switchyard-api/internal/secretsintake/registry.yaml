@@ -183,6 +183,16 @@ targets:
     keys:
       - resend-api-key
 
+  enclii/argocd-backup-envelope:
+    label: Argo CD backup envelope custody
+    description: Native create-only backup key custody; readiness held pending retained-version access and restore qualification
+    vault_path: secret/enclii
+    namespace: enclii
+    keys:
+      - argocd_backup_encryption_key
+    generate:
+      profile: argocd-backup-envelope-v1
+
   enclii/internal-api-key:
     label: Enclii internal API key
     description: Switchyard ↔ Roundhouse internal auth

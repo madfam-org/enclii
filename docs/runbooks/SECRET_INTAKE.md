@@ -816,6 +816,41 @@ Targets with `generate: {disabled: true}` accept supplied values only; they
 refuse `--generate`. A fixed `generate.profile` selects typed initialization
 instead of generic unpadded base64url and cannot override the entropy policy.
 
+### Argo CD backup envelope custody (source preparation; readiness held)
+
+The fixed Vault-only target `enclii/argocd-backup-envelope` uses profile
+`argocd-backup-envelope-v1` at the existing `secret/enclii` path. It generates
+32 CSPRNG bytes as the canonical `argocd_backup_encryption_key` property through
+native intake. Supplied material, partial groups, key aliases, destination
+overrides, and rotation are unsupported. The existing SQL-active human platform
+operator authorization remains required. No writer or rotation flag is enabled
+by this source preparation; do not initialize custody as part of source review.
+
+The key and an opaque origin record enter the same whole-group, create-only KV
+CAS. Existing exact or normalized key/origin aliases refuse without overwrite;
+unrelated keys, numbers, and origins are retained. The dedicated typed wrapper
+uses the existing CAS implementation and caps every response at 64 KiB before
+JSON or status handling. An oversized shared snapshot holds before writing.
+An overflow, read fault, or close fault after a write is an unknown outcome,
+including an apparent success or conflict; inspect custody without retrying or
+regenerating. Existing intake groups retain their current response-size behavior;
+their legacy unbounded-response handling is not qualified by this new wrapper.
+
+Successful intake reports `initialized_held`, `native_ready: false`, and only
+the opaque origin ID, exact KV version, and ordinary intake metadata. Status
+cache entries are ephemeral metadata, not durable operation evidence. No key,
+private value hash, raw origin record, ESO projection, or pod environment is
+returned. This group has no ExternalSecret destination.
+
+The unwired internal read adapter requires that exact retained KV version and
+origin and returns only the 32-byte key in backend memory. It refuses missing,
+deleted, destroyed, ambiguous, oversized, or mismatched custody without a latest
+version fallback, redirect, or retry. Actual ACL and version-retention authority,
+durable SQL intent, provider ciphertext custody, isolated restore proof, and
+no-force SSA qualification remain release gates. This profile supplies no backup,
+restore, controller upgrade, or financial/fiscal execution endpoint. The existing
+vCluster service is metadata-only and cannot establish isolated restore proof.
+
 ### After intake: ESO → reloader
 
 Vault is written; the running pods are not. The rest of the chain is:

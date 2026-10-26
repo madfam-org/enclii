@@ -7,8 +7,11 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"math"
 	"net/http"
 	"strings"
+
+	"github.com/madfam-org/enclii/apps/switchyard-api/internal/secretsintake"
 )
 
 var ErrSecretInitializationConflict = errors.New("secret initialization conflict")
@@ -18,6 +21,13 @@ var ErrSecretInitializationOutcomeUnknown = errors.New("secret initialization ou
 // Any existing group key (even empty) refuses, unrelated keys are retained, and
 // a concurrent write refuses without retry. No value is returned or logged.
 func (v *VaultClient) InitializeSecretData(ctx context.Context, path string, updates map[string]interface{}) (int, error) {
+	return v.initializeSecretData(ctx, path, updates, false)
+}
+
+// The typed backup wrapper shares this exact CAS implementation. Its responses
+// are bounded before status/JSON handling; legacy groups keep their existing
+// size compatibility (their unbounded-response debt is a separate change).
+func (v *VaultClient) initializeSecretData(ctx context.Context, path string, updates map[string]interface{}, bounded bool) (int, error) {
 	if !v.enabled || strings.TrimSpace(path) == "" || len(updates) == 0 {
 		return 0, fmt.Errorf("invalid secret initialization request")
 	}
@@ -31,14 +41,42 @@ func (v *VaultClient) InitializeSecretData(ctx context.Context, path string, upd
 	// per-operation copy preserves the shared client's policy and concurrency.
 	client := *v.httpClient
 	client.CheckRedirect = func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }
+	if bounded {
+		isolated, closeTransport, err := v.backupIntakeClient()
+		if err != nil {
+			return 0, fmt.Errorf("backup intake transport unqualified")
+		}
+		defer closeTransport()
+		client = *isolated
+	}
 	read, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, nil)
 	if err != nil {
 		return 0, fmt.Errorf("create initialization read request")
 	}
 	v.setInitializationHeaders(read)
+	read.Close = bounded
 	resp, err := client.Do(read)
 	if err != nil {
 		return 0, fmt.Errorf("read initialization custody")
+	}
+	if bounded {
+		raw, boundErr := readBoundedIntakeResponse(resp)
+		if boundErr != nil {
+			return 0, fmt.Errorf("read initialization custody")
+		}
+		defer clear(raw)
+		resp.Body = io.NopCloser(bytes.NewReader(raw))
+		if resp.StatusCode == http.StatusOK {
+			parsed, err := decodeBackupCustodyJSON(raw)
+			if err != nil {
+				return 0, fmt.Errorf("invalid initialization custody snapshot")
+			}
+			data, _ := parsed["data"].(map[string]interface{})
+			metadata, _ := data["metadata"].(map[string]interface{})
+			if metadata["destroyed"] != false || metadata["deletion_time"] != "" {
+				return 0, fmt.Errorf("invalid initialization custody snapshot")
+			}
+		}
 	}
 	var snapshot VaultSecretData
 	switch resp.StatusCode {
@@ -56,6 +94,17 @@ func (v *VaultClient) InitializeSecretData(ctx context.Context, path string, upd
 		return 0, fmt.Errorf("initialization custody read refused")
 	}
 	_ = resp.Body.Close()
+	if bounded {
+		if snapshot.Data.Metadata.Version == math.MaxInt {
+			return 0, fmt.Errorf("invalid initialization custody snapshot")
+		}
+		for key := range snapshot.Data.Data {
+			normalized := secretsintake.NormalizeVaultSecretKey(key)
+			if normalized == secretsintake.NormalizeVaultSecretKey(secretsintake.ArgocdBackupKey) || normalized == secretsintake.NormalizeVaultSecretKey(secretsintake.ArgocdBackupOriginKey) {
+				return 0, ErrSecretInitializationConflict
+			}
+		}
+	}
 	for key, value := range updates {
 		if _, exists := snapshot.Data.Data[key]; exists {
 			return 0, ErrSecretInitializationConflict
@@ -73,9 +122,23 @@ func (v *VaultClient) InitializeSecretData(ctx context.Context, path string, upd
 		return 0, fmt.Errorf("create initialization write request")
 	}
 	v.setInitializationHeaders(write)
+	write.Close = bounded
 	resp, err = client.Do(write)
 	if err != nil {
 		return 0, ErrSecretInitializationOutcomeUnknown
+	}
+	if bounded {
+		raw, boundErr := readBoundedIntakeResponse(resp)
+		if boundErr != nil {
+			return 0, ErrSecretInitializationOutcomeUnknown
+		}
+		defer clear(raw)
+		resp.Body = io.NopCloser(bytes.NewReader(raw))
+		if resp.StatusCode >= 200 && resp.StatusCode < 300 {
+			if _, err := decodeBackupCustodyJSON(raw); err != nil {
+				return 0, ErrSecretInitializationOutcomeUnknown
+			}
+		}
 	}
 	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode == http.StatusBadRequest || resp.StatusCode == http.StatusConflict {

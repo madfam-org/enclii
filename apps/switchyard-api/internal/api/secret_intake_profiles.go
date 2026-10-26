@@ -18,6 +18,19 @@ import (
 // Typed profiles initialize their whole group once. They cannot import partial
 // values, regenerate one half of a pair, or use the generic random-string path.
 func generatedProfileValues(target secretsintake.Target, generate []string, supplied map[string]interface{}) (map[string]interface{}, []string, error) {
+	if target.ID == secretsintake.ArgocdBackupTargetID || (target.Generate != nil && target.Generate.Profile == secretsintake.ArgocdBackupProfile) {
+		if err := secretsintake.ValidateArgocdBackupTarget(target); err != nil {
+			return nil, nil, err
+		}
+		if len(supplied) != 0 || len(generate) != 1 || generate[0] != secretsintake.ArgocdBackupKey {
+			return nil, nil, fmt.Errorf("fixed backup profile requires its canonical key in generate and no supplied values")
+		}
+		value, err := generateSecretValue(32)
+		if err != nil {
+			return nil, nil, fmt.Errorf("could not generate backup envelope key")
+		}
+		return map[string]interface{}{secretsintake.ArgocdBackupKey: value}, []string{secretsintake.ArgocdBackupKey}, nil
+	}
 	if len(supplied) != 0 || len(generate) != len(target.Keys) {
 		return nil, nil, fmt.Errorf("typed staging profile requires all declared keys in generate and no supplied values")
 	}
