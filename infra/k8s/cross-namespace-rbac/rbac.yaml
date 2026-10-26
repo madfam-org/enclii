@@ -28,6 +28,16 @@ rules:
   - apiGroups: ["argoproj.io"]
     resources: ["applications"]
     verbs: ["get", "list", "watch", "create", "update", "patch"]
+  # Fixed Karafiel source-parent and restricted-project authority reads.
+  # No list/watch or writes; the existing namespaced binding is reused.
+  - apiGroups: ["argoproj.io"]
+    resources: ["applicationsets"]
+    resourceNames: ["project-applications"]
+    verbs: ["get"]
+  - apiGroups: ["argoproj.io"]
+    resources: ["appprojects"]
+    resourceNames: ["karafiel-staging"]
+    verbs: ["get"]
 ---
 # RoleBinding: binds the ArgoCD Application manager role to switchyard-api
 apiVersion: rbac.authorization.k8s.io/v1
@@ -174,3 +184,145 @@ roleRef:
   kind: Role
   name: roundhouse-builder
   apiGroup: rbac.authorization.k8s.io
+
+---
+# Fixed Argo installation inventory reads; no self-management or workload changes.
+# The sole namespace-scoped list is StatefulSets in argocd for complete HA-layout
+# observation (Limit 16; truncated, unknown and mixed layouts remain HELD).
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: switchyard-argocd-inventory-reader
+  labels:
+    app.kubernetes.io/name: switchyard-api
+    app.kubernetes.io/component: inventory
+    enclii.dev/managed-by: platform
+  namespace: argocd
+rules:
+- apiGroups:
+  - ''
+  resources:
+  - serviceaccounts
+  resourceNames:
+  - argocd-application-controller
+  - argocd-applicationset-controller
+  - argocd-dex-server
+  - argocd-notifications-controller
+  - argocd-redis
+  - argocd-redis-ha
+  - argocd-redis-ha-haproxy
+  - argocd-repo-server
+  - argocd-server
+  verbs:
+  - get
+- apiGroups:
+  - rbac.authorization.k8s.io
+  resources:
+  - rolebindings
+  resourceNames:
+  - argocd-application-controller
+  - argocd-applicationset-controller
+  - argocd-dex-server
+  - argocd-notifications-controller
+  - argocd-redis
+  - argocd-redis-ha
+  - argocd-redis-ha-haproxy
+  - argocd-server
+  verbs:
+  - get
+- apiGroups:
+  - rbac.authorization.k8s.io
+  resources:
+  - roles
+  resourceNames:
+  - argocd-application-controller
+  - argocd-applicationset-controller
+  - argocd-dex-server
+  - argocd-notifications-controller
+  - argocd-redis
+  - argocd-redis-ha
+  - argocd-redis-ha-haproxy
+  - argocd-server
+  verbs:
+  - get
+- apiGroups:
+  - apps
+  resources:
+  - statefulsets
+  verbs:
+  - list
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: switchyard-argocd-inventory-reader
+  labels:
+    app.kubernetes.io/name: switchyard-api
+    app.kubernetes.io/component: inventory
+    enclii.dev/managed-by: platform
+  namespace: argocd
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: switchyard-argocd-inventory-reader
+subjects:
+- kind: ServiceAccount
+  name: switchyard-api
+  namespace: enclii
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: switchyard-argocd-inventory-reader
+  labels:
+    app.kubernetes.io/name: switchyard-api
+    app.kubernetes.io/component: inventory
+    enclii.dev/managed-by: platform
+rules:
+- apiGroups:
+  - apiextensions.k8s.io
+  resources:
+  - customresourcedefinitions
+  resourceNames:
+  - applications.argoproj.io
+  - applicationsets.argoproj.io
+  - appprojects.argoproj.io
+  verbs:
+  - get
+- apiGroups:
+  - rbac.authorization.k8s.io
+  resources:
+  - clusterrolebindings
+  resourceNames:
+  - argocd-application-controller
+  - argocd-applicationset-controller
+  - argocd-server
+  verbs:
+  - get
+- apiGroups:
+  - rbac.authorization.k8s.io
+  resources:
+  - clusterroles
+  resourceNames:
+  - argocd-application-controller
+  - argocd-applicationset-controller
+  - argocd-server
+  verbs:
+  - get
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: switchyard-argocd-inventory-reader
+  labels:
+    app.kubernetes.io/name: switchyard-api
+    app.kubernetes.io/component: inventory
+    enclii.dev/managed-by: platform
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: switchyard-argocd-inventory-reader
+subjects:
+- kind: ServiceAccount
+  name: switchyard-api
+  namespace: enclii

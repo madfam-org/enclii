@@ -46,6 +46,11 @@ func (h *Handler) PlanServiceDeploymentTarget(c *gin.Context) {
 }
 
 func (h *Handler) targetPlanRefusal(c *gin.Context, err error) {
+	status, body := targetPlanRefusalResponse(err)
+	c.JSON(status, body)
+}
+
+func targetPlanRefusalResponse(err error) (int, gin.H) {
 	status := http.StatusConflict
 	if errors.Is(err, workloadtargets.ErrUnavailable) {
 		status = http.StatusServiceUnavailable
@@ -59,5 +64,5 @@ func (h *Handler) targetPlanRefusal(c *gin.Context, err error) {
 	if errors.Is(err, workloadtargets.ErrIntent) {
 		message = "persisted registration/environment ownership intent missing or conflicting"
 	}
-	c.JSON(status, gin.H{"operation": "ops.apps.bind-target", "status": "refused", "error": message, "refusal_code": code})
+	return status, gin.H{"operation": "ops.apps.bind-target", "status": "refused", "error": message, "refusal_code": code}
 }

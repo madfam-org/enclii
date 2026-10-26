@@ -20,8 +20,13 @@ func KarafielProductionDeployment(name string) bool {
 // The sole legacy compatibility is a blank Service.git_repo corroborated by
 // the completed exact repository registration and actual tracked source.
 func ValidateKarafielProductionFleet(snapshots []Snapshot) ([]Plan, error) {
+	return ValidateKarafielProductionFleetWithDiagnostic(snapshots, nil)
+}
+
+// ValidateKarafielProductionFleetWithDiagnostic adds only a bounded dry-plan trace.
+func ValidateKarafielProductionFleetWithDiagnostic(snapshots []Snapshot, diagnostic *ProductionFenceDiagnostic) ([]Plan, error) {
 	if len(snapshots) != 5 {
-		return nil, ErrIntent
+		return nil, diagnostic.ValidationFailure("fleet_identity", ErrIntent)
 	}
 	plans := make([]Plan, 0, 5)
 	names := map[string]bool{}
@@ -35,26 +40,26 @@ func ValidateKarafielProductionFleet(snapshots []Snapshot) ([]Plan, error) {
 			s.Registration == nil || s.Registration.RepoFullName != "madfam-org/karafiel" || s.Registration.ArgocdAppName == nil || *s.Registration.ArgocdAppName != "karafiel-services" ||
 			s.Service.K8sNamespace == nil || *s.Service.K8sNamespace != "karafiel" || !KarafielProductionDeployment(s.Service.Name) || names[s.Service.Name] || ids[s.Service.ID] ||
 			s.Namespace == nil || s.Application == nil {
-			return nil, ErrIntent
+			return nil, diagnostic.ValidationFailure("fleet_identity", ErrIntent)
 		}
 		if s.Service.GitRepo != "" {
 			repo, _, err := CanonicalRepo(s.Service.GitRepo)
 			if err != nil || repo != "https://github.com/madfam-org/karafiel" {
-				return nil, ErrIntent
+				return nil, diagnostic.ValidationFailure("repository", ErrIntent)
 			}
 		}
-		configurationSHA, parentErr := validateKarafielProductionParent(s)
+		configurationSHA, parentErr := validateKarafielProductionParent(s, diagnostic)
 		if parentErr != nil {
-			return nil, ErrOwnership
+			return nil, diagnostic.ValidationFailure("root_authority", ErrOwnership)
 		}
 		status, found, err := unstructured.NestedString(s.Application.Object, "status", "sync", "status")
 		if err != nil || !found || status != "Synced" {
-			return nil, ErrOwnership
+			return nil, diagnostic.ValidationFailure("application_sync", ErrOwnership)
 		}
 		owner := s.Namespace.Labels["enclii.dev/project"]
 		pending := owner != s.Project.ID.String()
 		if owner != "" && owner != "karafiel" && pending {
-			return nil, ErrOwnership
+			return nil, diagnostic.ValidationFailure("namespace_owner", ErrOwnership)
 		}
 		actualService := s.Service
 		service := *actualService
@@ -66,22 +71,22 @@ func ValidateKarafielProductionFleet(snapshots []Snapshot) ([]Plan, error) {
 		}
 		incumbent := s.Incumbent
 		s.Incumbent = nil
-		plan, err := ValidateSnapshot(s, "karafiel", actualService.Name)
+		plan, err := validateSnapshotWithDiagnostic(s, "karafiel", actualService.Name, diagnostic)
 		if err != nil {
-			return nil, err
+			return nil, diagnostic.ValidationFailure("declared_identity", err)
 		}
 		if plan.Identity.Path != "infra/k8s/production" || plan.Identity.Ref != "main" || plan.Identity.Application != "karafiel-services" || uids[plan.Identity.DeploymentUID] {
-			return nil, ErrOwnership
+			return nil, diagnostic.ValidationFailure("declared_identity", ErrOwnership)
 		}
 		if len(plans) > 0 && (plan.Identity.ProjectID != common.ProjectID || plan.Identity.EnvironmentID != common.EnvironmentID || plan.Identity.RegistrationID != common.RegistrationID ||
 			plan.Identity.NamespaceUID != common.NamespaceUID || plan.Identity.ApplicationUID != common.ApplicationUID || plan.Identity.Revision != common.Revision ||
 			plan.Identity.ArgoConfigUID != common.ArgoConfigUID || plan.Identity.TrackingMethod != common.TrackingMethod || plan.Identity.InstallationID != common.InstallationID ||
 			plan.Versions.Namespace != commonVersions.Namespace || plan.Versions.Application != commonVersions.Application || plan.Versions.ArgoConfig != commonVersions.ArgoConfig) {
-			return nil, ErrConflict
+			return nil, diagnostic.ValidationFailure("fleet_coherence", ErrConflict)
 		}
 		if len(plans) > 0 && (plan.Identity.InstanceLabelKey != common.InstanceLabelKey || string(s.SourceRoot.GetUID()) != plans[0].Identity.SourceRootUID || s.SourceRoot.GetResourceVersion() != plans[0].Versions.SourceRoot ||
 			string(s.SourceParent.GetUID()) != plans[0].Identity.SourceParentUID || s.SourceParent.GetResourceVersion() != plans[0].Versions.SourceParent || configurationSHA != plans[0].Identity.SourceConfigurationSHA || s.SourceConfigurationRevision != plans[0].Versions.SourceConfigurationRevision) {
-			return nil, ErrConflict
+			return nil, diagnostic.ValidationFailure("fleet_coherence", ErrConflict)
 		}
 		common, commonVersions = plan.Identity, plan.Versions
 		plan.Identity.SourceAuthority = KarafielProductionFenceAuthority
@@ -104,7 +109,7 @@ func ValidateKarafielProductionFleet(snapshots []Snapshot) ([]Plan, error) {
 	}
 	fleetSHA, err := hash(fleet)
 	if err != nil {
-		return nil, err
+		return nil, diagnostic.ValidationFailure("plan_fingerprint", err)
 	}
 	for n := range plans {
 		p := &plans[n]
@@ -112,15 +117,15 @@ func ValidateKarafielProductionFleet(snapshots []Snapshot) ([]Plan, error) {
 		if p.Incumbent != nil {
 			p.Identity.NamespaceOwnershipPending = p.Incumbent.Identity.NamespaceOwnershipPending
 			if p.Incumbent.Validate() != nil || !SameOwner(p.Incumbent.Identity, p.Identity) {
-				return nil, ErrConflict
+				return nil, diagnostic.ValidationFailure("incumbent_binding", ErrConflict)
 			}
 		}
 		if p.Identity.Validate() != nil {
-			return nil, ErrIntent
+			return nil, diagnostic.ValidationFailure("plan_identity", ErrIntent)
 		}
 		p.SHA, err = p.Fingerprint()
 		if err != nil {
-			return nil, err
+			return nil, diagnostic.ValidationFailure("plan_fingerprint", err)
 		}
 	}
 	return plans, nil

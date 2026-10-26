@@ -24,7 +24,11 @@ func closedKarafielProductionRequest(raw []byte) (workloadtargets.Request, error
 }
 
 func karafielProductionSelectedPlan(s []workloadtargets.Snapshot, r workloadtargets.Request) (workloadtargets.Plan, error) {
-	plans, err := workloadtargets.ValidateKarafielProductionFleet(s)
+	return karafielProductionSelectedPlanWithDiagnostic(s, r, nil)
+}
+
+func karafielProductionSelectedPlanWithDiagnostic(s []workloadtargets.Snapshot, r workloadtargets.Request, diagnostic *workloadtargets.ProductionFenceDiagnostic) (workloadtargets.Plan, error) {
+	plans, err := workloadtargets.ValidateKarafielProductionFleetWithDiagnostic(s, diagnostic)
 	if err != nil {
 		return workloadtargets.Plan{}, err
 	}
@@ -33,7 +37,7 @@ func karafielProductionSelectedPlan(s []workloadtargets.Snapshot, r workloadtarg
 			return p, nil
 		}
 	}
-	return workloadtargets.Plan{}, workloadtargets.ErrIntent
+	return workloadtargets.Plan{}, diagnostic.ValidationFailure("selected_target", workloadtargets.ErrIntent)
 }
 
 func productionTargetEnrollmentResponse(receipt *workloadtargets.Receipt, replay bool) gin.H {
@@ -58,14 +62,15 @@ func (h *Handler) KarafielProductionTargetEnrollment(c *gin.Context) {
 		h.applyKarafielProductionTargetEnrollment(c, actor, r)
 		return
 	}
-	snapshots, err := h.readKarafielProductionTargetSnapshots(c.Request.Context())
+	diagnostic := &workloadtargets.ProductionFenceDiagnostic{}
+	snapshots, err := h.readKarafielProductionTargetSnapshotsWithDiagnostic(c.Request.Context(), diagnostic)
 	if err != nil {
-		h.targetPlanRefusal(c, err)
+		karafielProductionDryRefusal(c, err, diagnostic)
 		return
 	}
-	plan, err := karafielProductionSelectedPlan(snapshots, r)
+	plan, err := karafielProductionSelectedPlanWithDiagnostic(snapshots, r, diagnostic)
 	if err != nil {
-		h.targetPlanRefusal(c, err)
+		karafielProductionDryRefusal(c, err, diagnostic)
 		return
 	}
 	c.JSON(http.StatusOK, gin.H{"schema": "enclii-karafiel-production-writer-fence-plan-v1", "phase": "WRITER_EXCLUSION_PLAN", "activation_held": true, "namespace_ownership_pending": plan.Identity.NamespaceOwnershipPending, "dry_run": true, "plan": plan})
@@ -156,4 +161,14 @@ func (h *Handler) applyKarafielProductionTargetEnrollment(c *gin.Context, actor 
 		receipt = existing
 	}
 	c.JSON(http.StatusOK, productionTargetEnrollmentResponse(receipt, false))
+}
+
+// Dry failures alone receive static diagnostic categories. Apply uses the
+// unchanged ordinary refusal renderer and never allocates a diagnostic sink.
+func karafielProductionDryRefusal(c *gin.Context, err error, diagnostic *workloadtargets.ProductionFenceDiagnostic) {
+	status, body := targetPlanRefusalResponse(err)
+	if stage, reason, ok := diagnostic.Fields(); ok {
+		body["diagnostic_stage"], body["diagnostic_reason"] = stage, reason
+	}
+	c.JSON(status, body)
 }
