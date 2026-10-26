@@ -7,6 +7,6 @@ resources:
 - service.yaml
 
 images:
-- digest: sha256:3cfa7187806a34cadc102ec8a04270098820b1ee8c9de286af503bb8209c9c47
+- digest: sha256:3464d7c75225612904157986687ff5db80a0dc4faaa519c25166cd870ba9f4d9
   name: ghcr.io/madfam-org/enclii/admin-console
   newName: ghcr.io/madfam-org/enclii/dispatch
