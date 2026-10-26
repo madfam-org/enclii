@@ -17,12 +17,16 @@ import (
 )
 
 type operatorOperationRequest struct {
-	Operation      string            `json:"operation"`
-	DryRun         bool              `json:"dry_run"`
-	Reason         string            `json:"reason,omitempty"`
-	IdempotencyKey string            `json:"idempotency_key,omitempty"`
-	Scope          map[string]string `json:"scope,omitempty"`
-	Args           map[string]string `json:"args,omitempty"`
+	// Internal-only constraints for narrowly delegated release operations.
+	// JSON callers cannot install or bypass these callbacks/annotations.
+	validateApplication func(*unstructured.Unstructured) error
+	auditAnnotations    map[string]string
+	Operation           string            `json:"operation"`
+	DryRun              bool              `json:"dry_run"`
+	Reason              string            `json:"reason,omitempty"`
+	IdempotencyKey      string            `json:"idempotency_key,omitempty"`
+	Scope               map[string]string `json:"scope,omitempty"`
+	Args                map[string]string `json:"args,omitempty"`
 }
 
 type operatorOperationStep struct {

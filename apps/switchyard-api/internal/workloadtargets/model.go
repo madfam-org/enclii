@@ -31,19 +31,27 @@ var (
 )
 
 type Identity struct {
-	ProjectID      uuid.UUID `json:"project_id"`
-	ServiceID      uuid.UUID `json:"service_id"`
-	EnvironmentID  uuid.UUID `json:"environment_id"`
-	RegistrationID uuid.UUID `json:"registration_id"`
-	Namespace      string    `json:"namespace"`
-	NamespaceUID   string    `json:"namespace_uid"`
-	Deployment     string    `json:"deployment"`
-	DeploymentUID  string    `json:"deployment_uid"`
-	Application    string    `json:"application"`
-	ApplicationUID string    `json:"application_uid"`
-	ArgoConfigUID  string    `json:"argo_config_uid"`
-	TrackingMethod string    `json:"tracking_method"`
-	InstallationID string    `json:"installation_id"`
+	// Nonempty only for closed metadata-only Karafiel enrollment profiles.
+	SourceAuthority        string `json:"source_authority,omitempty"`
+	SourceRootUID          string `json:"source_root_uid,omitempty"`
+	SourceFleetSHA         string `json:"source_fleet_sha256,omitempty"`
+	SourceParentUID        string `json:"source_parent_uid,omitempty"`
+	SourceConfigurationSHA string `json:"source_configuration_sha256,omitempty"`
+	// Historical registration fact; fresh observations govern subsequent adoption.
+	NamespaceOwnershipPending bool      `json:"namespace_ownership_pending,omitempty"`
+	ProjectID                 uuid.UUID `json:"project_id"`
+	ServiceID                 uuid.UUID `json:"service_id"`
+	EnvironmentID             uuid.UUID `json:"environment_id"`
+	RegistrationID            uuid.UUID `json:"registration_id"`
+	Namespace                 string    `json:"namespace"`
+	NamespaceUID              string    `json:"namespace_uid"`
+	Deployment                string    `json:"deployment"`
+	DeploymentUID             string    `json:"deployment_uid"`
+	Application               string    `json:"application"`
+	ApplicationUID            string    `json:"application_uid"`
+	ArgoConfigUID             string    `json:"argo_config_uid"`
+	TrackingMethod            string    `json:"tracking_method"`
+	InstallationID            string    `json:"installation_id"`
 	// Set only for declared label tracking; omitted for annotation modes so
 	// their persisted identities and fingerprints are unchanged.
 	InstanceLabelKey    string `json:"instance_label_key,omitempty"`
@@ -64,6 +72,26 @@ func CanonicalRepo(raw string) (string, string, error) {
 }
 
 func (i Identity) Validate() error {
+	if i.SourceAuthority == "" && (i.SourceRootUID != "" || i.SourceFleetSHA != "" || i.SourceParentUID != "" || i.SourceConfigurationSHA != "" || i.NamespaceOwnershipPending) {
+		return ErrIntent
+	}
+	if i.SourceAuthority != "" {
+		if !uid.MatchString(i.SourceRootUID) || i.Repo != "https://github.com/madfam-org/karafiel" {
+			return ErrIntent
+		}
+		switch i.SourceAuthority {
+		case KarafielStagingHeldAuthority:
+			if i.Namespace != KarafielStagingNamespace || i.Deployment != "karafiel-api" || i.Application != "karafiel-staging" || i.Path != "infra/k8s/overlays/staging" || i.Ref != "release/karafiel-staging" || i.SourceFleetSHA != "" || i.SourceParentUID != "" || i.SourceConfigurationSHA != "" {
+				return ErrIntent
+			}
+		case KarafielProductionFenceAuthority:
+			if i.Namespace != "karafiel" || !KarafielProductionDeployment(i.Deployment) || i.Application != "karafiel-services" || i.Path != "infra/k8s/production" || i.Ref != "main" || !sha64.MatchString(i.SourceFleetSHA) || !uid.MatchString(i.SourceParentUID) || !sha64.MatchString(i.SourceConfigurationSHA) {
+				return ErrIntent
+			}
+		default:
+			return ErrIntent
+		}
+	}
 	if i.ProjectID == uuid.Nil || i.ServiceID == uuid.Nil || i.EnvironmentID == uuid.Nil || i.RegistrationID == uuid.Nil ||
 		len(validation.IsDNS1123Label(i.Namespace)) != 0 || len(validation.IsDNS1123Subdomain(i.Deployment)) != 0 ||
 		len(validation.IsDNS1123Subdomain(i.Application)) != 0 || !uid.MatchString(i.NamespaceUID) ||
@@ -124,17 +152,32 @@ func (b Binding) Validate() error {
 	if b.ID == uuid.Nil || !sha64.MatchString(b.PlanSHA) || !b.Versions.valid() {
 		return ErrIntent
 	}
+	if b.Identity.SourceAuthority != "" && b.Versions.SourceRoot == "" {
+		return ErrIntent
+	}
+	if b.Identity.SourceAuthority == KarafielProductionFenceAuthority && (b.Versions.SourceParent == "" || !sha40.MatchString(b.Versions.SourceConfigurationRevision)) {
+		return ErrIntent
+	}
 	return b.Identity.Validate()
 }
 
 type ReviewedVersions struct {
-	Namespace   string `json:"namespace"`
-	Application string `json:"application"`
-	Deployment  string `json:"deployment"`
-	ArgoConfig  string `json:"argo_config"`
+	SourceRoot                  string `json:"source_root,omitempty"`
+	SourceParent                string `json:"source_parent,omitempty"`
+	SourceConfigurationRevision string `json:"source_configuration_revision,omitempty"`
+	Namespace                   string `json:"namespace"`
+	Application                 string `json:"application"`
+	Deployment                  string `json:"deployment"`
+	ArgoConfig                  string `json:"argo_config"`
 }
 
 func (v ReviewedVersions) valid() bool {
+	if v.SourceRoot != "" && !uid.MatchString(v.SourceRoot) {
+		return false
+	}
+	if (v.SourceParent != "" && !uid.MatchString(v.SourceParent)) || (v.SourceConfigurationRevision != "" && !sha40.MatchString(v.SourceConfigurationRevision)) {
+		return false
+	}
 	for _, value := range []string{v.Namespace, v.Application, v.Deployment, v.ArgoConfig} {
 		if !uid.MatchString(value) {
 			return false

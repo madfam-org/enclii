@@ -1,0 +1,151 @@
+# Complete staging allowlist. All production policies are deleted by the
+# overlay: NetworkPolicy allows are additive, so adding a deny is insufficient.
+# No shared data namespace, Dhanam/Tezca, provider or arbitrary HTTPS egress.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  annotations:
+    argocd.argoproj.io/sync-wave: "-4"
+  name: staging-default-deny-all
+spec:
+  podSelector: {}
+  policyTypes: [Ingress, Egress]
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  annotations:
+    argocd.argoproj.io/sync-wave: "-4"
+  name: staging-dns-egress
+spec:
+  podSelector: {}
+  policyTypes: [Egress]
+  egress:
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: kube-system
+      ports:
+        - protocol: UDP
+          port: 53
+        - protocol: TCP
+          port: 53
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  annotations:
+    argocd.argoproj.io/sync-wave: "-4"
+  name: staging-cloudflared-ingress
+spec:
+  podSelector:
+    matchExpressions:
+      - key: app
+        operator: In
+        values: [karafiel-api, karafiel-web, karafiel-admin]
+  policyTypes: [Ingress]
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: cloudflare-tunnel
+          podSelector:
+            matchLabels:
+              app: cloudflared
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  annotations:
+    argocd.argoproj.io/sync-wave: "-4"
+  name: staging-frontend-api-egress
+spec:
+  podSelector:
+    matchExpressions:
+      - key: app
+        operator: In
+        values: [karafiel-web, karafiel-admin]
+  policyTypes: [Egress]
+  egress:
+    - to:
+        - podSelector:
+            matchLabels:
+              app: karafiel-api
+      ports:
+        - protocol: TCP
+          port: 8000
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  annotations:
+    argocd.argoproj.io/sync-wave: "-4"
+  name: staging-api-frontend-ingress
+spec:
+  podSelector:
+    matchLabels:
+      app: karafiel-api
+  policyTypes: [Ingress]
+  ingress:
+    - from:
+        - podSelector:
+            matchExpressions:
+              - key: app
+                operator: In
+                values: [karafiel-web, karafiel-admin]
+      ports:
+        - protocol: TCP
+          port: 8000
+# Database reachability is runtime-owned by the verified native addon binding.
+# Its policy selects enclii.dev/service=karafiel-api and the exact owned addon
+# namespace/project UUID/CNPG cluster on TCP5432; this source invents no alias
+# or cross-namespace allow. Readiness must attest that one policy and its peer.
+---
+# Shared Janua identity is the sole external application peer. Its canonical
+# public issuer is unchanged; only server-side token/JWKS transport is internal.
+# Platform preflight must verify the Service, target labels/port and opposite
+# ingress policy. No broad HTTPS fallback if the route is unavailable.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  annotations:
+    argocd.argoproj.io/sync-wave: "-4"
+  name: staging-janua-egress
+spec:
+  podSelector:
+    matchExpressions:
+      - key: app
+        operator: In
+        values: [karafiel-api, karafiel-web, karafiel-admin]
+  policyTypes: [Egress]
+  egress:
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: janua
+          podSelector:
+            matchLabels:
+              app: janua-api
+      ports:
+        - protocol: TCP
+          port: 8080
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  annotations:
+    argocd.argoproj.io/sync-wave: "-4"
+  name: staging-monitoring-ingress
+spec:
+  podSelector:
+    matchLabels:
+      app: karafiel-api
+  policyTypes: [Ingress]
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: monitoring
+      ports:
+        - protocol: TCP
+          port: 8000

@@ -245,6 +245,8 @@ func initialNativeHTTPProfile(t *testing.T, profile string) (*Client, *initialHT
 		for _, key := range []string{"DATABASE_URL", "DIRECT_DATABASE_URL", "MAP_SIMULATION_RUNTIME_DATABASE_URL", "MAP_SIMULATION_SEED_ENABLED", "MAP_SIMULATION_ENABLED", "MAP_SIMULATION_KERNEL_ID", "APP_ORIGIN", "JANUA_AUDIENCE", "JANUA_ISSUER_URL", "JANUA_JWKS_URL", "RLS_POR_CASO", "MAP_SIMULATION_CONTEXT_KEY", "MAP_SIMULATION_CONTROL_KEY", "MAP_SIMULATION_MAIL_KEY", "MAP_SIMULATION_MCP_CLIENT_ID", "MAP_MCP_PSEUDONYM_KEY"} {
 			p.Data[key] = []byte("synthetic-value")
 		}
+	} else if profile == KarafielSchemaProfile {
+		p = karafielSchemaPlan()
 	} else if profile == fixedStepTurnoVigenteProfile {
 		// Same portal custody; a live workload is bound by generation.
 		p.Profile = profile
@@ -282,6 +284,16 @@ func initialNativeHTTPProfile(t *testing.T, profile string) (*Client, *initialHT
 	}
 	f := &initialHTTPFixture{p: p, expected: expected, job: job, pod: pod, intent: cm, stdout: `{"fuente":"portal-sim-reset-custody","version":"crea-sim-reset-custody-v1","estado":"PREPARADO","schemaSha256":"` + strings.Repeat("d", 64) + `","databaseIdentitySha256":"` + strings.Repeat("e", 64) + `"}` + "\n", initStdout: `{"perfil":"crea-sim-portal-inicial","version":"portal-inicial-v1","estado":"PREPARADO"}` + "\n"}
 
+	if profile == KarafielSchemaProfile {
+		for i := range f.pod.Status.ContainerStatuses {
+			f.pod.Status.ContainerStatuses[i].State.Terminated.StartedAt = metav1.NewTime(time.Date(2026, 10, 25, 12, 0, 0, 0, time.UTC))
+			f.pod.Status.ContainerStatuses[i].State.Terminated.FinishedAt = metav1.NewTime(time.Date(2026, 10, 25, 12, 0, 2, 0, time.UTC))
+		}
+		body, err := json.Marshal(KarafielSchemaReceipt{Schema: "karafiel-staging-schema-v1", SourceRevision: p.Identity.SourceRevision, Database: "karafiel_staging_sim", OwnerRole: "enclii_migrator", GraphSHA256: strings.Repeat("c", 64), CatalogSHA256: strings.Repeat("d", 64), Applied: 98, Required: 98, Lineage: "FRESH_SYNTHETIC"})
+		require.NoError(t, err)
+		f.stdout = string(body) + "\n"
+		f.initStdout = ""
+	}
 	if profile == fixedStepTurnoVigenteProfile {
 		f.stdout, f.initStdout = fixedStepStdout("APLICADO"), ""
 	}

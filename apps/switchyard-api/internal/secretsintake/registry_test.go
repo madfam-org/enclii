@@ -12,7 +12,7 @@ import (
 func TestLoadRegistry(t *testing.T) {
 	reg, err := LoadRegistry()
 	require.NoError(t, err)
-	assert.Len(t, reg, 99)
+	assert.Len(t, reg, 103)
 	assert.Contains(t, reg, "ceq/vast-api-key")
 	assert.Contains(t, reg, "karafiel/web-oidc-janua")
 	adminSession := reg["karafiel/admin-session"]
@@ -37,7 +37,7 @@ func TestGetTarget(t *testing.T) {
 func TestListTargetsSorted(t *testing.T) {
 	list, err := ListTargets()
 	require.NoError(t, err)
-	require.Len(t, list, 99)
+	require.Len(t, list, 103)
 	for i := 1; i < len(list); i++ {
 		assert.Less(t, list[i-1].ID, list[i].ID, "targets should be sorted by id")
 	}
@@ -87,6 +87,10 @@ func TestListTargetsSorted(t *testing.T) {
 		"forj/pravara-intake",
 		"janua/internal-api-key",
 		"kalya/internal-api-key",
+		"karafiel-staging/admin-oidc",
+		"karafiel-staging/admin-session",
+		"karafiel-staging/core",
+		"karafiel-staging/web-oidc",
 		"karafiel/admin-session",
 		"karafiel/dhanam-webhook-secret",
 		"karafiel/web-oidc-janua",

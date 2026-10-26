@@ -757,7 +757,7 @@ func TestReviewedRegistryGrantKindsDoNotDependOnTenant(t *testing.T) {
 			machines++
 		}
 	}
-	require.Equal(t, 15, humans)
+	require.Equal(t, 17, humans) // Includes the two isolated Karafiel staging login clients.
 	require.Equal(t, 15, machines)
 	p := reg.Platforms["selva-yantra4d"]
 	require.Empty(t, p.JanuaClient.OrganizationID)

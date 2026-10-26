@@ -2,7 +2,10 @@ package addons
 
 import (
 	"context"
+	"crypto/sha256"
 	"database/sql"
+	"encoding/hex"
+	"github.com/madfam-org/enclii/apps/switchyard-api/internal/k8s"
 	"net/url"
 	"os"
 	"testing"
@@ -87,4 +90,79 @@ func TestRuntimeBootstrapOnNativePostgres(t *testing.T) {
 	var rows int
 	require.NoError(t, runtime.QueryRowContext(ctx, `SELECT count(*) FROM runtime_clinical_proof`).Scan(&rows))
 	require.Equal(t, 0, rows)
+	t.Run("KarafielMetadataAndCatalogLineage", func(t *testing.T) { proveKarafielNativeCatalog(t, ctx, admin, raw) })
+}
+
+// Runs only inside the same explicitly guarded fresh native fixture. It calls
+// production's fixed read-only SQL function rather than a query imitation.
+func proveKarafielNativeCatalog(t *testing.T, ctx context.Context, admin *sql.DB, raw string) {
+	t.Helper()
+	_, err := admin.ExecContext(ctx, `CREATE DATABASE karafiel_staging_sim OWNER enclii_migrator`)
+	require.NoError(t, err)
+	u, err := url.Parse(raw)
+	require.NoError(t, err)
+	u.Path = "/karafiel_staging_sim"
+	privileged, err := sql.Open("postgres", u.String())
+	require.NoError(t, err)
+	defer privileged.Close()
+	config := sdktypes.DatabaseAddonConfig{DatabaseName: KarafielStagingDatabase, RuntimeRole: KarafielStagingRuntime}
+	for _, statement := range runtimeBootstrapSQL(config) {
+		_, err = privileged.ExecContext(ctx, statement.(string))
+		require.NoError(t, err)
+	}
+	_, err = privileged.ExecContext(ctx, `ALTER ROLE karafiel_staging_runtime LOGIN PASSWORD 'synthetic-proof'`)
+	require.NoError(t, err)
+	u.User = url.UserPassword(runtimeMigrator, "synthetic-proof")
+	owner, err := sql.Open("postgres", u.String())
+	require.NoError(t, err)
+	defer owner.Close()
+	u.User = url.UserPassword(KarafielStagingRuntime, "synthetic-proof")
+	runtime, err := sql.Open("postgres", u.String())
+	require.NoError(t, err)
+	defer runtime.Close()
+	fresh, err := readKarafielStagingCatalog(ctx, runtime, true)
+	require.NoError(t, err)
+	require.True(t, fresh.Qualifies(true))
+	require.Len(t, fresh.CatalogSHA256, 64)
+	_, err = owner.ExecContext(ctx, `CREATE TABLE django_migrations(id bigint PRIMARY KEY,app text NOT NULL,name text NOT NULL); CREATE TABLE synthetic_stage_fixture(id integer PRIMARY KEY,body text NOT NULL)`)
+	require.NoError(t, err)
+	populated, err := readKarafielStagingCatalog(ctx, runtime, false)
+	require.NoError(t, err)
+	require.EqualValues(t, 2, populated.UserTables)
+	require.EqualValues(t, 1, populated.Migrations)
+	require.NotEqual(t, fresh.CatalogSHA256, populated.CatalogSHA256)
+	var ownerDescriptor string
+	require.NoError(t, owner.QueryRowContext(ctx, k8s.KarafielSchemaCatalogSQL).Scan(&ownerDescriptor))
+	ownerHash := sha256.Sum256([]byte(ownerDescriptor))
+	require.Equal(t, populated.CatalogSHA256, hex.EncodeToString(ownerHash[:]), "native migrator and runtime metadata reader must hash identical PostgreSQL text")
+	_, err = readKarafielStagingCatalog(ctx, runtime, true)
+	require.Error(t, err)
+	_, err = runtime.ExecContext(ctx, `INSERT INTO synthetic_stage_fixture VALUES(1,'synthetic-only')`)
+	require.NoError(t, err)
+	stable, err := readKarafielStagingCatalog(ctx, runtime, false)
+	require.NoError(t, err)
+	require.Equal(t, populated.CatalogSHA256, stable.CatalogSHA256, "metadata proof never includes application rows")
+	for _, statement := range []string{`CREATE TABLE denied_stage_ddl(id integer)`, `CREATE TEMP TABLE denied_stage_temp(id integer)`, `SET ROLE enclii_migrator`} {
+		_, err = runtime.ExecContext(ctx, statement)
+		require.Error(t, err)
+	}
+	_, err = owner.ExecContext(ctx, `ALTER TABLE synthetic_stage_fixture ADD COLUMN revision integer`)
+	require.NoError(t, err)
+	changed, err := readKarafielStagingCatalog(ctx, runtime, false)
+	require.NoError(t, err)
+	require.NotEqual(t, populated.CatalogSHA256, changed.CatalogSHA256)
+	for _, drift := range []struct{ grant, revoke string }{
+		{`GRANT CREATE ON SCHEMA public TO karafiel_staging_runtime`, `REVOKE CREATE ON SCHEMA public FROM karafiel_staging_runtime`},
+		{`GRANT enclii_migrator TO karafiel_staging_runtime`, `REVOKE enclii_migrator FROM karafiel_staging_runtime`},
+		{`ALTER TABLE synthetic_stage_fixture OWNER TO karafiel_staging_runtime`, `ALTER TABLE synthetic_stage_fixture OWNER TO enclii_migrator`},
+	} {
+		_, err = privileged.ExecContext(ctx, drift.grant)
+		require.NoError(t, err)
+		_, err = readKarafielStagingCatalog(ctx, runtime, false)
+		require.Error(t, err)
+		_, err = privileged.ExecContext(ctx, drift.revoke)
+		require.NoError(t, err)
+	}
+	_, err = readKarafielStagingCatalog(ctx, runtime, false)
+	require.NoError(t, err)
 }

@@ -134,6 +134,17 @@ func BuildIsolatedInitialJob(p IsolatedInitialJobPlan) (*batchv1.Job, error) {
 	var command, migration []string
 	allowed := map[string]bool{"ca.crt": true}
 	switch {
+	case p.Profile == KarafielSchemaProfile:
+		if string(p.Data["DB_HOST"]) != p.Cluster+"-rw."+p.Namespace+".svc.cluster.local" || string(p.Data["DB_PORT"]) != "5432" || string(p.Data["DB_NAME"]) != "karafiel_staging_sim" || string(p.Data["DB_USER"]) != "enclii_migrator" || string(p.Data["SOURCE_SHA"]) != p.Identity.SourceRevision || string(p.Data["CLUSTER_UID"]) != p.Identity.ClusterUID {
+			return nil, fmt.Errorf("fixed Karafiel database/source custody refused")
+		}
+		if !strings.HasPrefix(p.Image, "ghcr.io/madfam-org/karafiel/api@sha256:") {
+			return nil, fmt.Errorf("fixed Karafiel producer mismatch")
+		}
+		command = []string{"python", "-c", karafielSchemaCommand}
+		for _, name := range []string{"DB_HOST", "DB_PORT", "DB_NAME", "DB_USER", "DB_PASSWORD", "DJANGO_SECRET_KEY", "ENCRYPTION_MASTER_KEY", "SOURCE_SHA", "CLUSTER_UID"} {
+			allowed[name] = true
+		}
 	case IsMapSimProfile(p.Profile):
 		if !strings.HasPrefix(p.Image, "ghcr.io/madfam-org/crea-map/crea-map-web@sha256:") {
 			return nil, fmt.Errorf("initial MAP producer mismatch")
@@ -225,6 +236,17 @@ func BuildIsolatedInitialJob(p IsolatedInitialJobPlan) (*batchv1.Job, error) {
 		job.Spec.Template.Spec.Containers[0].VolumeMounts = append(job.Spec.Template.Spec.Containers[0].VolumeMounts, corev1.VolumeMount{Name: "request", MountPath: "/var/run/crea-sim/request", ReadOnly: true})
 		job.Spec.Template.Spec.Volumes = append(job.Spec.Template.Spec.Volumes, corev1.Volume{Name: "request", VolumeSource: corev1.VolumeSource{Secret: &corev1.SecretVolumeSource{SecretName: p.jobName() + "-credentials", DefaultMode: ptr.To[int32](0444), Items: []corev1.KeyToPath{{Key: "request.json", Path: "request.json"}}}}})
 		job.Spec.Template.Spec.InitContainers = []corev1.Container{initialNetworkReady(container, "CREA_SIM_PORTAL_DATABASE_URL")}
+	}
+	if p.Profile == KarafielSchemaProfile {
+		job.Spec.Template.Spec.SecurityContext.RunAsUser = ptr.To[int64](1001)
+		job.Spec.Template.Spec.SecurityContext.RunAsGroup = ptr.To[int64](1001)
+		job.Spec.Template.Spec.SecurityContext.FSGroup = ptr.To[int64](1001)
+		for key, value := range map[string]string{"ENVIRONMENT": "staging", "DB_ENGINE": "django.db.backends.postgresql", "BANK_ALLOCATION_LEDGER_ENABLED": "false", "DHANAM_SOURCE_CURRENTNESS_ENABLED": "false", "FEATURE_CFDI_AUTO_ISSUE": "false", "FEATURE_GRANT_COMPLIANCE": "false", "PGSSLMODE": "verify-full", "PGSSLROOTCERT": "/var/run/crea-sim/ca/ca.crt", "PYTHONPATH": "/app/apps/api", "DJANGO_SETTINGS_MODULE": "karafiel.settings", "STORAGE_BACKEND": "local", "MEDIA_ROOT": "/tmp/karafiel-staging-synthetic", "CELERY_BROKER_URL": "memory://", "CELERY_RESULT_BACKEND": "cache+memory://", "JANUA_ISSUER_URL": "https://auth.madfam.io", "JANUA_AUDIENCE": "karafiel-staging-api", "JANUA_ADDITIONAL_AUDIENCES": ""} {
+			job.Spec.Template.Spec.Containers[0].Env = append(job.Spec.Template.Spec.Containers[0].Env, corev1.EnvVar{Name: key, Value: value})
+		}
+		sort.Slice(job.Spec.Template.Spec.Containers[0].Env, func(i, j int) bool {
+			return job.Spec.Template.Spec.Containers[0].Env[i].Name < job.Spec.Template.Spec.Containers[0].Env[j].Name
+		})
 	}
 	return job, nil
 }
@@ -574,7 +596,7 @@ func (c *Client) IsolatedInitialJobStatus(ctx context.Context, namespace, name s
 		return nil, nil, fmt.Errorf("initial Job status scope refused")
 	}
 	suffix := ""
-	for _, kind := range []bootstrapKind{initialKind, fixedStepKind, provenanceReadKind} {
+	for _, kind := range []bootstrapKind{initialKind, fixedStepKind, provenanceReadKind, karafielSchemaKind} {
 		if strings.HasPrefix(name, kind.namePrefix) {
 			suffix = name[len(kind.namePrefix):]
 		}

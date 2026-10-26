@@ -11,7 +11,7 @@
 # Policy-only (add paths without rotating writer token):
 #   POLICY_ONLY=1 VAULT_TOKEN_FILE=... ./scripts/provision-switchyard-vault-writer.sh
 #
-# Last Updated: 2026-10-22 (cv: secret/cv for the cv/web-oidc and cv/web-session intake targets)
+# Last Updated: 2026-10-25 (exact isolated Karafiel staging intake path)
 set -euo pipefail
 
 VAULT_NS="${VAULT_NS:-vault}"
@@ -82,6 +82,14 @@ path "secret/data/karafiel" {
   capabilities = ["create", "update", "patch", "read"]
 }
 path "secret/data/karafiel/*" {
+  capabilities = ["create", "update", "patch", "read"]
+}
+# The isolated Karafiel staging intake groups share this exact KV-v2 path.
+# Core/session initialization and supplied OIDC groups require read/merge/write;
+# no staging descendants or production permissions are added here. Reviewed
+# policy application/readback must precede first intake; source parity is not
+# proof that the live writer token already has this permission.
+path "secret/data/karafiel-staging" {
   capabilities = ["create", "update", "patch", "read"]
 }
 path "secret/data/lexidrop" {

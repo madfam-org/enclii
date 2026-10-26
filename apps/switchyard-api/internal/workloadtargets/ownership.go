@@ -13,15 +13,19 @@ import (
 )
 
 type Snapshot struct {
-	Project      *types.Project
-	Service      *types.Service
-	Environment  *types.Environment
-	Registration *types.OnboardingRegistration
-	Namespace    *corev1.Namespace
-	Deployment   *appsv1.Deployment
-	Declared     *appsv1.Deployment
-	Application  *unstructured.Unstructured
-	ArgoConfig   *corev1.ConfigMap
+	Project                     *types.Project
+	Service                     *types.Service
+	Environment                 *types.Environment
+	Registration                *types.OnboardingRegistration
+	Namespace                   *corev1.Namespace
+	Deployment                  *appsv1.Deployment
+	Declared                    *appsv1.Deployment
+	Application                 *unstructured.Unstructured
+	SourceRoot                  *unstructured.Unstructured
+	SourceParent                *unstructured.Unstructured
+	SourceConfiguration         map[string]string
+	SourceConfigurationRevision string
+	ArgoConfig                  *corev1.ConfigMap
 	// Set only from bounded persisted namespace-claim reads, never request JSON.
 	NamespaceIntentExclusive bool
 	Incumbent                *Binding

@@ -131,19 +131,22 @@ type InitialMAPReceipt struct {
 // A historical INITIAL_ONLY receipt proves the fixed process completed. It
 // never represents current readiness, a reset origin, release ACK or reuse.
 type InitialNativeReceipt struct {
-	Version          string                   `json:"version"`
-	Classification   string                   `json:"classification"`
-	IntentSHA256     string                   `json:"intent_sha256"`
-	IntentUID        string                   `json:"intent_uid"`
-	JobUID           string                   `json:"job_uid"`
-	PodUID           string                   `json:"pod_uid"`
-	Image            string                   `json:"image"`
-	SourceRevision   string                   `json:"source_revision"`
-	StdoutSHA256     string                   `json:"stdout_sha256"`
-	InitStdoutSHA256 string                   `json:"init_stdout_sha256,omitempty"`
-	Portal001        *InitialPortal001Receipt `json:"portal001,omitempty"`
-	Portal002        *InitialPortal002Receipt `json:"portal002,omitempty"`
-	MAP              *InitialMAPReceipt       `json:"map,omitempty"`
+	Version          string                    `json:"version"`
+	Classification   string                    `json:"classification"`
+	IntentSHA256     string                    `json:"intent_sha256"`
+	IntentUID        string                    `json:"intent_uid"`
+	JobUID           string                    `json:"job_uid"`
+	PodUID           string                    `json:"pod_uid"`
+	Image            string                    `json:"image"`
+	SourceRevision   string                    `json:"source_revision"`
+	StdoutSHA256     string                    `json:"stdout_sha256"`
+	InitStdoutSHA256 string                    `json:"init_stdout_sha256,omitempty"`
+	Portal001        *InitialPortal001Receipt  `json:"portal001,omitempty"`
+	Portal002        *InitialPortal002Receipt  `json:"portal002,omitempty"`
+	MAP              *InitialMAPReceipt        `json:"map,omitempty"`
+	KarafielSchema   *KarafielSchemaReceipt    `json:"karafiel_schema,omitempty"`
+	KarafielIdentity *InitialBootstrapIdentity `json:"database_identity,omitempty"`
+	KarafielRuntime  *KarafielSchemaRuntime    `json:"runtime,omitempty"`
 	// Fixed step only: the typed step output when accredited, or the closed
 	// reason its terminal receipt is held.
 	TurnoVigente   *FixedStepTurnoVigenteReceipt `json:"turno_vigente,omitempty"`
@@ -316,7 +319,7 @@ func (c *Client) checkOperationExclusion(ctx context.Context, p IsolatedInitialJ
 // proceed, so an uncollectable history cannot wedge the step. A Job held
 // suspended is unfinished and blocks, as initial history does.
 func (c *Client) checkFixedStepExclusion(ctx context.Context, p IsolatedInitialJobPlan) error {
-	for _, manager := range []string{fixedStepKind.manager, initialKind.manager, provenanceReadKind.manager} {
+	for _, manager := range []string{fixedStepKind.manager, initialKind.manager, provenanceReadKind.manager, karafielSchemaKind.manager} {
 		selector := labels.Set(map[string]string{"enclii.dev/managed-by": manager, LabelProjectNamespace: p.ProjectID.String(), "enclii.dev/addon-id": p.AddonID.String(), "enclii.dev/service-id": p.ServiceID.String()}).String()
 		jobs, e := c.kubeClient().BatchV1().Jobs(p.Namespace).List(ctx, metav1.ListOptions{LabelSelector: selector})
 		if e != nil {
@@ -424,6 +427,18 @@ func validInitialNative(r InitialNativeReceipt, p IsolatedInitialJobPlan, cm *co
 	}
 	// Evidence of the one Pod that ran and its bounded main stdout.
 	observed := initialUID.MatchString(r.PodUID) && initialSHA.MatchString(r.StdoutSHA256)
+	if p.Profile == KarafielSchemaProfile {
+		if r.MAP != nil || r.Portal001 != nil || r.Portal002 != nil || r.TurnoVigente != nil || r.GenerationRead != nil || r.InitStdoutSHA256 != "" {
+			return false
+		}
+		if r.Classification == kind.retained {
+			return observed && r.HeldReason == "" && validKarafielSchema(r.KarafielSchema, p.Identity.SourceRevision) && validKarafielRuntime(r.KarafielRuntime, r) && r.KarafielIdentity != nil && reflect.DeepEqual(*r.KarafielIdentity, p.Identity)
+		}
+		return r.Classification == kind.held && r.KarafielSchema == nil && ((r.HeldReason == fixedStepHeldUnclassified && observed) || (r.HeldReason == fixedStepHeldJobFailed && r.PodUID == "" && r.StdoutSHA256 == ""))
+	}
+	if r.KarafielSchema != nil || r.KarafielRuntime != nil || r.KarafielIdentity != nil {
+		return false
+	}
 	if IsProvenanceReadProfile(p.Profile) {
 		if r.MAP != nil || r.Portal001 != nil || r.Portal002 != nil || r.TurnoVigente != nil || r.InitStdoutSHA256 != "" || !validGenerationInput(in.GenerationRead) {
 			return false
@@ -585,7 +600,19 @@ func (c *Client) collectInitialReceipt(ctx context.Context, p IsolatedInitialJob
 	}
 	kind := p.kind()
 	r := InitialNativeReceipt{Version: kind.version, Classification: kind.retained, IntentSHA256: intent.Data["sha256"], IntentUID: string(intent.UID), JobUID: string(job.UID), PodUID: string(pod.UID), Image: p.Image, SourceRevision: p.Identity.SourceRevision, StdoutSHA256: initialHash(b)}
-	if IsProvenanceReadProfile(p.Profile) {
+	if p.Profile == KarafielSchemaProfile {
+		identity := p.Identity
+		r.KarafielIdentity = &identity
+		status := pod.Status.ContainerStatuses[0]
+		termination := status.State.Terminated
+		r.KarafielRuntime = &KarafielSchemaRuntime{PodName: pod.Name, PodUID: string(pod.UID), JobUID: string(job.UID), ImageID: status.ImageID, StartedAt: termination.StartedAt.UTC().Format(time.RFC3339Nano), FinishedAt: termination.FinishedAt.UTC().Format(time.RFC3339Nano), ExitCode: termination.ExitCode, RestartCount: status.RestartCount}
+		out := &KarafielSchemaReceipt{}
+		if DecodeInitialBootstrapJSON(b, out) == nil && validKarafielSchema(out, p.Identity.SourceRevision) {
+			r.KarafielSchema = out
+		} else {
+			r.Classification, r.HeldReason = kind.held, fixedStepHeldUnclassified
+		}
+	} else if IsProvenanceReadProfile(p.Profile) {
 		out := &PortalGenerationReadReceipt{}
 		if DecodeInitialBootstrapJSON(b, out) == nil && validGenerationReceipt(out, p.GenerationRead) {
 			r.GenerationRead = out
