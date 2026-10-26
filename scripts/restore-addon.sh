@@ -6,11 +6,12 @@
 # WHY THIS EXISTS
 # ===============
 # The estate could restore the SHARED platform Postgres (scripts/dr-drill.sh,
-# scripts/backup-restore-drill.sh) and could restore nothing per addon. Every
-# addon has had a barman ScheduledBackup since the 2026-08-17 audit, and not
-# one of those backups had ever been restored, so "we back up every client
-# database" was a statement about a CronJob, not about recoverable data. A
-# backup nobody has restored is a hypothesis.
+# scripts/backup-restore-drill.sh) and could restore nothing per addon. The
+# 2026-08-17 audit taught the provisioner to emit a barman ScheduledBackup, but
+# on 2026-10-26 no addon had ever been backed up (the store, its credential,
+# the RBAC and the egress rule were all missing; docs/runbooks/ADDON_BACKUPS.md)
+# and not one backup had ever been restored. A backup nobody has restored is a
+# hypothesis.
 #
 # WHAT IT PROVES, AND WHAT IT DOES NOT
 # ====================================
@@ -50,7 +51,20 @@
 #   scripts/restore-addon.sh --namespace project-abc12345 --cluster pg-map-abc12345 \
 #       [--addon map-db] [--backup <name>] [--scratch-namespace enclii-restore-map] \
 #       [--table public.orders] [--operator name] [--keep] [--dry-run] \
-#       [--i-understand-production]
+#       [--expect-plan <sha256>] [--i-understand-production]
+#
+# DRY RUN, THEN APPLY BOUND TO THE REVIEWED PLAN
+#   1. Run with --dry-run. Nothing is created, deleted or written. The plan is
+#      printed to stderr and its fingerprint on stdout as `PLAN-HASH <sha256>`.
+#      The fingerprint covers the source Cluster's UID, the selected Backup
+#      (name and UID), the object-store path and endpoint, the image, the
+#      scratch target, the count scope and the flags.
+#   2. Review the plan.
+#   3. Run again WITHOUT --dry-run and WITH --expect-plan <sha256>. The run
+#      re-plans and refuses (exit 10) unless the live plan hashes to exactly
+#      the reviewed one: a newer backup, a recreated cluster or a different
+#      target means a new dry run. A run without --expect-plan is refused.
+#   Never run the dry run and the apply as one pasted block.
 #
 # EXIT CODES
 #    0  restore verified, counts match
@@ -80,6 +94,7 @@ OPERATOR="${USER:-unknown}"
 KEEP=0
 DRY_RUN=0
 ALLOW_PRODUCTION=0
+EXPECT_PLAN=""
 
 # A target namespace is scratch when it starts with this. Everything else is
 # treated as production until a human says otherwise.
@@ -120,6 +135,7 @@ while [[ $# -gt 0 ]]; do
     --operator)               OPERATOR="${2:?--operator needs a value}"; shift 2 ;;
     --keep)                   KEEP=1; shift ;;
     --dry-run)                DRY_RUN=1; shift ;;
+    --expect-plan)            EXPECT_PLAN="${2:?--expect-plan needs a value}"; shift 2 ;;
     --i-understand-production) ALLOW_PRODUCTION=1; shift ;;
     -h|--help)                usage; exit 0 ;;
     *) die 10 "unknown argument: $1 (try --help)" ;;
@@ -199,6 +215,21 @@ log "backup: $BACKUP"
 
 BACKUP_STARTED="$("$KUBECTL" get backup.postgresql.cnpg.io "$BACKUP" -n "$NAMESPACE" \
   -o jsonpath='{.status.startedAt}' 2>/dev/null || true)"
+BACKUP_UID="$("$KUBECTL" get backup.postgresql.cnpg.io "$BACKUP" -n "$NAMESPACE" \
+  -o jsonpath='{.metadata.uid}' 2>/dev/null || true)"
+
+# The source's backup coordinates. Read before the dry run stops, so a cluster
+# provisioned without backups fails the dry run and not the apply.
+SOURCE_UID="$("$KUBECTL" get cluster.postgresql.cnpg.io "$CLUSTER" -n "$NAMESPACE" \
+  -o jsonpath='{.metadata.uid}' 2>/dev/null || true)"
+SOURCE_DEST_PATH="$("$KUBECTL" get cluster.postgresql.cnpg.io "$CLUSTER" -n "$NAMESPACE" \
+  -o jsonpath='{.spec.backup.barmanObjectStore.destinationPath}' 2>/dev/null || true)"
+SOURCE_ENDPOINT="$("$KUBECTL" get cluster.postgresql.cnpg.io "$CLUSTER" -n "$NAMESPACE" \
+  -o jsonpath='{.spec.backup.barmanObjectStore.endpointURL}' 2>/dev/null || true)"
+SOURCE_IMAGE="$("$KUBECTL" get cluster.postgresql.cnpg.io "$CLUSTER" -n "$NAMESPACE" \
+  -o jsonpath='{.spec.imageName}' 2>/dev/null || true)"
+
+[[ -n "$SOURCE_DEST_PATH" ]] || die 20 "source cluster has no barmanObjectStore.destinationPath — it was provisioned without backups, so there is nothing to restore"
 
 # ---------------------------------------------------------------------------
 # Row count helper.
@@ -226,17 +257,41 @@ else
 fi
 
 # ---------------------------------------------------------------------------
+# The plan and its fingerprint. Every input the apply acts on, one per line in
+# a fixed order; no credential is part of it.
+# ---------------------------------------------------------------------------
+PLAN="$(printf '%s\n' \
+  "namespace=$NAMESPACE" "cluster=$CLUSTER" "cluster_uid=$SOURCE_UID" \
+  "backup=$BACKUP" "backup_uid=$BACKUP_UID" "backup_started=$BACKUP_STARTED" \
+  "destination=$SOURCE_DEST_PATH" "endpoint=$SOURCE_ENDPOINT" "image=$SOURCE_IMAGE" \
+  "scratch_namespace=$SCRATCH_NS" "restored_cluster=$RESTORED_CLUSTER" \
+  "scope=$COUNT_SCOPE" "keep=$KEEP" "allow_production=$ALLOW_PRODUCTION")"
+if command -v sha256sum >/dev/null 2>&1; then
+  PLAN_HASH="$(printf '%s\n' "$PLAN" | sha256sum | awk '{print $1}')"
+else
+  PLAN_HASH="$(printf '%s\n' "$PLAN" | shasum -a 256 | awk '{print $1}')"
+fi
+
+# ---------------------------------------------------------------------------
 # Dry run stops here, having done every check that does not mutate anything.
 # ---------------------------------------------------------------------------
 if [[ "$DRY_RUN" -eq 1 ]]; then
   step "Dry run"
+  log "plan:"
+  printf '%s\n' "$PLAN" | sed 's/^/  /' >&2
   log "would count rows in $NAMESPACE/$CLUSTER over $COUNT_SCOPE"
   log "would create namespace $SCRATCH_NS and Cluster $RESTORED_CLUSTER recovering from backup $BACKUP"
   log "would count rows in the restored cluster and compare"
   [[ "$KEEP" -eq 1 ]] && log "would keep the scratch namespace" || log "would delete namespace $SCRATCH_NS"
   log "dry run complete; nothing was created, deleted or written"
+  log "review the plan, then run again without --dry-run and with --expect-plan $PLAN_HASH"
+  printf 'PLAN-HASH %s\n' "$PLAN_HASH"
   exit 0
 fi
+
+[[ -n "$EXPECT_PLAN" ]] || die 10 "refusing to restore without --expect-plan. Run with --dry-run first, review the plan, then pass its PLAN-HASH."
+[[ "$EXPECT_PLAN" == "$PLAN_HASH" ]] || die 10 "the live plan no longer matches the reviewed one (expected $EXPECT_PLAN, now $PLAN_HASH): a newer backup, a recreated cluster or a different target. Take a new --dry-run."
+log "plan matches the reviewed fingerprint $PLAN_HASH"
 
 DRILL_START_EPOCH="$(date -u +%s)"
 RUN_TS="$(date -u +%Y-%m-%dT%H:%MZ)"
@@ -278,11 +333,22 @@ trap cleanup EXIT
 # credential Secret has to exist beside the restored cluster. Copied, never
 # printed: the value passes from kubectl to kubectl and is not expanded into a
 # shell variable.
+#
+# The copy is REBUILT from name, type and data only. The addon's copy is owned
+# by the source Cluster (an ownerReference) and immutable; carried into the
+# scratch namespace, that ownerReference names an owner that does not exist
+# there, and the garbage collector deletes the copy, mid-restore.
 if ! "$KUBECTL" get secret "$BACKUP_CREDENTIALS_SECRET" -n "$SCRATCH_NS" >/dev/null 2>&1; then
-  "$KUBECTL" get secret "$BACKUP_CREDENTIALS_SECRET" -n "$NAMESPACE" -o yaml \
-    | sed -e "s/^  namespace: .*/  namespace: ${SCRATCH_NS}/" \
-          -e '/^  resourceVersion:/d' -e '/^  uid:/d' -e '/^  creationTimestamp:/d' \
-          -e '/^  selfLink:/d' \
+  "$KUBECTL" get secret "$BACKUP_CREDENTIALS_SECRET" -n "$NAMESPACE" -o go-template='apiVersion: v1
+kind: Secret
+metadata:
+  name: {{.metadata.name}}
+  labels:
+    enclii.dev/restore-drill: "true"
+type: {{.type}}
+data:
+{{range $k, $v := .data}}  {{$k}}: {{$v}}
+{{end}}' \
     | "$KUBECTL" apply -n "$SCRATCH_NS" -f - >/dev/null \
     || die 30 "could not replicate the backup credentials Secret into $SCRATCH_NS"
 fi
@@ -291,15 +357,6 @@ fi
 # The recovery Cluster
 # ---------------------------------------------------------------------------
 step "Creating recovery cluster"
-
-SOURCE_DEST_PATH="$("$KUBECTL" get cluster.postgresql.cnpg.io "$CLUSTER" -n "$NAMESPACE" \
-  -o jsonpath='{.spec.backup.barmanObjectStore.destinationPath}' 2>/dev/null || true)"
-SOURCE_ENDPOINT="$("$KUBECTL" get cluster.postgresql.cnpg.io "$CLUSTER" -n "$NAMESPACE" \
-  -o jsonpath='{.spec.backup.barmanObjectStore.endpointURL}' 2>/dev/null || true)"
-SOURCE_IMAGE="$("$KUBECTL" get cluster.postgresql.cnpg.io "$CLUSTER" -n "$NAMESPACE" \
-  -o jsonpath='{.spec.imageName}' 2>/dev/null || true)"
-
-[[ -n "$SOURCE_DEST_PATH" ]] || die 20 "source cluster has no barmanObjectStore.destinationPath — it was provisioned without backups, so there is nothing to restore"
 
 # `externalClusters` + `bootstrap.recovery` is the cross-namespace shape: a
 # `recovery.backup` reference only resolves to a Backup object in the SAME

@@ -98,6 +98,7 @@ After `platform/comms-resend-api-key` intake, fan-out to all consumers:
 
 ESO sources: `enclii-secrets`, `janua-secrets`, `madfam-site-secrets`, `phynd-crm-secrets` (and staging) read `secret/comms.resend_api_key`.
 | `enclii/internal-api-key` | `secret/enclii` | `INTERNAL_API_KEY` |
+| `enclii/addon-db-backups` | `secret/enclii` | `addon_backup_access_key_id`, `addon_backup_secret_access_key` (R2 token for the addon-backups bucket only; see [ADDON_BACKUPS.md](ADDON_BACKUPS.md#operator-prerequisites-one-time-owner)) |
 | `coupler/janua-service-token` | `secret/coupler` | `JANUA_SERVICE_TOKEN` |
 | `janua/internal-api-key` | `secret/janua` | `internal_api_key` |
 | `<client-portal>/internal-api-key` | `secret/<client-portal>` | `internal_api_key` |

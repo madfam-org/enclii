@@ -12,7 +12,7 @@ import (
 func TestLoadRegistry(t *testing.T) {
 	reg, err := LoadRegistry()
 	require.NoError(t, err)
-	assert.Len(t, reg, 103)
+	assert.Len(t, reg, 104)
 	assert.Contains(t, reg, "ceq/vast-api-key")
 	assert.Contains(t, reg, "karafiel/web-oidc-janua")
 	adminSession := reg["karafiel/admin-session"]
@@ -37,7 +37,7 @@ func TestGetTarget(t *testing.T) {
 func TestListTargetsSorted(t *testing.T) {
 	list, err := ListTargets()
 	require.NoError(t, err)
-	require.Len(t, list, 103)
+	require.Len(t, list, 104)
 	for i := 1; i < len(list); i++ {
 		assert.Less(t, list[i-1].ID, list[i].ID, "targets should be sorted by id")
 	}
@@ -79,6 +79,7 @@ func TestListTargetsSorted(t *testing.T) {
 		"digifab-quoting/pravara-intake",
 		"digifab-quoting/web-oidc",
 		"digifab-quoting/web-session",
+		"enclii/addon-db-backups",
 		"enclii/internal-api-key",
 		"family-history/api-access",
 		"family-history/web-oidc",
@@ -794,6 +795,25 @@ func TestMonitoringAlertmanagerSMTPTarget(t *testing.T) {
 	// never to pass --generate (the API does not refuse it, see SECRET_INTAKE.md).
 	assert.Nil(t, tgt.Generate)
 	assert.Contains(t, tgt.Description, "never generated")
+}
+
+// Addon database backups (2026-10-26). Every link fails silently, so it is
+// pinned end to end: a wrong Vault path is a write nothing reads, a wrong
+// property is an ExternalSecret that syncs zero keys, and a wrong
+// ExternalSecret reads a property nobody writes. The ExternalSecret
+// (enclii-db-backup-credentials) is not force-synced; it refreshes every 15m.
+// tests/scripts/test_addon_backup_wiring.py checks the manifest side.
+func TestEncliiAddonDBBackupsTarget(t *testing.T) {
+	tgt, err := GetTarget("enclii/addon-db-backups")
+	require.NoError(t, err)
+	assert.Equal(t, "secret/enclii", tgt.VaultPath, "an existing writer-policy path; the merge keeps the other enclii properties")
+	assert.Equal(t, "enclii", tgt.Namespace)
+	assert.Empty(t, tgt.ExternalSecret, "no force-sync target: the ExternalSecret picks the write up on its refresh")
+	assert.Equal(t, []string{"addon_backup_access_key_id", "addon_backup_secret_access_key"}, tgt.Keys)
+	require.NotNil(t, tgt.Generate)
+	assert.True(t, tgt.Generate.Disabled, "an R2 token is minted by Cloudflare, never generated")
+	assert.Contains(t, tgt.Description, "never generated")
+	assert.Contains(t, tgt.Description, "bucket only")
 }
 
 // S-Gate 1 synthetic buyer (2026-10-14). The journeys CronJob reads exactly
