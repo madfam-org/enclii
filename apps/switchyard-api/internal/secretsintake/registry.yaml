@@ -183,6 +183,34 @@ targets:
     keys:
       - resend-api-key
 
+  # enclii (2026-10-26) — the object-store credential every managed-Postgres
+  # addon cluster backs up with. Until this target existed the Secret the
+  # provisioner replicates (enclii/enclii-db-backup-credentials) had no writer,
+  # so no addon had ever been backed up (AddonBackupNeverCompleted on every
+  # live cluster). An R2 API token minted on Cloudflare's side, Object Read &
+  # Write, scoped to the enclii-addon-db-backups bucket ONLY: the copy lands in
+  # every addon namespace, so a bucket-wide or account-wide token there would
+  # expose the platform backups too. Never generated. Create the bucket BEFORE
+  # submitting: the submit is what arms WAL archiving on every live cluster
+  # within one reconciler sweep, and archiving into a missing bucket fails.
+  # The enclii-db-backup-credentials ExternalSecret
+  # (infra/k8s/production/enclii-db-backup-credentials.externalsecret.yaml)
+  # projects the two properties as ACCESS_KEY_ID / SECRET_ACCESS_KEY on its
+  # 15-minute refresh; this target names no external_secret, so intake does
+  # not force-sync it (run `enclii ops secrets sync-sweep` to hurry it). Same
+  # Vault path as the other enclii targets (the intake write is a merge), so
+  # the writer policy needs no new path (scripts/check-intake-policy-parity.sh).
+  enclii/addon-db-backups:
+    label: Addon database backups (R2 token for enclii-addon-db-backups)
+    description: S3 access key id and secret of a Cloudflare R2 API token with Object Read & Write on the enclii-addon-db-backups bucket only; minted in Cloudflare and typed at the masked prompt, never generated. Create the bucket first. Projected to enclii/enclii-db-backup-credentials on the ExternalSecret's 15-minute refresh (not force-synced), which Switchyard replicates into each addon namespace; the reconciler's backup sweep then wires backups onto every live addon cluster within about ten more minutes.
+    vault_path: secret/enclii
+    namespace: enclii
+    keys:
+      - addon_backup_access_key_id
+      - addon_backup_secret_access_key
+    generate:
+      disabled: true
+
   enclii/internal-api-key:
     label: Enclii internal API key
     description: Switchyard ↔ Roundhouse internal auth

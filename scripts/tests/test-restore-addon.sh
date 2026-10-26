@@ -30,6 +30,17 @@
 #   6. A MISMATCH FAILS LOUDLY. A verification that reports success when the
 #      counts differ is worse than no verification.
 #
+#   7. THE APPLY IS BOUND TO THE REVIEWED DRY RUN (2026-10-26). A dry run
+#      prints `PLAN-HASH <sha256>`; a run without --expect-plan, or with a
+#      fingerprint the live state no longer hashes to, is refused before
+#      anything is created. Every apply case below takes its hash from a dry
+#      run of the same arguments, as an operator would.
+#
+#   8. THE SCRATCH CREDENTIAL CARRIES NO OWNER. The addon's copy is owned by
+#      the source Cluster; carried into the scratch namespace that owner does
+#      not exist and the garbage collector deletes the copy mid-restore. The
+#      copy is rebuilt from name/type/data with a go-template.
+#
 # Nothing here reaches a cluster: `kubectl` and `psql` are real files on a
 # PATH prepended for the duration of each case.
 set -uo pipefail
@@ -81,12 +92,16 @@ case "$args" in
       printf 'https://r2.example.invalid\n'; exit 0 ;;
   *"get cluster.postgresql.cnpg.io"*"imageName"*)
       printf 'ghcr.io/cloudnative-pg/postgresql:18.3\n'; exit 0 ;;
+  *"get cluster.postgresql.cnpg.io"*"metadata.uid"*)
+      printf '%s\n' "${STUB_CLUSTER_UID:-uid-source-cluster}"; exit 0 ;;
   *"get cluster.postgresql.cnpg.io"*"readyInstances"*)
       printf '%s\n' "${STUB_READY_INSTANCES:-1}"; exit 0 ;;
   *"get cluster.postgresql.cnpg.io"*)
       exit "${STUB_SOURCE_CLUSTER_RC:-0}" ;;
   *"get backup.postgresql.cnpg.io"*"startedAt"*)
       printf '2026-09-05T04:00:12Z\n'; exit 0 ;;
+  *"get backup.postgresql.cnpg.io"*"metadata.uid"*)
+      printf 'uid-backup-%s\n' "${3:-x}"; exit 0 ;;
   *"get backup.postgresql.cnpg.io"*)
       printf '%s' "${STUB_BACKUP_LIST-}"; [[ -n "${STUB_BACKUP_LIST-}" ]] && printf '\n'; exit 0 ;;
   *"exec"*)
@@ -95,6 +110,21 @@ case "$args" in
       else
         printf '%s\n' "${STUB_RESTORED_ROWS:-100}"
       fi
+      exit 0 ;;
+  *"get secret"*"-o go-template="*)
+      # What the script's template renders: name, type and data only.
+      cat <<YAML
+apiVersion: v1
+kind: Secret
+metadata:
+  name: enclii-db-backup-credentials
+  labels:
+    enclii.dev/restore-drill: "true"
+type: Opaque
+data:
+  ACCESS_KEY_ID: $STUB_FAKE_SECRET
+  SECRET_ACCESS_KEY: $STUB_FAKE_SECRET
+YAML
       exit 0 ;;
   *"get secret"*"-o yaml"*)
       cat <<YAML
@@ -183,6 +213,14 @@ PSQL_TRIPWIRE="$TMPROOT/psql-tripwire.txt"
 
 BASE_ARGS=(--namespace project-abc12345 --cluster pg-map-abc12345 --addon map-db --operator test)
 
+# run_apply <args...> — dry run with the same arguments and environment, take
+# its PLAN-HASH, then run for real bound to it. $plan holds the hash.
+run_apply() {
+  run_restore "$@" --dry-run
+  plan="$(printf '%s\n' "$out" | sed -n 's/^PLAN-HASH \([0-9a-f]\{64\}\)$/\1/p')"
+  run_restore "$@" --expect-plan "${plan:-none}"
+}
+
 # ---------------------------------------------------------------------------
 # 1. The production guard
 # ---------------------------------------------------------------------------
@@ -195,7 +233,7 @@ assert_not_contains 'refusal happens before anything is created' \
 
 STUB_BACKUP_LIST="pg-map-abc12345-20260905040000 pg-map-abc12345" \
 STUB_SOURCE_ROWS=100 STUB_RESTORED_ROWS=100 \
-  run_restore "${BASE_ARGS[@]}" --scratch-namespace data --i-understand-production
+  run_apply "${BASE_ARGS[@]}" --scratch-namespace data --i-understand-production
 assert_rc       'the flag lifts the refusal' "$rc" 0 "$out"
 assert_contains 'warns loudly when it does'  "$out" 'WARNING'
 assert_contains 'does not delete a non-scratch namespace' "$out" 'leaving it alone'
@@ -218,6 +256,32 @@ assert_not_contains 'dry run applies nothing' "$calls" 'apply'
 assert_not_contains 'dry run deletes nothing' "$calls" 'delete'
 assert_not_contains 'dry run executes nothing in a pod' "$calls" 'exec'
 assert_not_contains 'dry run emits no drill row' "$out" 'DR-LOG-ROW'
+assert_contains 'dry run prints the plan fingerprint' "$out" 'PLAN-HASH '
+
+# ---------------------------------------------------------------------------
+# 2b. The apply is bound to the reviewed dry run
+# ---------------------------------------------------------------------------
+STUB_BACKUP_LIST="pg-map-abc12345-20260905040000 pg-map-abc12345" \
+  run_restore "${BASE_ARGS[@]}"
+assert_rc       'an apply without --expect-plan is refused' "$rc" 10 "$out"
+assert_contains 'and says to dry-run first' "$out" '--dry-run first'
+assert_not_contains 'the unbound refusal creates nothing' "$(cat "$KUBECTL_CALLS")" 'create namespace'
+assert_not_contains 'the unbound refusal counts nothing' "$(cat "$KUBECTL_CALLS")" 'exec'
+
+STUB_BACKUP_LIST="pg-map-abc12345-20260905040000 pg-map-abc12345" \
+  run_restore "${BASE_ARGS[@]}" --dry-run
+reviewed="$(printf '%s\n' "$out" | sed -n 's/^PLAN-HASH \([0-9a-f]\{64\}\)$/\1/p')"
+# A newer backup completes between the review and the apply.
+STUB_BACKUP_LIST="pg-map-abc12345-20260905040000 pg-map-abc12345
+pg-map-abc12345-20260906040000 pg-map-abc12345" \
+  run_restore "${BASE_ARGS[@]}" --expect-plan "$reviewed"
+assert_rc       'a stale fingerprint is refused' "$rc" 10 "$out"
+assert_contains 'and says the plan changed' "$out" 'no longer matches'
+assert_not_contains 'the stale refusal creates nothing' "$(cat "$KUBECTL_CALLS")" 'create namespace'
+
+STUB_CLUSTER_UID=uid-recreated STUB_BACKUP_LIST="pg-map-abc12345-20260905040000 pg-map-abc12345" \
+  run_restore "${BASE_ARGS[@]}" --expect-plan "$reviewed"
+assert_rc 'a recreated source cluster is refused' "$rc" 10 "$out"
 
 # ---------------------------------------------------------------------------
 # 3. Happy path: the drill row
@@ -226,7 +290,7 @@ STUB_BACKUP_LIST="pg-map-abc12345-20260904040000 pg-map-abc12345
 pg-map-abc12345-20260905040000 pg-map-abc12345
 pg-other-99999999-20260905040000 pg-other-99999999" \
 STUB_SOURCE_ROWS=1284 STUB_RESTORED_ROWS=1284 \
-  run_restore "${BASE_ARGS[@]}"
+  run_apply "${BASE_ARGS[@]}"
 assert_rc       'a matching restore exits 0' "$rc" 0 "$out"
 row="$(printf '%s\n' "$out" | grep '^DR-LOG-ROW' || true)"
 assert_contains 'emits exactly one drill row'  "$row" 'DR-LOG-ROW'
@@ -257,13 +321,16 @@ assert_contains 'recovery pins the source image'            "$applied" 'imageNam
 assert_contains 'recovered cluster is labelled a drill'     "$applied" 'enclii.dev/restore-drill: "true"'
 assert_contains 'tears the scratch namespace down afterwards' \
   "$(cat "$KUBECTL_CALLS")" 'delete namespace enclii-restore-pg-map-abc12345'
+assert_contains 'the credential copy is rebuilt from a template' "$(cat "$KUBECTL_CALLS")" 'get secret enclii-db-backup-credentials -n project-abc12345 -o go-template='
+assert_not_contains 'the credential copy carries no owner reference' "$applied" 'ownerReferences'
+assert_not_contains 'the credential copy is not a full-object copy' "$(cat "$KUBECTL_CALLS")" 'get secret enclii-db-backup-credentials -n project-abc12345 -o yaml'
 
 # ---------------------------------------------------------------------------
 # 4. A mismatch fails
 # ---------------------------------------------------------------------------
 STUB_BACKUP_LIST="pg-map-abc12345-20260905040000 pg-map-abc12345" \
 STUB_SOURCE_ROWS=1284 STUB_RESTORED_ROWS=1200 \
-  run_restore "${BASE_ARGS[@]}"
+  run_apply "${BASE_ARGS[@]}"
 assert_rc       'a mismatch exits 40'      "$rc" 40 "$out"
 assert_contains 'the row says MISMATCH'    "$out" 'verdict=MISMATCH'
 assert_contains 'and it is stated plainly' "$out" 'VERIFICATION FAILED'
@@ -287,7 +354,7 @@ assert_contains 'and names it'                      "$out" 'no CloudNativePG Clu
 # ---------------------------------------------------------------------------
 STUB_BACKUP_LIST="pg-map-abc12345-20260905040000 pg-map-abc12345" \
 STUB_SOURCE_ROWS=7 STUB_RESTORED_ROWS=7 \
-  run_restore "${BASE_ARGS[@]}"
+  run_apply "${BASE_ARGS[@]}"
 assert_not_contains 'never prints secret material' "$out" "$FAKE_SECRET"
 assert_not_contains 'never prints secret material in the kubectl argv' \
   "$(cat "$KUBECTL_CALLS")" "$FAKE_SECRET"

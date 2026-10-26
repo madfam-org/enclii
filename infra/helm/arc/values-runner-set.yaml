@@ -77,12 +77,16 @@ template:
           - /home/runner/run.sh
         resources:
           requests:
-            # Keep scheduler requests aligned with the dedicated 8 vCPU
-            # builder. 2Gi is the minimum observed safe request for memory-heavy
-            # frontend builds while still keeping the active blue pool schedulable
-            # on the dedicated builder node.
-            cpu: 400m
-            memory: 2Gi
+            # The p90 per-pod PEAK of the week before 2026-10-26 (memory 3.87Gi,
+            # CPU 1.03 cores). At the old 400m/2Gi the scheduler packed 15
+            # runners on an 8 vCPU / 31Gi builder and the node went NotReady
+            # under memory thrash on 2026-10-24. These requests cap that node at
+            # 6 runners. Keep them equal to the runner container in
+            # infra/k8s/production/arc/runner-{blue,deploy}/rendered.yaml, which
+            # also carry the dind requests and the full evidence;
+            # tests/scripts/test_arc_runner_requests.py checks the three agree.
+            cpu: "1"
+            memory: 4Gi
           limits:
             cpu: 1500m
             # 4Gi proved too small for monorepo CI (dhanam 2026-07-21 outage:

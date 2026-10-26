@@ -23,6 +23,7 @@ func TestOperatorRoutesRequireDatabasePlatformRank(t *testing.T) {
 		{http.MethodPost, "/v1/ops/apps/retire"},
 		{http.MethodPost, "/v1/ops/apps/rollback"},
 		{http.MethodPost, "/v1/ops/pods/restart"},
+		{http.MethodPost, "/v1/ops/storage/prune-detached"},
 		{http.MethodPost, "/v1/ops/pods/%72estart"},
 		{http.MethodPost, "/v1/ops/inventory/topology"},
 		{http.MethodPost, "/v1/ops/inventory/applications"},

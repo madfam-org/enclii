@@ -1198,7 +1198,10 @@ func TestHandleOpsStorageSettingsApplyDryRunReportsChanges(t *testing.T) {
 	assert.True(t, resp.DryRun)
 }
 
-func TestHandleOpsStoragePruneDetachedApplyDeletesDetachedOnly(t *testing.T) {
+// An apply without the reviewed plan_hash is the pre-2026-10-26 request shape
+// (delete every detached volume). It is refused and deletes nothing; the
+// eligible path is covered in operator_storage_prune_handlers_test.go.
+func TestHandleOpsStoragePruneDetachedApplyWithoutPlanDeletesNothing(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	detached := &unstructured.Unstructured{
 		Object: map[string]any{
@@ -1211,18 +1214,7 @@ func TestHandleOpsStoragePruneDetachedApplyDeletesDetachedOnly(t *testing.T) {
 			"status": map[string]any{"state": "detached"},
 		},
 	}
-	attached := &unstructured.Unstructured{
-		Object: map[string]any{
-			"apiVersion": "longhorn.io/v1beta2",
-			"kind":       "Volume",
-			"metadata": map[string]any{
-				"name":      "live-pvc-xyz",
-				"namespace": "longhorn-system",
-			},
-			"status": map[string]any{"state": "attached"},
-		},
-	}
-	dynClient := fake.NewSimpleDynamicClient(runtime.NewScheme(), detached, attached)
+	dynClient := fake.NewSimpleDynamicClient(runtime.NewScheme(), detached)
 	handler := &Handler{k8sClient: &k8sclient.Client{DynamicClient: dynClient}}
 	router := gin.New()
 	router.POST("/v1/ops/:domain/:action", handler.HandleOpsOperation)
@@ -1239,14 +1231,8 @@ func TestHandleOpsStoragePruneDetachedApplyDeletesDetachedOnly(t *testing.T) {
 	rec := httptest.NewRecorder()
 	router.ServeHTTP(rec, req)
 
-	require.Equal(t, http.StatusAccepted, rec.Code)
-	var resp operatorOperationResponse
-	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &resp))
-	assert.Equal(t, "submitted", resp.Status)
-
+	require.Equal(t, http.StatusBadRequest, rec.Code)
 	_, err = dynClient.Resource(longhornVolumeGVR).Namespace("longhorn-system").Get(context.Background(), "orphan-pvc-abc", metav1.GetOptions{})
-	require.True(t, k8serrors.IsNotFound(err))
-	_, err = dynClient.Resource(longhornVolumeGVR).Namespace("longhorn-system").Get(context.Background(), "live-pvc-xyz", metav1.GetOptions{})
 	require.NoError(t, err)
 }
 

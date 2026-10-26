@@ -22,6 +22,7 @@ Track operations that still require break-glass (`kubectl`, provider CLIs, manua
 | Shared Postgres server settings read | No Enclii read returns `pg_settings` (for example `max_connections`, `shared_buffers`) of the shared Postgres; `enclii db wal-status` needs a local kubeconfig. #785's settings (2026-10-18) were confirmed by an operator read, not through Enclii | A read-only `ops`/`db` operation that returns named server settings and connection counts | P2 |
 | ARC runner image read | `enclii ops runners arc` returns scale-set runner counts but not the runner image, so the digest a pool actually runs is read with break-glass `kubectl` (`infra/k8s/production/arc/README.md`) | Add each scale set's runner and init-container image to the `ops.runners.arc` read | P3 |
 | Node scheduling reads (taints, allocatable, requests) | None through Enclii: node taints, conditions and allocatable-vs-requested cannot be read, so whether a constraint (`required` anti-affinity, a spread) can be satisfied is inferred from pod placement | A read in `ops` (or `admin topology`) that returns, per node ROLE, taints, conditions, allocatable and summed requests, never hostnames or IPs | P2 |
+| Addon restore drill | `scripts/restore-addon.sh`: break-glass `kubectl` (namespace, credential copy, recovery Cluster, row counts over `kubectl exec`), dry run first and bound to its `PLAN-HASH` with `--expect-plan` (2026-10-26). Backups themselves are converged by switchyard-api; only the proof is manual | `enclii ops addons restore-drill <addon>`: dry run returns the plan and hash, apply with `--expect-plan` and `--reason`, audited, result row recorded; then a schedule | P1: a backup nobody restores is a hypothesis ([ADDON_BACKUPS.md](runbooks/ADDON_BACKUPS.md)) |
 
 When closing a gap, remove the row and link the PR that added the adapter.
 
@@ -235,7 +236,7 @@ Documented separate AGPL repo `madfam-org/coupler` for Composio-class agent tool
 - `enclii projects reconcile-services <slug>` — admin POST `/v1/admin/projects/:slug/reconcile-services`
 - `enclii db schema` + `GET /v1/admin/db/schema` — migration version, dirty flag, GA column checks (migration 030 `rollout_blocked_reason`)
 - `enclii ops storage settings-apply` — Longhorn CPU settings from helm values (O-5)
-- `enclii ops storage prune-detached` — delete detached Longhorn orphan volumes (O-4)
+- `enclii ops storage prune-detached` — delete orphaned Longhorn volumes (O-4): detached with a Released PV or none; Bound claims refused; apply needs `--expect-plan` (2026-10-26)
 - `enclii admin ga-verify` — Wave 0 security + schema + Longhorn plan smoke
 - `scripts/wave0-ga-ops.sh` — Enclii-first Wave 0 orchestration (O-4–O-6)
 

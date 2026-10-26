@@ -330,6 +330,10 @@ func main() {
 	// Converge CNPG NetworkPolicies for every live cluster on start and every
 	// 10 minutes (backfill + repair; internal/reconciler/addon_network_sweep.go).
 	addonReconciler.SetNetworkConverger(addonService)
+	// Wire backups (credential copy, egress rule, spec.backup, ScheduledBackup)
+	// onto every live, awake cluster on the same cadence; hibernated clusters
+	// are skipped (internal/reconciler/addon_backup_sweep.go).
+	addonReconciler.SetBackupConverger(addonService)
 	// addon.backup.completed is observed from CNPG cluster status, not
 	// commanded, so it is reported from the reconciler rather than the
 	// service. See internal/reconciler/addon_backup_events.go.

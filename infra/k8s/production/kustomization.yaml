@@ -9,6 +9,7 @@ resources:
 - porkbun-credentials.externalsecret.yaml
 - enclii-internal-api-key.externalsecret.yaml
 - enclii-resend-api-key.externalsecret.yaml
+- enclii-db-backup-credentials.externalsecret.yaml
 - switchyard-api-signature-policyexception.yaml
 - roundhouse-waybill-signature-policyexception.yaml
 - docs-site-signature-policyexception.yaml

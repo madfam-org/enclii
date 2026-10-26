@@ -118,6 +118,18 @@ rules:
 - apiGroups: ["postgresql.cnpg.io"]
   resources: ["clusters"]
   verbs: ["create", "get", "list", "watch", "update", "patch", "delete"]
+# CloudNativePG backups (2026-10-26). The provisioner and the reconciler's
+# backup sweep create each addon's daily ScheduledBackup, and Deprovision
+# deletes it; before this rule every one of those calls was refused, so no
+# addon could have had a schedule even with the store configured. patch: the
+# sweep suspends the schedule of a hibernated cluster and resumes it on wake.
+# Backup objects are read-only here: CNPG creates them from the schedule.
+- apiGroups: ["postgresql.cnpg.io"]
+  resources: ["scheduledbackups"]
+  verbs: ["create", "get", "list", "watch", "patch", "delete"]
+- apiGroups: ["postgresql.cnpg.io"]
+  resources: ["backups"]
+  verbs: ["get", "list", "watch"]
 # Longhorn: read diagnostics plus audited orphan prune and CPU settings apply
 - apiGroups: ["longhorn.io"]
   resources: ["volumes"]
