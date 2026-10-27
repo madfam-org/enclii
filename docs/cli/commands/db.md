@@ -20,7 +20,7 @@ enclii db <subcommand> [flags]
 
 The `db` subtree exposes read-only inspection of the platform Postgres instance:
 
-- **`wal-status`** — WAL archive freshness via pgBackRest sidecar (cluster exec)
+- **`wal-status`** — WAL archive freshness via `pg_stat_archiver` and backup history via the pgBackRest sidecar (cluster exec)
 - **`schema`** — golang-migrate version, dirty flag, and GA column checks via Switchyard API (admin)
 
 Mutating operations (`backup`, `restore`, point-in-time recovery) are intentionally **not** in this CLI. Run them through `kubectl exec` into the `pgbackrest` sidecar under operator supervision; see `docs/runbooks/POSTGRES_WAL_ARCHIVING.md` for the procedure.
@@ -42,12 +42,14 @@ enclii db wal-status [flags]
 | `--namespace` | string | `data` | Postgres namespace |
 | `--label` | string | `app=postgres` | Pod selector for the Postgres primary |
 | `--sidecar` | string | `pgbackrest` | pgBackRest sidecar container name |
+| `--postgres-container` | string | `postgres` | Postgres container; `pg_stat_archiver` is read here with `psql` |
 | `--stanza` | string | `main` | pgBackRest stanza name |
 | `--json` | bool | `false` | Emit structured JSON instead of human output |
 
-The command does a read-only cluster call: it parses `pgbackrest info --output=json` from the sidecar and prints:
+The command makes two read-only cluster calls: `pgbackrest info --output=json` in the sidecar, and a `SELECT` on `pg_stat_archiver` with `psql -U postgres` in the postgres container. It prints:
 
-- Most recent WAL archive segment age (color-coded against the RPO threshold)
+- Age of the last successfully archived WAL segment (`pg_stat_archiver.last_archived_time`): green under 15 min, yellow under 1 h, red at 1 h or more. These match the `PostgresWALArchiveLag` and `PostgresWALArchiveStale` alerts.
+- Archiver failure count and last failed segment. A failure newer than the last success is red.
 - Latest full / differential / incremental backup type and age
 - R2 repo footprint (sum of backup delta sizes)
 - Replica lag (stub for P1.1; wires up in P1.2 once replication lands)
@@ -102,7 +104,8 @@ enclii db wal-status --stanza staging-main
 
 ## Notes
 
-- The CLI requires `kubectl` context and permission to `exec` into the Postgres pod's `pgbackrest` sidecar.
+- The CLI requires `kubectl` context and permission to `exec` into the Postgres pod's `pgbackrest` sidecar and `postgres` container.
+- The latest backup age is not a WAL age. If `pg_stat_archiver` cannot be read, the output says `Latest WAL age: unknown`, `--json` sets `latest_wal_age_s` to `null` and `wal_freshness_verified` to `false`, and the status is at best yellow ("freshness UNVERIFIED").
 - Exit code `0` is returned even when the status is **degraded** — the human/JSON output reports the actual state. This makes the command safe to run in dashboards.
 - If the sidecar cannot be reached or the stanza has not been created yet, the command exits `1`.
 
