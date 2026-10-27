@@ -134,6 +134,25 @@ targets:
     keys:
       - admin_session_secret
 
+  # Karafiel Admin Janua client (SSO wave 1, 2026-10-27): the confidential pair
+  # of ecosystem-oidc platform karafiel-admin, written ONLY by
+  # `enclii secrets provision oidc --platform karafiel-admin`. karafiel splits
+  # the pair across two ExternalSecrets: karafiel-admin-oidc reads
+  # oidc_client_id, karafiel-admin-auth reads janua_secret_key. Intake
+  # force-syncs the secret's ExternalSecret; the id is pinned and does not
+  # change, and karafiel-admin-oidc refreshes on its own interval.
+  karafiel/admin-oidc-janua:
+    label: Karafiel Admin Janua OAuth client
+    description: Karafiel Admin operator console (admin.karafiel.mx) Janua confidential client id + secret, filed by `enclii secrets provision oidc --platform karafiel-admin`. Separate from the tenant client karafiel/web-oidc-janua.
+    vault_path: secret/karafiel
+    namespace: karafiel
+    external_secret: karafiel-admin-auth # pragma: allowlist secret — Kubernetes object name, not a credential
+    keys:
+      - oidc_client_id
+      - janua_secret_key
+    generate:
+      disabled: true
+
   phynd-crm/oidc-janua:
     label: Phynd CRM Janua OAuth client
     description: Staff SSO for crm.madfam.io
@@ -380,6 +399,22 @@ targets:
     keys:
       - janua_mail_client_id
       - janua_mail_client_secret
+
+  # crea-map web Janua client (SSO wave 1, 2026-10-27): the confidential
+  # client secret of ecosystem-oidc platform crea-map, written ONLY by
+  # `enclii secrets provision oidc --platform crea-map`. Only the secret: the
+  # client id is plain config in crea-map's Deployment. crea-map-secrets maps
+  # `property: janua_client_secret` to JANUA_CLIENT_SECRET.
+  crea-map/web-oidc:
+    label: crea-map web Janua OAuth client secret
+    description: crea-map web (map.creatumundo.mx) Janua confidential client secret, filed by `enclii secrets provision oidc --platform crea-map`. No human types it.
+    vault_path: secret/crea-map
+    namespace: crea-map
+    external_secret: crea-map-secrets
+    keys:
+      - janua_client_secret
+    generate:
+      disabled: true
 
   # symbiosis-hcm is the PRODUCER of the absence feed; crea-map cross-reads
   # map_absence_feed_key and consumes it as HCM_FEED_API_KEY. Intaking both keys
@@ -1081,8 +1116,8 @@ targets:
   # through intake. These two targets cover the two that converge-dash
   # generates and checks itself. The other four are deliberately not here: the
   # two metrics-ingest HMAC keys are also held by the senders that sign with
-  # them, and the web OIDC client pair waits on its Janua client registration.
-  # ESO is all-or-nothing, so converge-dash-secrets syncs only once all six
+  # them, and the web OIDC client pair has its own target, converge-dash/web-oidc,
+  # filled by the OIDC provisioner. ESO is all-or-nothing, so converge-dash-secrets syncs only once all six
   # exist in Vault.
   converge-dash/session:
     label: converge-dash web session signing secret
@@ -1101,6 +1136,42 @@ targets:
     external_secret: converge-dash-secrets  # pragma: allowlist secret
     keys:
       - dash_internal_read_token
+
+  # converge-dash web Janua client (SSO wave 1, 2026-10-27): the confidential
+  # pair of ecosystem-oidc platform converge-dash-web, written ONLY by
+  # `enclii secrets provision oidc --platform converge-dash-web`. The two
+  # properties are the ones converge-dash-secrets already maps to
+  # DASH_WEB_JANUA_CLIENT_ID / DASH_WEB_JANUA_CLIENT_SECRET. Generation is
+  # disabled: a random value here is not a Janua credential.
+  converge-dash/web-oidc:
+    label: converge-dash web Janua OAuth client
+    description: converge-dash web (dash.madfam.io) Janua confidential client id + secret, filed by `enclii secrets provision oidc --platform converge-dash-web`. No human types either value.
+    vault_path: secret/converge-dash
+    namespace: converge-dash
+    external_secret: converge-dash-secrets  # pragma: allowlist secret
+    keys:
+      - dash_web_janua_client_id
+      - dash_web_janua_client_secret
+    generate:
+      disabled: true
+
+  # Avala Janua client (SSO wave 1, 2026-10-27): the confidential pair of
+  # ecosystem-oidc platform avala. Avala still reads its pair from a hand-made
+  # Secret; this target writes secret/avala for the PLANNED avala-janua-oidc
+  # ExternalSecret. Until that exists, intake merges into Vault and reports
+  # external_secret_refreshed: false, and nothing reaches the pod, so a
+  # rotating provision run must wait for avala's ExternalSecret.
+  avala/oidc-janua:
+    label: Avala Janua OAuth client
+    description: Avala (admin.avala.studio, app.avala.studio) Janua confidential client id + secret, filed by `enclii secrets provision oidc --platform avala`. Waits on avala's avala-janua-oidc ExternalSecret before any rotation.
+    vault_path: secret/avala
+    namespace: avala
+    external_secret: avala-janua-oidc  # pragma: allowlist secret
+    keys:
+      - janua_client_id
+      - janua_client_secret
+    generate:
+      disabled: true
 
   # monitoring (2026-10-05) — Alertmanager's SMTP password, the credential
   # behind every `email_configs` block in infra/k8s/production/monitoring/

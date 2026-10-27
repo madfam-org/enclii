@@ -11,7 +11,7 @@
 # Policy-only (add paths without rotating writer token):
 #   POLICY_ONLY=1 VAULT_TOKEN_FILE=... ./scripts/provision-switchyard-vault-writer.sh
 #
-# Last Updated: 2026-10-25 (exact isolated Karafiel staging intake path)
+# Last Updated: 2026-10-27 (exact avala intake path for the avala Janua client)
 set -euo pipefail
 
 VAULT_NS="${VAULT_NS:-vault}"
@@ -603,6 +603,18 @@ path "secret/data/cv" {
   capabilities = ["create", "update", "patch", "read"]
 }
 path "secret/metadata/cv" {
+  capabilities = ["read", "list"]
+}
+# avala — added 2026-10-27 with the intake target avala/oidc-janua (written by
+# `enclii secrets provision oidc --platform avala`). Exact path only. Merged in
+# git is not applied in Vault: re-apply this policy
+# (ASSERT_PATH=avala scripts/apply-switchyard-vault-policy-remote.sh) before
+# the first run, or the run reconciles the Janua client and then 403s on the
+# Vault merge.
+path "secret/data/avala" {
+  capabilities = ["create", "update", "patch", "read"]
+}
+path "secret/metadata/avala" {
   capabilities = ["read", "list"]
 }
 

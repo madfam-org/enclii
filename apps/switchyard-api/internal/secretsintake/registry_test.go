@@ -12,7 +12,7 @@ import (
 func TestLoadRegistry(t *testing.T) {
 	reg, err := LoadRegistry()
 	require.NoError(t, err)
-	assert.Len(t, reg, 104)
+	assert.Len(t, reg, 108)
 	assert.Contains(t, reg, "ceq/vast-api-key")
 	assert.Contains(t, reg, "karafiel/web-oidc-janua")
 	adminSession := reg["karafiel/admin-session"]
@@ -37,7 +37,7 @@ func TestGetTarget(t *testing.T) {
 func TestListTargetsSorted(t *testing.T) {
 	list, err := ListTargets()
 	require.NoError(t, err)
-	require.Len(t, list, 104)
+	require.Len(t, list, 108)
 	for i := 1; i < len(list); i++ {
 		assert.Less(t, list[i-1].ID, list[i].ID, "targets should be sorted by id")
 	}
@@ -51,10 +51,12 @@ func TestListTargetsSorted(t *testing.T) {
 		"angelia/courier-database-url",
 		"angelia/courier-producer-keys",
 		"angelia/courier-webhook-signing-keys",
+		"avala/oidc-janua",
 		"ceq/janua-client-secret",
 		"ceq/vast-api-key",
 		"converge-dash/internal-read",
 		"converge-dash/session",
+		"converge-dash/web-oidc",
 		"coupler/janua-service-token",
 		"crea-map/internal-api-key",
 		"crea-map/janua-mail-client",
@@ -62,6 +64,7 @@ func TestListTargetsSorted(t *testing.T) {
 		"crea-map/mcp-pseudonym-key",
 		"crea-map/rls-por-caso",
 		"crea-map/selva-api-key",
+		"crea-map/web-oidc",
 		"crea/porkbun-registrar",
 		"creator-census/web-oidc",
 		"creator-census/web-session",
@@ -92,6 +95,7 @@ func TestListTargetsSorted(t *testing.T) {
 		"karafiel-staging/admin-session",
 		"karafiel-staging/core",
 		"karafiel-staging/web-oidc",
+		"karafiel/admin-oidc-janua",
 		"karafiel/admin-session",
 		"karafiel/dhanam-webhook-secret",
 		"karafiel/web-oidc-janua",
@@ -958,4 +962,51 @@ func legacyTargetIDs(ids []string) []string {
 		}
 	}
 	return legacy
+}
+
+// SSO wave 1 (2026-10-27): the web Janua clients that joined the ecosystem
+// OIDC registry. Pinned end to end because each link fails silently: a wrong
+// Vault path is a write nothing reads, a wrong property is an ExternalSecret
+// that syncs zero keys, and a wrong ExternalSecret name means intake never
+// force-syncs the Secret the pod reads. Generation stays off: a random value
+// in these keys would not be a Janua credential.
+func TestSSOWave1WebOIDCTargets(t *testing.T) {
+	cases := []struct {
+		id, vaultPath, namespace, externalSecret, platform string
+		keys                                               []string
+	}{
+		{"converge-dash/web-oidc", "secret/converge-dash", "converge-dash", "converge-dash-secrets", "converge-dash-web",
+			[]string{"dash_web_janua_client_id", "dash_web_janua_client_secret"}},
+		{"crea-map/web-oidc", "secret/crea-map", "crea-map", "crea-map-secrets", "crea-map",
+			[]string{"janua_client_secret"}},
+		{"karafiel/admin-oidc-janua", "secret/karafiel", "karafiel", "karafiel-admin-auth", "karafiel-admin",
+			[]string{"oidc_client_id", "janua_secret_key"}},
+		{"avala/oidc-janua", "secret/avala", "avala", "avala-janua-oidc", "avala",
+			[]string{"janua_client_id", "janua_client_secret"}},
+	}
+	for _, tc := range cases {
+		t.Run(tc.id, func(t *testing.T) {
+			tgt, err := GetTarget(tc.id)
+			require.NoError(t, err)
+			assert.Equal(t, tc.vaultPath, tgt.VaultPath)
+			assert.Equal(t, tc.namespace, tgt.Namespace)
+			assert.Equal(t, tc.externalSecret, tgt.ExternalSecret)
+			assert.Equal(t, tc.keys, tgt.Keys)
+			for _, k := range tgt.Keys {
+				assert.Equal(t, strings.ToLower(k), k, "Vault stores lowercase; an upper-case key would never match the ExternalSecret property")
+			}
+			require.NotNil(t, tgt.Generate)
+			assert.True(t, tgt.Generate.Disabled, "a Janua credential is minted by Janua, never generated")
+			assert.NotEmpty(t, tgt.Label)
+			assert.Contains(t, tgt.Description, "--platform "+tc.platform)
+		})
+	}
+	// The tenant and operator Karafiel clients never share a Vault property.
+	web, err := GetTarget("karafiel/web-oidc-janua")
+	require.NoError(t, err)
+	admin, err := GetTarget("karafiel/admin-oidc-janua")
+	require.NoError(t, err)
+	for _, k := range admin.Keys {
+		assert.NotContains(t, web.Keys, k)
+	}
 }

@@ -371,7 +371,7 @@ enclii secrets provision oidc --all --dry-run --reason "ecosystem sweep"
 |------|-------------|
 | `--platform` | Platform key from registry (`dhanam`, `phynd-crm`, `ceq`, …) |
 | `--all` | Provision every platform in the registry |
-| `--dry-run` | Plan the Janua reconcile without the Vault intake |
+| `--dry-run` | Local plan only: validates the declaration and lists the keys an intake would write. It never contacts Janua or Vault, so it does not show what a run would change in Janua (use `inspect`) |
 | `--reason` | Required audit reason (same as intake) |
 | `--registry` | Legacy mutable registry YAML input; preflight validated, not evidence of an approved training tenant |
 | `--organization-id` | Canonical UUID from supported organization creation/readback; one embedded `--platform` only, never `--all` or `--registry` |
@@ -399,6 +399,31 @@ confidential client whose one-time secret was never stored: re-run with
 For Dhanam, also auto-submits `dhanam/session-auth` (generated `SESSION_SECRET` /
 `NEXTAUTH_SECRET`) when configured in the registry. After provision, force-sync
 Dhanam ExternalSecrets — see [SECRET_INTAKE runbook](../../runbooks/SECRET_INTAKE.md).
+
+**Canonical registry and first-party silent SSO (2026-10-27).** The registry is
+the one declaration of every MADFAM product client (owner decision D5). Each
+confidential first-party browser client lists Janua's `madfam:silent_auth` scope
+(owner decision D2), which lets it use `prompt=none` against the shared Janua
+session and skip the consent screen. Public clients cannot: Janua issues
+silently only to confidential clients. What a run does to an existing client:
+
+- The admin path PATCHes `redirect_uris`, `allowed_scopes`, `grant_types` and
+  `audience` **wholesale** to the declaration. A scope granted in Janua but not
+  listed in the registry is removed. Read the live row first:
+  `enclii --profile admin secrets provision oidc inspect --platform <id> --json`.
+- `madfam:silent_auth` is a reserved scope. Adding it, and every later edit or
+  rotation of a client that holds it, needs a Janua platform-admin session.
+- On an existing **confidential** client without `--rotate-secret`, the PATCH
+  lands and the run then exits non-zero ("exists without retrievable secret");
+  no secret is rotated and nothing is written to Vault. With `--rotate-secret`
+  the secret is rotated and filed through intake, so the consumer must be
+  reading that Vault path before you rotate. Never combine `--all` with
+  `--rotate-secret`.
+- A pinned `client_id` makes a name or confidentiality mismatch fail closed
+  before any PATCH. An unpinned entry is matched by name; if no row has that
+  name, the run creates one.
+- Leave `JANUA_INTERNAL_API_KEY` unset: with it set the run takes Janua's
+  internal `/register` path instead of the admin path described here.
 
 **Ordinary organization-bound clients.** Grants determine the kind: an ordinary
 client uses `authorization_code` (optionally `refresh_token`); a machine uses only

@@ -261,7 +261,7 @@ func TestLoadRegistry_telesiaLoginClient(t *testing.T) {
 		"https://app.telesia.quest/api/auth/callback/janua",
 		"http://localhost:3000/api/auth/callback/janua",
 	}, jc.RedirectURIs)
-	assert.Equal(t, []string{"openid", "profile", "email", "offline_access"}, jc.AllowedScopes)
+	assert.Equal(t, []string{"openid", "profile", "email", "offline_access", "madfam:silent_auth"}, jc.AllowedScopes)
 	assert.Equal(t, []string{"authorization_code", "refresh_token"}, jc.GrantTypes)
 
 	// The minted pair maps to exactly those two lowercase properties.
@@ -329,7 +329,7 @@ func TestLoadRegistry_creatorCensusWebLoginClient(t *testing.T) {
 		"https://cc-app.madfam.io/auth/callback",
 		"http://localhost:3000/auth/callback",
 	}, jc.RedirectURIs)
-	assert.ElementsMatch(t, []string{"openid", "email", "profile", "offline_access"}, jc.AllowedScopes)
+	assert.ElementsMatch(t, []string{"openid", "email", "profile", "offline_access", "madfam:silent_auth"}, jc.AllowedScopes)
 	assert.ElementsMatch(t, []string{"authorization_code", "refresh_token"}, jc.GrantTypes)
 
 	assert.Equal(t, map[string]string{"janua_client_secret": "s3cr3t"},
@@ -379,7 +379,7 @@ func TestLoadRegistry_familyHistoryWebLoginClient(t *testing.T) {
 	// Exactly the web's request. The API enforces fh:read / fh:write per
 	// method; fh:admin and fh:export must never be client-level grants, since
 	// any user of the client could then request them.
-	assert.ElementsMatch(t, []string{"openid", "profile", "email", "fh:read", "fh:write"}, jc.AllowedScopes)
+	assert.ElementsMatch(t, []string{"openid", "profile", "email", "fh:read", "fh:write", "madfam:silent_auth"}, jc.AllowedScopes)
 	assert.NotContains(t, jc.AllowedScopes, "fh:admin")
 	assert.NotContains(t, jc.AllowedScopes, "fh:export")
 	// The web rotates refresh tokens, so both grants are required.
@@ -430,7 +430,7 @@ func TestLoadRegistry_cotizaWebLoginClient(t *testing.T) {
 	for _, u := range jc.RedirectURIs {
 		assert.NotContains(t, u, "localhost", "production client must not accept a localhost callback")
 	}
-	assert.ElementsMatch(t, []string{"openid", "profile", "email", "offline_access"}, jc.AllowedScopes)
+	assert.ElementsMatch(t, []string{"openid", "profile", "email", "offline_access", "madfam:silent_auth"}, jc.AllowedScopes)
 	// The web refreshes its Janua access token, so both grants are required.
 	assert.ElementsMatch(t, []string{"authorization_code", "refresh_token"}, jc.GrantTypes)
 
@@ -481,9 +481,10 @@ func TestLoadRegistry_cvAppLoginClient(t *testing.T) {
 	for _, u := range jc.RedirectURIs {
 		assert.NotContains(t, u, "localhost", "production client must not accept a localhost callback")
 	}
-	assert.ElementsMatch(t, []string{"openid", "profile", "email", "offline_access"}, jc.AllowedScopes)
-	// First-party silent auth is an operator opt-in, not part of this declaration.
-	assert.NotContains(t, jc.AllowedScopes, "madfam:silent_auth")
+	assert.ElementsMatch(t, []string{"openid", "profile", "email", "offline_access", "madfam:silent_auth"}, jc.AllowedScopes)
+	// First-party silent SSO (owner decision D2, 2026-10-27): a confidential
+	// first-party login client carries Janua's madfam:silent_auth trust scope.
+	assert.Contains(t, jc.AllowedScopes, "madfam:silent_auth")
 	// The web refreshes its Janua access token, so both grants are required.
 	assert.ElementsMatch(t, []string{"authorization_code", "refresh_token"}, jc.GrantTypes)
 
@@ -757,7 +758,7 @@ func TestReviewedRegistryGrantKindsDoNotDependOnTenant(t *testing.T) {
 			machines++
 		}
 	}
-	require.Equal(t, 17, humans) // Includes the two isolated Karafiel staging login clients.
+	require.Equal(t, 25, humans) // Includes the two isolated Karafiel staging login clients and the eight SSO wave 1 clients.
 	require.Equal(t, 15, machines)
 	p := reg.Platforms["selva-yantra4d"]
 	require.Empty(t, p.JanuaClient.OrganizationID)

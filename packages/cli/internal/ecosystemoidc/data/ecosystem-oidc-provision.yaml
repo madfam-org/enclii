@@ -1,6 +1,6 @@
 # MADFAM ecosystem OIDC auto-provision registry
 # Consumed by: enclii secrets provision oidc
-# Last Updated: 2026-10-22
+# Last Updated: 2026-10-27
 #
 # TWO COPIES, ONE CONTENT. The CLI embeds
 # packages/cli/internal/ecosystemoidc/data/ecosystem-oidc-provision.yaml (go:embed
@@ -19,20 +19,61 @@
 # intake_target: the provisioner registers or reconciles the client and prints
 # the client_id, which the consumer pins in its own janua.client.yaml. It never
 # resolves, rotates or intakes a secret for them.
+#
+# CANONICAL SOURCE (owner decision D5, 2026-10-27). This registry is the one
+# declaration of every MADFAM product client. Janua's own seed scripts keep
+# only Janua's core clients and must not create or overwrite the clients
+# below; a seed that re-syncs allowed_scopes on a product client drops every
+# grant that is not in the seed.
+#
+# FIRST-PARTY SILENT SSO (owner decision D2, 2026-10-27). Every CONFIDENTIAL
+# first-party browser login client lists `madfam:silent_auth`. Janua treats a
+# client as first-party when it is active, confidential and either carries
+# that scope or has a `selva-office*` / `madfam-*` name; a first-party client
+# may use `prompt=none` against the shared Janua session and skips the consent
+# screen. Janua ignores the scope on a PUBLIC client (no secret, so no silent
+# issuance), so public clients do not list it. Machine clients, the isolated
+# staging clients and crea-sim-mcp do not list it either.
+#
+# APPLYING IT. `madfam:silent_auth` is a reserved Janua scope: adding it, and
+# every later edit or secret rotation of a client that holds it, needs a Janua
+# platform-admin session. The provisioner's admin path PATCHes redirect_uris,
+# allowed_scopes, grant_types and audience WHOLESALE to this declaration, so
+# read the live row first with `enclii secrets provision oidc inspect
+# --platform <id> --json`; a scope granted in Janua but missing here is removed
+# by the next run. There is no post-logout field: Janua's RP-Initiated Logout
+# accepts an exact registered redirect URI or the origin root of one.
 
 issuer: https://auth.madfam.io
 
 platforms:
+  # ---------------------------------------------------------------------------
+  # Dhanam web (app.dhan.am, admin.dhan.am). Reconciled 2026-10-27 with what the
+  # app does and with the client id the app ships: the web signs in through
+  # @janua/react-sdk, which runs authorization_code + PKCE in the BROWSER and
+  # exchanges the code without a client secret (dhanam apps/web
+  # src/lib/providers.tsx, apps/web/.env.production). Janua's token endpoint
+  # refuses a confidential client that sends no secret, so the working row is a
+  # PUBLIC client. This entry used to say confidential `Dhanam`; Janua's legacy
+  # seeds call the same pinned id `dhanam-web`, non-confidential.
+  #
+  # Public means Dhanam cannot use silent SSO until its exchange moves to a
+  # server-side (confidential) callback. The pin makes a wrong name or
+  # confidentiality fail closed: the provisioner refuses before any PATCH.
+  # Inspect the live row first. Do NOT run a provision for this platform
+  # without review: session_intake_target re-mints SESSION_SECRET and
+  # NEXTAUTH_SECRET on every run.
+  # ---------------------------------------------------------------------------
   dhanam:
     intake_target: dhanam/oidc-janua
     session_intake_target: dhanam/session-auth
     janua_client:
-      name: Dhanam
+      name: dhanam-web
       client_key: dhanam
       audience: dhanam-api
       client_id: jnc_uE2zp9ume_Fd6jMl1elL6wqjiECM711t
-      description: Dhanam wealth platform — production OIDC confidential client
-      is_confidential: true
+      description: Dhanam web and admin — public browser PKCE login client, no secret
+      is_confidential: false
       website_url: https://app.dhan.am
       redirect_uris:
         - https://app.dhan.am/auth/callback
@@ -69,6 +110,7 @@ platforms:
         - profile
         - email
         - offline_access
+        - madfam:silent_auth
       grant_types:
         - authorization_code
         - refresh_token
@@ -126,6 +168,7 @@ platforms:
         - profile
         - email
         - offline_access
+        - madfam:silent_auth
       grant_types:
         - authorization_code
         - refresh_token
@@ -149,6 +192,7 @@ platforms:
         - profile
         - email
         - offline_access
+        - madfam:silent_auth
       grant_types:
         - authorization_code
         - refresh_token
@@ -205,6 +249,7 @@ platforms:
         - profile
         - email
         - offline_access
+        - madfam:silent_auth
       grant_types:
         - authorization_code
         - refresh_token
@@ -234,6 +279,7 @@ platforms:
         - profile
         - email
         - offline_access
+        - madfam:silent_auth
       grant_types:
         - authorization_code
         - refresh_token
@@ -264,6 +310,7 @@ platforms:
         - profile
         - email
         - offline_access
+        - madfam:silent_auth
       grant_types:
         - authorization_code
         - refresh_token
@@ -389,6 +436,7 @@ platforms:
         - profile
         - email
         - offline_access
+        - madfam:silent_auth
       grant_types:
         - authorization_code
         - refresh_token
@@ -482,6 +530,7 @@ platforms:
         - email
         - profile
         - offline_access
+        - madfam:silent_auth
       grant_types:
         - authorization_code
         - refresh_token
@@ -556,6 +605,7 @@ platforms:
         - email
         - fh:read
         - fh:write
+        - madfam:silent_auth
       grant_types:
         - authorization_code
         - refresh_token
@@ -622,6 +672,7 @@ platforms:
         - profile
         - email
         - offline_access
+        - madfam:silent_auth
       grant_types:
         - authorization_code
         - refresh_token
@@ -693,6 +744,7 @@ platforms:
         - profile
         - email
         - offline_access
+        - madfam:silent_auth
       grant_types:
         - authorization_code
         - refresh_token
@@ -1088,6 +1140,297 @@ platforms:
         - profile
         - email
         - offline_access
+      grant_types:
+        - authorization_code
+        - refresh_token
+
+  # ===========================================================================
+  # First-party browser login clients added 2026-10-27 (SSO wave 1, owner
+  # decisions D2 and D5). Each entry copies its consumer's own declaration;
+  # the source file is named in the entry. Pins are only the ids the consumer
+  # already ships. An unpinned entry is matched by NAME on the next run, and a
+  # name that does not exist yet is CREATED.
+  # ===========================================================================
+
+  # ---------------------------------------------------------------------------
+  # Forgesight app (app.forgesight.app) and admin (admin.forgesight.app).
+  # Both are PUBLIC browser PKCE clients: the app signs in through the embedded
+  # @janua/nextjs provider, the admin runs a hosted authorize + PKCE flow whose
+  # redirect URI is the page origin (forgesight apps/admin/src/lib/
+  # janua-oauth.ts). Both ids are the ones forgesight's production manifests
+  # pin (k8s/production/app-deployment.yaml, admin-deployment.yaml). Names,
+  # audience and callbacks are copied from Janua's legacy core-client seed,
+  # which owned them until now. Public: no intake target, no silent SSO.
+  # ---------------------------------------------------------------------------
+  forgesight-app:
+    janua_client:
+      name: forgesight-app
+      client_key: forgesight-app  # pragma: allowlist secret
+      audience: forgesight-api
+      client_id: jnc_hMmsXcCeWGFTn95l9I1iLzibSugXCgDC
+      description: Forgesight customer app (app.forgesight.app) — public browser PKCE login client, no secret
+      is_confidential: false
+      website_url: https://app.forgesight.app
+      redirect_uris:
+        - https://app.forgesight.app
+        - https://app.forgesight.app/auth/callback
+        - https://app.forgesight.app/api/auth/callback
+        - http://localhost:3000
+        - http://localhost:3000/auth/callback
+        - http://localhost:3000/api/auth/callback
+      allowed_scopes:
+        - openid
+        - profile
+        - email
+      grant_types:
+        - authorization_code
+        - refresh_token
+
+  forgesight-admin:
+    janua_client:
+      name: forgesight-admin
+      client_key: forgesight-admin  # pragma: allowlist secret
+      audience: forgesight-api
+      client_id: jnc_71GgDdnFqsb_ha9_Z45tAMRZCbLX9Rz5
+      description: Forgesight admin panel (admin.forgesight.app) — public browser PKCE login client, no secret
+      is_confidential: false
+      website_url: https://admin.forgesight.app
+      redirect_uris:
+        - https://admin.forgesight.app
+        - https://admin.forgesight.app/auth/callback
+        - http://localhost:3001
+        - http://localhost:3001/auth/callback
+      allowed_scopes:
+        - openid
+        - profile
+        - email
+      grant_types:
+        - authorization_code
+        - refresh_token
+
+  # ---------------------------------------------------------------------------
+  # converge-dash web (dash.madfam.io). CONFIDENTIAL: the Next.js server runs
+  # the code exchange with the client secret (converge-dash apps/web/src/lib/
+  # auth/oidc.ts). The callback is the DASH_WEB_OIDC_REDIRECT_URI its
+  # production web Deployment sets; no localhost twin on the production client.
+  # audience `converge-dash` is the API's JANUA_AUDIENCE. The pair lands in
+  # secret/converge-dash as the two properties converge-dash-secrets already
+  # maps (dash_web_janua_client_id / dash_web_janua_client_secret).
+  #
+  # NOT pinned: converge-dash records that this client is not registered yet,
+  # so the first run CREATES it (Janua platform admin, reserved scope). Pin the
+  # printed jnc_… id here (both copies) after that run.
+  # ---------------------------------------------------------------------------
+  converge-dash-web:
+    intake_target: converge-dash/web-oidc
+    intake_key_map:
+      dash_web_janua_client_id: client_id
+      dash_web_janua_client_secret: client_secret  # pragma: allowlist secret
+    janua_client:
+      name: converge-dash-web
+      client_key: converge-dash-web  # pragma: allowlist secret
+      audience: converge-dash
+      description: converge-dash staff dashboard (dash.madfam.io) — confidential OIDC authorization-code client for the Next.js server
+      is_confidential: true
+      website_url: https://dash.madfam.io
+      redirect_uris:
+        - https://dash.madfam.io/auth/callback
+      allowed_scopes:
+        - openid
+        - profile
+        - email
+        - madfam:silent_auth
+      grant_types:
+        - authorization_code
+        - refresh_token
+
+  # ---------------------------------------------------------------------------
+  # Avala (admin.avala.studio, app.avala.studio). CONFIDENTIAL: avala-api runs
+  # the code exchange with JANUA_CLIENT_SECRET. The callback is per origin,
+  # `<origin>/api/auth/sso/callback`, for each origin in avala's
+  # OAUTH_REDIRECT_ALLOWED_ORIGINS (avala apps/api/src/modules/auth/
+  # oauth-state.service.ts and AGENTS.md). Avala's own probe record: the admin
+  # callback is registered, the app callback is not (learner SSO waits on it),
+  # the landing callback on avala.studio is stale (no sign-in there since the
+  # landing cutover), and the older /api/v1/... shapes are not registered.
+  # A run therefore ADDS the app callback and REMOVES the landing one.
+  #
+  # Pinned to the id avala documents. The Janua NAME of that row is not in
+  # any repository: if it is not `avala`, the provisioner refuses before any
+  # change (pin + name check). Read it from the Janua admin console and fix
+  # the name here before the first run.
+  #
+  # CUSTODY GAP: avala reads its Janua pair from a hand-made `avala-secrets`
+  # Secret, not from Vault. The intake target below writes secret/avala for a
+  # planned `avala-janua-oidc` ExternalSecret. Until avala projects it into
+  # the API pod, a `--rotate-secret` run would retire the secret avala is
+  # using. Do not rotate before that.
+  # ---------------------------------------------------------------------------
+  avala:
+    intake_target: avala/oidc-janua
+    intake_key_map:
+      janua_client_id: client_id
+      janua_client_secret: client_secret  # pragma: allowlist secret
+    janua_client:
+      name: avala
+      client_key: avala  # pragma: allowlist secret
+      audience: avala-api
+      client_id: jnc_t6ruGZaATrpZ34ofKRhPi1Rv2WO0S3HW
+      description: Avala admin and learner apps (avala.studio) — confidential OIDC authorization-code client for avala-api
+      is_confidential: true
+      website_url: https://avala.studio
+      redirect_uris:
+        - https://admin.avala.studio/api/auth/sso/callback
+        - https://app.avala.studio/api/auth/sso/callback
+      allowed_scopes:
+        - openid
+        - profile
+        - email
+        - madfam:silent_auth
+      grant_types:
+        - authorization_code
+        - refresh_token
+
+  # ---------------------------------------------------------------------------
+  # Selva office (app.selva.town, admin.selva.town). PUBLIC, as selva-office
+  # declares it (infra/janua/selva-office.oauth-client.yaml): both apps run
+  # authorization_code + PKCE from a server route without a client secret.
+  # Callbacks and grant are copied from that file. Its extra `roles` scope is
+  # not an OAuth scope this registry or Janua's scope shape accepts, so it is
+  # left out; Janua emits roles as a claim.
+  #
+  # Selva's production config sets JANUA_CLIENT_ID to the NAME `selva-office`,
+  # which Janua answers with `invalid_client`: sign-in needs the jnc_… id this
+  # entry's first run prints (or finds by name). NOT pinned: no id is
+  # recorded. `selva-office` is a reserved first-party name, so the run needs a
+  # Janua platform admin. Silent SSO needs the client to become confidential
+  # (both routes already exchange server-side, so this is a secret, not a
+  # redesign).
+  #
+  # audience `selva-office` is the audience voxa-selva's machine tokens carry
+  # and Selva's verify_jwt checks today.
+  # ---------------------------------------------------------------------------
+  selva-office:
+    janua_client:
+      name: selva-office
+      client_key: selva-office  # pragma: allowlist secret
+      audience: selva-office
+      description: Selva office and admin (selva.town) — public PKCE login client, no secret
+      is_confidential: false
+      website_url: https://app.selva.town
+      redirect_uris:
+        - https://app.selva.town/api/auth/callback/janua
+        - https://selva.town/api/auth/callback/janua
+        - https://admin.selva.town/api/auth/callback
+        - http://localhost:4301/api/auth/callback/janua
+      allowed_scopes:
+        - openid
+        - profile
+        - email
+      grant_types:
+        - authorization_code
+
+  # ---------------------------------------------------------------------------
+  # crea-map web (map.creatumundo.mx, the retained alias crea-map.madfam.io and
+  # the ensayo QA twin, which shares this client). CONFIDENTIAL: the MAP server
+  # exchanges the code with JANUA_CLIENT_SECRET. Name, audience, scopes and
+  # callbacks are copied from crea-map infra/oauth-redirect-uris.json and
+  # scripts/bootstrap-ecosystem.sh, which registered the row as `crea-map`.
+  # Pinned to the id crea-map's production Deployment sets.
+  #
+  # Only the SECRET goes to Vault: crea-map-secrets maps
+  # `property: janua_client_secret`; the client id is plain Deployment config.
+  # ---------------------------------------------------------------------------
+  crea-map:
+    intake_target: crea-map/web-oidc
+    intake_key_map:
+      janua_client_secret: client_secret  # pragma: allowlist secret
+    janua_client:
+      name: crea-map
+      client_key: crea-map  # pragma: allowlist secret
+      audience: crea-map
+      client_id: jnc_Ed3t6r_RRxBq0aa2IeUnrxKQ0_UFaHLO
+      description: MAP · Crea Tu Mundo (map.creatumundo.mx) — confidential OIDC authorization-code client for the MAP server
+      is_confidential: true
+      website_url: https://map.creatumundo.mx
+      redirect_uris:
+        - https://crea-map.madfam.io/api/auth/callback
+        - https://map.creatumundo.mx/api/auth/callback
+        - https://ensayo-map.madfam.io/api/auth/callback
+        - http://localhost:3000/api/auth/callback
+      allowed_scopes:
+        - openid
+        - profile
+        - email
+        - madfam:silent_auth
+      grant_types:
+        - authorization_code
+        - refresh_token
+
+  # ---------------------------------------------------------------------------
+  # Symbiosis-HCM browser consoles (hcm-admin.madfam.io, hcm-app.madfam.io).
+  # PUBLIC browser PKCE login, copied byte for byte from symbiosis-hcm's
+  # janua.client.yaml, which pins this id. No intake target, no silent SSO.
+  # ---------------------------------------------------------------------------
+  symbiosis-hcm-browser:
+    janua_client:
+      name: symbiosis-hcm-browser
+      client_key: symbiosis-hcm  # pragma: allowlist secret
+      audience: symbiosis-hcm
+      client_id: jnc_bFCbNwR7iYdy19S_BldXuKYvgDii9mlT
+      description: HCM RH and employee consoles — public browser PKCE login
+      is_confidential: false
+      website_url: https://hcm-admin.madfam.io
+      redirect_uris:
+        - https://hcm-admin.madfam.io/auth/callback
+        - https://hcm-app.madfam.io/auth/callback
+      allowed_scopes:
+        - openid
+        - profile
+        - email
+        - offline_access
+      grant_types:
+        - authorization_code
+        - refresh_token
+
+  # ---------------------------------------------------------------------------
+  # Karafiel Admin (admin.karafiel.mx, alias kf-admin.madfam.io). The MADFAM
+  # operator console, separate from the tenant `karafiel` client above.
+  # CONFIDENTIAL: the admin server exchanges the code with JANUA_SECRET_KEY.
+  # Name, audience and callbacks are copied from karafiel
+  # infra/oauth-redirect-uris.json; scopes follow the tenant client. Pinned to
+  # the id karafiel's scripts verify (scripts/verify-admin-sso-ready.sh).
+  #
+  # The row has so far been maintained by hand in Janua, so it may hold grants
+  # this declaration does not list: inspect it first, because a run replaces
+  # allowed_scopes wholesale. The pair lands in secret/karafiel as the two
+  # properties karafiel maps: oidc_client_id (ExternalSecret
+  # karafiel-admin-oidc) and janua_secret_key (karafiel-admin-auth).
+  # ---------------------------------------------------------------------------
+  karafiel-admin:
+    intake_target: karafiel/admin-oidc-janua
+    intake_key_map:
+      oidc_client_id: client_id
+      janua_secret_key: client_secret  # pragma: allowlist secret
+    janua_client:
+      name: Karafiel Admin
+      client_key: karafiel-admin  # pragma: allowlist secret
+      audience: karafiel-api
+      client_id: jnc_karafiel_admin_prod
+      description: MADFAM operator console (admin.karafiel.mx) — confidential OIDC authorization-code client
+      is_confidential: true
+      website_url: https://admin.karafiel.mx
+      redirect_uris:
+        - https://admin.karafiel.mx/api/auth/callback
+        - https://kf-admin.madfam.io/api/auth/callback
+        - http://localhost:3051/api/auth/callback
+        - http://localhost:3000/api/auth/callback
+      allowed_scopes:
+        - openid
+        - profile
+        - email
+        - offline_access
+        - madfam:silent_auth
       grant_types:
         - authorization_code
         - refresh_token
