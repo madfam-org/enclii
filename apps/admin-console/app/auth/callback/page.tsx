@@ -4,12 +4,15 @@ import { useEffect, useState, Suspense } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { Radio, CheckCircle2, XCircle, Loader2 } from 'lucide-react'
 import { adoptSidFromLocation, withTabSessionHeader } from '@/lib/tab-session'
+import { clearOAuthState, consumeOAuthState } from '@/lib/oauth-state'
 
 /**
  * OAuth Callback Page
  *
  * Handles the redirect from Janua SSO after authentication.
- * Validates the user (domain + role) and stores the token.
+ * Verifies the returned `state` against the value stored by the sign-in that
+ * started in this tab, then validates the user (domain + role) and stores the
+ * token.
  */
 
 const JANUA_URL = process.env.NEXT_PUBLIC_JANUA_URL || 'https://auth.madfam.io'
@@ -38,6 +41,12 @@ function hasAllowedRole(roles: string[] | undefined): boolean {
 
 type CallbackStatus = 'processing' | 'success' | 'error'
 
+/** Drop this tab's pending PKCE verifier and `state`. */
+function clearPendingSignIn() {
+  sessionStorage.removeItem('dispatch_code_verifier')
+  clearOAuthState()
+}
+
 function AuthCallbackContent() {
   const [status, setStatus] = useState<CallbackStatus>('processing')
   const [error, setError] = useState<string | null>(null)
@@ -55,11 +64,20 @@ function AuthCallbackContent() {
       const errorParam = searchParams.get('error')
 
       if (errorParam) {
+        clearPendingSignIn()
         throw new Error(searchParams.get('error_description') || 'Authentication failed')
       }
 
       if (!code) {
+        clearPendingSignIn()
         throw new Error('No authorization code received')
+      }
+
+      // The returned `state` must match the one this tab stored when sign-in
+      // started. consumeOAuthState() removes the stored value either way.
+      if (!consumeOAuthState(searchParams.get('state'))) {
+        sessionStorage.removeItem('dispatch_code_verifier')
+        throw new Error('This sign-in could not be verified. Please start sign-in again.')
       }
 
       // Retrieve PKCE code_verifier from session storage
