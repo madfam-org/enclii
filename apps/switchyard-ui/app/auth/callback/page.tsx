@@ -4,13 +4,15 @@ import { useEffect, useState, Suspense, useRef } from "react";
 import { useSearchParams } from "next/navigation";
 import { Spinner } from "@/components/ui/spinner";
 import { identifyUser } from "@/lib/analytics/posthog";
+import { clearOAuthState, consumeOAuthState, safeReturnPath } from "@/lib/oauth-state";
 
 /**
  * OAuth Callback — Direct PKCE code exchange
  *
- * Exchanges the authorization code for tokens via Janua's OAuth token endpoint,
- * then calls /auth/me with Bearer header to get user data, and stores session
- * via server-side /api/auth/session route.
+ * Verifies the returned `state` against the value stored by the sign-in that
+ * started in this tab, then exchanges the authorization code for tokens via
+ * Janua's OAuth token endpoint, then calls /auth/me with Bearer header to get
+ * user data, and stores session via server-side /api/auth/session route.
  *
  * Uses window.location.href (not router.push) for redirect to ensure browser
  * processes Set-Cookie headers before the next page load.
@@ -18,6 +20,12 @@ import { identifyUser } from "@/lib/analytics/posthog";
 
 const JANUA_URL = process.env.NEXT_PUBLIC_JANUA_URL || "https://auth.madfam.io";
 const OAUTH_CLIENT_ID = process.env.NEXT_PUBLIC_OAUTH_CLIENT_ID || "jnc_RqeHy54KYGjVr8yQiBeUncMhnQFhS2NA";
+
+/** Drop this tab's pending PKCE verifier and `state`. */
+function clearPendingSignIn() {
+  sessionStorage.removeItem("enclii_code_verifier");
+  clearOAuthState();
+}
 
 function AuthCallbackContent() {
   const searchParams = useSearchParams();
@@ -34,6 +42,7 @@ function AuthCallbackContent() {
       const error = searchParams.get("error");
       const errorDescription = searchParams.get("error_description");
       if (error) {
+        clearPendingSignIn();
         console.error("OAuth error:", error, errorDescription);
         setStatus("error");
         setErrorMessage(errorDescription || `Authentication failed: ${error}`);
@@ -42,8 +51,18 @@ function AuthCallbackContent() {
 
       const code = searchParams.get("code");
       if (!code) {
+        clearPendingSignIn();
         setStatus("error");
         setErrorMessage("No authorization code received from provider");
+        return;
+      }
+
+      // The returned `state` must match the one this tab stored when sign-in
+      // started. consumeOAuthState() removes the stored value either way.
+      if (!consumeOAuthState(searchParams.get("state"))) {
+        sessionStorage.removeItem("enclii_code_verifier");
+        setStatus("error");
+        setErrorMessage("This sign-in could not be verified. Please start sign-in again.");
         return;
       }
 
@@ -124,7 +143,7 @@ function AuthCallbackContent() {
 
         // Full page navigation ensures browser processes Set-Cookie headers
         setTimeout(() => {
-          const returnUrl = localStorage.getItem("auth_return_url") || "/";
+          const returnUrl = safeReturnPath(localStorage.getItem("auth_return_url"), window.location.origin);
           localStorage.removeItem("auth_return_url");
           window.location.href = returnUrl;
         }, 500);

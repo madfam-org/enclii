@@ -25,6 +25,7 @@ jest.mock('next/navigation', () => ({
 }))
 
 import { AuthProvider, useAuth } from '@/contexts/AuthContext'
+import { OAUTH_STATE_KEY } from '@/lib/oauth-state'
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -470,6 +471,13 @@ describe('login', () => {
 
     expect(mockSetItem).toHaveBeenCalledWith('dispatch_code_verifier', expect.any(String))
 
+    // The authorize request carries a fresh `state`, stored next to the verifier.
+    const state = new URL(window.location.href).searchParams.get('state')
+    expect(state).toMatch(/^[A-Za-z0-9_-]{43}$/)
+    expect(mockSetItem).toHaveBeenCalledWith(OAUTH_STATE_KEY, expect.any(String))
+    const stored = JSON.parse(sessionStorage.getItem(OAUTH_STATE_KEY) as string)
+    expect(stored.v).toBe(state)
+
     mockSetItem.mockRestore()
     Object.defineProperty(window, 'location', {
       value: originalLocation,
@@ -571,6 +579,13 @@ describe('login', () => {
       const url = await clickAndReadAuthorizeUrl('login-default-btn')
       expect(url.searchParams.has('prompt')).toBe(false)
       expect(url.searchParams.get('response_type')).toBe('code')
+    })
+
+    it('keeps the prompt alongside the stored state', async () => {
+      const url = await clickAndReadAuthorizeUrl('login-select-btn')
+      expect(url.searchParams.get('prompt')).toBe('select_account')
+      const stored = JSON.parse(sessionStorage.getItem(OAUTH_STATE_KEY) as string)
+      expect(url.searchParams.get('state')).toBe(stored.v)
     })
   })
 })

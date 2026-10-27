@@ -9,7 +9,9 @@
  * `prompt=login`.
  *
  * Mirrors apps/admin-console/__tests__/contexts/AuthContext.test.tsx →
- * `describe('prompt (account switching)')`. This file drives the OIDC provider;
+ * `describe('prompt (account switching)')`. It also covers the OAuth `state`
+ * binding: every sign-in sends a fresh random `state` that is stored in this
+ * tab's sessionStorage for the callback to verify. This file drives the OIDC provider;
  * the provider selects OIDC vs local from NEXT_PUBLIC_AUTH_MODE at module-load
  * time, so the module is (re)loaded inside jest.isolateModules AFTER the env
  * var is set (ES `import` is hoisted, so it cannot set env early enough).
@@ -28,6 +30,7 @@ jest.mock('@/contexts/AuthContext', () => {
 import React from 'react'
 import { render, screen, waitFor, act } from '@testing-library/react'
 import { AuthProvider, useAuth } from '@/contexts/AuthContext'
+import { OAUTH_STATE_KEY } from '@/lib/oauth-state'
 
 const JANUA_BASE_URL = 'https://auth.madfam.io'
 
@@ -69,9 +72,12 @@ describe('AuthContext OIDC login — prompt (account switching)', () => {
       configurable: true,
     })
 
-    // Deterministic PKCE crypto.
+    // Deterministic crypto that still differs per call, so two sign-ins
+    // produce two different `state` values.
+    let call = 0
     const mockGetRandomValues = jest.fn((arr: Uint8Array) => {
-      for (let i = 0; i < arr.length; i++) arr[i] = i % 256
+      call++
+      for (let i = 0; i < arr.length; i++) arr[i] = (i * 7 + call) % 256
       return arr
     })
     originalCrypto = global.crypto
@@ -154,5 +160,45 @@ describe('AuthContext OIDC login — prompt (account switching)', () => {
     expect(url.searchParams.has('prompt')).toBe(false)
     expect(url.searchParams.get('response_type')).toBe('code')
     expect(url.searchParams.get('code_challenge_method')).toBe('S256')
+  })
+
+  // ---------------------------------------------------------------------------
+  // OAuth `state` — bound to the tab, verified on callback
+  // ---------------------------------------------------------------------------
+
+  function storedState(): string | null {
+    const raw = sessionStorage.getItem(OAUTH_STATE_KEY)
+    return raw ? (JSON.parse(raw) as { v: string }).v : null
+  }
+
+  it('sends a 256-bit random state and stores it next to the code verifier', async () => {
+    sessionStorage.clear()
+    const url = await clickAndReadAuthorizeUrl('login-default-btn')
+    const state = url.searchParams.get('state')
+    expect(state).toMatch(/^[A-Za-z0-9_-]{43}$/)
+    expect(storedState()).toBe(state)
+    expect(sessionStorage.getItem('enclii_code_verifier')).toBeTruthy()
+  })
+
+  it('keeps the prompt alongside the state', async () => {
+    const url = await clickAndReadAuthorizeUrl('login-select-btn')
+    expect(url.searchParams.get('prompt')).toBe('select_account')
+    expect(url.searchParams.get('state')).toBe(storedState())
+  })
+
+  it('uses a new state for every sign-in attempt', async () => {
+    const first = (await clickAndReadAuthorizeUrl('login-default-btn')).searchParams.get('state')
+    await act(async () => {
+      screen.getByTestId('login-default-btn').click()
+    })
+    const second = new URL(href).searchParams.get('state')
+    expect(second).toBeTruthy()
+    expect(second).not.toBe(first)
+    expect(storedState()).toBe(second)
+  })
+
+  it('stores a same-origin relative return path', async () => {
+    await clickAndReadAuthorizeUrl('login-default-btn')
+    expect(localStorage.getItem('auth_return_url')).toBe('/dashboard')
   })
 })
