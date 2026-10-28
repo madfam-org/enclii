@@ -68,10 +68,14 @@ attempt();`
 type IsolatedInitialJobPlan struct {
 	ProjectID, AddonID, ServiceID                              uuid.UUID
 	Namespace, Cluster, Profile, Image, IdempotencyKey, Reason string
-	Data                                                       map[string][]byte           `json:"-"`
-	Revalidate                                                 func(context.Context) error `json:"-"`
-	Identity                                                   InitialBootstrapIdentity    `json:"-"`
-	GenerationRead                                             *PortalGenerationReadInput  `json:"-"`
+	Data                                                       map[string][]byte               `json:"-"`
+	Revalidate                                                 func(context.Context) error     `json:"-"`
+	Identity                                                   InitialBootstrapIdentity        `json:"-"`
+	GenerationRead                                             *PortalGenerationReadInput      `json:"-"`
+	FenceRead                                                  *PortalFenceReadInput           `json:"-"`
+	FenceOrigin                                                *PortalFenceOrigin              `json:"-"`
+	ReconstructionClose                                        *PortalReconstructionCloseInput `json:"-"`
+	ReconstructionEvidence                                     *PortalReconstructionEvidence   `json:"-"`
 	retainedJobName                                            string
 }
 
@@ -177,15 +181,25 @@ func BuildIsolatedInitialJob(p IsolatedInitialJobPlan) (*batchv1.Job, error) {
 		}
 		command = []string{"node", "packages/entrenamiento/src/preparar-cierre-reconstruccion.ts"}
 		allowed["CREA_SIM_MIGRATOR_DATABASE_URL"], allowed["CREA_SIM_PORTAL_DATABASE_URL"], allowed["CREA_SIM_DATABASE_NAMESPACE"] = true, true, true
+	case p.Profile == PortalReconstructionCloseProfile:
+		if !strings.HasPrefix(p.Image, "ghcr.io/madfam-org/crea-sim/gateway@sha256:") || !compatibleReconstructionClose(p) {
+			return nil, fmt.Errorf("reconstruction close custody refused")
+		}
+		input, err := ReconstructionCloseBytes(p.ReconstructionClose)
+		if err != nil || string(input) != string(p.Data["request.json"]) {
+			return nil, fmt.Errorf("reconstruction close input refused")
+		}
+		command = []string{"sh", "-c", portalReconstructionCloseCommand}
+		allowed["CREA_SIM_MIGRATOR_DATABASE_URL"], allowed["CREA_SIM_PORTAL_DATABASE_URL"], allowed["CREA_SIM_DATABASE_NAMESPACE"], allowed["request.json"] = true, true, true, true
 	case IsProvenanceReadProfile(p.Profile):
 		if !strings.HasPrefix(p.Image, "ghcr.io/madfam-org/crea-sim/gateway@sha256:") {
 			return nil, fmt.Errorf("provenance reader producer refused")
 		}
-		input, err := generationReadBytes(p.GenerationRead)
+		input, commandText, err := provenanceReadBytes(p.Profile, p.GenerationRead, p.FenceRead)
 		if err != nil || string(input) != string(p.Data["request.json"]) {
 			return nil, fmt.Errorf("provenance reader input refused")
 		}
-		command = []string{"sh", "-c", portalGenerationReadCommand}
+		command = []string{"sh", "-c", commandText}
 		allowed["CREA_SIM_PORTAL_DATABASE_URL"], allowed["CREA_SIM_DATABASE_NAMESPACE"], allowed["request.json"] = true, true, true
 	default:
 		return nil, fmt.Errorf("unsupported initial Job profile")
@@ -238,12 +252,16 @@ func BuildIsolatedInitialJob(p IsolatedInitialJobPlan) (*batchv1.Job, error) {
 	if IsFixedStepProfile(p.Profile) {
 		job.Spec.Template.Spec.InitContainers = []corev1.Container{initialNetworkReady(container, "CREA_SIM_MIGRATOR_DATABASE_URL")}
 	}
-	if IsProvenanceReadProfile(p.Profile) {
+	if IsProvenanceReadProfile(p.Profile) || p.Profile == PortalReconstructionCloseProfile {
 		job.Spec.ActiveDeadlineSeconds = ptr.To[int64](180)
 		job.Spec.Template.Spec.Volumes[1].EmptyDir.SizeLimit = resource.NewQuantity(16<<20, resource.BinarySI)
 		job.Spec.Template.Spec.Containers[0].VolumeMounts = append(job.Spec.Template.Spec.Containers[0].VolumeMounts, corev1.VolumeMount{Name: "request", MountPath: "/var/run/crea-sim/request", ReadOnly: true})
 		job.Spec.Template.Spec.Volumes = append(job.Spec.Template.Spec.Volumes, corev1.Volume{Name: "request", VolumeSource: corev1.VolumeSource{Secret: &corev1.SecretVolumeSource{SecretName: p.jobName() + "-credentials", DefaultMode: ptr.To[int32](0444), Items: []corev1.KeyToPath{{Key: "request.json", Path: "request.json"}}}}})
-		job.Spec.Template.Spec.InitContainers = []corev1.Container{initialNetworkReady(container, "CREA_SIM_PORTAL_DATABASE_URL")}
+		variable := "CREA_SIM_PORTAL_DATABASE_URL"
+		if p.Profile == PortalReconstructionCloseProfile {
+			variable = "CREA_SIM_MIGRATOR_DATABASE_URL"
+		}
+		job.Spec.Template.Spec.InitContainers = []corev1.Container{initialNetworkReady(container, variable)}
 	}
 	if p.Profile == KarafielSchemaProfile {
 		job.Spec.Template.Spec.SecurityContext.RunAsUser = ptr.To[int64](1001)

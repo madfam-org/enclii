@@ -1,6 +1,6 @@
 # Isolated training and staging custody
 
-Last Updated: 2026-10-26
+Last Updated: 2026-10-28
 
 > Boundary checkpoint (2026-10-14, platform preparation): public-safe logical
 > target names, namespaces, key names and callbacks only. Actual credentials,
@@ -291,6 +291,14 @@ with an operator login, in three steps, against the portal addon and the
 A re-run uses a new key, once the earlier Job has finished. It never reuses
 or rewrites an earlier key's records.
 
+### Runtime reset-fence observation
+
+The separate `portal-sim-reset-fence-read` operation resolves a retained fence
+by one of the three registered kernel IDs. It uses the runtime account only;
+its dry-run admits a plan, and apply runs the fixed read-only reader. See
+[the request and receipt contract](../architecture/PORTAL_RESET_FENCE_READ.md).
+Its historical receipt does not close a reservation or enable fleet reset.
+
 ### Fixed step 004 (`portal-sim-cierre-reconstruccion-paso`)
 
 The contract is in
@@ -310,7 +318,12 @@ The sequence is step 003's, with the profile `portal-sim-cierre-reconstruccion-p
    `YA_APLICADO`). `FIXED_STEP_HELD` names its `held_reason`.
 
 This prepares the catalogue only. A reservation left `RESTABLECIENDO` stays
-retained until the separate close profile exists and runs.
+retained until the separate witnessed close profile appends its accredited receipt.
+See [Witnessed portal close](../architecture/PORTAL_RECONSTRUCTION_CLOSE.md):
+collect a new runtime fence observation with its server-owned origin before
+changing the kernel; after reconstruction, review/apply/collect the close with
+that same observation reference. The server enforces platform-operator rank,
+not physical human presence; custody capability checks remain independent.
 
 Inspect the same operation with
 `GET /v1/admin/projects/:slug/addons/:id/initial-bootstrap/:job_name`. It returns

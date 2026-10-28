@@ -269,3 +269,12 @@ role checks remain independent gates before any live initial bootstrap.
   `internal-devops`; no raw operational values are published here.
 - Policy: [local public boundary](../PUBLIC_REPO_BOUNDARY.md) and
   [canonical repository boundary contract](https://github.com/madfam-org/internal-devops/blob/main/docs/repo-boundary-contract.md).
+
+## Witnessed close after reconstruction
+
+The separate `portal-sim-cierre-reconstruccion` fixed profile consumes an
+immutable pre-cut origin/fence observation, successor binding and native initial
+seed receipt, and applied004 evidence. Its caller supplies only closed IDs and
+the retained read reference. See the [complete contract](PORTAL_RECONSTRUCTION_CLOSE.md).
+Legacy initial and observation records remain historical; missing origin
+authority is never backfilled or inferred from the current addon.

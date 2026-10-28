@@ -34,9 +34,13 @@ func TestIsolatedTrainingRoutesRequireOperatorDuringTenantRollback(t *testing.T)
 					allowedStatus      int
 				}{
 					{http.MethodPost, "/v1/admin/projects/crea-sim/addons/" + id + "/initial-bootstrap", `{"profile":"map-sim-initial","service_id":"` + id + `"}`, http.StatusServiceUnavailable},
+					{http.MethodPost, "/v1/admin/projects/crea-sim/addons/" + id + "/initial-bootstrap", reconstructionRequestBody(), http.StatusServiceUnavailable},
 					{http.MethodPost, "/v1/admin/projects/crea-sim/addons/" + id + "/initial-bootstrap", `{"profile":"portal-sim-generation-read","service_id":"` + id + `"}`, http.StatusBadRequest},
 					{http.MethodGet, "/v1/admin/projects/crea-sim/addons/" + id + "/initial-bootstrap/initial-aaaaaaaaaaaaaaaaaaaaaaaa", "", http.StatusServiceUnavailable},
 					{http.MethodPost, "/v1/admin/projects/crea-sim/addons/" + id + "/retained-generation-read", generationReadRequestBody(), http.StatusServiceUnavailable},
+					{http.MethodPost, "/v1/admin/projects/crea-sim/addons/" + id + "/retained-reset-fence-read", fenceReadRequestBody(), http.StatusServiceUnavailable},
+					{http.MethodGet, "/v1/admin/projects/crea-sim/addons/" + id + "/retained-reset-fence-read/read-aaaaaaaaaaaaaaaaaaaaaaaa", "", http.StatusServiceUnavailable},
+					{http.MethodPost, "/v1/admin/projects/crea-sim/addons/" + id + "/initial-bootstrap", `{"profile":"portal-sim-reset-fence-read","service_id":"` + id + `"}`, http.StatusBadRequest},
 					{http.MethodGet, "/v1/admin/projects/crea-sim/addons/" + id + "/retained-generation-read/read-aaaaaaaaaaaaaaaaaaaaaaaa", "", http.StatusServiceUnavailable},
 					{http.MethodPost, "/v1/admin/projects/crea-sim/environments/staging/bootstrap", `{"repo_full_name":"madfam-org/crea-sim"}`, http.StatusServiceUnavailable},
 					{http.MethodGet, "/v1/secrets/intake/targets", "", http.StatusOK},

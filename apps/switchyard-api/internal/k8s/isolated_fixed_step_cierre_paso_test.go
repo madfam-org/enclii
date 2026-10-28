@@ -30,9 +30,8 @@ func TestCierrePasoProfileIsAClosedFixedStepWithPortalProvenance(t *testing.T) {
 	require.True(t, IsRepeatedProfile(cierrePasoFixtureProfile))
 	require.False(t, IsMapSimProfile(cierrePasoFixtureProfile))
 	require.False(t, IsProvenanceReadProfile(cierrePasoFixtureProfile))
-	// The close itself is a different, not-yet-implemented profile: it must not
-	// ride on step 004's admission.
-	for _, other := range []string{"portal-sim-cierre-reconstruccion", "portal-sim-cierre-reconstruccion-paso ", " portal-sim-cierre-reconstruccion-paso", "PORTAL-SIM-CIERRE-RECONSTRUCCION-PASO", "portal-sim-cierre-reconstruccion-paso-v2", "cierre-reconstruccion-paso", "portal-sim-004", "portal-sim-cierre-huerfano"} {
+	// The witnessed close has its own profile and cannot ride on step004 admission.
+	for _, other := range []string{"portal-sim-cierre-reconstruccion-paso ", " portal-sim-cierre-reconstruccion-paso", "PORTAL-SIM-CIERRE-RECONSTRUCCION-PASO", "portal-sim-cierre-reconstruccion-paso-v2", "cierre-reconstruccion-paso", "portal-sim-004", "portal-sim-cierre-huerfano"} {
 		require.False(t, IsFixedStepProfile(other), "%q", other)
 		_, ok := initialProvenanceFor(other)
 		require.False(t, ok, "%q", other)

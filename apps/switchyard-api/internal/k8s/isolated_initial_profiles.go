@@ -20,7 +20,9 @@ const fixedStepCierreReconstruccionPasoProfile = "portal-sim-cierre-reconstrucci
 // PortalGenerationReadProfile is observation only; never migration or reset.
 const PortalGenerationReadProfile = "portal-sim-generation-read"
 
-func IsProvenanceReadProfile(profile string) bool { return profile == PortalGenerationReadProfile }
+func IsProvenanceReadProfile(profile string) bool {
+	return profile == PortalGenerationReadProfile || profile == PortalFenceReadProfile
+}
 
 // IsRepeatedProfile uses one retained Job per key for fixed steps and reads.
 func IsRepeatedProfile(profile string) bool {
@@ -30,7 +32,7 @@ func IsRepeatedProfile(profile string) bool {
 // IsFixedStepProfile reports whether a profile is a re-runnable fixed step
 // rather than a once-only initial preparation.
 func IsFixedStepProfile(profile string) bool {
-	return profile == fixedStepTurnoVigenteProfile || profile == fixedStepCierreReconstruccionPasoProfile
+	return profile == fixedStepTurnoVigenteProfile || profile == fixedStepCierreReconstruccionPasoProfile || profile == PortalReconstructionCloseProfile
 }
 
 // bootstrapKind is everything that differs between a once-only initial

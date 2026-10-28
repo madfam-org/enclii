@@ -2,6 +2,7 @@ package api
 
 import (
 	"context"
+	"encoding/json"
 	"io"
 	"net/http"
 	"reflect"
@@ -13,20 +14,38 @@ import (
 	"github.com/madfam-org/enclii/packages/sdk-go/pkg/types"
 )
 
+type initialBootstrapRequest struct {
+	Profile        string `json:"profile"`
+	ServiceID      string `json:"service_id"`
+	IdempotencyKey string `json:"idempotency_key"`
+	DryRun         *bool  `json:"dry_run"`
+	Reason         string `json:"reason"`
+	Kernel         string `json:"nucleo"`
+	FenceReadJob   string `json:"fence_read_job"`
+	ExpectedPlan   string `json:"expect_plan_sha256"`
+}
+
 // InitialBootstrapAddon accepts identifiers and a closed initial profile only.
 // All owner/runtime credentials, commands and namespaces are server-resolved.
 func (h *Handler) InitialBootstrapAddon(c *gin.Context) {
-	var request struct {
-		Profile        string `json:"profile"`
-		ServiceID      string `json:"service_id"`
-		IdempotencyKey string `json:"idempotency_key"`
-		DryRun         *bool  `json:"dry_run"`
-		Reason         string `json:"reason"`
-	}
+	var request initialBootstrapRequest
 	body, bodyErr := io.ReadAll(http.MaxBytesReader(c.Writer, c.Request.Body, 8192))
 	if bodyErr != nil || k8s.DecodeInitialBootstrapJSON(body, &request) != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "initial bootstrap accepts only its closed request fields"})
 		return
+	}
+	var supplied map[string]json.RawMessage
+	if json.Unmarshal(body, &supplied) != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "closed initial request required"})
+		return
+	}
+	if request.Profile != k8s.PortalReconstructionCloseProfile {
+		for _, key := range []string{"nucleo", "fence_read_job", "expect_plan_sha256"} {
+			if _, present := supplied[key]; present {
+				c.JSON(http.StatusBadRequest, gin.H{"error": "profile does not accept reconstruction fields"})
+				return
+			}
+		}
 	}
 	profile, err := isolatedBootstrapProfileFor(request.Profile)
 	addonID, addonErr := uuid.Parse(c.Param("id"))
@@ -34,6 +53,15 @@ func (h *Handler) InitialBootstrapAddon(c *gin.Context) {
 	dryRun := request.DryRun == nil || *request.DryRun
 	if err != nil || request.Profile == k8s.KarafielSchemaProfile || k8s.IsProvenanceReadProfile(request.Profile) || addonErr != nil || serviceErr != nil || addonID == uuid.Nil || serviceID == uuid.Nil || (!dryRun && (request.IdempotencyKey == "" || strings.TrimSpace(request.Reason) == "")) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "valid owned IDs/profile and apply reason/idempotency key required"})
+		return
+	}
+	if request.Profile == k8s.PortalReconstructionCloseProfile {
+		if !validReconstructionCloseRequest(request) {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "closed reconstruction request requires kernel, retained fence read, reviewed plan and operation key"})
+			return
+		}
+	} else if request.Kernel != "" || request.FenceReadJob != "" || request.ExpectedPlan != "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "profile does not accept reconstruction fields"})
 		return
 	}
 	if h.repos == nil || h.repos.Projects == nil || h.repos.Services == nil || h.repos.DatabaseAddons == nil || h.repos.Onboardings == nil || h.addonService == nil || h.k8sClient == nil {
@@ -46,6 +74,10 @@ func (h *Handler) InitialBootstrapAddon(c *gin.Context) {
 		return
 	}
 	if !h.enforceUserProjectAccess(c, project.ID) {
+		return
+	}
+	if request.Profile == k8s.PortalReconstructionCloseProfile {
+		h.portalReconstructionClose(c, project, addonID, serviceID, request)
 		return
 	}
 	service, serviceErr := h.repos.Services.GetByID(serviceID)
@@ -173,6 +205,8 @@ func (h *Handler) InitialBootstrapAddon(c *gin.Context) {
 
 func initialBootstrapScope(profile string) string {
 	switch profile {
+	case k8s.PortalReconstructionCloseProfile:
+		return "fixed close-by-rebuild only, bound to immutable original kernel/fence and successor initial seed evidence; no reset, DDL or inferred readiness"
 	case "portal-sim-turno-vigente":
 		return "fixed step 003 (portal turno vigente) only; no reset, delivery or other DDL; the database's own turno_vigente_recibos row remains the authority"
 	case "portal-sim-cierre-reconstruccion-paso":
@@ -223,6 +257,8 @@ func (h *Handler) InitialBootstrapAddonStatus(c *gin.Context) {
 	scope := "INITIAL_ONLY retained history; current readiness, kernel control and reset accreditation remain separate"
 	if k8s.IsProvenanceReadProfile(profile.Name) {
 		scope = "PROVENANCE_ONLY retained historical snapshot; no fresh lease, intent, fence, writer exclusion or adoption authority"
+	} else if profile.Name == k8s.PortalReconstructionCloseProfile {
+		scope = "FIXED_STEP retained close-by-rebuild evidence only; gateway independently verifies the empty successor before admission"
 	} else if profile.Name == "portal-sim-cierre-reconstruccion-paso" {
 		scope = "FIXED_STEP retained history of this operation key; the database's own cierre_reconstruccion_recibos row remains the authority"
 	} else if k8s.IsFixedStepProfile(profile.Name) {
