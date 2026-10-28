@@ -270,10 +270,8 @@ func argocdObservationFromApplication(app unstructured.Unstructured) (argocdObse
 // record-creation path. It is pure: service resolution and tracking lookups are
 // injected, so it is fully unit-testable without a DB or cluster.
 //
-// Dedup key: (service, git revision). Unknown images and images whose service
-// already tracks the observed revision are dropped, which keeps the poller
-// idempotent — polling a steady-state Application yields an empty slice and
-// hence no writes.
+// Unknown/mixed service images and exact revision/image observations are
+// dropped. A steady-state Application yields an empty slice and no writes.
 func argocdPollDecision(
 	obs argocdObservation,
 	resolveService func(imageURI string) *types.Service,
@@ -284,18 +282,10 @@ func argocdPollDecision(
 	}
 
 	var changed []string
-	seen := make(map[string]struct{}, len(obs.Images))
-	for _, imageURI := range obs.Images {
-		if _, dup := seen[imageURI]; dup {
-			continue
-		}
-		seen[imageURI] = struct{}{}
-
-		service := resolveService(imageURI)
-		if service == nil {
-			continue // unknown app/image → skip
-		}
-
+	for _, item := range argocdUnambiguousServiceImages(obs.Images, func(image string) (*types.Service, string) {
+		return resolveService(image), ""
+	}) {
+		imageURI, service := item.image, item.service
 		dep, rel := latestTracked(service.ID.String())
 		if argocdObservationAlreadyTracked(dep, rel, obs.Revision, imageURI) {
 			continue // already recorded → idempotent no-op
@@ -308,19 +298,15 @@ func argocdPollDecision(
 // argocdObservationAlreadyTracked reports whether a service's latest tracked
 // deployment already reflects the observed ArgoCD revision/image.
 //
-// A GitOps revision deterministically pins the image digest, so a matching git
-// revision means the running image is already recorded — the authoritative
-// dedup key is (service, git revision). When a revision is unavailable on
-// either side (legacy releases with an empty git_sha), it falls back to
-// image-digest identity. Keying on revision (never re-deriving "changed" from a
-// reused release's stale image field) guarantees the poller cannot churn
-// duplicate records for a steady-state Application.
+// A same-revision release can retain an earlier rollout summary's image. Let
+// that mismatch reach the guarded reconciliation path; a steady-state exact
+// observation remains a no-op. Legacy rows fall back to digest identity.
 func argocdObservationAlreadyTracked(dep *types.Deployment, rel *types.Release, revision, imageURI string) bool {
 	if dep == nil || rel == nil {
 		return false
 	}
 	if rel.GitSHA != "" && revision != "" {
-		return rel.GitSHA == revision
+		return rel.GitSHA == revision && rel.ImageURI == imageURI
 	}
 	// Revision unavailable — fall back to image-digest identity when both sides
 	// carry a digest.

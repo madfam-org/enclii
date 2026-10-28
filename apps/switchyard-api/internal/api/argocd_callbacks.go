@@ -100,15 +100,13 @@ func (h *Handler) processArgocdSyncRequest(ctx context.Context, req ArgocdSyncRe
 
 	deploymentsCreated := 0
 
-	for _, imageURI := range req.Images {
-		// Associate the image with a registered enclii service. Unknown
-		// images (no name/repo match) are skipped — the poller relies on this
-		// to ignore Applications that don't map to a tracked service.
-		service, serviceName := h.argocdServiceForImage(ctx, req.AppName, imageURI)
-		if service == nil {
-			continue
-		}
-
+	// Unknown images are ignored; mixed rollout images for one service wait
+	// until its summary settles instead of choosing the first array element.
+	images := argocdUnambiguousServiceImages(req.Images, func(imageURI string) (*types.Service, string) {
+		return h.argocdServiceForImage(ctx, req.AppName, imageURI)
+	})
+	for _, observed := range images {
+		imageURI, service, serviceName := observed.image, observed.service, observed.name
 		// Find the latest release for this service, or create one
 		release, err := h.findOrCreateRelease(ctx, service, imageURI, req.Revision)
 		if err != nil {
@@ -116,6 +114,18 @@ func (h *Handler) processArgocdSyncRequest(ctx context.Context, req ArgocdSyncRe
 				logging.String("service_name", serviceName),
 				logging.Error("error", err))
 			continue
+		}
+		if release.ImageURI != imageURI {
+			// A sync can initially report the previous rollout's summary image.
+			// Correct only current observer metadata, before the same-release
+			// no-op below, after a fresh authoritative Application read.
+			updated, err := h.reconcileArgocdReleaseImage(ctx, req, source, service, release, imageURI)
+			if err != nil || !updated {
+				h.logger.Warn(ctx, "ArgoCD release image reconciliation refused",
+					logging.String("release_id", release.ID.String()), logging.Error("error", err))
+				continue
+			}
+			release.ImageURI = imageURI
 		}
 
 		// Skip if this service already has a running deployment with the same release.
@@ -438,7 +448,8 @@ func argocdDeploymentHealth(healthStatus string) types.HealthStatus {
 	}
 }
 
-// findOrCreateRelease finds an existing release matching the image+SHA or creates a new one
+// findOrCreateRelease deduplicates by service/revision. Its caller separately
+// reconciles a stale observer image with a fresh, guarded Application read.
 func (h *Handler) findOrCreateRelease(ctx interface{ Value(any) any }, service *types.Service, imageURI, gitSHA string) (*types.Release, error) {
 	// Try to find existing release by service + git SHA
 	releases, err := h.repos.Releases.ListByService(service.ID)
