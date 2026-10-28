@@ -224,16 +224,6 @@ const sidebars: SidebarsConfig = {
       ],
     },
 
-    // Runbooks
-    {
-      type: 'category',
-      label: 'Runbooks',
-      collapsed: true,
-      items: [
-        'runbooks/DATABASE_RECOVERY',
-      ],
-    },
-
     // Functions (Serverless)
     {
       type: 'category',

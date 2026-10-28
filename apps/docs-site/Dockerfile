@@ -69,7 +69,15 @@ RUN echo "apk security refresh: ${APK_SECURITY_REFRESH}" && \
 # Security headers applied at origin (defense-in-depth; Cloudflare may also set some).
 # CSP keeps 'unsafe-inline' for Docusaurus runtime; revisit with nonces later.
 # connect-src includes analytics.madfam.io for PostHog tracking.
-RUN echo 'server { \
+# Operator runbooks and audit records stay reachable by link but carry
+# X-Robots-Tag noindex (empty for every other path, so nginx omits it). A map
+# keeps the server-level add_header set intact; a nested location's add_header
+# would drop the security headers above it.
+RUN echo 'map $uri $docs_robots_tag { \
+    ~^/(runbooks|audits)(/|$) "noindex, nofollow"; \
+    default ""; \
+} \
+server { \
     listen 80; \
     server_name localhost; \
     root /usr/share/nginx/html; \
@@ -82,6 +90,7 @@ RUN echo 'server { \
     add_header X-Content-Type-Options "nosniff" always; \
     add_header Referrer-Policy "strict-origin-when-cross-origin" always; \
     add_header Permissions-Policy "camera=(), microphone=(), geolocation=()" always; \
+    add_header X-Robots-Tag $docs_robots_tag always; \
     location ~* \.(js|css|png|jpg|jpeg|gif|ico|svg|woff|woff2)$ { \
         expires 1y; \
         add_header Cache-Control "public, immutable" always; \
