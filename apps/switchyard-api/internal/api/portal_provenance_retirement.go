@@ -108,10 +108,22 @@ func (h *Handler) RetirePortalProvenanceRead(c *gin.Context) {
 	plan.Reason = request.Reason
 	receipt, err := h.k8sClient.RetireProvenanceRead(c.Request.Context(), plan, c.Param("job_name"), request.ExpectedPlan, *request.DryRun)
 	if err != nil {
-		c.JSON(http.StatusConflict, gin.H{"error": "provenance retirement refused or held; inspect the same operation key", "hold_stage": k8s.InitialJobHoldStage(err)})
+		c.JSON(http.StatusConflict, h.provenanceRetirementFailure(c.Request.Context(), plan, c.Param("job_name"), *request.DryRun, err))
 		return
 	}
 	c.JSON(http.StatusOK, gin.H{"retirement": receipt, "scope": provenanceRetirementScope})
+}
+
+func (h *Handler) provenanceRetirementFailure(ctx context.Context, plan k8s.IsolatedInitialJobPlan, name string, dryRun bool, held error) gin.H {
+	response := gin.H{"error": "provenance retirement refused or held; inspect the same operation key", "hold_stage": k8s.InitialJobHoldStage(held)}
+	if dryRun {
+		if diagnostic, err := h.k8sClient.DiagnoseProvenanceRetirement(ctx, plan, name); err == nil {
+			response["diagnostic"] = diagnostic
+		} else {
+			response["diagnostic_status"] = "unavailable"
+		}
+	}
+	return response
 }
 
 func (h *Handler) PortalProvenanceRetirementStatus(c *gin.Context) {

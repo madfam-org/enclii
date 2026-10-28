@@ -321,6 +321,16 @@ exclusion. Each new read, seed or close still requires its own independent
 current authority; retirement supplies no fence, seed, reset, release, adoption
 or reconstruction-close proof. Missing or stale close evidence still refuses.
 
+A refused retirement dry run may include a `DIAGNOSTIC_ONLY` snapshot after
+rechecking the exact owned native reader scope. It separates expected-builder,
+strict-matcher, spec and whole-annotation comparisons, with bounded fixed-schema
+mismatch field paths and native UID/resourceVersion/generation. Recognized
+annotation names carry value hashes only; unknown names are withheld as key
+hashes. No annotation, command, environment, Secret, CA or credential values are
+returned. Invalid scope or diagnostic bounds return `diagnostic_status=unavailable`.
+These reads create no record and supply no plan, fence, seed, retirement or
+execution authority; apply errors do not invoke them. All guards remain unchanged.
+
 ### Fixed step 003 (`portal-sim-turno-vigente`)
 
 The contract is in
