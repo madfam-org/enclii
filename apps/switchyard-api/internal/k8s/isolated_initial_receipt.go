@@ -276,6 +276,11 @@ func (c *Client) checkFixedStepExclusion(ctx context.Context, p IsolatedInitialJ
 			return fmt.Errorf("fixed step Job history unavailable")
 		}
 		for i := range jobs.Items {
+			if ignored, err := c.retirementExclusion(ctx, &jobs.Items[i], p.jobName()); err != nil {
+				return err
+			} else if ignored {
+				continue
+			}
 			if jobs.Items[i].Name != p.jobName() && !initialJobFinished(&jobs.Items[i]) {
 				return fmt.Errorf("another database operation on this addon is unfinished; new fixed step refused")
 			}
@@ -328,7 +333,9 @@ func initialJobMatches(job *batchv1.Job, expected *batchv1.Job, intent initialIn
 	}
 
 	// Fixed defaults are explicit in the desired spec. Only controller-generated
-	// selector/labels and the activation bit are normalized after validation.
+	// selector/labels, activation bit and equivalent EmptyDir quantities are
+	// normalized after validation. Protobuf admission caches Quantity.String on
+	// the submitted pointer; the create response need not retain that cache.
 	got := job.Spec.DeepCopy()
 	want := expected.Spec.DeepCopy()
 	if got.ManualSelector != nil && *got.ManualSelector {
@@ -363,6 +370,9 @@ func initialJobMatches(job *batchv1.Job, expected *batchv1.Job, intent initialIn
 		return false
 	}
 
+	if !normalizeInitialEmptyDirQuantities(got, want) {
+		return false
+	}
 	return reflect.DeepEqual(*got, *want)
 }
 
@@ -723,6 +733,9 @@ func (c *Client) retainedInitialStatus(ctx context.Context, namespace, name stri
 	}
 	var in initialIntent
 	if DecodeInitialBootstrapJSON([]byte(cm.Data["payload"]), &in) != nil {
+		if retired, labels, err := c.ReadProvenanceRetirement(ctx, namespace, name, project, addon); err == nil {
+			return &IsolatedInitialJobReceipt{Name: name, Namespace: namespace, Suspended: true, Classification: retired.Classification}, labels, nil
+		}
 		return nil, nil, fmt.Errorf("initial retained intent refused")
 	}
 	kind := bootstrapKindFor(in.Profile)

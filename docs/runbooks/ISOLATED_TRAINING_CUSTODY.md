@@ -266,6 +266,61 @@ foreign/existing conflicts and rotation refuse activation without adoption.
 Dry run only submits server-side dry-run copies; ordinary credentials remain
 separate from application/migrator custody.
 
+The bounded generation reader, fence reader and reconstruction close may finish
+retaining an intent after a suspended create was interrupted. Before creating
+these Jobs, the server retains the complete original pre-UID plan in a separate
+immutable namespace-owned preparation; the Job references its UID and hash.
+Repeat the exact original apply body and reviewed plan under the same key. The
+server requires that exact original preparation, generation one, the exact
+fixed Job and fingerprint, no execution evidence,
+a complete empty owned-Pod read, and absent intent, receipt, transient credentials
+and network policy. It rechecks the UID/resourceVersion and current reviewed
+authority, retains the immutable intent, then uses the normal single activation
+CAS. A legacy Job without an original preparation stays held; the server never
+creates one retroactively. A previously activated, changed or uncertain Job
+stays held; initial
+migration/seed profiles cannot use this recovery. Reader and close refusals
+return a safe `hold_stage` code without raw admission or credential values.
+
+### Retire an unexecuted provenance reader
+
+A legacy reader without its original preparation cannot be adopted. A separate
+platform-operator action may retire only a positively unexecuted provenance
+reader; it cannot retire migration, seed or reconstruction-close Jobs.
+
+POST `/v1/admin/projects/<slug>/addons/<addon-id>/retained-provenance-read/<read-job>/retire`
+with the closed `action=RETIRE_UNEXECUTED_PROVENANCE_READ`, reader `profile`,
+`service_id`, original UUID `idempotency_key` and `dry_run=true`. The native Job
+must match that exact operation name, owned scope and fixed bounded reader spec,
+remain suspended at generation one, and have no execution status, owned Pod,
+intent, receipt, transient credentials or database network policy. Unknown or
+partial reads refuse. The returned `retirement.plan_sha256` binds its native
+UID, resourceVersion, spec and annotation hashes, not a historical identity or
+database observation.
+
+Review the plan, then repeat with `dry_run=false`, that exact
+`expect_plan_sha256` and a bounded `reason`. The server atomically claims the
+existing immutable intent name as `NON_EXECUTION_RETIREMENT_CLAIM`, permanently
+denying execution under the old key. It makes one metadata-only Job CAS with
+the exact observed UID/resourceVersion, preserving its spec, suspension and
+generation, then retains a separate immutable completion only after positive
+native readback. `NON_EXECUTION_RETIREMENT`, `conclusive=true` and
+`execution_authorized=false` identify completion. The original Job remains.
+
+GET the sibling `.../<read-job>/retirement` route for read-only confirmation.
+The original reader status may also report the retirement class, with no native
+fence receipt. A lost CAS response or incomplete claim stays held and never
+creates an exclusion exception. An explicit same-key collection can retain a
+completion from positive native markers/readback; it never retries the CAS.
+Claim alone, marker alone, foreign records, UID/spec/generation/execution/Pod
+or transient-resource drift remain blockers. The old key stays denied even
+after the Job disappears.
+
+Only a conclusively inert retired reader may be ignored by later operation
+exclusion. Each new read, seed or close still requires its own independent
+current authority; retirement supplies no fence, seed, reset, release, adoption
+or reconstruction-close proof. Missing or stale close evidence still refuses.
+
 ### Fixed step 003 (`portal-sim-turno-vigente`)
 
 The contract is in
