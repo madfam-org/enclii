@@ -266,6 +266,22 @@ foreign/existing conflicts and rotation refuse activation without adoption.
 Dry run only submits server-side dry-run copies; ordinary credentials remain
 separate from application/migrator custody.
 
+The bounded generation reader, fence reader and reconstruction close may finish
+retaining an intent after a suspended create was interrupted. Before creating
+these Jobs, the server retains the complete original pre-UID plan in a separate
+immutable namespace-owned preparation; the Job references its UID and hash.
+Repeat the exact original apply body and reviewed plan under the same key. The
+server requires that exact original preparation, generation one, the exact
+fixed Job and fingerprint, no execution evidence,
+a complete empty owned-Pod read, and absent intent, receipt, transient credentials
+and network policy. It rechecks the UID/resourceVersion and current reviewed
+authority, retains the immutable intent, then uses the normal single activation
+CAS. A legacy Job without an original preparation stays held; the server never
+creates one retroactively. A previously activated, changed or uncertain Job
+stays held; initial
+migration/seed profiles cannot use this recovery. Reader and close refusals
+return a safe `hold_stage` code without raw admission or credential values.
+
 ### Fixed step 003 (`portal-sim-turno-vigente`)
 
 The contract is in

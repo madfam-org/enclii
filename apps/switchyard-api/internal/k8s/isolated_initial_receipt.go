@@ -328,7 +328,9 @@ func initialJobMatches(job *batchv1.Job, expected *batchv1.Job, intent initialIn
 	}
 
 	// Fixed defaults are explicit in the desired spec. Only controller-generated
-	// selector/labels and the activation bit are normalized after validation.
+	// selector/labels, activation bit and equivalent EmptyDir quantities are
+	// normalized after validation. Protobuf admission caches Quantity.String on
+	// the submitted pointer; the create response need not retain that cache.
 	got := job.Spec.DeepCopy()
 	want := expected.Spec.DeepCopy()
 	if got.ManualSelector != nil && *got.ManualSelector {
@@ -363,6 +365,9 @@ func initialJobMatches(job *batchv1.Job, expected *batchv1.Job, intent initialIn
 		return false
 	}
 
+	if !normalizeInitialEmptyDirQuantities(got, want) {
+		return false
+	}
 	return reflect.DeepEqual(*got, *want)
 }
 

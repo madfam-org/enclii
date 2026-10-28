@@ -106,7 +106,7 @@ func (h *Handler) PortalGenerationRead(c *gin.Context) {
 	}
 	receipt, err := h.k8sClient.RunIsolatedInitialJob(c.Request.Context(), plan, *r.DryRun)
 	if err != nil {
-		c.JSON(http.StatusConflict, gin.H{"error": "provenance Job refused or held; inspect the same operation key"})
+		c.JSON(http.StatusConflict, gin.H{"error": "provenance Job refused or held; inspect the same operation key", "hold_stage": k8s.InitialJobHoldStage(err)})
 		return
 	}
 	c.JSON(http.StatusOK, gin.H{"job": receipt, "producer": proof, "plan_sha256": sha, "scope": "PROVENANCE_ONLY historical snapshot; no fresh lease, intent, fence, writer exclusion or adoption authority"})
