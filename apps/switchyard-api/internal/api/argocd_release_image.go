@@ -3,6 +3,7 @@ package api
 import (
 	"context"
 	"fmt"
+	"reflect"
 	"regexp"
 	"strings"
 
@@ -76,9 +77,16 @@ func argocdCurrentImageObservation(app unstructured.Unstructured, req ArgocdSync
 	obs, ok := argocdObservationFromApplication(app)
 	phase, _, _ := unstructured.NestedString(app.Object, "status", "operationState", "phase")
 	completedRevision, _, _ := unstructured.NestedString(app.Object, "status", "operationState", "syncResult", "revision")
+	operation, operationFound, operationErr := unstructured.NestedMap(app.Object, "operation")
+	source, sourceFound, sourceErr := unstructured.NestedMap(app.Object, "spec", "source")
+	comparedSource, comparedFound, comparedErr := unstructured.NestedMap(app.Object, "status", "sync", "comparedTo", "source")
+	_, multipleSources, multipleSourcesErr := unstructured.NestedFieldNoCopy(app.Object, "spec", "sources")
 	if !ok || obs.AppName != req.AppName || obs.Revision != req.Revision ||
 		obs.SyncStatus != "Synced" || obs.HealthStatus != "Healthy" || phase != "Succeeded" || completedRevision != req.Revision ||
-		app.GetUID() == "" || app.GetResourceVersion() == "" || app.GetDeletionTimestamp() != nil {
+		app.GetUID() == "" || app.GetResourceVersion() == "" || app.GetDeletionTimestamp() != nil ||
+		operationErr != nil || (operationFound && len(operation) != 0) ||
+		sourceErr != nil || comparedErr != nil || !sourceFound || !comparedFound || len(source) == 0 || !reflect.DeepEqual(source, comparedSource) ||
+		multipleSourcesErr != nil || multipleSources {
 		return argocdImageObservation{}, fmt.Errorf("Application is not a current settled revision")
 	}
 	for _, current := range argocdUnambiguousServiceImages(obs.Images, resolve) {
@@ -94,8 +102,9 @@ func (h *Handler) reconcileArgocdReleaseImage(ctx context.Context, req ArgocdSyn
 		return false, fmt.Errorf("only unsigned observer-created same-revision image metadata is eligible")
 	}
 	latest, err := h.repos.Deployments.GetLatestByService(ctx, service.ID.String())
-	if err != nil || latest == nil || latest.ReleaseID != release.ID || latest.Status != types.DeploymentStatusRunning {
-		return false, fmt.Errorf("release is not the latest running deployment")
+	if err != nil || latest == nil || latest.ReleaseID != release.ID ||
+		(latest.Status != types.DeploymentStatusRunning && latest.Status != types.DeploymentStatusFailed) {
+		return false, fmt.Errorf("release is not the latest running or recoverable failed deployment")
 	}
 	if h.k8sClient == nil || h.k8sClient.DynamicClient == nil {
 		return false, fmt.Errorf("current Application reader unavailable")
@@ -121,7 +130,7 @@ func reconcileArgocdObservedImage(ctx context.Context, repos *db.Repositories, r
 	updated := false
 	err := repos.WithTransaction(ctx, func(tx *db.Repositories) error {
 		var err error
-		updated, err = tx.Releases.ReconcileObservedImage(ctx, release.ID, service.ID, latest.ID, req.Revision, release.ImageURI, image)
+		updated, err = tx.Releases.ReconcileObservedImage(ctx, release.ID, service.ID, latest.ID, req.Revision, release.ImageURI, image, latest.Status)
 		if err != nil || !updated {
 			return err
 		}

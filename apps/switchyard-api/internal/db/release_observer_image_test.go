@@ -7,6 +7,7 @@ import (
 
 	"github.com/DATA-DOG/go-sqlmock"
 	"github.com/google/uuid"
+	"github.com/madfam-org/enclii/packages/sdk-go/pkg/types"
 	"github.com/stretchr/testify/require"
 )
 
@@ -25,10 +26,11 @@ func TestReleaseObserverImageUsesCurrentUnsignedCAS(t *testing.T) {
 		`r.id = \(SELECT id FROM releases WHERE service_id = \$2 ORDER BY created_at DESC, id DESC LIMIT 1\)`,
 		`\$3 = \(SELECT d.id FROM deployments d JOIN releases dr ON dr.id = d.release_id`,
 		`WHERE dr.service_id = \$2 ORDER BY d.created_at DESC, d.id DESC LIMIT 1\)`,
-		`EXISTS \(SELECT 1 FROM deployments WHERE id = \$3 AND release_id = r.id AND status = 'running'\)`,
+		`EXISTS \(SELECT 1 FROM deployments WHERE id = \$3 AND release_id = r.id`,
+		`AND status = \$7 AND status IN \('running', 'failed'\)\)`,
 	}
-	mock.ExpectExec("(?s)"+strings.Join(guards, ".*")).WithArgs(release, service, deployment, "revision", "previous", "observed").WillReturnResult(sqlmock.NewResult(0, 1))
-	changed, err := repo.ReconcileObservedImage(context.Background(), release, service, deployment, "revision", "previous", "observed")
+	mock.ExpectExec("(?s)"+strings.Join(guards, ".*")).WithArgs(release, service, deployment, "revision", "previous", "observed", types.DeploymentStatusRunning).WillReturnResult(sqlmock.NewResult(0, 1))
+	changed, err := repo.ReconcileObservedImage(context.Background(), release, service, deployment, "revision", "previous", "observed", types.DeploymentStatusRunning)
 	require.NoError(t, err)
 	require.True(t, changed)
 	require.NoError(t, mock.ExpectationsWereMet())

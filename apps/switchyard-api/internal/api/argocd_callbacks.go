@@ -115,6 +115,7 @@ func (h *Handler) processArgocdSyncRequest(ctx context.Context, req ArgocdSyncRe
 				logging.Error("error", err))
 			continue
 		}
+		imageCorrectionRefused := false
 		if release.ImageURI != imageURI {
 			// A sync can initially report the previous rollout's summary image.
 			// Correct only current observer metadata, before the same-release
@@ -123,9 +124,10 @@ func (h *Handler) processArgocdSyncRequest(ctx context.Context, req ArgocdSyncRe
 			if err != nil || !updated {
 				h.logger.Warn(ctx, "ArgoCD release image reconciliation refused",
 					logging.String("release_id", release.ID.String()), logging.Error("error", err))
-				continue
+				imageCorrectionRefused = true
+			} else {
+				release.ImageURI = imageURI
 			}
-			release.ImageURI = imageURI
 		}
 
 		// Skip if this service already has a running deployment with the same release.
@@ -133,6 +135,9 @@ func (h *Handler) processArgocdSyncRequest(ctx context.Context, req ArgocdSyncRe
 		// processing so the callback can recover the deployment record.
 		latestDeployment, _ := h.repos.Deployments.GetLatestByService(ctx, service.ID.String())
 		skipSameReleaseDeployment, recoverSameReleaseDeployment := argocdSameReleaseDeploymentDecision(latestDeployment, release.ID, callbackHealthy)
+		if imageCorrectionRefused && recoverSameReleaseDeployment == nil {
+			continue
+		}
 		if skipSameReleaseDeployment {
 			h.logger.Debug(ctx, "Service already deployed with this release, skipping",
 				logging.String("service_name", serviceName),
@@ -155,7 +160,16 @@ func (h *Handler) processArgocdSyncRequest(ctx context.Context, req ArgocdSyncRe
 		}
 
 		// Check for existing deployment with 'deploying' status (created by CI lifecycle event)
-		existingDeployment, findErr := h.repos.Deployments.FindDeployingByServiceAndSHA(ctx, service.ID, req.Revision)
+		var existingDeployment *types.Deployment
+		var findErr error
+		if imageCorrectionRefused {
+			// Preserve the existing healthy same-release failed-row recovery.
+			// A metadata refusal cannot create/adopt another deployment, rewrite
+			// image provenance, or suppress that status-only recovery.
+			existingDeployment = recoverSameReleaseDeployment
+		} else {
+			existingDeployment, findErr = h.repos.Deployments.FindDeployingByServiceAndSHA(ctx, service.ID, req.Revision)
+		}
 		if findErr != nil {
 			h.logger.Warn(ctx, "Error looking up existing deploying deployment",
 				logging.String("service_name", serviceName),

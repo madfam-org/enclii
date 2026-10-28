@@ -2,6 +2,7 @@ package api
 
 import (
 	"context"
+	"database/sql"
 	"database/sql/driver"
 	"encoding/json"
 	"errors"
@@ -36,6 +37,9 @@ func settledObserverApp(req ArgocdSyncRequest) unstructured.Unstructured {
 	app := newTestArgoApp(req.AppName, "Synced", "Healthy", req.Revision, req.Images...)
 	app.SetUID("fixture-app-uid")
 	app.SetResourceVersion("17")
+	source := map[string]interface{}{"repoURL": "https://github.com/fixture/project", "path": "infra", "targetRevision": "main"}
+	_ = unstructured.SetNestedMap(app.Object, source, "spec", "source")
+	_ = unstructured.SetNestedMap(app.Object, source, "status", "sync", "comparedTo", "source")
 	_ = unstructured.SetNestedField(app.Object, "Succeeded", "status", "operationState", "phase")
 	_ = unstructured.SetNestedField(app.Object, req.Revision, "status", "operationState", "syncResult", "revision")
 	return app
@@ -107,6 +111,24 @@ func TestArgocdCurrentImageObservationRefusesUnsettledMixedAndOutdated(t *testin
 		}},
 		{"incomplete operation", func(a *unstructured.Unstructured, _ *types.Release) {
 			_ = unstructured.SetNestedField(a.Object, "Running", "status", "operationState", "phase")
+		}},
+		{"queued top-level operation", func(a *unstructured.Unstructured, _ *types.Release) {
+			_ = unstructured.SetNestedMap(a.Object, map[string]interface{}{"sync": map[string]interface{}{"revision": "next"}}, "operation")
+		}},
+		{"malformed top-level operation", func(a *unstructured.Unstructured, _ *types.Release) {
+			_ = unstructured.SetNestedField(a.Object, "invalid", "operation")
+		}},
+		{"source changed before status refresh", func(a *unstructured.Unstructured, _ *types.Release) {
+			_ = unstructured.SetNestedField(a.Object, "next", "spec", "source", "targetRevision")
+		}},
+		{"nested source changed before status refresh", func(a *unstructured.Unstructured, _ *types.Release) {
+			_ = unstructured.SetNestedMap(a.Object, map[string]interface{}{"namePrefix": "next-"}, "spec", "source", "kustomize")
+		}},
+		{"comparison absent", func(a *unstructured.Unstructured, _ *types.Release) {
+			unstructured.RemoveNestedField(a.Object, "status", "sync", "comparedTo")
+		}},
+		{"multiple sources", func(a *unstructured.Unstructured, _ *types.Release) {
+			_ = unstructured.SetNestedSlice(a.Object, []interface{}{}, "spec", "sources")
 		}},
 		{"progressing", func(a *unstructured.Unstructured, _ *types.Release) {
 			_ = unstructured.SetNestedField(a.Object, "Progressing", "status", "health", "status")
@@ -188,7 +210,7 @@ func TestArgocdObservedImageAuditIsAtomicAndCASRefusesRaces(t *testing.T) {
 			defer database.Close()
 			svc, rel, dep, req, image := observerImageFixture()
 			mock.ExpectBegin()
-			update := mock.ExpectExec(`UPDATE releases AS r SET image_uri`).WithArgs(rel.ID, svc.ID, dep.ID, req.Revision, rel.ImageURI, image)
+			update := mock.ExpectExec(`UPDATE releases AS r SET image_uri`).WithArgs(rel.ID, svc.ID, dep.ID, req.Revision, rel.ImageURI, image, dep.Status)
 			if result == "update failure" {
 				update.WillReturnError(errors.New("write failed"))
 				mock.ExpectRollback()
@@ -235,6 +257,14 @@ func expectObserverDeployment(mock sqlmock.Sqlmock, svc *types.Service, dep *typ
 	mock.ExpectQuery(`FROM deployments d`).WithArgs(svc.ID.String()).WillReturnRows(sqlmock.NewRows(cols).AddRow(dep.ID, dep.ReleaseID, uuid.New(), 1, dep.Status, types.HealthStatusHealthy, nil, svc.ID, nil, now, now))
 }
 
+func expectObserverRelease(mock sqlmock.Sqlmock, svc *types.Service, rel *types.Release, req ArgocdSyncRequest) {
+	cols := []string{"id", "service_id", "version", "image_uri", "git_sha", "status", "sbom", "sbom_format", "image_signature", "signature_verified_at", "error_message", "framework_slug", "created_at", "updated_at"}
+	now := time.Now()
+	mock.ExpectQuery(`FROM releases WHERE service_id = \$1`).WithArgs(svc.ID).WillReturnRows(sqlmock.NewRows(cols).AddRow(rel.ID, svc.ID, rel.Version, rel.ImageURI, req.Revision, rel.Status, rel.SBOM, rel.SBOMFormat, rel.ImageSignature, rel.SignatureVerifiedAt, nil, nil, now, now))
+	mock.ExpectQuery(`FROM deployment_lifecycle_events`).WithArgs(req.Revision).WillReturnError(errors.New("no metadata fixture"))
+	mock.ExpectExec(`UPDATE releases SET commit_message`).WillReturnResult(sqlmock.NewResult(0, 1))
+}
+
 func TestArgocdCallbackReconcilesBeforeSameReleaseNoop(t *testing.T) {
 	database, mock, err := sqlmock.New()
 	require.NoError(t, err)
@@ -244,15 +274,11 @@ func TestArgocdCallbackReconcilesBeforeSameReleaseNoop(t *testing.T) {
 	client := dynamicfake.NewSimpleDynamicClient(runtime.NewScheme(), &app)
 	h := &Handler{repos: db.NewRepositories(database), logger: testPollerLogger(t), k8sClient: &k8s.Client{DynamicClient: client}}
 	expectObserverService(mock, svc)
-	cols := []string{"id", "service_id", "version", "image_uri", "git_sha", "status", "sbom", "sbom_format", "image_signature", "signature_verified_at", "error_message", "framework_slug", "created_at", "updated_at"}
-	now := time.Now()
-	mock.ExpectQuery(`FROM releases WHERE service_id = \$1`).WithArgs(svc.ID).WillReturnRows(sqlmock.NewRows(cols).AddRow(rel.ID, svc.ID, rel.Version, rel.ImageURI, req.Revision, rel.Status, nil, nil, nil, nil, nil, nil, now, now))
-	mock.ExpectQuery(`FROM deployment_lifecycle_events`).WithArgs(req.Revision).WillReturnError(errors.New("no metadata fixture"))
-	mock.ExpectExec(`UPDATE releases SET commit_message`).WillReturnResult(sqlmock.NewResult(0, 1))
+	expectObserverRelease(mock, svc, rel, req)
 	expectObserverDeployment(mock, svc, dep)
 	expectObserverService(mock, svc)
 	mock.ExpectBegin()
-	mock.ExpectExec(`UPDATE releases AS r SET image_uri`).WithArgs(rel.ID, svc.ID, dep.ID, req.Revision, rel.ImageURI, image).WillReturnResult(sqlmock.NewResult(0, 1))
+	mock.ExpectExec(`UPDATE releases AS r SET image_uri`).WithArgs(rel.ID, svc.ID, dep.ID, req.Revision, rel.ImageURI, image, dep.Status).WillReturnResult(sqlmock.NewResult(0, 1))
 	expectObserverAudit(mock, svc, rel, req, image).WillReturnResult(sqlmock.NewResult(0, 1))
 	mock.ExpectCommit()
 	expectObserverDeployment(mock, svc, dep)
@@ -263,7 +289,7 @@ func TestArgocdCallbackReconcilesBeforeSameReleaseNoop(t *testing.T) {
 }
 
 func TestArgocdImageReconciliationRefusesBeforeDatabaseWrites(t *testing.T) {
-	for _, scenario := range []string{"stale callback", "mixed current summary", "advanced deployment", "failed deployment", "signed release", "reader unavailable", "reader failure"} {
+	for _, scenario := range []string{"stale callback", "mixed current summary", "advanced deployment", "deploying deployment", "signed release", "reader unavailable", "reader failure", "queued operation", "stale compared source"} {
 		t.Run(scenario, func(t *testing.T) {
 			database, mock, err := sqlmock.New()
 			require.NoError(t, err)
@@ -282,8 +308,14 @@ func TestArgocdImageReconciliationRefusesBeforeDatabaseWrites(t *testing.T) {
 			if scenario == "advanced deployment" {
 				dep.ReleaseID = uuid.New()
 			}
-			if scenario == "failed deployment" {
-				dep.Status = types.DeploymentStatusFailed
+			if scenario == "deploying deployment" {
+				dep.Status = types.DeploymentStatusDeploying
+			}
+			if scenario == "queued operation" {
+				_ = unstructured.SetNestedMap(app.Object, map[string]interface{}{"sync": map[string]interface{}{"revision": "next"}}, "operation")
+			}
+			if scenario == "stale compared source" {
+				_ = unstructured.SetNestedField(app.Object, "next", "spec", "source", "path")
 			}
 			if scenario == "signed release" {
 				rel.ImageSignature = "retained-signature"
@@ -310,6 +342,65 @@ func TestArgocdImageReconciliationRefusesBeforeDatabaseWrites(t *testing.T) {
 			require.Error(t, err)
 			require.False(t, updated)
 			require.NoError(t, mock.ExpectationsWereMet(), "no transaction, image update or audit write")
+			for _, action := range client.Actions() {
+				require.Equal(t, "get", action.GetVerb())
+			}
+		})
+	}
+}
+
+func TestArgocdFailedSameReleaseRecoversWithStaleImage(t *testing.T) {
+	for _, scenario := range []string{"corrected", "reader refused", "signed release", "CI release", "queued operation", "stale compared source"} {
+		t.Run(scenario, func(t *testing.T) {
+			database, mock, err := sqlmock.New()
+			require.NoError(t, err)
+			defer database.Close()
+			mock.MatchExpectationsInOrder(false) // lifecycle insertion is asynchronous
+			svc, rel, dep, req, image := observerImageFixture()
+			dep.Status = types.DeploymentStatusFailed
+			if scenario == "signed release" {
+				rel.ImageSignature = "retained-signature"
+			}
+			if scenario == "CI release" {
+				rel.Version = "ci-v1"
+			}
+			app := settledObserverApp(req)
+			if scenario == "queued operation" {
+				_ = unstructured.SetNestedMap(app.Object, map[string]interface{}{"sync": map[string]interface{}{"revision": "next"}}, "operation")
+			}
+			if scenario == "stale compared source" {
+				_ = unstructured.SetNestedField(app.Object, "next", "spec", "source", "path")
+			}
+			client := dynamicfake.NewSimpleDynamicClient(runtime.NewScheme(), &app)
+			h := &Handler{repos: db.NewRepositories(database), logger: testPollerLogger(t), k8sClient: &k8s.Client{DynamicClient: client}}
+			if scenario == "reader refused" {
+				h.k8sClient = nil
+			}
+			expectObserverService(mock, svc)
+			expectObserverRelease(mock, svc, rel, req)
+			if scenario != "signed release" && scenario != "CI release" {
+				expectObserverDeployment(mock, svc, dep)
+			}
+			if scenario == "corrected" {
+				expectObserverService(mock, svc)
+				mock.ExpectBegin()
+				mock.ExpectExec(`UPDATE releases AS r SET image_uri`).WithArgs(rel.ID, svc.ID, dep.ID, req.Revision, rel.ImageURI, image, types.DeploymentStatusFailed).WillReturnResult(sqlmock.NewResult(0, 1))
+				expectObserverAudit(mock, svc, rel, req, image).WillReturnResult(sqlmock.NewResult(0, 1))
+				mock.ExpectCommit()
+				for i := 0; i < 2; i++ {
+					mock.ExpectQuery(`WHERE r.service_id = \$1 AND r.git_sha = \$2 AND d.status = 'deploying'`).WithArgs(svc.ID, req.Revision).WillReturnError(sql.ErrNoRows)
+				}
+				mock.ExpectQuery(`WHERE r.service_id = \$1 AND d.status = 'deploying' AND d.created_at`).WithArgs(svc.ID, sqlmock.AnyArg()).WillReturnError(sql.ErrNoRows)
+			}
+			expectObserverDeployment(mock, svc, dep)
+			now := time.Now()
+			mock.ExpectQuery(`FROM environments WHERE project_id`).WithArgs(svc.ProjectID, "production").WillReturnRows(sqlmock.NewRows([]string{"id", "project_id", "name", "kube_namespace", "created_at", "updated_at"}).AddRow(uuid.New(), svc.ProjectID, "production", "fixture", now, now))
+			mock.ExpectExec(`UPDATE deployments SET status = \$1, health = \$2, error_message = NULL`).WithArgs(types.DeploymentStatusRunning, types.HealthStatusHealthy, dep.ID).WillReturnResult(sqlmock.NewResult(0, 1))
+			mock.ExpectExec(`INSERT INTO audit_logs`).WithArgs(sqlmock.AnyArg(), sqlmock.AnyArg(), nil, "argocd@system.enclii.dev", types.RoleSystem, "deployment.argocd_sync", "deployment", dep.ID.String(), svc.Name, &svc.ProjectID, nil, nil, "", "success", sqlmock.AnyArg(), sqlmock.AnyArg()).WillReturnResult(sqlmock.NewResult(0, 1))
+			mock.ExpectExec(`INSERT INTO deployment_lifecycle_events`).WithArgs(sqlmock.AnyArg(), &dep.ID, &rel.ID, nil, &svc.ProjectID, &svc.ID, repoFullNameFromImage(image), req.Revision, "main", "refs/heads/main", "production", types.LifecycleDeployHealthy, types.SourceArgocdCallback, sqlmock.AnyArg(), sqlmock.AnyArg(), sqlmock.AnyArg()).WillReturnResult(sqlmock.NewResult(0, 1))
+			mock.ExpectExec(`UPDATE deployments SET status = 'failed'`).WithArgs(svc.ID, sqlmock.AnyArg()).WillReturnResult(sqlmock.NewResult(0, 0))
+			require.Equal(t, 1, h.processArgocdSyncRequest(context.Background(), req, argocdSyncSourceWebhook))
+			require.Eventually(t, func() bool { return mock.ExpectationsWereMet() == nil }, time.Second, time.Millisecond, "recover the same deployment/release IDs; refused correction has no image update or image audit")
 			for _, action := range client.Actions() {
 				require.Equal(t, "get", action.GetVerb())
 			}
