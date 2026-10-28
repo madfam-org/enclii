@@ -54,6 +54,8 @@ func registerPortalGenerationReadRoutes(platform *gin.RouterGroup, h *Handler) {
 	platform.GET("/projects/:slug/addons/:id/retained-generation-read/:job_name", h.RequirePlatformOperator(), h.PortalGenerationReadStatus)
 	platform.POST("/projects/:slug/addons/:id/retained-reset-fence-read", h.RequirePlatformOperator(), h.PortalFenceRead)
 	platform.GET("/projects/:slug/addons/:id/retained-reset-fence-read/:job_name", h.RequirePlatformOperator(), h.PortalFenceReadStatus)
+	platform.POST("/projects/:slug/addons/:id/retained-provenance-read/:job_name/retire", h.RequirePlatformOperator(), h.RetirePortalProvenanceRead)
+	platform.GET("/projects/:slug/addons/:id/retained-provenance-read/:job_name/retirement", h.RequirePlatformOperator(), h.PortalProvenanceRetirementStatus)
 }
 
 // PortalGenerationRead creates only the closed independent observation Job.

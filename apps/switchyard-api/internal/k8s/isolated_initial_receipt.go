@@ -276,6 +276,11 @@ func (c *Client) checkFixedStepExclusion(ctx context.Context, p IsolatedInitialJ
 			return fmt.Errorf("fixed step Job history unavailable")
 		}
 		for i := range jobs.Items {
+			if ignored, err := c.retirementExclusion(ctx, &jobs.Items[i], p.jobName()); err != nil {
+				return err
+			} else if ignored {
+				continue
+			}
 			if jobs.Items[i].Name != p.jobName() && !initialJobFinished(&jobs.Items[i]) {
 				return fmt.Errorf("another database operation on this addon is unfinished; new fixed step refused")
 			}
@@ -728,6 +733,9 @@ func (c *Client) retainedInitialStatus(ctx context.Context, namespace, name stri
 	}
 	var in initialIntent
 	if DecodeInitialBootstrapJSON([]byte(cm.Data["payload"]), &in) != nil {
+		if retired, labels, err := c.ReadProvenanceRetirement(ctx, namespace, name, project, addon); err == nil {
+			return &IsolatedInitialJobReceipt{Name: name, Namespace: namespace, Suspended: true, Classification: retired.Classification}, labels, nil
+		}
 		return nil, nil, fmt.Errorf("initial retained intent refused")
 	}
 	kind := bootstrapKindFor(in.Profile)

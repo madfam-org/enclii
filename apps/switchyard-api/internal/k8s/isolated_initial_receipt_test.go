@@ -411,7 +411,7 @@ func initialNativeHTTPProfile(t *testing.T, profile string, customize ...func(*I
 				send(f.job)
 			}
 		case strings.HasSuffix(path, "/pods"):
-			require.Equal(t, "batch.kubernetes.io/controller-uid=job-uid", r.URL.Query().Get("labelSelector"))
+			require.Equal(t, "batch.kubernetes.io/controller-uid="+string(f.job.UID), r.URL.Query().Get("labelSelector"))
 			items := []corev1.Pod{*f.pod}
 			if f.duplicatePod {
 				items = append(items, *f.pod)
