@@ -37,9 +37,9 @@ func TestCierrePasoProfileIsStep003WithItsOwnGuard(t *testing.T) {
 	require.True(t, k8s.IsFixedStepProfile(step.Name))
 	require.True(t, step.portalDatabase())
 
-	// The close itself (and the orphan close) are separate profiles that do
-	// not exist yet: neither is admitted under step 004's name or by a typo.
-	for _, name := range []string{"portal-sim-cierre-reconstruccion", "portal-sim-cierre-huerfano", "portal-sim-cierre-reconstruccion-paso ", "PORTAL-SIM-CIERRE-RECONSTRUCCION-PASO", "portal-sim-cierre-reconstruccion-paso-v2", "portal-sim-004", "map-sim-cierre-reconstruccion-paso"} {
+	// The close itself has its own witnessed profile. It never runs under
+	// step 004's name or a typo; orphan closure remains unavailable.
+	for _, name := range []string{"portal-sim-cierre-huerfano", "portal-sim-cierre-reconstruccion-paso ", "PORTAL-SIM-CIERRE-RECONSTRUCCION-PASO", "portal-sim-cierre-reconstruccion-paso-v2", "portal-sim-004", "map-sim-cierre-reconstruccion-paso"} {
 		_, err := isolatedBootstrapProfileFor(name)
 		require.Error(t, err, "%q", name)
 	}
@@ -60,6 +60,8 @@ func TestInitialBootstrapRouteAdmitsStep004WithTheSameClosedRequest(t *testing.T
 		{"tenant rank", `{` + base + `}`, false, http.StatusForbidden},
 		{"admitted dry run", `{` + base + `}`, true, http.StatusServiceUnavailable},
 		{"admitted apply", `{` + base + `,"dry_run":false,"idempotency_key":"fixture","reason":"fixture"}`, true, http.StatusServiceUnavailable},
+		{"empty close fields are not step004's", `{` + base + `,"nucleo":""}`, true, http.StatusBadRequest},
+		{"null close fields are not step004's", `{` + base + `,"fence_read_job":null}`, true, http.StatusBadRequest},
 		{"close fields are not step 004's", `{` + base + `,"nucleo":"01"}`, true, http.StatusBadRequest},
 		{"reservation is not step 004's", `{` + base + `,"reserva_id":"` + id + `"}`, true, http.StatusBadRequest},
 		{"arbitrary SQL", `{` + base + `,"sql":"DROP INDEX x"}`, true, http.StatusBadRequest},

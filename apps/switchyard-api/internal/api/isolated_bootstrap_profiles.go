@@ -101,6 +101,8 @@ func isolatedBootstrapProfileFor(name string) (isolatedBootstrapProfile, error) 
 		profile.SourceRequirements = []bootstrapSourceRequirement{
 			{Path: "packages/entrenamiento/src/leer-freno-reset.ts", SHA256: k8s.PortalFenceReaderSHA256},
 			{Path: "packages/entrenamiento/sql/002-custodia-reset.sql", SHA256: k8s.PortalGenerationSchemaSHA256},
+			{Path: "packages/entrenamiento/sql/004-cierre-por-reconstruccion.sql", SHA256: cierreReconstruccionSQLSHA256},
+			{Path: "packages/entrenamiento/src/cerrar-por-reconstruccion.ts", SHA256: k8s.PortalReconstructionCloserSHA256},
 		}
 		return profile, nil
 	case k8s.PortalGenerationReadProfile:
@@ -120,6 +122,13 @@ func isolatedBootstrapProfileFor(name string) (isolatedBootstrapProfile, error) 
 		profile.SourceRequirements = []bootstrapSourceRequirement{
 			{Path: "packages/entrenamiento/sql/003-turno-vigente-por-persona.sql", SHA256: turnoVigenteSQLSHA256},
 			{Path: "packages/entrenamiento/src/preparar-turno-vigente.ts"},
+		}
+		return profile, nil
+	case k8s.PortalReconstructionCloseProfile:
+		profile := portalSimProfile(name)
+		profile.SourceRequirements = []bootstrapSourceRequirement{
+			{Path: "packages/entrenamiento/sql/004-cierre-por-reconstruccion.sql", SHA256: cierreReconstruccionSQLSHA256},
+			{Path: "packages/entrenamiento/src/cerrar-por-reconstruccion.ts", SHA256: k8s.PortalReconstructionCloserSHA256},
 		}
 		return profile, nil
 	case "portal-sim-cierre-reconstruccion-paso":

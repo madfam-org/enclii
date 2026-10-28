@@ -41,7 +41,7 @@ func (h *Handler) initialWorkload(ctx context.Context, p isolatedBootstrapProfil
 		if !rolloutConverged(deployment) {
 			return nil, fmt.Errorf("fixed step requires the owned workload's rollout to have converged on its pinned image")
 		}
-		if k8s.IsProvenanceReadProfile(p.Name) && (*deployment.Spec.Replicas < 1 || deployment.Status.ReadyReplicas != *deployment.Spec.Replicas || deployment.Status.AvailableReplicas != *deployment.Spec.Replicas) {
+		if (k8s.IsProvenanceReadProfile(p.Name) || p.Name == k8s.PortalReconstructionCloseProfile) && (*deployment.Spec.Replicas < 1 || deployment.Status.ReadyReplicas != *deployment.Spec.Replicas || deployment.Status.AvailableReplicas != *deployment.Spec.Replicas) {
 			return nil, fmt.Errorf("provenance reader requires the signed gateway runtime Ready and available")
 		}
 		return deployment, nil

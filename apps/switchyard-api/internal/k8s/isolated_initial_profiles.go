@@ -32,7 +32,7 @@ func IsRepeatedProfile(profile string) bool {
 // IsFixedStepProfile reports whether a profile is a re-runnable fixed step
 // rather than a once-only initial preparation.
 func IsFixedStepProfile(profile string) bool {
-	return profile == fixedStepTurnoVigenteProfile || profile == fixedStepCierreReconstruccionPasoProfile
+	return profile == fixedStepTurnoVigenteProfile || profile == fixedStepCierreReconstruccionPasoProfile || profile == PortalReconstructionCloseProfile
 }
 
 // bootstrapKind is everything that differs between a once-only initial

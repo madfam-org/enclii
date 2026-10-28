@@ -71,24 +71,27 @@ type InitialBootstrapIdentity struct {
 }
 
 type initialIntent struct {
-	Version                 string                     `json:"version"`
-	Classification          string                     `json:"classification"`
-	JobUID                  string                     `json:"job_uid"`
-	CreationResourceVersion string                     `json:"creation_resource_version"`
-	JobName                 string                     `json:"job_name"`
-	Namespace               string                     `json:"namespace"`
-	ProjectID               uuid.UUID                  `json:"project_id"`
-	AddonID                 uuid.UUID                  `json:"addon_id"`
-	ServiceID               uuid.UUID                  `json:"service_id"`
-	Cluster                 string                     `json:"cluster"`
-	Profile                 string                     `json:"profile"`
-	Image                   string                     `json:"image"`
-	PlanSHA256              string                     `json:"plan_sha256"`
-	JobSpecSHA256           string                     `json:"job_spec_sha256"`
-	OperationSHA256         string                     `json:"operation_sha256"`
-	Identity                InitialBootstrapIdentity   `json:"identity"`
-	GenerationRead          *PortalGenerationReadInput `json:"generation_read,omitempty"`
-	FenceRead               *PortalFenceReadInput      `json:"fence_read,omitempty"`
+	Version                 string                          `json:"version"`
+	Classification          string                          `json:"classification"`
+	JobUID                  string                          `json:"job_uid"`
+	CreationResourceVersion string                          `json:"creation_resource_version"`
+	JobName                 string                          `json:"job_name"`
+	Namespace               string                          `json:"namespace"`
+	ProjectID               uuid.UUID                       `json:"project_id"`
+	AddonID                 uuid.UUID                       `json:"addon_id"`
+	ServiceID               uuid.UUID                       `json:"service_id"`
+	Cluster                 string                          `json:"cluster"`
+	Profile                 string                          `json:"profile"`
+	Image                   string                          `json:"image"`
+	PlanSHA256              string                          `json:"plan_sha256"`
+	JobSpecSHA256           string                          `json:"job_spec_sha256"`
+	OperationSHA256         string                          `json:"operation_sha256"`
+	Identity                InitialBootstrapIdentity        `json:"identity"`
+	GenerationRead          *PortalGenerationReadInput      `json:"generation_read,omitempty"`
+	FenceRead               *PortalFenceReadInput           `json:"fence_read,omitempty"`
+	FenceOrigin             *PortalFenceOrigin              `json:"fence_origin,omitempty"`
+	ReconstructionClose     *PortalReconstructionCloseInput `json:"reconstruction_close,omitempty"`
+	ReconstructionEvidence  *PortalReconstructionEvidence   `json:"reconstruction_evidence,omitempty"`
 }
 
 type InitialPortal001Receipt struct {
@@ -160,11 +163,13 @@ type InitialNativeReceipt struct {
 	KarafielRuntime  *KarafielSchemaRuntime    `json:"runtime,omitempty"`
 	// Fixed step only: the typed step output when accredited, or the closed
 	// reason its terminal receipt is held.
-	TurnoVigente             *FixedStepTurnoVigenteReceipt             `json:"turno_vigente,omitempty"`
-	CierreReconstruccionPaso *FixedStepCierreReconstruccionPasoReceipt `json:"cierre_reconstruccion_paso,omitempty"`
-	HeldReason               string                                    `json:"held_reason,omitempty"`
-	GenerationRead           *PortalGenerationReadReceipt              `json:"generation_read,omitempty"`
-	FenceRead                *PortalFenceReadReceipt                   `json:"fence_read,omitempty"`
+	TurnoVigente               *FixedStepTurnoVigenteReceipt             `json:"turno_vigente,omitempty"`
+	CierreReconstruccionPaso   *FixedStepCierreReconstruccionPasoReceipt `json:"cierre_reconstruccion_paso,omitempty"`
+	HeldReason                 string                                    `json:"held_reason,omitempty"`
+	GenerationRead             *PortalGenerationReadReceipt              `json:"generation_read,omitempty"`
+	FenceRead                  *PortalFenceReadReceipt                   `json:"fence_read,omitempty"`
+	ReconstructionOriginSHA256 string                                    `json:"reconstruction_origin_sha256,omitempty"`
+	ReconstructionClose        *PortalReconstructionCloseReceipt         `json:"cierre_reconstruccion,omitempty"`
 }
 
 func initialHash(b []byte) string { s := sha256.Sum256(b); return hex.EncodeToString(s[:]) }
@@ -198,10 +203,10 @@ func (p IsolatedInitialJobPlan) initialIntent(job *batchv1.Job) (initialIntent, 
 	}
 	spec, _ := json.Marshal(job.Spec)
 	kind := p.kind()
-	if !validProvenanceInput(p.Profile, p.GenerationRead, p.FenceRead) {
+	if !validProvenanceInput(p.Profile, p.GenerationRead, p.FenceRead) || !compatibleFenceOrigin(p.Profile, p.FenceRead, p.FenceOrigin) || !compatibleReconstructionClose(p) {
 		return initialIntent{}, fmt.Errorf("provenance read input unavailable")
 	}
-	return initialIntent{Version: kind.version, Classification: kind.intent, JobName: job.Name, Namespace: p.Namespace, ProjectID: p.ProjectID, AddonID: p.AddonID, ServiceID: p.ServiceID, Cluster: p.Cluster, Profile: p.Profile, Image: p.Image, PlanSHA256: p.fingerprint(), JobSpecSHA256: initialHash(spec), OperationSHA256: initialHash([]byte(p.IdempotencyKey)), Identity: id, GenerationRead: p.GenerationRead, FenceRead: p.FenceRead}, nil
+	return initialIntent{Version: kind.version, Classification: kind.intent, JobName: job.Name, Namespace: p.Namespace, ProjectID: p.ProjectID, AddonID: p.AddonID, ServiceID: p.ServiceID, Cluster: p.Cluster, Profile: p.Profile, Image: p.Image, PlanSHA256: p.fingerprint(), JobSpecSHA256: initialHash(spec), OperationSHA256: initialHash([]byte(p.IdempotencyKey)), Identity: id, GenerationRead: p.GenerationRead, FenceRead: p.FenceRead, FenceOrigin: p.FenceOrigin, ReconstructionClose: p.ReconstructionClose, ReconstructionEvidence: p.ReconstructionEvidence}, nil
 }
 
 func initialRecord(p IsolatedInitialJobPlan, suffix string, payload any) (*corev1.ConfigMap, error) {
@@ -370,6 +375,9 @@ func validInitialNative(r InitialNativeReceipt, p IsolatedInitialJobPlan, cm *co
 	if r.Version != kind.version || r.IntentSHA256 != cm.Data["sha256"] || r.IntentUID != string(cm.UID) || !initialUID.MatchString(r.JobUID) || r.Image != p.Image || r.SourceRevision != p.Identity.SourceRevision {
 		return false
 	}
+	if r.ReconstructionOriginSHA256 != reconstructionOriginHash(p.Profile, p.FenceOrigin) {
+		return false
+	}
 	// Evidence of the one Pod that ran and its bounded main stdout.
 	observed := initialUID.MatchString(r.PodUID) && initialSHA.MatchString(r.StdoutSHA256)
 	if p.Profile == KarafielSchemaProfile {
@@ -385,7 +393,7 @@ func validInitialNative(r InitialNativeReceipt, p IsolatedInitialJobPlan, cm *co
 		return false
 	}
 	if IsProvenanceReadProfile(p.Profile) {
-		if r.MAP != nil || r.Portal001 != nil || r.Portal002 != nil || !fixedStepOutputAbsent(r) || r.InitStdoutSHA256 != "" || !validProvenanceInput(p.Profile, in.GenerationRead, in.FenceRead) {
+		if r.MAP != nil || r.Portal001 != nil || r.Portal002 != nil || !fixedStepOutputAbsent(r) || r.InitStdoutSHA256 != "" || !validProvenanceInput(p.Profile, in.GenerationRead, in.FenceRead) || !compatibleFenceOrigin(p.Profile, in.FenceRead, in.FenceOrigin) || !compatibleReconstructionClose(p) {
 			return false
 		}
 		if r.Classification == kind.retained {
@@ -402,7 +410,7 @@ func validInitialNative(r InitialNativeReceipt, p IsolatedInitialJobPlan, cm *co
 		}
 		switch r.Classification {
 		case kind.retained:
-			return observed && r.HeldReason == "" && validFixedStepOutput(r, p.Profile)
+			return observed && r.HeldReason == "" && validFixedStepOutput(r, p.Profile) && (p.Profile != PortalReconstructionCloseProfile || reconstructionReceiptMatches(r.ReconstructionClose, p))
 		case kind.held:
 			if !fixedStepOutputAbsent(r) {
 				return false
@@ -435,7 +443,7 @@ func validCierreReconstruccionPaso(r *FixedStepCierreReconstruccionPasoReceipt) 
 
 // fixedStepOutputAbsent reports that no fixed step's typed output is set.
 func fixedStepOutputAbsent(r InitialNativeReceipt) bool {
-	return r.TurnoVigente == nil && r.CierreReconstruccionPaso == nil
+	return r.TurnoVigente == nil && r.CierreReconstruccionPaso == nil && r.ReconstructionClose == nil
 }
 
 // validFixedStepOutput accepts exactly the profile's own typed output and no
@@ -443,9 +451,11 @@ func fixedStepOutputAbsent(r InitialNativeReceipt) bool {
 func validFixedStepOutput(r InitialNativeReceipt, profile string) bool {
 	switch profile {
 	case fixedStepTurnoVigenteProfile:
-		return r.CierreReconstruccionPaso == nil && validTurnoVigente(r.TurnoVigente)
+		return r.CierreReconstruccionPaso == nil && r.ReconstructionClose == nil && validTurnoVigente(r.TurnoVigente)
 	case fixedStepCierreReconstruccionPasoProfile:
-		return r.TurnoVigente == nil && validCierreReconstruccionPaso(r.CierreReconstruccionPaso)
+		return r.TurnoVigente == nil && r.ReconstructionClose == nil && validCierreReconstruccionPaso(r.CierreReconstruccionPaso)
+	case PortalReconstructionCloseProfile:
+		return r.TurnoVigente == nil && r.CierreReconstruccionPaso == nil && validReconstructionReceipt(r.ReconstructionClose)
 	}
 	return false
 }
@@ -454,6 +464,12 @@ func validFixedStepOutput(r InitialNativeReceipt, profile string) bool {
 // line, or reports false when that line is not the step's exact contract.
 func decodeFixedStepOutput(r *InitialNativeReceipt, profile string, b []byte) bool {
 	switch profile {
+	case PortalReconstructionCloseProfile:
+		out := &PortalReconstructionCloseReceipt{}
+		if DecodeInitialBootstrapJSON(b, out) == nil && validReconstructionReceipt(out) {
+			r.ReconstructionClose = out
+			return true
+		}
 	case fixedStepTurnoVigenteProfile:
 		out := &FixedStepTurnoVigenteReceipt{}
 		if DecodeInitialBootstrapJSON(b, out) == nil && validTurnoVigente(out) {
@@ -588,6 +604,7 @@ func (c *Client) collectInitialReceipt(ctx context.Context, p IsolatedInitialJob
 	}
 	kind := p.kind()
 	r := InitialNativeReceipt{Version: kind.version, Classification: kind.retained, IntentSHA256: intent.Data["sha256"], IntentUID: string(intent.UID), JobUID: string(job.UID), PodUID: string(pod.UID), Image: p.Image, SourceRevision: p.Identity.SourceRevision, StdoutSHA256: initialHash(b)}
+	r.ReconstructionOriginSHA256 = reconstructionOriginHash(p.Profile, p.FenceOrigin)
 	if p.Profile == KarafielSchemaProfile {
 		identity := p.Identity
 		r.KarafielIdentity = &identity
@@ -712,7 +729,7 @@ func (c *Client) retainedInitialStatus(ctx context.Context, namespace, name stri
 	if in.Version != kind.version || in.Classification != kind.intent || !strings.HasPrefix(name, kind.namePrefix) || in.JobName != name || in.Namespace != namespace || in.ProjectID != project || in.AddonID != addon || in.ServiceID == uuid.Nil || !initialUID.MatchString(in.JobUID) || !initialUID.MatchString(in.CreationResourceVersion) || !initialSHA.MatchString(in.PlanSHA256) || !initialSHA.MatchString(in.JobSpecSHA256) || !initialSHA.MatchString(in.OperationSHA256) {
 		return nil, nil, fmt.Errorf("initial retained intent refused")
 	}
-	p := IsolatedInitialJobPlan{ProjectID: project, AddonID: addon, ServiceID: in.ServiceID, Namespace: namespace, Cluster: in.Cluster, Profile: in.Profile, Image: in.Image, Identity: in.Identity, GenerationRead: in.GenerationRead, FenceRead: in.FenceRead, retainedJobName: name}
+	p := IsolatedInitialJobPlan{ProjectID: project, AddonID: addon, ServiceID: in.ServiceID, Namespace: namespace, Cluster: in.Cluster, Profile: in.Profile, Image: in.Image, Identity: in.Identity, GenerationRead: in.GenerationRead, FenceRead: in.FenceRead, FenceOrigin: in.FenceOrigin, ReconstructionClose: in.ReconstructionClose, ReconstructionEvidence: in.ReconstructionEvidence, retainedJobName: name}
 	// The operation key is not retained. Labels/name derive from validated intent.
 	if validateInitialStatusIntent(cm, p, name, &in) != nil {
 		return nil, nil, fmt.Errorf("initial retained authority refused")
@@ -761,7 +778,7 @@ func validateInitialStatusIntent(cm *corev1.ConfigMap, p IsolatedInitialJobPlan,
 		return fmt.Errorf("initial status identity refused")
 	}
 	prefix := want.ImagePrefix
-	if !strings.HasPrefix(in.Image, prefix) || !initialSHA.MatchString(strings.TrimPrefix(in.Image, prefix)) || id.Producer != want.Producer || id.Database != want.Database || id.RuntimeRole != want.RuntimeRole || id.OwnerRole != expectedOwnerRole(in.Profile) || !id.SignatureVerified || !initialSHA.MatchString(id.PinPayloadSHA256) || !initialRevision.MatchString(id.SourceRevision) || id.BindingID == uuid.Nil || id.OnboardingID == uuid.Nil || !initialSHA.MatchString(id.PublicCASHA256) || id.BuildRunID <= 0 || id.Checks < want.Checks || !validProvenanceInput(p.Profile, in.GenerationRead, in.FenceRead) {
+	if !strings.HasPrefix(in.Image, prefix) || !initialSHA.MatchString(strings.TrimPrefix(in.Image, prefix)) || id.Producer != want.Producer || id.Database != want.Database || id.RuntimeRole != want.RuntimeRole || id.OwnerRole != expectedOwnerRole(in.Profile) || !id.SignatureVerified || !initialSHA.MatchString(id.PinPayloadSHA256) || !initialRevision.MatchString(id.SourceRevision) || id.BindingID == uuid.Nil || id.OnboardingID == uuid.Nil || !initialSHA.MatchString(id.PublicCASHA256) || id.BuildRunID <= 0 || id.Checks < want.Checks || !validProvenanceInput(p.Profile, in.GenerationRead, in.FenceRead) || !compatibleFenceOrigin(p.Profile, in.FenceRead, in.FenceOrigin) || !compatibleReconstructionClose(p) {
 		return fmt.Errorf("initial status source refused")
 	}
 	return nil

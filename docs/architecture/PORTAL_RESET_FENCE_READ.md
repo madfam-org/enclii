@@ -36,7 +36,8 @@ ID, fence hash, identity, SQL, image, command, credential or namespace is suppli
 by the caller. Duplicate and unknown JSON fields are rejected.
 
 1. Dry-run with explicit `dry_run: true`. It verifies owned runtime custody,
-   producer source/signature/CI/pin, exact binding and converged gateway. It
+   producer source/signature/CI/pin, exact binding, converged gateway, applied004
+   and original kernel authority. It
    performs Kubernetes admission checks with `dryRun=All`; it runs no database
    query and persists no Job or credential. Inspect `plan_sha256`.
 2. Apply with `dry_run: false`, that `expect_plan_sha256`, the same operation
@@ -64,11 +65,12 @@ fence hash and verified-state hash. Malformed output becomes
 `PROVENANCE_ONLY_HELD` without returning raw logs. A failed native Job is held
 without reading its stdout.
 
-This observation is a prerequisite, not an implementation of
-`portal-sim-cierre-reconstruccion`. That close profile remains unavailable.
-A future close must bind the server-retained fence to the original kernel's
-addon/binding, the newly created successor addon and accredited initial seed,
-then append the exact owner-side close receipt and collect it idempotently.
-A historical read alone does not authorize scaling, reconstruction, closing,
-release or reservation admission. Fleet reset remains disabled until its
-separate profile, step-004 and operational prerequisites are satisfied.
+The separate [witnessed close profile](PORTAL_RECONSTRUCTION_CLOSE.md) consumes
+this immutable observation after reconstruction. New observation admissions
+require the collected fixed step004 on the current portal database and retain
+the original kernel addon/binding/UID witness server-side. The native receipt
+adds its `reconstruction_origin_sha256`; no raw credential or identity is added
+to the product reader's twelve fields. Legacy observations without that witness
+remain observation-only. A historical read alone authorizes no scaling, closing,
+release or reservation admission. Fleet-policy and runtime acceptance remain
+separate from these source contracts.

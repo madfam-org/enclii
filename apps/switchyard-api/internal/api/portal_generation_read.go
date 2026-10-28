@@ -201,6 +201,17 @@ func (h *Handler) portalRuntimeReadPlan(ctx context.Context, project *types.Proj
 	}
 	plan := k8s.IsolatedInitialJobPlan{ProjectID: project.ID, AddonID: addonID, ServiceID: serviceID, Namespace: addon.K8sNamespace, Cluster: addon.K8sResourceName, Profile: profile.Name, Image: image, IdempotencyKey: key, Reason: reason, Identity: identity, GenerationRead: generation, FenceRead: fence,
 		Data: map[string][]byte{"ca.crt": []byte(transport.PublicCA), "CREA_SIM_PORTAL_DATABASE_URL": []byte(runtime), "CREA_SIM_DATABASE_NAMESPACE": []byte(addon.K8sNamespace), "request.json": data}}
+	if profileName == k8s.PortalFenceReadProfile {
+		origin, e := h.captureFenceOrigin(ctx, project, fence.KernelID)
+		if e != nil {
+			return bad()
+		}
+		step, e := h.k8sClient.AppliedPortalCloseSchema(ctx, addon.K8sNamespace, project.ID, addonID, serviceID, identity.ClusterUID)
+		if e != nil || step.Identity.BindingID != identity.BindingID {
+			return bad()
+		}
+		plan.FenceOrigin = origin
+	}
 	return plan, proof, nil
 }
 

@@ -44,7 +44,7 @@ func TestPortalFenceReadRequestIsClosedBeforeCustodyAccess(t *testing.T) {
 func TestPortalFenceReadProfilePinsExactReaderAndCannotUseInitialOwnerRoute(t *testing.T) {
 	p, err := isolatedBootstrapProfileFor("portal-sim-reset-fence-read")
 	require.NoError(t, err)
-	require.Equal(t, []bootstrapSourceRequirement{{Path: "packages/entrenamiento/src/leer-freno-reset.ts", SHA256: "ee9aea0ecb93847ffef4b1f544c62f157c3356b9d34ac5d0b0e007a3712b07c7"}, {Path: "packages/entrenamiento/sql/002-custodia-reset.sql", SHA256: "66b3ab6bc4306efcb75ee75cdad85084ac1c6b9a6fd4542df99c0a7aafdf8496"}}, p.SourceRequirements)
+	require.Equal(t, []bootstrapSourceRequirement{{Path: "packages/entrenamiento/src/leer-freno-reset.ts", SHA256: "ee9aea0ecb93847ffef4b1f544c62f157c3356b9d34ac5d0b0e007a3712b07c7"}, {Path: "packages/entrenamiento/sql/002-custodia-reset.sql", SHA256: "66b3ab6bc4306efcb75ee75cdad85084ac1c6b9a6fd4542df99c0a7aafdf8496"}, {Path: "packages/entrenamiento/sql/004-cierre-por-reconstruccion.sql", SHA256: "a9ea106ec748408ec39bced9c50686c06552ca58ee0eb1fbf154b598e41227e3"}, {Path: "packages/entrenamiento/src/cerrar-por-reconstruccion.ts", SHA256: "8863e97b89f889ec88f329c1c4994d8770ea575429569f1c81d9eb49dccc0b76"}}, p.SourceRequirements)
 	require.True(t, p.portalDatabase())
 	require.False(t, k8s.IsFixedStepProfile(p.Name))
 	require.True(t, k8s.IsRepeatedProfile(p.Name))
@@ -61,6 +61,8 @@ func TestPortalFenceReadProducerRefusesMissingOrDifferentReaderBeforeAnySignatur
 			reader, schema := "// synthetic observation only\n", "-- synthetic custody contract\n"
 			p.SourceRequirements[0].SHA256 = strings.TrimPrefix(bootstrapDigestOf(reader), "sha256:")
 			p.SourceRequirements[1].SHA256 = strings.TrimPrefix(bootstrapDigestOf(schema), "sha256:")
+			p.SourceRequirements[2].SHA256 = strings.TrimPrefix(bootstrapDigestOf(schema), "sha256:")
+			p.SourceRequirements[3].SHA256 = strings.TrimPrefix(bootstrapDigestOf(reader), "sha256:")
 			a, image, revision, signatures := fixedStepProducerChain(t, p)
 			if scenario != "no source reader" {
 				a.ReadSource = func(_ context.Context, _ isolatedBootstrapProfile, path, at string) (string, error) {
@@ -83,7 +85,7 @@ func TestPortalFenceReadProducerRefusesMissingOrDifferentReaderBeforeAnySignatur
 			proof, err := a.verify(t.Context(), p, image)
 			if scenario == "qualified" {
 				require.NoError(t, err)
-				require.Equal(t, 2, len(proof.VerifiedSources))
+				require.Equal(t, 4, len(proof.VerifiedSources))
 				require.Equal(t, 1, *signatures)
 			} else {
 				require.Error(t, err)

@@ -217,6 +217,7 @@ type initialHTTPFixture struct {
 	puts               int
 	unknownUpdate      bool
 	conflictUpdate     bool
+	listContinue       string
 }
 
 // Literal per-kernel identities, independent of the closed table under test.
@@ -231,7 +232,7 @@ func initialNativeHTTP(t *testing.T) (*Client, *initialHTTPFixture) {
 	return initialNativeHTTPProfile(t, "portal-sim-initial")
 }
 
-func initialNativeHTTPProfile(t *testing.T, profile string) (*Client, *initialHTTPFixture) {
+func initialNativeHTTPProfile(t *testing.T, profile string, customize ...func(*IsolatedInitialJobPlan)) (*Client, *initialHTTPFixture) {
 	t.Helper()
 	p := initialPortalPlan()
 	if kernel, isMAP := initialKernelFixtures[profile]; isMAP {
@@ -247,6 +248,8 @@ func initialNativeHTTPProfile(t *testing.T, profile string) (*Client, *initialHT
 		}
 	} else if profile == KarafielSchemaProfile {
 		p = karafielSchemaPlan()
+	} else if profile == PortalReconstructionCloseProfile {
+		p = reconstructionClosePlanFixture(t)
 	} else if IsFixedStepProfile(profile) {
 		// Same portal custody; a live workload is bound by generation.
 		p.Profile = profile
@@ -259,6 +262,9 @@ func initialNativeHTTPProfile(t *testing.T, profile string) (*Client, *initialHT
 		require.Equal(t, "portal-sim-initial", profile)
 	}
 	p.Revalidate = func(context.Context) error { return nil }
+	for _, change := range customize {
+		change(&p)
+	}
 	expected, e := BuildIsolatedInitialJob(p)
 	require.NoError(t, e)
 	job := expected.DeepCopy()
@@ -295,6 +301,11 @@ func initialNativeHTTPProfile(t *testing.T, profile string) (*Client, *initialHT
 		require.NoError(t, err)
 		f.stdout = string(body) + "\n"
 		f.initStdout = ""
+	}
+	if profile == PortalReconstructionCloseProfile {
+		body, err := json.Marshal(reconstructionCloseReceiptFixture(p))
+		require.NoError(t, err)
+		f.stdout, f.initStdout = string(body)+"\n", ""
 	}
 	if profile == fixedStepTurnoVigenteProfile {
 		f.stdout, f.initStdout = fixedStepStdout("APLICADO"), ""
@@ -379,6 +390,12 @@ func initialNativeHTTPProfile(t *testing.T, profile string) (*Client, *initialHT
 		switch {
 		case strings.HasSuffix(path, "/namespaces/"+p.Namespace):
 			send(&corev1.Namespace{ObjectMeta: metav1.ObjectMeta{Name: p.Namespace, UID: types.UID(p.Identity.AddonNamespaceUID), Labels: map[string]string{LabelProjectNamespace: p.ProjectID.String()}}})
+		case strings.HasSuffix(path, "/configmaps"):
+			items := []corev1.ConfigMap{*f.intent}
+			if f.receipt != nil {
+				items = append(items, *f.receipt)
+			}
+			send(&corev1.ConfigMapList{ListMeta: metav1.ListMeta{Continue: f.listContinue}, Items: items})
 		case strings.HasSuffix(path, "/configmaps/"+p.jobName()+"-intent"):
 			send(f.intent)
 		case strings.HasSuffix(path, "/configmaps/"+p.jobName()+"-receipt"):

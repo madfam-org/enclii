@@ -318,7 +318,12 @@ The sequence is step 003's, with the profile `portal-sim-cierre-reconstruccion-p
    `YA_APLICADO`). `FIXED_STEP_HELD` names its `held_reason`.
 
 This prepares the catalogue only. A reservation left `RESTABLECIENDO` stays
-retained until the separate close profile exists and runs.
+retained until the separate witnessed close profile appends its accredited receipt.
+See [Witnessed portal close](../architecture/PORTAL_RECONSTRUCTION_CLOSE.md):
+collect a new runtime fence observation with its server-owned origin before
+changing the kernel; after reconstruction, review/apply/collect the close with
+that same observation reference. The server enforces platform-operator rank,
+not physical human presence; custody capability checks remain independent.
 
 Inspect the same operation with
 `GET /v1/admin/projects/:slug/addons/:id/initial-bootstrap/:job_name`. It returns
