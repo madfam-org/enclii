@@ -437,11 +437,18 @@ func (c *Client) admitInitialJob(ctx context.Context, job *batchv1.Job, includeJ
 // Create suspended first, bind its observed UID in immutable namespace intent,
 // prepare owned transient custody/network, recheck
 // authority, then activate once. A timeout never starts an automatic retry.
-func (c *Client) RunIsolatedInitialJob(ctx context.Context, p IsolatedInitialJobPlan, dryRun bool) (*IsolatedInitialJobReceipt, error) {
+func (c *Client) RunIsolatedInitialJob(ctx context.Context, p IsolatedInitialJobPlan, dryRun bool) (result *IsolatedInitialJobReceipt, err error) {
+	stage := "plan"
+	defer func() {
+		if _, alreadyHeld := err.(*initialJobHoldError); err != nil && !alreadyHeld {
+			err = &initialJobHoldError{stage: stage, cause: err}
+		}
+	}()
 	job, err := BuildIsolatedInitialJob(p)
 	if err != nil {
 		return nil, err
 	}
+	stage = "namespace_authority"
 	if err = c.checkInitialJobNamespace(ctx, p); err != nil {
 		return nil, err
 	}
@@ -449,11 +456,13 @@ func (c *Client) RunIsolatedInitialJob(ctx context.Context, p IsolatedInitialJob
 	if err != nil {
 		return nil, err
 	}
+	stage = "operation_exclusion"
 	if err = c.checkOperationExclusion(ctx, p); err != nil {
 		return nil, err
 	}
 	kind := p.kind()
 	jobs := c.kubeClient().BatchV1().Jobs(p.Namespace)
+	stage = "retained_intent"
 	retained, intentErr := c.readInitialIntent(ctx, p, intent)
 	existing, jobErr := jobs.Get(ctx, job.Name, metav1.GetOptions{})
 	if intentErr == nil {
@@ -515,21 +524,47 @@ func (c *Client) RunIsolatedInitialJob(ctx context.Context, p IsolatedInitialJob
 	if !k8serrors.IsNotFound(intentErr) {
 		return nil, fmt.Errorf("initial retained intent unavailable or conflicting")
 	}
-	if !k8serrors.IsNotFound(jobErr) {
+	recovering := jobErr == nil
+	if recovering {
+		stage = "unstarted_witness"
+		if err = c.checkUnstartedInitialRead(ctx, p, existing, job, intent); err != nil {
+			return nil, err
+		}
+	} else if !k8serrors.IsNotFound(jobErr) {
 		return nil, fmt.Errorf("existing or unknown Job without retained intent; held")
 	}
+	stage = "registry_admission"
 	if err = c.ensureInitialRegistryCustody(ctx, p, true, true); err != nil {
 		return nil, err
 	}
-	if err = c.admitInitialJob(ctx, job, true); err != nil {
+	stage = "job_pod_admission"
+	// A recovered Job already exists: dry-run CREATE would conflict. Its GET
+	// was checked strictly; Pod admission and the final real CAS still apply.
+	if err = c.admitInitialJob(ctx, job, !recovering); err != nil {
 		return nil, err
 	}
+	stage = "intent_admission"
 	record, err := initialRecord(p, "-intent", intent)
 	if err != nil {
 		return nil, err
 	}
 	if _, err = c.kubeClient().CoreV1().ConfigMaps(p.Namespace).Create(ctx, record, metav1.CreateOptions{DryRun: []string{metav1.DryRunAll}}); err != nil {
 		return nil, fmt.Errorf("initial intent admission refused")
+	}
+	if boundedInitialProfile(p.Profile) {
+		stage = "preparation_admission"
+		_, preparationErr := c.readInitialPreparation(ctx, p, intent)
+		if k8serrors.IsNotFound(preparationErr) {
+			prepared, e := initialRecord(p, "-prepared", intent)
+			if e != nil {
+				return nil, e
+			}
+			if _, err = c.kubeClient().CoreV1().ConfigMaps(p.Namespace).Create(ctx, prepared, metav1.CreateOptions{DryRun: []string{metav1.DryRunAll}}); err != nil {
+				return nil, fmt.Errorf("bounded Job preparation admission refused")
+			}
+		} else if preparationErr != nil {
+			return nil, fmt.Errorf("original bounded Job preparation unavailable or conflicting")
+		}
 	}
 	if dryRun {
 		receipt := initialJobReceipt(job, kind, true)
@@ -540,16 +575,47 @@ func (c *Client) RunIsolatedInitialJob(ctx context.Context, p IsolatedInitialJob
 	}
 
 	expected := job.DeepCopy()
-	name := job.Name
-	job, err = jobs.Create(ctx, job, metav1.CreateOptions{})
-	if err != nil {
-		_, _ = jobs.Get(ctx, name, metav1.GetOptions{})
-		return nil, fmt.Errorf("initial Job creation uncertain; read same operation, no retry")
+	if recovering {
+		stage = "unstarted_identity_recheck"
+		job, err = jobs.Get(ctx, existing.Name, metav1.GetOptions{})
+		if err != nil || job.UID != existing.UID || job.ResourceVersion != existing.ResourceVersion {
+			return nil, fmt.Errorf("unstarted initial Job identity changed; held")
+		}
+		if err = c.checkUnstartedInitialRead(ctx, p, job, expected, intent); err != nil {
+			return nil, err
+		}
+		if err = p.Revalidate(ctx); err != nil {
+			return nil, fmt.Errorf("unstarted initial Job authority changed; held")
+		}
+		expected.Generation = job.Generation // A recovered Job must never have been activated, including before the final CAS.
+	} else {
+		if boundedInitialProfile(p.Profile) {
+			stage = "preparation_authority"
+			if err = p.Revalidate(ctx); err != nil {
+				return nil, fmt.Errorf("bounded Job preparation authority changed; held")
+			}
+			stage = "preparation_retention"
+			prepared, e := c.retainInitialPreparation(ctx, p, intent)
+			if e != nil {
+				return nil, e
+			}
+			bindInitialPreparation(job, prepared)
+			bindInitialPreparation(expected, prepared)
+		}
+		stage = "suspended_job_creation"
+		name := job.Name
+		job, err = jobs.Create(ctx, job, metav1.CreateOptions{})
+		if err != nil {
+			_, _ = jobs.Get(ctx, name, metav1.GetOptions{})
+			return nil, fmt.Errorf("initial Job creation uncertain; read same operation, no retry")
+		}
 	}
+	stage = "suspended_job_spec"
 	if job.UID == "" || job.ResourceVersion == "" || !initialJobMatches(job, expected, intent) {
 		return nil, fmt.Errorf("initial suspended Job identity/spec unavailable; held")
 	}
 	intent.JobUID = string(job.UID)
+	stage = "intent_retention"
 	intent.CreationResourceVersion = job.ResourceVersion
 	record, err = initialRecord(p, "-intent", intent)
 	if err != nil {
@@ -564,10 +630,12 @@ func (c *Client) RunIsolatedInitialJob(ctx context.Context, p IsolatedInitialJob
 	if validateInitialRecord(retained, p, "-intent", &kept) != nil || !reflect.DeepEqual(kept, intent) {
 		return nil, fmt.Errorf("initial intent retention not accredited")
 	}
+	stage = "registry_custody"
 	if err = c.ensureInitialRegistryCustody(ctx, p, false, true); err != nil {
 		return nil, err
 	}
 	owner := metav1.OwnerReference{APIVersion: "batch/v1", Kind: "Job", Name: job.Name, UID: job.UID, Controller: ptr.To(true)}
+	stage = "transient_custody"
 	secret := &corev1.Secret{ObjectMeta: metav1.ObjectMeta{Name: job.Name + "-credentials", Namespace: p.Namespace, Labels: p.jobLabels(), OwnerReferences: []metav1.OwnerReference{owner}}, Type: corev1.SecretTypeOpaque, Data: p.Data}
 	if IsProvenanceReadProfile(p.Profile) {
 		secret.Immutable = ptr.To(true)
@@ -582,6 +650,7 @@ func (c *Client) RunIsolatedInitialJob(ctx context.Context, p IsolatedInitialJob
 	if err != nil {
 		return nil, fmt.Errorf("initial Job remains suspended: custody unavailable")
 	}
+	stage = "transient_network"
 	network := initialDatabasePolicy(p, owner)
 	networks := c.kubeClient().NetworkingV1().NetworkPolicies(p.Namespace)
 	oldNetwork, getErr := networks.Get(ctx, network.Name, metav1.GetOptions{})
@@ -593,6 +662,7 @@ func (c *Client) RunIsolatedInitialJob(ctx context.Context, p IsolatedInitialJob
 	if err != nil {
 		return nil, fmt.Errorf("initial Job remains suspended: network unavailable")
 	}
+	stage = "authority_recheck"
 	if err = p.Revalidate(ctx); err != nil {
 		return nil, fmt.Errorf("initial Job remains suspended: authority changed")
 	}
@@ -602,6 +672,7 @@ func (c *Client) RunIsolatedInitialJob(ctx context.Context, p IsolatedInitialJob
 	if err = c.ensureInitialRegistryCustody(ctx, p, true, false); err != nil {
 		return nil, fmt.Errorf("initial Job remains suspended: registry custody changed")
 	}
+	stage = "activation_cas"
 	job, err = c.activateInitialJob(ctx, p, job, expected, intent, retained)
 	if err != nil {
 		return nil, err
@@ -642,7 +713,7 @@ func (c *Client) activateInitialJob(ctx context.Context, p IsolatedInitialJobPla
 	// Read the same UID and fixed spec immediately before the one CAS PUT.
 	// The original creation RV stays historical; controller updates may advance it.
 	current, e := jobs.Get(ctx, job.Name, metav1.GetOptions{})
-	if e != nil || !initialJobMatches(current, expected, intent) || current.Spec.Suspend == nil || !*current.Spec.Suspend || current.Status.Active != 0 || current.Status.Succeeded != 0 || current.Status.Failed != 0 {
+	if e != nil || !initialJobMatches(current, expected, intent) || (expected.Generation != 0 && current.Generation != expected.Generation) || current.Spec.Suspend == nil || !*current.Spec.Suspend || current.Status.Active != 0 || current.Status.Succeeded != 0 || current.Status.Failed != 0 {
 		return nil, fmt.Errorf("initial suspended Job changed; held")
 	}
 	currentIntent, e := c.readInitialIntent(ctx, p, intent)
