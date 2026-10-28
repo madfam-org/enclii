@@ -132,6 +132,10 @@ When adding documentation:
 
 Update `apps/docs-site/sidebars.ts` when adding a new top-level page.
 
+Pages under `runbooks/` and `audits/` build and stay reachable by link, but they are left out of
+the sitemap and the sidebar and are served with `X-Robots-Tag: noindex`
+(`apps/docs-site/docusaurus.config.ts` and the nginx config in `apps/docs-site/Dockerfile`).
+
 ---
 
 **Last updated:** 2026-07-11 · **Documentation version:** 4.1 (GA program)
