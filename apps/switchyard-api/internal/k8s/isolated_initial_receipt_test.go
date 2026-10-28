@@ -251,6 +251,8 @@ func initialNativeHTTPProfile(t *testing.T, profile string) (*Client, *initialHT
 		// Same portal custody; a live workload is bound by generation.
 		p.Profile = profile
 		p.Identity.DeploymentResourceVersion, p.Identity.DeploymentGeneration = "", 3
+	} else if profile == PortalFenceReadProfile {
+		p = fenceReadPlan()
 	} else if IsProvenanceReadProfile(profile) {
 		p = generationReadPlan()
 	} else {
@@ -300,7 +302,11 @@ func initialNativeHTTPProfile(t *testing.T, profile string) (*Client, *initialHT
 	if profile == fixedStepCierreReconstruccionPasoProfile {
 		f.stdout, f.initStdout = cierrePasoStdout("APLICADO"), ""
 	}
-	if IsProvenanceReadProfile(profile) {
+	if profile == PortalFenceReadProfile {
+		b, err := json.Marshal(fenceReceiptFixture())
+		require.NoError(t, err)
+		f.stdout, f.initStdout = string(b)+"\n", ""
+	} else if IsProvenanceReadProfile(profile) {
 		b, err := json.Marshal(generationReceiptFixture())
 		require.NoError(t, err)
 		f.stdout, f.initStdout = string(b)+"\n", ""

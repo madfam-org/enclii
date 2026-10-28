@@ -1,6 +1,6 @@
 # Isolated training and staging custody
 
-Last Updated: 2026-10-26
+Last Updated: 2026-10-28
 
 > Boundary checkpoint (2026-10-14, platform preparation): public-safe logical
 > target names, namespaces, key names and callbacks only. Actual credentials,
@@ -290,6 +290,14 @@ with an operator login, in three steps, against the portal addon and the
 
 A re-run uses a new key, once the earlier Job has finished. It never reuses
 or rewrites an earlier key's records.
+
+### Runtime reset-fence observation
+
+The separate `portal-sim-reset-fence-read` operation resolves a retained fence
+by one of the three registered kernel IDs. It uses the runtime account only;
+its dry-run admits a plan, and apply runs the fixed read-only reader. See
+[the request and receipt contract](../architecture/PORTAL_RESET_FENCE_READ.md).
+Its historical receipt does not close a reservation or enable fleet reset.
 
 ### Fixed step 004 (`portal-sim-cierre-reconstruccion-paso`)
 

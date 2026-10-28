@@ -1,7 +1,6 @@
 package k8s
 
 import (
-	"bytes"
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
@@ -89,6 +88,7 @@ type initialIntent struct {
 	OperationSHA256         string                     `json:"operation_sha256"`
 	Identity                InitialBootstrapIdentity   `json:"identity"`
 	GenerationRead          *PortalGenerationReadInput `json:"generation_read,omitempty"`
+	FenceRead               *PortalFenceReadInput      `json:"fence_read,omitempty"`
 }
 
 type InitialPortal001Receipt struct {
@@ -164,77 +164,10 @@ type InitialNativeReceipt struct {
 	CierreReconstruccionPaso *FixedStepCierreReconstruccionPasoReceipt `json:"cierre_reconstruccion_paso,omitempty"`
 	HeldReason               string                                    `json:"held_reason,omitempty"`
 	GenerationRead           *PortalGenerationReadReceipt              `json:"generation_read,omitempty"`
+	FenceRead                *PortalFenceReadReceipt                   `json:"fence_read,omitempty"`
 }
 
 func initialHash(b []byte) string { s := sha256.Sum256(b); return hex.EncodeToString(s[:]) }
-
-// Closed bounded UTF-8 JSON, including duplicate-key rejection at every level.
-// Error text intentionally excludes the input and decoder diagnostics.
-func DecodeInitialBootstrapJSON(b []byte, out any) error {
-	fail := fmt.Errorf("initial bounded JSON refused")
-	if len(b) == 0 || len(b) > initialRecordLimit || !utf8.Valid(b) {
-		return fail
-	}
-	d := json.NewDecoder(bytes.NewReader(b))
-	d.UseNumber()
-	var walk func() error
-	walk = func() error {
-		t, e := d.Token()
-		if e != nil {
-			return fail
-		}
-		if del, ok := t.(json.Delim); ok {
-			switch del {
-			case '{':
-				seen := map[string]bool{}
-				for d.More() {
-					k, e := d.Token()
-					key, ok := k.(string)
-					if e != nil || !ok || seen[key] {
-						return fail
-					}
-					seen[key] = true
-					if walk() != nil {
-						return fail
-					}
-				}
-				end, e := d.Token()
-				if e != nil || end != json.Delim('}') {
-					return fail
-				}
-			case '[':
-				for d.More() {
-					if walk() != nil {
-						return fail
-					}
-				}
-				end, e := d.Token()
-				if e != nil || end != json.Delim(']') {
-					return fail
-				}
-			default:
-				return fail
-			}
-		}
-		return nil
-	}
-	if walk() != nil {
-		return fail
-	}
-	if _, e := d.Token(); e != io.EOF {
-		return fail
-	}
-	clean := bytes.TrimSpace(b)
-	if len(clean) == 0 || clean[0] != '{' {
-		return fail
-	}
-	d = json.NewDecoder(bytes.NewReader(b))
-	d.DisallowUnknownFields()
-	if d.Decode(out) != nil {
-		return fail
-	}
-	return nil
-}
 
 // workloadBound reports whether an identity binds its workload the way its
 // profile requires: an initial profile by the held Deployment's
@@ -265,10 +198,10 @@ func (p IsolatedInitialJobPlan) initialIntent(job *batchv1.Job) (initialIntent, 
 	}
 	spec, _ := json.Marshal(job.Spec)
 	kind := p.kind()
-	if IsProvenanceReadProfile(p.Profile) != validGenerationInput(p.GenerationRead) || !IsProvenanceReadProfile(p.Profile) && p.GenerationRead != nil {
+	if !validProvenanceInput(p.Profile, p.GenerationRead, p.FenceRead) {
 		return initialIntent{}, fmt.Errorf("provenance read input unavailable")
 	}
-	return initialIntent{Version: kind.version, Classification: kind.intent, JobName: job.Name, Namespace: p.Namespace, ProjectID: p.ProjectID, AddonID: p.AddonID, ServiceID: p.ServiceID, Cluster: p.Cluster, Profile: p.Profile, Image: p.Image, PlanSHA256: p.fingerprint(), JobSpecSHA256: initialHash(spec), OperationSHA256: initialHash([]byte(p.IdempotencyKey)), Identity: id, GenerationRead: p.GenerationRead}, nil
+	return initialIntent{Version: kind.version, Classification: kind.intent, JobName: job.Name, Namespace: p.Namespace, ProjectID: p.ProjectID, AddonID: p.AddonID, ServiceID: p.ServiceID, Cluster: p.Cluster, Profile: p.Profile, Image: p.Image, PlanSHA256: p.fingerprint(), JobSpecSHA256: initialHash(spec), OperationSHA256: initialHash([]byte(p.IdempotencyKey)), Identity: id, GenerationRead: p.GenerationRead, FenceRead: p.FenceRead}, nil
 }
 
 func initialRecord(p IsolatedInitialJobPlan, suffix string, payload any) (*corev1.ConfigMap, error) {
@@ -440,7 +373,7 @@ func validInitialNative(r InitialNativeReceipt, p IsolatedInitialJobPlan, cm *co
 	// Evidence of the one Pod that ran and its bounded main stdout.
 	observed := initialUID.MatchString(r.PodUID) && initialSHA.MatchString(r.StdoutSHA256)
 	if p.Profile == KarafielSchemaProfile {
-		if r.MAP != nil || r.Portal001 != nil || r.Portal002 != nil || !fixedStepOutputAbsent(r) || r.GenerationRead != nil || r.InitStdoutSHA256 != "" {
+		if r.MAP != nil || r.Portal001 != nil || r.Portal002 != nil || !fixedStepOutputAbsent(r) || r.GenerationRead != nil || r.FenceRead != nil || r.InitStdoutSHA256 != "" {
 			return false
 		}
 		if r.Classification == kind.retained {
@@ -452,15 +385,15 @@ func validInitialNative(r InitialNativeReceipt, p IsolatedInitialJobPlan, cm *co
 		return false
 	}
 	if IsProvenanceReadProfile(p.Profile) {
-		if r.MAP != nil || r.Portal001 != nil || r.Portal002 != nil || !fixedStepOutputAbsent(r) || r.InitStdoutSHA256 != "" || !validGenerationInput(in.GenerationRead) {
+		if r.MAP != nil || r.Portal001 != nil || r.Portal002 != nil || !fixedStepOutputAbsent(r) || r.InitStdoutSHA256 != "" || !validProvenanceInput(p.Profile, in.GenerationRead, in.FenceRead) {
 			return false
 		}
 		if r.Classification == kind.retained {
-			return observed && r.HeldReason == "" && validGenerationReceipt(r.GenerationRead, in.GenerationRead)
+			return observed && r.HeldReason == "" && validProvenanceReceipt(p.Profile, r, in)
 		}
-		return r.Classification == kind.held && r.GenerationRead == nil && ((r.HeldReason == fixedStepHeldUnclassified && observed) || (r.HeldReason == fixedStepHeldJobFailed && r.PodUID == "" && r.StdoutSHA256 == ""))
+		return r.Classification == kind.held && r.GenerationRead == nil && r.FenceRead == nil && ((r.HeldReason == fixedStepHeldUnclassified && observed) || (r.HeldReason == fixedStepHeldJobFailed && r.PodUID == "" && r.StdoutSHA256 == ""))
 	}
-	if r.GenerationRead != nil || in.GenerationRead != nil {
+	if r.GenerationRead != nil || in.GenerationRead != nil || r.FenceRead != nil || in.FenceRead != nil {
 		return false
 	}
 	if IsFixedStepProfile(p.Profile) {
@@ -668,10 +601,7 @@ func (c *Client) collectInitialReceipt(ctx context.Context, p IsolatedInitialJob
 			r.Classification, r.HeldReason = kind.held, fixedStepHeldUnclassified
 		}
 	} else if IsProvenanceReadProfile(p.Profile) {
-		out := &PortalGenerationReadReceipt{}
-		if DecodeInitialBootstrapJSON(b, out) == nil && validGenerationReceipt(out, p.GenerationRead) {
-			r.GenerationRead = out
-		} else {
+		if !decodeProvenanceOutput(&r, p, b) {
 			r.Classification, r.HeldReason = kind.held, fixedStepHeldUnclassified
 		}
 	} else if IsFixedStepProfile(p.Profile) {
@@ -782,7 +712,7 @@ func (c *Client) retainedInitialStatus(ctx context.Context, namespace, name stri
 	if in.Version != kind.version || in.Classification != kind.intent || !strings.HasPrefix(name, kind.namePrefix) || in.JobName != name || in.Namespace != namespace || in.ProjectID != project || in.AddonID != addon || in.ServiceID == uuid.Nil || !initialUID.MatchString(in.JobUID) || !initialUID.MatchString(in.CreationResourceVersion) || !initialSHA.MatchString(in.PlanSHA256) || !initialSHA.MatchString(in.JobSpecSHA256) || !initialSHA.MatchString(in.OperationSHA256) {
 		return nil, nil, fmt.Errorf("initial retained intent refused")
 	}
-	p := IsolatedInitialJobPlan{ProjectID: project, AddonID: addon, ServiceID: in.ServiceID, Namespace: namespace, Cluster: in.Cluster, Profile: in.Profile, Image: in.Image, Identity: in.Identity, GenerationRead: in.GenerationRead, retainedJobName: name}
+	p := IsolatedInitialJobPlan{ProjectID: project, AddonID: addon, ServiceID: in.ServiceID, Namespace: namespace, Cluster: in.Cluster, Profile: in.Profile, Image: in.Image, Identity: in.Identity, GenerationRead: in.GenerationRead, FenceRead: in.FenceRead, retainedJobName: name}
 	// The operation key is not retained. Labels/name derive from validated intent.
 	if validateInitialStatusIntent(cm, p, name, &in) != nil {
 		return nil, nil, fmt.Errorf("initial retained authority refused")
@@ -831,7 +761,7 @@ func validateInitialStatusIntent(cm *corev1.ConfigMap, p IsolatedInitialJobPlan,
 		return fmt.Errorf("initial status identity refused")
 	}
 	prefix := want.ImagePrefix
-	if !strings.HasPrefix(in.Image, prefix) || !initialSHA.MatchString(strings.TrimPrefix(in.Image, prefix)) || id.Producer != want.Producer || id.Database != want.Database || id.RuntimeRole != want.RuntimeRole || id.OwnerRole != expectedOwnerRole(in.Profile) || !id.SignatureVerified || !initialSHA.MatchString(id.PinPayloadSHA256) || !initialRevision.MatchString(id.SourceRevision) || id.BindingID == uuid.Nil || id.OnboardingID == uuid.Nil || !initialSHA.MatchString(id.PublicCASHA256) || id.BuildRunID <= 0 || id.Checks < want.Checks || IsProvenanceReadProfile(p.Profile) != validGenerationInput(in.GenerationRead) || !IsProvenanceReadProfile(p.Profile) && in.GenerationRead != nil {
+	if !strings.HasPrefix(in.Image, prefix) || !initialSHA.MatchString(strings.TrimPrefix(in.Image, prefix)) || id.Producer != want.Producer || id.Database != want.Database || id.RuntimeRole != want.RuntimeRole || id.OwnerRole != expectedOwnerRole(in.Profile) || !id.SignatureVerified || !initialSHA.MatchString(id.PinPayloadSHA256) || !initialRevision.MatchString(id.SourceRevision) || id.BindingID == uuid.Nil || id.OnboardingID == uuid.Nil || !initialSHA.MatchString(id.PublicCASHA256) || id.BuildRunID <= 0 || id.Checks < want.Checks || !validProvenanceInput(p.Profile, in.GenerationRead, in.FenceRead) {
 		return fmt.Errorf("initial status source refused")
 	}
 	return nil

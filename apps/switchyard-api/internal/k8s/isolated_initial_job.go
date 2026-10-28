@@ -72,6 +72,7 @@ type IsolatedInitialJobPlan struct {
 	Revalidate                                                 func(context.Context) error `json:"-"`
 	Identity                                                   InitialBootstrapIdentity    `json:"-"`
 	GenerationRead                                             *PortalGenerationReadInput  `json:"-"`
+	FenceRead                                                  *PortalFenceReadInput       `json:"-"`
 	retainedJobName                                            string
 }
 
@@ -181,11 +182,11 @@ func BuildIsolatedInitialJob(p IsolatedInitialJobPlan) (*batchv1.Job, error) {
 		if !strings.HasPrefix(p.Image, "ghcr.io/madfam-org/crea-sim/gateway@sha256:") {
 			return nil, fmt.Errorf("provenance reader producer refused")
 		}
-		input, err := generationReadBytes(p.GenerationRead)
+		input, commandText, err := provenanceReadBytes(p.Profile, p.GenerationRead, p.FenceRead)
 		if err != nil || string(input) != string(p.Data["request.json"]) {
 			return nil, fmt.Errorf("provenance reader input refused")
 		}
-		command = []string{"sh", "-c", portalGenerationReadCommand}
+		command = []string{"sh", "-c", commandText}
 		allowed["CREA_SIM_PORTAL_DATABASE_URL"], allowed["CREA_SIM_DATABASE_NAMESPACE"], allowed["request.json"] = true, true, true
 	default:
 		return nil, fmt.Errorf("unsupported initial Job profile")
