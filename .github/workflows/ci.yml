@@ -518,8 +518,11 @@ jobs:
     # the Job's Failed condition). And the per-project CNPG health rules
     # (test_cnpg_project_rules.py: every kube_cnpg_cluster_* series they read
     # is one kube-state-metrics' custom-resource config publishes; hibernated
-    # clusters excluded only once CNPG confirms). promtool evaluates the real
-    # rules with the image production runs; a failed pull skips with a reason.
+    # clusters excluded only once CNPG confirms). And the builder isolation
+    # rules (test_builder_isolation_rules.py: a builder without its exact
+    # NoSchedule taint pages; non-CI pods on a tainted builder warn). promtool
+    # evaluates the real rules with the image production runs; a failed pull
+    # skips with a reason.
     steps:
       - uses: actions/checkout@v7
 
@@ -537,7 +540,7 @@ jobs:
             docker run --rm --entrypoint /bin/promtool -v {dir}:/w:ro
             docker.io/prom/prometheus:v2.53.3
             test rules /w/{name}
-        run: pytest tests/scripts/test_alert_noise_rules.py tests/scripts/test_pager_path_drill.py tests/scripts/test_retainer_cycle_rules.py tests/scripts/test_cv_rules.py tests/scripts/test_cnpg_project_rules.py -v -rs
+        run: pytest tests/scripts/test_alert_noise_rules.py tests/scripts/test_pager_path_drill.py tests/scripts/test_retainer_cycle_rules.py tests/scripts/test_cv_rules.py tests/scripts/test_cnpg_project_rules.py tests/scripts/test_builder_isolation_rules.py -v -rs
 
   client-slo-rules-test:
     name: Client SLO rule coverage
