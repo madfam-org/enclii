@@ -3640,6 +3640,69 @@ data:
                 kube-state-metrics is not scraped, or the namespace was renamed or deleted.
               runbook_url: https://github.com/madfam-org/internal-devops/blob/main/runbooks/cv-alerts.md#cvmigratejobunobservable
 
+
+  # =========================================================================
+  # Builder isolation (added 2026-10-29)
+  # -------------------------------------------------------------------------
+  # CI builder nodes carry `builder=true:NoSchedule` (internal-devops
+  # infrastructure/nodes.md); only ARC runners and the required DaemonSets
+  # belong there. In 2026 one builder's taint was removed by hand during a
+  # capacity incident and stayed off for two months; production pods landed
+  # on it and slowed down whenever CI was busy. Nothing reported it. These
+  # rules do.
+  #
+  # Builders are matched by NAME (`.+-builder-.+`, the foundry-builder-NN
+  # convention): kube-state-metrics exports no node labels here (no
+  # --metric-labels-allowlist), so `role=builder` is not a series.
+  # NonCIPodOnBuilder counts only nodes whose taint is in place: pods left
+  # behind when a taint is re-applied are not evicted, and they are the
+  # rebalance still to do, not a second incident.
+  # =========================================================================
+  builder-isolation-rules.yml: |
+    groups:
+      - name: builder-isolation
+        interval: 1m
+        rules:
+          - alert: BuilderNodeTaintMissing
+            expr: |
+              count by (node) (kube_node_info{node=~".+-builder-.+"})
+              unless on (node)
+              count by (node) (kube_node_spec_taint{node=~".+-builder-.+", key="builder", value="true", effect="NoSchedule"})
+            for: 30m
+            labels:
+              severity: critical
+              category: platform
+            annotations:
+              summary: "Builder node {{ $labels.node }} has lost its builder=true:NoSchedule taint"
+              description: "Production pods can now schedule onto a CI builder and share its CPU with builds. Re-apply the taint, then move the pods that landed there. The k3s agent's --node-taint applies only at registration, so nothing restores it on its own."
+
+          - alert: NonCIPodOnBuilder
+            expr: |
+              count by (node) (
+                kube_pod_info{node=~".+-builder-.+", created_by_kind!="DaemonSet", namespace!~"arc-runners|arc-system|longhorn-system"}
+                * on (namespace, pod) group_left() (kube_pod_status_phase{phase="Running"} == 1)
+              )
+              and on (node)
+              kube_node_spec_taint{key="builder", value="true", effect="NoSchedule"}
+            for: 1h
+            labels:
+              severity: warning
+              category: platform
+            annotations:
+              summary: "{{ $value }} non-CI pod(s) running on builder node {{ $labels.node }}"
+              description: "Only ARC runners, the ARC listeners, Longhorn and DaemonSets belong on a builder. A pod here either tolerates the builder taint or predates it; move it to a worker."
+
+          - alert: BuilderIsolationUnobservable
+            expr: |
+              absent(kube_node_info{node=~".+-builder-.+"})
+            for: 30m
+            labels:
+              severity: warning
+              category: platform
+            annotations:
+              summary: "Builder isolation rules are blind (no kube-state-metrics series for any builder node)"
+              description: "kube_node_info has no builder node, so BuilderNodeTaintMissing cannot fire. Either kube-state-metrics is not scraped or the builders were renamed away from the foundry-builder-NN convention."
+
 ---
 # Prometheus PVC
 apiVersion: v1
