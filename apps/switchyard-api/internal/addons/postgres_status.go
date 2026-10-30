@@ -17,6 +17,16 @@ func ParsePostgresClusterStatus(cluster *unstructured.Unstructured, addon *types
 	if err := ValidatePostgresRuntimeConfig(addon.Type, addon.Config); err != nil {
 		return nil, err
 	}
+	return parseValidatedPostgresClusterStatus(cluster, addon)
+}
+
+// Pure readiness projection for profiles already validated by their own closed
+// identity/manifest/UID adapter. Generic callers must use the guarded public
+// parser above; this is not an alternative public credential/provisioning API.
+func parseValidatedPostgresClusterStatus(cluster *unstructured.Unstructured, addon *types.DatabaseAddon) (*StatusResult, error) {
+	if cluster == nil || addon == nil {
+		return nil, fmt.Errorf("validated Cluster and addon required")
+	}
 	status, found, err := unstructured.NestedMap(cluster.Object, "status")
 	if err != nil || !found {
 		result := &StatusResult{Status: types.DatabaseAddonStatusProvisioning, StatusMessage: "Cluster status not yet available"}

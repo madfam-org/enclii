@@ -55,6 +55,15 @@ func publicCABundle(raw []byte, now time.Time) (string, error) {
 // accept only their operator-generated default Secret, owned by this Cluster.
 // No request controls a Secret selector. ca.key is never read or serialized.
 func (p *PostgresProvisioner) runtimeServerCA(ctx context.Context, addon *sdktypes.DatabaseAddon, runtime *corev1.Secret) (string, error) {
+	return p.verifiedRuntimeServerCA(ctx, addon, runtime, ParsePostgresClusterStatus)
+}
+
+// Shares native ownership, readiness and public-certificate checks only. The
+// caller supplies its already reviewed profile-specific status projection.
+func (p *PostgresProvisioner) verifiedRuntimeServerCA(ctx context.Context, addon *sdktypes.DatabaseAddon, runtime *corev1.Secret, projectStatus func(*unstructured.Unstructured, *sdktypes.DatabaseAddon) (*StatusResult, error)) (string, error) {
+	if projectStatus == nil {
+		return "", fmt.Errorf("isolated readiness projection unavailable")
+	}
 	if p.k8sClient.DynamicClient == nil || addon.K8sResourceName == "" {
 		return "", fmt.Errorf("isolated database Cluster is unavailable")
 	}
@@ -68,7 +77,7 @@ func (p *PostgresProvisioner) runtimeServerCA(ctx context.Context, addon *sdktyp
 		!ownedByCNPG(runtime, addon.K8sResourceName, uid) {
 		return "", fmt.Errorf("isolated database credentials do not belong to the Cluster")
 	}
-	status, statusErr := ParsePostgresClusterStatus(cluster, addon)
+	status, statusErr := projectStatus(cluster, addon)
 	if statusErr != nil || !status.Ready || status.Status != sdktypes.DatabaseAddonStatusReady {
 		return "", fmt.Errorf("isolated database Cluster/runtime role is not Ready")
 	}

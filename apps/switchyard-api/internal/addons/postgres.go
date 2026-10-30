@@ -218,8 +218,47 @@ func (p *PostgresProvisioner) Provision(ctx context.Context, req *ProvisionReque
 	}, nil
 }
 
-// buildClusterManifest builds the CloudNativePG Cluster manifest
+// buildClusterManifest preserves the generic legacy/synthetic runtime guard.
 func (p *PostgresProvisioner) buildClusterManifest(req *ProvisionRequest, resourceName string) map[string]interface{} {
+	cluster := p.buildClusterAllocationManifest(req, resourceName)
+	if cluster == nil || applyRuntimeProfile(cluster["spec"].(map[string]interface{}), req.Addon, resourceName) != nil {
+		return nil
+	}
+	spec := cluster["spec"].(map[string]interface{})
+	// Per-addon observability. `enablePodMonitor: true` makes the CNPG operator
+	// publish a PodMonitor for this cluster's instance pods, which is where
+	// cnpg_collector_last_available_backup_timestamp and the WAL-archiver
+	// counters come from — the two series the addon backup alerts read.
+	//
+	// This flag was `false` with a comment calling the Prometheus-side wiring a
+	// tracked follow-up (2026-08-17 audit #4). The follow-up is this change:
+	// the `rules-eval` Prometheus CR now reconciles every PodMonitor in every
+	// namespace (podMonitorSelector: {} / podMonitorNamespaceSelector: {}), the
+	// monitoring namespace's egress reaches stamped addon namespaces, the addon
+	// namespace admits the monitoring namespace on the metrics port, and
+	// infra/k8s/production/monitoring/addon-db-rules.yaml routes the result to
+	// the existing Alertmanager. Flipping this flag alone would have produced a
+	// healthy-looking PodMonitor nobody scrapes, so it lands with all four.
+	//
+	// See EnsureObservability in observability.go for the rest, and note in
+	// particular why these are PodMonitors and not ServiceMonitors.
+	spec["monitoring"] = map[string]interface{}{
+		"enablePodMonitor": true,
+	}
+
+	// Backups: barman object store, per-cluster path, retention. Absent when
+	// unconfigured — Provision logs that absence loudly, and also strips the
+	// stanza when the credential is not ready (prepareProvisionBackups).
+	if backup := backupConfigFromEnv(); backup.enabled() {
+		spec["backup"] = backup.backupStanza(req.Namespace, resourceName)
+	}
+
+	return cluster
+}
+
+// buildClusterAllocationManifest shares allocation/storage assembly only. Closed
+// profiles must supply their own validated bootstrap before any provisioning.
+func (p *PostgresProvisioner) buildClusterAllocationManifest(req *ProvisionRequest, resourceName string) map[string]interface{} {
 	config := req.Addon.Config
 
 	// Determine instances (default to 1 for non-HA)
@@ -286,9 +325,6 @@ func (p *PostgresProvisioner) buildClusterManifest(req *ProvisionRequest, resour
 
 	// Add resource limits if specified
 	spec := cluster["spec"].(map[string]interface{})
-	if err := applyRuntimeProfile(spec, req.Addon, resourceName); err != nil {
-		return nil
-	}
 	if config.CPU != "" || config.Memory != "" {
 		resources := map[string]interface{}{}
 		requests := map[string]interface{}{}
@@ -306,34 +342,6 @@ func (p *PostgresProvisioner) buildClusterManifest(req *ProvisionRequest, resour
 		resources["requests"] = requests
 		resources["limits"] = limits
 		spec["resources"] = resources
-	}
-
-	// Per-addon observability. `enablePodMonitor: true` makes the CNPG operator
-	// publish a PodMonitor for this cluster's instance pods, which is where
-	// cnpg_collector_last_available_backup_timestamp and the WAL-archiver
-	// counters come from — the two series the addon backup alerts read.
-	//
-	// This flag was `false` with a comment calling the Prometheus-side wiring a
-	// tracked follow-up (2026-08-17 audit #4). The follow-up is this change:
-	// the `rules-eval` Prometheus CR now reconciles every PodMonitor in every
-	// namespace (podMonitorSelector: {} / podMonitorNamespaceSelector: {}), the
-	// monitoring namespace's egress reaches stamped addon namespaces, the addon
-	// namespace admits the monitoring namespace on the metrics port, and
-	// infra/k8s/production/monitoring/addon-db-rules.yaml routes the result to
-	// the existing Alertmanager. Flipping this flag alone would have produced a
-	// healthy-looking PodMonitor nobody scrapes, so it lands with all four.
-	//
-	// See EnsureObservability in observability.go for the rest, and note in
-	// particular why these are PodMonitors and not ServiceMonitors.
-	spec["monitoring"] = map[string]interface{}{
-		"enablePodMonitor": true,
-	}
-
-	// Backups: barman object store, per-cluster path, retention. Absent when
-	// unconfigured — Provision logs that absence loudly, and also strips the
-	// stanza when the credential is not ready (prepareProvisionBackups).
-	if backup := backupConfigFromEnv(); backup.enabled() {
-		spec["backup"] = backup.backupStanza(req.Namespace, resourceName)
 	}
 
 	return cluster

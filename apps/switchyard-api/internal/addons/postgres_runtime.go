@@ -108,21 +108,30 @@ func (p *PostgresProvisioner) ensureRuntimeSecret(ctx context.Context, req *Prov
 	if !k8serrors.IsNotFound(err) {
 		return fmt.Errorf("cannot inspect runtime Secret")
 	}
-	bytes := make([]byte, 32)
-	if _, err := rand.Read(bytes); err != nil {
-		return fmt.Errorf("cannot generate runtime credential")
+	secret, err := newRuntimeSecret(req, resource)
+	if err != nil {
+		return err
 	}
-	password := hex.EncodeToString(bytes)
-	host := resource + "-rw." + req.Namespace + ".svc.cluster.local"
-	_, err = api.Create(ctx, &corev1.Secret{
-		ObjectMeta: metav1.ObjectMeta{Name: name, Namespace: req.Namespace, Labels: map[string]string{LabelManagedBy: LabelManagedValue, LabelAddonID: req.Addon.ID.String(), LabelProjectID: req.ProjectID.String(), "cnpg.io/reload": "true"}},
-		Type:       corev1.SecretTypeBasicAuth,
-		Data:       map[string][]byte{"username": []byte(req.Addon.Config.RuntimeRole), "password": []byte(password), "dbname": []byte(req.Addon.Config.DatabaseName), "host": []byte(host), "port": []byte("5432"), "uri": []byte(runtimeConnectionURI(req.Addon.Config.RuntimeRole, password, host, req.Addon.Config.DatabaseName))},
-	}, metav1.CreateOptions{})
+	_, err = api.Create(ctx, secret, metav1.CreateOptions{})
 	if err != nil {
 		return fmt.Errorf("cannot create runtime Secret")
 	}
 	return nil
+}
+
+// Shared credential construction only; each profile retains its own create/adoption policy.
+func newRuntimeSecret(req *ProvisionRequest, resource string) (*corev1.Secret, error) {
+	bytes := make([]byte, 32)
+	if _, err := rand.Read(bytes); err != nil {
+		return nil, fmt.Errorf("cannot generate runtime credential")
+	}
+	password := hex.EncodeToString(bytes)
+	host := resource + "-rw." + req.Namespace + ".svc.cluster.local"
+	return &corev1.Secret{
+		ObjectMeta: metav1.ObjectMeta{Name: runtimeSecretName(resource), Namespace: req.Namespace, Labels: map[string]string{LabelManagedBy: LabelManagedValue, LabelAddonID: req.Addon.ID.String(), LabelProjectID: req.ProjectID.String(), "cnpg.io/reload": "true"}},
+		Type:       corev1.SecretTypeBasicAuth,
+		Data:       map[string][]byte{"username": []byte(req.Addon.Config.RuntimeRole), "password": []byte(password), "dbname": []byte(req.Addon.Config.DatabaseName), "host": []byte(host), "port": []byte("5432"), "uri": []byte(runtimeConnectionURI(req.Addon.Config.RuntimeRole, password, host, req.Addon.Config.DatabaseName))},
+	}, nil
 }
 
 func (p *PostgresProvisioner) ownRuntimeSecret(ctx context.Context, req *ProvisionRequest, resource string, uid types.UID) error {
