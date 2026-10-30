@@ -234,7 +234,7 @@ func (h *Handler) karafielRuntimeProjection(ctx context.Context, source *karafie
 		return nil, errKarafielStage
 	}
 	labels := map[string]string{"enclii.dev/managed-by": addons.KarafielStagingProfile, k8s.LabelProjectNamespace: source.Project.ID.String(), "enclii.dev/addon-id": addon.ID.String(), "enclii.dev/service-id": source.Service.ID.String()}
-	expected := &corev1.Secret{ObjectMeta: metav1.ObjectMeta{Name: addons.KarafielStagingRuntimeSecret, Namespace: addons.KarafielStagingNamespace, Labels: labels, Annotations: map[string]string{"enclii.dev/cluster-uid": custody.ClusterUID}, OwnerReferences: []metav1.OwnerReference{{APIVersion: "v1", Kind: "Namespace", Name: source.Namespace.Name, UID: source.Namespace.UID}}}, Type: corev1.SecretTypeOpaque, Data: custody.Data}
+	expected := &corev1.Secret{ObjectMeta: metav1.ObjectMeta{Name: addons.KarafielStagingRuntimeSecretName, Namespace: addons.KarafielStagingNamespace, Labels: labels, Annotations: map[string]string{"enclii.dev/cluster-uid": custody.ClusterUID}, OwnerReferences: []metav1.OwnerReference{{APIVersion: "v1", Kind: "Namespace", Name: source.Namespace.Name, UID: source.Namespace.UID}}}, Type: corev1.SecretTypeOpaque, Data: custody.Data}
 	api := h.opsKubeClient().CoreV1().Secrets(expected.Namespace)
 	actual, err := api.Get(ctx, expected.Name, metav1.GetOptions{})
 	if err != nil && create && apierrors.IsNotFound(err) {
