@@ -1388,7 +1388,7 @@ jobs:
           JANUA_URL: https://auth.madfam.io
 
       - name: Upload test report
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         if: always()
         with:
           name: e2e-ecosystem-report
@@ -1828,7 +1828,7 @@ jobs:
           echo "built_services=${{ matrix.name }}:${{ matrix.image }}:${{ matrix.kustomization }}:${{ matrix.kustomize_image }}:${DIGEST}" >> $GITHUB_OUTPUT
 
       - name: Upload digest artifact
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           name: digest-${{ matrix.name }}
           path: /tmp/digest-${{ matrix.name }}.txt
@@ -1956,7 +1956,7 @@ jobs:
 
       - name: Upload scan outcome artifact
         if: always() && matrix.scan == true && steps.scan-ref.outputs.have_digest == 'true'
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           name: scan-result-${{ matrix.name }}
           path: /tmp/scan-results/scan-result-${{ matrix.name }}.txt
