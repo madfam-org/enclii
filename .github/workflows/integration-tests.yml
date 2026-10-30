@@ -29,6 +29,12 @@ env:
   KIND_VERSION: 'v0.20.0'
   KUBERNETES_VERSION: 'v1.28.0'
 
+# Keep only the newest proof for a PR. Non-PR runs have distinct groups so
+# queued main builds and digest publication are never replaced by this rule.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event_name == 'pull_request' && github.event.pull_request.number || github.run_id }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 jobs:
   integration-tests:
     name: Run Integration Tests
@@ -44,6 +50,7 @@ jobs:
         with:
           go-version: ${{ env.GO_VERSION }}
           cache: true
+          cache-dependency-path: '**/go.sum'
 
       - name: Install Kind
         run: |

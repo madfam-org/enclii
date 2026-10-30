@@ -27,6 +27,12 @@ env:
   GO_VERSION: '1.26.10'
   NODE_VERSION: '22'
 
+# Keep only the newest proof for a PR. Non-PR runs have distinct groups so
+# queued main builds and digest publication are never replaced by this rule.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event_name == 'pull_request' && github.event.pull_request.number || github.run_id }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 jobs:
   runtime-postgres-proof:
     name: Dedicated runtime role on PostgreSQL 16
@@ -86,6 +92,7 @@ jobs:
           go-version: ${{ env.GO_VERSION }}
           check-latest: true
           cache: true
+          cache-dependency-path: '**/go.sum'
 
       - name: Install golangci-lint
         run: |
@@ -987,6 +994,7 @@ jobs:
           go-version: ${{ env.GO_VERSION }}
           check-latest: true
           cache: true
+          cache-dependency-path: '**/go.sum'
 
       - name: Auto-discover and test Go modules
         run: |
@@ -1148,6 +1156,7 @@ jobs:
           go-version: ${{ env.GO_VERSION }}
           check-latest: true
           cache: true
+          cache-dependency-path: '**/go.sum'
 
       - name: Auto-discover and build Go binaries
         run: |
@@ -1226,6 +1235,7 @@ jobs:
           go-version: ${{ env.GO_VERSION }}
           check-latest: true
           cache: true
+          cache-dependency-path: '**/go.sum'
 
       - name: Build the API binary
         run: |
@@ -1399,6 +1409,7 @@ jobs:
           go-version: ${{ env.GO_VERSION }}
           check-latest: true
           cache: true
+          cache-dependency-path: '**/go.sum'
 
       - name: Install gosec
         run: |

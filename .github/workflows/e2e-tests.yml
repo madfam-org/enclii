@@ -17,6 +17,12 @@ on:
       - '.github/workflows/e2e-tests.yml'
   workflow_dispatch:
 
+# Keep only the newest proof for a PR. Non-PR runs have distinct groups so
+# queued main builds and digest publication are never replaced by this rule.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event_name == 'pull_request' && github.event.pull_request.number || github.run_id }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 jobs:
   e2e-tests:
     name: Playwright E2E Tests
@@ -31,10 +37,9 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v7
 
-      - name: Setup Node.js
-        uses: actions/setup-node@v7
-        with:
-          node-version: '20'
+      # Give setup-node and the workspace install the same absolute store.
+      - name: Select the dependency cache location
+        run: echo "npm_config_store_dir=$RUNNER_TEMP/enclii-pnpm-store" >> "$GITHUB_ENV"
 
       - name: Setup pnpm
         uses: pnpm/action-setup@v6
@@ -44,6 +49,13 @@ jobs:
         # Passing BOTH is a hard error in v4 and v6 unless the strings match
         # exactly: `version: 9` vs `pnpm@9.15.9` throws "Multiple versions of
         # pnpm specified".
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: '20'
+          cache: pnpm
+          cache-dependency-path: pnpm-lock.yaml
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
