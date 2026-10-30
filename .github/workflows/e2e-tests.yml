@@ -37,6 +37,10 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v7
 
+      # Give setup-node and the workspace install the same absolute store.
+      - name: Select the dependency cache location
+        run: echo "npm_config_store_dir=$RUNNER_TEMP/enclii-pnpm-store" >> "$GITHUB_ENV"
+
       - name: Setup pnpm
         uses: pnpm/action-setup@v6
         # No `version:` here on purpose. pnpm/action-setup reads the pnpm
