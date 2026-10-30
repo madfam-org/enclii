@@ -20,13 +20,13 @@ import (
 )
 
 const (
-	KarafielStagingService       = "karafiel-api-staging"
-	KarafielStagingProfile       = "karafiel-staging-database-v1"
-	KarafielStagingAddon         = "karafiel-staging-db"
-	KarafielStagingDatabase      = "karafiel_staging_sim"
-	KarafielStagingRuntime       = "karafiel_staging_runtime"
-	KarafielStagingNamespace     = "enclii-karafiel-staging"
-	KarafielStagingRuntimeSecret = "karafiel-staging-database-runtime" // pragma: allowlist secret -- owned Kubernetes Secret name; not a credential
+	KarafielStagingService           = "karafiel-api-staging"
+	KarafielStagingProfile           = "karafiel-staging-database-v1"
+	KarafielStagingAddon             = "karafiel-staging-db"
+	KarafielStagingDatabase          = "karafiel_staging_sim"
+	KarafielStagingRuntime           = "karafiel_staging_runtime"
+	KarafielStagingNamespace         = "enclii-karafiel-staging"
+	KarafielStagingRuntimeSecretName = "karafiel-staging-database-runtime" // pragma: allowlist secret -- owned Kubernetes Secret name; not a credential
 )
 
 // This closed opt-in does not alter the generic *_sim guard or accept a

@@ -18,8 +18,9 @@ import (
 const namedArgoReadInventory = "switchyard-argocd-inventory-reader"
 const namedArgoReadManager = "switchyard-argocd-application-manager"
 
-// Public canonical checksum of the eight unchanged deployed-M RBAC objects.
-const namedArgoReadBaseline = "0696f87ad0ada0e0e9b3bcd34b59b3e16e992c0ff6821819fb431e150a79422f" // pragma: allowlist secret - public RBAC source checksum
+// Public canonical checksum of the six remaining deployed-M RBAC objects.
+// The two tracking-declarer objects were deliberately retired; all others stay exact.
+const namedArgoReadBaseline = "80d0715391960cf24fdf4c958637ea71cb202e5c6be8fc62d1821653333c96e0" // pragma: allowlist secret - public RBAC source checksum
 
 func namedArgoReadRoot() string { return filepath.Join("..", "..", "..", "..") }
 func namedArgoReadDocs(t *testing.T, path string) []map[string]any {
@@ -207,7 +208,7 @@ func namedArgoReadClone(objects []map[string]any) []map[string]any {
 	return out
 }
 func namedArgoReadValidate(objects, expected []map[string]any) error {
-	if len(objects) != 12 {
+	if len(objects) != 10 {
 		return fmt.Errorf("unexpected RBAC object count")
 	}
 	seen := map[string]bool{}
@@ -343,7 +344,7 @@ func TestNamedArgoNewReadPermissionKindsStayRestricted(t *testing.T) {
 func TestNamedArgoReadRBACRejectsBroadenedDeltas(t *testing.T) {
 	source := namedArgoReadDocs(t, "infra/k8s/cross-namespace-rbac/rbac.yaml")
 	expected := namedArgoReadExpectedInventory(t)
-	for _, change := range []string{"get-list", "get-watch", "get-patch", "empty-names", "foreign-name", "wildcard", "wrong-namespace", "wrong-subject", "wrong-binding-kind", "cluster-sts-list", "unexpected-old-permission", "extra-cluster-binding"} {
+	for _, change := range []string{"get-list", "get-watch", "get-patch", "empty-names", "foreign-name", "wildcard", "wrong-namespace", "wrong-subject", "wrong-binding-kind", "cluster-sts-list", "unexpected-old-permission", "restored-tracking-writer", "extra-cluster-binding"} {
 		t.Run(change, func(t *testing.T) {
 			objects := namedArgoReadClone(source)
 			role := namedArgoReadOne(objects, "Role", namedArgoReadInventory, "argocd")
@@ -367,6 +368,9 @@ func TestNamedArgoReadRBACRejectsBroadenedDeltas(t *testing.T) {
 			case "cluster-sts-list":
 				cluster := namedArgoReadOne(objects, "ClusterRole", namedArgoReadInventory, "")
 				cluster["rules"] = append(cluster["rules"].([]any), map[string]any{"apiGroups": []any{"apps"}, "resources": []any{"statefulsets"}, "verbs": []any{"list"}})
+			case "restored-tracking-writer":
+				manager := namedArgoReadOne(objects, "Role", namedArgoReadManager, "argocd")
+				manager["rules"] = append(manager["rules"].([]any), map[string]any{"apiGroups": []any{""}, "resources": []any{"configmaps"}, "resourceNames": []any{"argocd-cm"}, "verbs": []any{"get", "update"}})
 			case "unexpected-old-permission":
 				old := namedArgoReadOne(objects, "Role", "switchyard-pgbouncer-manager", "data")
 				r := namedArgoReadMap(old["rules"].([]any)[0])
