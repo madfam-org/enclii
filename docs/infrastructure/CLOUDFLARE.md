@@ -455,6 +455,42 @@ To make an ambiguous manifest reconcile on push, split it into one
 `kind: Service` document per service. To provision one hostname explicitly,
 use `enclii ops domains reconcile <service> --domain <host>`.
 
+#### How a tunnel ingress write is guarded
+
+Every route change rewrites the tunnel's whole ingress document (read it, edit
+one rule, PUT all of it back). Three guards sit around that write
+(`domain_tunnel_routes.go`):
+
+1. **Before the write — the backend must resolve.** The Service must exist in
+   the namespace and expose the port (`resolveTunnelBackend`). A replacement of
+   a live rule onto an unresolvable backend is refused.
+2. **The write is serialised across replicas.** switchyard-api runs more than
+   one replica, and the Cloudflare configurations endpoint takes no
+   precondition, so two replicas that both read before either writes lose one
+   write. Every read-modify-write therefore holds a Postgres advisory lock keyed
+   on the tunnel id (`db.Repositories.WithTunnelConfigLock`, waits at most 30s),
+   in addition to the in-process mutex. If the lock cannot be taken the write
+   fails visibly; it never proceeds unlocked.
+3. **After the write — the canary probe** dials the backend URL from
+   switchyard's pod (`ENCLII_TUNNEL_ROUTE_CANARY_ENABLED`, default on). Any HTTP
+   response passes. On failure:
+   - If the Service has Ready pods **and** the Ingress NetworkPolicies selecting
+     them provably do not admit switchyard's namespace, the probe is
+     **inconclusive**: cloudflared dials from its own namespace, so a refusal of
+     switchyard's says nothing about the backend. The rule is kept and a warning
+     is logged (`Tunnel route canary INCONCLUSIVE`).
+   - Otherwise (no Ready pod, no blocking policy, or anything that cannot be
+     decided) the write is undone: a replacement is reverted to the previous
+     rule, a first-time add is withdrawn.
+
+   A revert or withdrawal is then **read back** and re-applied with backoff
+   (0.5s, 1s, 2s) until the read-back matches. A revert that still has not
+   landed is logged at Error (`the revert to the previous rule did NOT land`)
+   and recorded on the domain for `enclii domains status`.
+
+The canary only proves that something answers. It does not prove the rule
+points at the right service; that is the hostname attribution rule above.
+
 **Multi-Zone Support:** `FindZoneForDomain()` uses longest-suffix matching — `api.qubic.quest` matches zone `qubic.quest` rather than `quest`.
 
 **Auto Zone Creation:** If Cloudflare confirms the account holds no zone for the domain (`cloudflare.ErrZoneNotFound`, e.g. onboarding `tezca.mx` when only `madfam.io` is configured), the provisioner automatically creates the zone via `EnsureZoneForDomain()`. This requires the API token to have account-level Zone:Edit permissions (not zone-scoped). New zones start in `pending` status until nameserver delegation is verified by Cloudflare — and a `pending` zone is reported as `*cloudflare.ZoneNotActiveError`, not as absent, so it is never re-created and never reclassified as client-owned. A zone lookup that merely *fails* creates nothing.
@@ -464,6 +500,8 @@ use `enclii ops domains reconcile <service> --domain <host>`.
 **Source Code:**
 - Parser: `apps/switchyard-api/internal/manifest/enclii_yaml.go`
 - Hostname attribution: `apps/switchyard-api/internal/api/domain_push_attribution.go`
+- Tunnel write guards: `apps/switchyard-api/internal/api/domain_tunnel_routes.go`, `domain_tunnel_canary_vantage.go`, `domain_tunnel_revert.go`
+- Cross-replica write lock: `apps/switchyard-api/internal/db/tunnel_config_lock.go`
 - Provisioner: `apps/switchyard-api/internal/api/domain_provisioner.go`
 - DNS operations: `apps/switchyard-api/internal/cloudflare/dns.go`
 
