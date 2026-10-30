@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -114,6 +115,10 @@ func (v *VaultClient) MutateSecretData(ctx context.Context, path string, update 
 		var written vaultKVWriteResponse
 		err = json.NewDecoder(response.Body).Decode(&written)
 		_ = response.Body.Close()
+		if err != nil && response.StatusCode == http.StatusNoContent && errors.Is(err, io.EOF) {
+			// 204 is an accepted write that reports no version.
+			return 0, nil
+		}
 		if err != nil {
 			return 0, fmt.Errorf("Vault write acknowledgement unavailable")
 		}
