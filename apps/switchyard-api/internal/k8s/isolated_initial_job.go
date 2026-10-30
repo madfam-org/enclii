@@ -45,20 +45,29 @@ type IsolatedInitialJobPlan struct {
 	Namespace, Cluster, Profile, Image, IdempotencyKey, Reason string
 	Data                                                       map[string][]byte           `json:"-"`
 	Revalidate                                                 func(context.Context) error `json:"-"`
+	Identity                                                   InitialBootstrapIdentity    `json:"-"`
+	retainedJobName                                            string
 }
 
 type IsolatedInitialJobReceipt struct {
-	Name      string `json:"name"`
-	Namespace string `json:"namespace"`
-	DryRun    bool   `json:"dry_run"`
-	Suspended bool   `json:"suspended"`
-	Succeeded int32  `json:"succeeded"`
-	Failed    int32  `json:"failed"`
-	Active    int32  `json:"active"`
+	Name           string                `json:"name"`
+	Namespace      string                `json:"namespace"`
+	DryRun         bool                  `json:"dry_run"`
+	Suspended      bool                  `json:"suspended"`
+	Succeeded      int32                 `json:"succeeded"`
+	Failed         int32                 `json:"failed"`
+	Active         int32                 `json:"active"`
+	Native         *InitialNativeReceipt `json:"native_receipt,omitempty"`
+	Classification string                `json:"classification"`
 }
 
 func (p IsolatedInitialJobPlan) jobName() string {
-	sum := sha256.Sum256([]byte(p.ProjectID.String() + "/" + p.AddonID.String() + "/" + p.ServiceID.String() + "/" + p.Profile + "/" + p.IdempotencyKey))
+	if p.retainedJobName != "" {
+		return p.retainedJobName
+	}
+	// One native object name arbitrates concurrent keys. The key hash is retained
+	// separately in the intent and must match on all subsequent POST reads.
+	sum := sha256.Sum256([]byte(p.ProjectID.String() + "/" + p.AddonID.String() + "/" + p.ServiceID.String() + "/" + p.Profile))
 	return "initial-" + hex.EncodeToString(sum[:12])
 }
 
@@ -104,8 +113,9 @@ func BuildIsolatedInitialJob(p IsolatedInitialJobPlan) (*batchv1.Job, error) {
 		if !strings.HasPrefix(p.Image, "ghcr.io/madfam-org/crea-sim/gateway@sha256:") {
 			return nil, fmt.Errorf("initial portal producer mismatch")
 		}
-		command = []string{"node", "packages/entrenamiento/src/migrar.ts"}
-		allowed["CREA_SIM_MIGRATOR_DATABASE_URL"], allowed["CREA_SIM_DATABASE_NAMESPACE"] = true, true
+		command = []string{"node", "packages/entrenamiento/src/preparar-custodia-reset.ts"}
+		migration = []string{"node", "packages/entrenamiento/src/migrar.ts"}
+		allowed["CREA_SIM_MIGRATOR_DATABASE_URL"], allowed["CREA_SIM_PORTAL_DATABASE_URL"], allowed["CREA_SIM_DATABASE_NAMESPACE"] = true, true, true
 	default:
 		return nil, fmt.Errorf("unsupported initial Job profile")
 	}
@@ -127,12 +137,16 @@ func BuildIsolatedInitialJob(p IsolatedInitialJobPlan) (*batchv1.Job, error) {
 		environment = append(environment, corev1.EnvVar{Name: key, ValueFrom: &corev1.EnvVarSource{SecretKeyRef: &corev1.SecretKeySelector{LocalObjectReference: corev1.LocalObjectReference{Name: p.jobName() + "-credentials"}, Key: key}}})
 	}
 	container := corev1.Container{Name: "initial", Image: p.Image, ImagePullPolicy: corev1.PullAlways, Command: command, Env: environment,
-		SecurityContext: &corev1.SecurityContext{AllowPrivilegeEscalation: ptr.To(false), ReadOnlyRootFilesystem: ptr.To(true), Capabilities: &corev1.Capabilities{Drop: []corev1.Capability{"ALL"}}},
-		Resources:       corev1.ResourceRequirements{Requests: corev1.ResourceList{corev1.ResourceCPU: resource.MustParse("100m"), corev1.ResourceMemory: resource.MustParse("256Mi")}, Limits: corev1.ResourceList{corev1.ResourceCPU: resource.MustParse("500m"), corev1.ResourceMemory: resource.MustParse("1Gi")}},
-		VolumeMounts:    []corev1.VolumeMount{{Name: "ca", MountPath: "/var/run/crea-sim/ca", ReadOnly: true}, {Name: "tmp", MountPath: "/tmp"}}}
+		SecurityContext:        &corev1.SecurityContext{AllowPrivilegeEscalation: ptr.To(false), ReadOnlyRootFilesystem: ptr.To(true), Capabilities: &corev1.Capabilities{Drop: []corev1.Capability{"ALL"}}},
+		TerminationMessagePath: corev1.TerminationMessagePathDefault, TerminationMessagePolicy: corev1.TerminationMessageReadFile,
+		Resources:    corev1.ResourceRequirements{Requests: corev1.ResourceList{corev1.ResourceCPU: resource.MustParse("100m"), corev1.ResourceMemory: resource.MustParse("256Mi")}, Limits: corev1.ResourceList{corev1.ResourceCPU: resource.MustParse("500m"), corev1.ResourceMemory: resource.MustParse("1Gi")}},
+		VolumeMounts: []corev1.VolumeMount{{Name: "ca", MountPath: "/var/run/crea-sim/ca", ReadOnly: true}, {Name: "tmp", MountPath: "/tmp"}}}
 	job := &batchv1.Job{TypeMeta: metav1.TypeMeta{APIVersion: "batch/v1", Kind: "Job"}, ObjectMeta: metav1.ObjectMeta{Name: p.jobName(), Namespace: p.Namespace, Labels: p.jobLabels(), Annotations: map[string]string{"enclii.dev/bootstrap-fingerprint": p.fingerprint(), "enclii.dev/operation-reason": p.Reason}},
-		Spec: batchv1.JobSpec{Suspend: ptr.To(true), BackoffLimit: ptr.To[int32](0), ActiveDeadlineSeconds: ptr.To[int64](600), TTLSecondsAfterFinished: ptr.To[int32](3600), Template: corev1.PodTemplateSpec{ObjectMeta: metav1.ObjectMeta{Labels: p.jobLabels()}, Spec: corev1.PodSpec{RestartPolicy: corev1.RestartPolicyNever, AutomountServiceAccountToken: ptr.To(false), ImagePullSecrets: []corev1.LocalObjectReference{{Name: "ghcr-credentials"}}, SecurityContext: &corev1.PodSecurityContext{RunAsNonRoot: ptr.To(true), RunAsUser: ptr.To[int64](1000), RunAsGroup: ptr.To[int64](1000), FSGroup: ptr.To[int64](1000), SeccompProfile: &corev1.SeccompProfile{Type: corev1.SeccompProfileTypeRuntimeDefault}}, Containers: []corev1.Container{container}, Volumes: []corev1.Volume{{Name: "ca", VolumeSource: corev1.VolumeSource{Secret: &corev1.SecretVolumeSource{SecretName: p.jobName() + "-credentials", Items: []corev1.KeyToPath{{Key: "ca.crt", Path: "ca.crt"}}}}}, {Name: "tmp", VolumeSource: corev1.VolumeSource{EmptyDir: &corev1.EmptyDirVolumeSource{}}}}}}}} // pragma: allowlist secret -- fixed Secret references; private values are resolved at runtime
-	if len(migration) > 0 {
+		Spec: batchv1.JobSpec{Parallelism: ptr.To[int32](1), Completions: ptr.To[int32](1), CompletionMode: ptr.To(batchv1.NonIndexedCompletion), PodReplacementPolicy: ptr.To(batchv1.TerminatingOrFailed), Suspend: ptr.To(true), BackoffLimit: ptr.To[int32](0), ActiveDeadlineSeconds: ptr.To[int64](600), TTLSecondsAfterFinished: ptr.To[int32](3600), Template: corev1.PodTemplateSpec{ObjectMeta: metav1.ObjectMeta{Labels: p.jobLabels()}, Spec: corev1.PodSpec{Tolerations: []corev1.Toleration{
+			{Key: corev1.TaintNodeNotReady, Operator: corev1.TolerationOpExists, Effect: corev1.TaintEffectNoExecute, TolerationSeconds: ptr.To[int64](300)},
+			{Key: corev1.TaintNodeUnreachable, Operator: corev1.TolerationOpExists, Effect: corev1.TaintEffectNoExecute, TolerationSeconds: ptr.To[int64](300)},
+		}, DNSPolicy: corev1.DNSClusterFirst, SchedulerName: corev1.DefaultSchedulerName, TerminationGracePeriodSeconds: ptr.To[int64](30), EnableServiceLinks: ptr.To(true), ServiceAccountName: "default", DeprecatedServiceAccount: "default", Priority: ptr.To[int32](0), PreemptionPolicy: ptr.To(corev1.PreemptLowerPriority), RestartPolicy: corev1.RestartPolicyNever, AutomountServiceAccountToken: ptr.To(false), ImagePullSecrets: []corev1.LocalObjectReference{{Name: "ghcr-credentials"}}, SecurityContext: &corev1.PodSecurityContext{RunAsNonRoot: ptr.To(true), RunAsUser: ptr.To[int64](1000), RunAsGroup: ptr.To[int64](1000), FSGroup: ptr.To[int64](1000), SeccompProfile: &corev1.SeccompProfile{Type: corev1.SeccompProfileTypeRuntimeDefault}}, Containers: []corev1.Container{container}, Volumes: []corev1.Volume{{Name: "ca", VolumeSource: corev1.VolumeSource{Secret: &corev1.SecretVolumeSource{SecretName: p.jobName() + "-credentials", DefaultMode: ptr.To(corev1.SecretVolumeSourceDefaultMode), Items: []corev1.KeyToPath{{Key: "ca.crt", Path: "ca.crt"}}}}}, {Name: "tmp", VolumeSource: corev1.VolumeSource{EmptyDir: &corev1.EmptyDirVolumeSource{}}}}}}}} // pragma: allowlist secret -- fixed Secret references; private values are resolved at runtime
+	if len(migration) > 0 && p.Profile == "map-sim-initial" {
 		job.Spec.Template.Spec.SecurityContext.RunAsUser = ptr.To[int64](1001)
 		job.Spec.Template.Spec.SecurityContext.RunAsGroup = ptr.To[int64](1001)
 		job.Spec.Template.Spec.SecurityContext.FSGroup = ptr.To[int64](1001)
@@ -144,11 +158,17 @@ func BuildIsolatedInitialJob(p IsolatedInitialJobPlan) (*batchv1.Job, error) {
 		init.Command = migration
 		job.Spec.Template.Spec.InitContainers = []corev1.Container{*fresh, *init}
 	}
+	if p.Profile == "portal-sim-initial" {
+		init := container.DeepCopy()
+		init.Name = "portal001"
+		init.Command = migration
+		job.Spec.Template.Spec.InitContainers = []corev1.Container{*init}
+	}
 	return job, nil
 }
 
 func initialJobReceipt(job *batchv1.Job, dryRun bool) IsolatedInitialJobReceipt {
-	return IsolatedInitialJobReceipt{Name: job.Name, Namespace: job.Namespace, DryRun: dryRun, Suspended: job.Spec.Suspend != nil && *job.Spec.Suspend, Succeeded: job.Status.Succeeded, Failed: job.Status.Failed, Active: job.Status.Active}
+	return IsolatedInitialJobReceipt{Name: job.Name, Namespace: job.Namespace, DryRun: dryRun, Suspended: job.Spec.Suspend != nil && *job.Spec.Suspend, Succeeded: job.Status.Succeeded, Failed: job.Status.Failed, Active: job.Status.Active, Classification: "INITIAL_ONLY_EXECUTION"}
 }
 
 func (c *Client) checkInitialJobNamespace(ctx context.Context, p IsolatedInitialJobPlan) error {
@@ -156,7 +176,7 @@ func (c *Client) checkInitialJobNamespace(ctx context.Context, p IsolatedInitial
 		return fmt.Errorf("initial Job adapter unavailable")
 	}
 	ns, err := c.kubeClient().CoreV1().Namespaces().Get(ctx, p.Namespace, metav1.GetOptions{})
-	if err != nil || ns.UID == "" || ns.Labels[LabelProjectNamespace] != p.ProjectID.String() || ns.Labels["enclii.dev/verify-signatures"] != "true" {
+	if err != nil || ns.UID == "" || ns.Labels[LabelProjectNamespace] != p.ProjectID.String() || ns.Labels["enclii.dev/verify-signatures"] != "true" || string(ns.UID) != p.Identity.AddonNamespaceUID {
 		return ErrNamespaceOwnership
 	}
 	policy, err := c.DynamicClient.Resource(schema.GroupVersionResource{Group: "kyverno.io", Version: "v1", Resource: "clusterpolicies"}).Get(ctx, "verify-image-signatures", metav1.GetOptions{})
@@ -283,7 +303,8 @@ func (c *Client) admitInitialJob(ctx context.Context, job *batchv1.Job, includeJ
 	return nil
 }
 
-// Create suspended first, prepare owned transient custody/network, recheck
+// Create suspended first, bind its observed UID in immutable namespace intent,
+// prepare owned transient custody/network, recheck
 // authority, then activate once. A timeout never starts an automatic retry.
 func (c *Client) RunIsolatedInitialJob(ctx context.Context, p IsolatedInitialJobPlan, dryRun bool) (*IsolatedInitialJobReceipt, error) {
 	job, err := BuildIsolatedInitialJob(p)
@@ -293,26 +314,64 @@ func (c *Client) RunIsolatedInitialJob(ctx context.Context, p IsolatedInitialJob
 	if err = c.checkInitialJobNamespace(ctx, p); err != nil {
 		return nil, err
 	}
+	intent, err := p.initialIntent(job)
+	if err != nil {
+		return nil, err
+	}
+	if err = c.checkInitialOperationExclusion(ctx, p); err != nil {
+		return nil, err
+	}
 	jobs := c.kubeClient().BatchV1().Jobs(p.Namespace)
-	existing, err := jobs.Get(ctx, job.Name, metav1.GetOptions{})
-	fresh := k8serrors.IsNotFound(err)
-	if err == nil {
-		if existing.UID == "" || !reflect.DeepEqual(existing.Labels, job.Labels) || existing.Annotations["enclii.dev/bootstrap-fingerprint"] != p.fingerprint() {
-			return nil, fmt.Errorf("initial Job idempotency conflicts with existing object")
+	retained, intentErr := c.readInitialIntent(ctx, p, intent)
+	existing, jobErr := jobs.Get(ctx, job.Name, metav1.GetOptions{})
+	if intentErr == nil {
+		if DecodeInitialBootstrapJSON([]byte(retained.Data["payload"]), &intent) != nil {
+			return nil, fmt.Errorf("initial intent refused")
 		}
-		if existing.Spec.Suspend == nil || !*existing.Spec.Suspend || existing.Status.Active > 0 || existing.Status.Succeeded > 0 || existing.Status.Failed > 0 {
-			receipt := initialJobReceipt(existing, dryRun)
-			return &receipt, nil
+		native, receiptErr := c.readInitialReceipt(ctx, p, retained)
+		if receiptErr == nil {
+			return &IsolatedInitialJobReceipt{Name: job.Name, Namespace: p.Namespace, Succeeded: 1, Native: native, Classification: "INITIAL_ONLY", DryRun: dryRun}, nil
 		}
-		job = existing
-	} else if !fresh {
-		return nil, fmt.Errorf("initial Job status unavailable")
+		if !k8serrors.IsNotFound(receiptErr) {
+			return nil, receiptErr
+		}
+		if jobErr != nil || !initialJobMatches(existing, job, intent) {
+			return nil, fmt.Errorf("initial intent has no matching Job; held, no retry")
+		}
+		if existing.Spec.Suspend == nil || *existing.Spec.Suspend || existing.Status.Failed > 0 {
+			return nil, fmt.Errorf("initial Job partial or failed; held, no repair")
+		}
+		receipt := initialJobReceipt(existing, dryRun)
+		if existing.Status.Succeeded > 0 && !dryRun {
+			if p.Revalidate == nil || p.Revalidate(ctx) != nil {
+				return nil, fmt.Errorf("initial collection authority changed")
+			}
+			receipt.Native, err = c.collectInitialReceipt(ctx, p, existing, job, retained, intent)
+			if err != nil {
+				return nil, err
+			}
+			receipt.Classification = "INITIAL_ONLY"
+		}
+		return &receipt, nil
 	}
-	if err = c.ensureInitialRegistryCustody(ctx, p, dryRun, true); err != nil {
+	if !k8serrors.IsNotFound(intentErr) {
+		return nil, fmt.Errorf("initial retained intent unavailable or conflicting")
+	}
+	if !k8serrors.IsNotFound(jobErr) {
+		return nil, fmt.Errorf("existing or unknown Job without retained intent; held")
+	}
+	if err = c.ensureInitialRegistryCustody(ctx, p, true, true); err != nil {
 		return nil, err
 	}
-	if err = c.admitInitialJob(ctx, job, fresh); err != nil {
+	if err = c.admitInitialJob(ctx, job, true); err != nil {
 		return nil, err
+	}
+	record, err := initialRecord(p, "-intent", intent)
+	if err != nil {
+		return nil, err
+	}
+	if _, err = c.kubeClient().CoreV1().ConfigMaps(p.Namespace).Create(ctx, record, metav1.CreateOptions{DryRun: []string{metav1.DryRunAll}}); err != nil {
+		return nil, fmt.Errorf("initial intent admission refused")
 	}
 	if dryRun {
 		receipt := initialJobReceipt(job, true)
@@ -321,14 +380,34 @@ func (c *Client) RunIsolatedInitialJob(ctx context.Context, p IsolatedInitialJob
 	if p.Revalidate == nil {
 		return nil, fmt.Errorf("initial Job authority recheck unavailable")
 	}
-	if fresh {
-		job, err = jobs.Create(ctx, job, metav1.CreateOptions{})
-		if err != nil {
-			return nil, fmt.Errorf("initial suspended Job creation failed")
-		}
+
+	expected := job.DeepCopy()
+	name := job.Name
+	job, err = jobs.Create(ctx, job, metav1.CreateOptions{})
+	if err != nil {
+		_, _ = jobs.Get(ctx, name, metav1.GetOptions{})
+		return nil, fmt.Errorf("initial Job creation uncertain; read same operation, no retry")
 	}
-	if job.UID == "" {
-		return nil, fmt.Errorf("initial Job identity unavailable")
+	if job.UID == "" || job.ResourceVersion == "" || !initialJobMatches(job, expected, intent) {
+		return nil, fmt.Errorf("initial suspended Job identity/spec unavailable; held")
+	}
+	intent.JobUID = string(job.UID)
+	intent.CreationResourceVersion = job.ResourceVersion
+	record, err = initialRecord(p, "-intent", intent)
+	if err != nil {
+		return nil, err
+	}
+	retained, err = c.kubeClient().CoreV1().ConfigMaps(p.Namespace).Create(ctx, record, metav1.CreateOptions{})
+	if err != nil {
+		_, _ = c.kubeClient().CoreV1().ConfigMaps(p.Namespace).Get(ctx, record.Name, metav1.GetOptions{})
+		return nil, fmt.Errorf("initial intent creation uncertain; read same operation, no retry")
+	}
+	var kept initialIntent
+	if validateInitialRecord(retained, p, "-intent", &kept) != nil || !reflect.DeepEqual(kept, intent) {
+		return nil, fmt.Errorf("initial intent retention not accredited")
+	}
+	if err = c.ensureInitialRegistryCustody(ctx, p, false, true); err != nil {
+		return nil, err
 	}
 	owner := metav1.OwnerReference{APIVersion: "batch/v1", Kind: "Job", Name: job.Name, UID: job.UID, Controller: ptr.To(true)}
 	secret := &corev1.Secret{ObjectMeta: metav1.ObjectMeta{Name: job.Name + "-credentials", Namespace: p.Namespace, Labels: p.jobLabels(), OwnerReferences: []metav1.OwnerReference{owner}}, Type: corev1.SecretTypeOpaque, Data: p.Data}
@@ -362,11 +441,9 @@ func (c *Client) RunIsolatedInitialJob(ctx context.Context, p IsolatedInitialJob
 	if err = c.ensureInitialRegistryCustody(ctx, p, true, false); err != nil {
 		return nil, fmt.Errorf("initial Job remains suspended: registry custody changed")
 	}
-	// Use the last verified resourceVersion and do not recreate on conflict.
-	job.Spec.Suspend = ptr.To(false)
-	job, err = jobs.Update(ctx, job, metav1.UpdateOptions{})
+	job, err = c.activateInitialJob(ctx, p, job, expected, intent, retained)
 	if err != nil {
-		return nil, fmt.Errorf("initial Job activation uncertain; inspect the same idempotency key before any new operation")
+		return nil, err
 	}
 	receipt := initialJobReceipt(job, false)
 	return &receipt, nil
@@ -385,10 +462,27 @@ func (c *Client) IsolatedInitialJobStatus(ctx context.Context, namespace, name s
 	if _, err := hex.DecodeString(name[len("initial-"):]); err != nil {
 		return nil, nil, fmt.Errorf("initial Job status name refused")
 	}
-	job, err := c.kubeClient().BatchV1().Jobs(namespace).Get(ctx, name, metav1.GetOptions{})
-	if err != nil || job.UID == "" || job.Labels["enclii.dev/managed-by"] != initialJobManager || job.Labels[LabelProjectNamespace] != project.String() || job.Labels["enclii.dev/addon-id"] != addon.String() || job.Labels["enclii.dev/bootstrap-job"] != name {
-		return nil, nil, fmt.Errorf("owned initial Job unavailable")
+	return c.retainedInitialStatus(ctx, namespace, name, project, addon)
+}
+
+// Activation is one CAS update on the last authoritative read, never a retry.
+func (c *Client) activateInitialJob(ctx context.Context, p IsolatedInitialJobPlan, job, expected *batchv1.Job, intent initialIntent, retained *corev1.ConfigMap) (*batchv1.Job, error) {
+	jobs := c.kubeClient().BatchV1().Jobs(p.Namespace)
+	// Read the same UID and fixed spec immediately before the one CAS PUT.
+	// The original creation RV stays historical; controller updates may advance it.
+	current, e := jobs.Get(ctx, job.Name, metav1.GetOptions{})
+	if e != nil || !initialJobMatches(current, expected, intent) || current.Spec.Suspend == nil || !*current.Spec.Suspend || current.Status.Active != 0 || current.Status.Succeeded != 0 || current.Status.Failed != 0 {
+		return nil, fmt.Errorf("initial suspended Job changed; held")
 	}
-	receipt := initialJobReceipt(job, false)
-	return &receipt, map[string]string{"profile": job.Labels["enclii.dev/bootstrap-profile"], "service_id": job.Labels["enclii.dev/service-id"]}, nil
+	currentIntent, e := c.readInitialIntent(ctx, p, intent)
+	if e != nil || currentIntent.UID != retained.UID {
+		return nil, fmt.Errorf("initial retained intent changed; held")
+	}
+	job = current
+	job.Spec.Suspend = ptr.To(false)
+	job, err := jobs.Update(ctx, job, metav1.UpdateOptions{})
+	if err != nil {
+		return nil, fmt.Errorf("initial Job activation uncertain; inspect the same idempotency key before any new operation")
+	}
+	return job, nil
 }

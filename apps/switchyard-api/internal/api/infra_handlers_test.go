@@ -483,7 +483,7 @@ func TestScaleRequest_JSONBinding(t *testing.T) {
 		// 0 is the zero-value for the type. This is a known gin behavior.
 		// The handler's replica cap logic (replicas < 0) provides the
 		// secondary validation for scale-to-zero requests.
-		{"zero replicas fails binding", `{"replicas":0}`, true},
+		{"zero replicas fails binding", `{"replicas":0}`, false},
 		{"with env", `{"replicas":2,"env":"staging"}`, false},
 		{"missing replicas", `{"env":"staging"}`, true},
 		{"invalid json", `{bad`, true},

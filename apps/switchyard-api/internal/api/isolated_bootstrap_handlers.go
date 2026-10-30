@@ -2,7 +2,6 @@ package api
 
 import (
 	"context"
-	"encoding/json"
 	"io"
 	"net/http"
 	"reflect"
@@ -24,15 +23,9 @@ func (h *Handler) InitialBootstrapAddon(c *gin.Context) {
 		DryRun         *bool  `json:"dry_run"`
 		Reason         string `json:"reason"`
 	}
-	decoder := json.NewDecoder(http.MaxBytesReader(c.Writer, c.Request.Body, 8192))
-	decoder.DisallowUnknownFields()
-	if decoder.Decode(&request) != nil {
+	body, bodyErr := io.ReadAll(http.MaxBytesReader(c.Writer, c.Request.Body, 8192))
+	if bodyErr != nil || k8s.DecodeInitialBootstrapJSON(body, &request) != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "initial bootstrap accepts only its closed request fields"})
-		return
-	}
-	var trailing any
-	if decoder.Decode(&trailing) != io.EOF {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "initial bootstrap requires one JSON object"})
 		return
 	}
 	profile, err := isolatedBootstrapProfileFor(request.Profile)
@@ -67,13 +60,19 @@ func (h *Handler) InitialBootstrapAddon(c *gin.Context) {
 		return
 	}
 	bindings, err := h.repos.DatabaseAddons.GetBindingsByService(c.Request.Context(), serviceID)
-	bound := false
+	bound := 0
+	bindingID := uuid.Nil
+	runtimeKey := "DATABASE_URL"
+	if profile.Name == "portal-sim-initial" {
+		runtimeKey = "CREA_SIM_PORTAL_DATABASE_URL"
+	}
 	for _, binding := range bindings {
-		if binding.AddonID == addonID && binding.ServiceID == serviceID && binding.Status == types.DatabaseAddonBindingStatusActive {
-			bound = true
+		if binding.AddonID == addonID && binding.ServiceID == serviceID && binding.Status == types.DatabaseAddonBindingStatusActive && binding.EnvVarName == runtimeKey && binding.ID != uuid.Nil {
+			bound++
+			bindingID = binding.ID
 		}
 	}
-	if err != nil || !bound {
+	if err != nil || bound != 1 {
 		c.JSON(http.StatusConflict, gin.H{"error": "exact active same-project addon binding required"})
 		return
 	}
@@ -98,6 +97,11 @@ func (h *Handler) InitialBootstrapAddon(c *gin.Context) {
 		c.JSON(http.StatusConflict, gin.H{"error": "owned workload configuration/runtime binding not accredited"})
 		return
 	}
+	identity, err := h.initialBootstrapIdentity(c.Request.Context(), profile, project.ID, deployment, credentials, addon.K8sNamespace, bindingID, registration.ID, proof)
+	if err != nil {
+		c.JSON(http.StatusConflict, gin.H{"error": "initial retained workload identities unavailable"})
+		return
+	}
 	if dryRun {
 		if request.IdempotencyKey == "" {
 			request.IdempotencyKey = "dry-run"
@@ -106,7 +110,7 @@ func (h *Handler) InitialBootstrapAddon(c *gin.Context) {
 			request.Reason = "read-only initial bootstrap admission preflight"
 		}
 	}
-	plan := k8s.IsolatedInitialJobPlan{ProjectID: project.ID, AddonID: addonID, ServiceID: serviceID, Namespace: addon.K8sNamespace, Cluster: addon.K8sResourceName, Profile: profile.Name, Image: image, IdempotencyKey: request.IdempotencyKey, Reason: request.Reason, Data: data}
+	plan := k8s.IsolatedInitialJobPlan{ProjectID: project.ID, AddonID: addonID, ServiceID: serviceID, Namespace: addon.K8sNamespace, Cluster: addon.K8sResourceName, Profile: profile.Name, Image: image, IdempotencyKey: request.IdempotencyKey, Reason: request.Reason, Data: data, Identity: identity}
 	plan.Revalidate = func(ctx context.Context) error {
 		currentService, e := h.repos.Services.GetByID(serviceID)
 		if e != nil {
@@ -122,7 +126,7 @@ func (h *Handler) InitialBootstrapAddon(c *gin.Context) {
 		}
 		active := false
 		for _, b := range currentBindings {
-			if b.AddonID == addonID && b.Status == types.DatabaseAddonBindingStatusActive {
+			if b.AddonID == addonID && b.ServiceID == serviceID && b.ID == bindingID && b.EnvVarName == runtimeKey && b.Status == types.DatabaseAddonBindingStatusActive {
 				active = true
 			}
 		}
@@ -130,7 +134,7 @@ func (h *Handler) InitialBootstrapAddon(c *gin.Context) {
 			return io.ErrUnexpectedEOF
 		}
 		currentDeployment, e := h.initialWorkload(ctx, profile, project.ID)
-		if e != nil || currentDeployment.UID != deployment.UID || currentDeployment.Spec.Template.Spec.Containers[0].Image != image {
+		if e != nil || currentDeployment.UID != deployment.UID || currentDeployment.ResourceVersion != deployment.ResourceVersion || currentDeployment.Spec.Template.Spec.Containers[0].Image != image {
 			return io.ErrUnexpectedEOF
 		}
 		currentCredentials, e := h.addonService.InitialBootstrapCredentials(ctx, current)
@@ -139,6 +143,14 @@ func (h *Handler) InitialBootstrapAddon(c *gin.Context) {
 		}
 		currentData, e := h.initialJobData(ctx, profile, currentDeployment, currentCredentials, current.K8sNamespace)
 		if e != nil || !reflect.DeepEqual(currentData, data) {
+			return io.ErrUnexpectedEOF
+		}
+		currentIdentity, e := h.initialBootstrapIdentity(ctx, profile, project.ID, currentDeployment, currentCredentials, current.K8sNamespace, bindingID, registration.ID, proof)
+		if e != nil || !reflect.DeepEqual(currentIdentity, identity) {
+			return io.ErrUnexpectedEOF
+		}
+		currentRegistration, e := h.repos.Onboardings.GetByRepo(ctx, "madfam-org/crea-sim")
+		if e != nil || currentRegistration == nil || currentRegistration.ID != registration.ID || currentRegistration.ProjectID != project.ID || currentRegistration.OnboardStatus != "completed" {
 			return io.ErrUnexpectedEOF
 		}
 		return nil
@@ -198,5 +210,5 @@ func (h *Handler) InitialBootstrapAddonStatus(c *gin.Context) {
 		c.JSON(http.StatusNotFound, gin.H{"error": "owned initial service unavailable"})
 		return
 	}
-	c.JSON(http.StatusOK, gin.H{"job": receipt, "scope": "execution status only; durable kernel control/manifest accreditation is separate"})
+	c.JSON(http.StatusOK, gin.H{"job": receipt, "scope": "INITIAL_ONLY retained history; current readiness, kernel control and reset accreditation remain separate"})
 }

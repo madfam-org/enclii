@@ -15,6 +15,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/intstr"
 	dynamicfake "k8s.io/client-go/dynamic/fake"
 	kubefake "k8s.io/client-go/kubernetes/fake"
@@ -23,7 +24,11 @@ import (
 
 func initialPortalPlan() IsolatedInitialJobPlan {
 	id := uuid.New()
-	return IsolatedInitialJobPlan{ProjectID: id, AddonID: uuid.New(), ServiceID: uuid.New(), Namespace: "project-" + id.String()[:8], Cluster: "pg-fixture-owned", Profile: "portal-sim-initial", Image: "ghcr.io/madfam-org/crea-sim/gateway@sha256:" + strings.Repeat("a", 64), Reason: "synthetic initial proof", IdempotencyKey: "synthetic-operation", Data: map[string][]byte{"CREA_SIM_MIGRATOR_DATABASE_URL": []byte("synthetic-owner-uri-never-returned"), "CREA_SIM_DATABASE_NAMESPACE": []byte("synthetic-namespace"), "ca.crt": []byte("synthetic-public-ca")}}
+	return IsolatedInitialJobPlan{ProjectID: id, AddonID: uuid.New(), ServiceID: uuid.New(), Namespace: "project-" + id.String()[:8], Cluster: "pg-fixture-owned", Profile: "portal-sim-initial", Image: "ghcr.io/madfam-org/crea-sim/gateway@sha256:" + strings.Repeat("a", 64), Reason: "synthetic initial proof", IdempotencyKey: "synthetic-operation", Identity: initialFixtureIdentity(), Data: map[string][]byte{"CREA_SIM_MIGRATOR_DATABASE_URL": []byte("synthetic-owner-uri-never-returned"), "CREA_SIM_PORTAL_DATABASE_URL": []byte("synthetic-runtime-uri-never-returned"), "CREA_SIM_DATABASE_NAMESPACE": []byte("synthetic-namespace"), "ca.crt": []byte("synthetic-public-ca")}}
+}
+
+func initialFixtureIdentity() InitialBootstrapIdentity {
+	return InitialBootstrapIdentity{ApplicationNamespaceUID: "owned-app-namespace", AddonNamespaceUID: "owned-namespace", DeploymentUID: "owned-deployment", DeploymentResourceVersion: "7", WorkloadServiceUID: "owned-service", ClusterUID: "owned-cluster", BindingID: uuid.New(), OnboardingID: uuid.New(), Database: "crea_sim_portal_sim", OwnerRole: "enclii_migrator", RuntimeRole: "crea_sim_portal", PublicCASHA256: initialHash([]byte("synthetic-public-ca")), Producer: "madfam-org/crea-sim", SourceRevision: strings.Repeat("b", 40), BuildRunID: 9, Checks: 2, SignatureVerified: true, PinPayloadSHA256: strings.Repeat("c", 64)}
 }
 
 func initialJobClient(t *testing.T, p IsolatedInitialJobPlan) (*Client, *kubefake.Clientset, *dynamicfake.FakeDynamicClient) {
@@ -48,6 +53,18 @@ func initialJobClient(t *testing.T, p IsolatedInitialJobPlan) (*Client, *kubefak
 			return true, job, nil
 		}
 		job.UID = "owned-job"
+		job.ResourceVersion = "1"
+		return false, nil, nil
+	})
+
+	client.PrependReactor("create", "configmaps", func(a ktesting.Action) (bool, runtime.Object, error) {
+		action := a.(ktesting.CreateActionImpl)
+		cm := action.GetObject().(*corev1.ConfigMap)
+		if len(action.GetCreateOptions().DryRun) > 0 {
+			return true, cm, nil
+		}
+		cm.UID = types.UID(cm.Name + "-uid")
+		cm.ResourceVersion = "1"
 		return false, nil, nil
 	})
 	client.PrependReactor("create", "pods", func(a ktesting.Action) (bool, runtime.Object, error) {
