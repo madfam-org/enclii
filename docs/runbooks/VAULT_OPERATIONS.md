@@ -233,6 +233,14 @@ kubectl annotate externalsecret <name> -n <namespace> force-sync=$(date +%s) --o
 
 Vault seals on every restart. Set up auto-unseal (AWS KMS, GCP Cloud KMS, or Transit) to avoid manual intervention. Current setup requires manual unsealing with 3/5 keys.
 
+A storage fault also ends here. When Longhorn re-attaches Vault's volume after
+an unexpected detach, it deletes `vault-0`
+(`autoDeletePodWhenVolumeDetachedUnexpectedly: true` in
+`infra/argocd/apps/storage.yaml`), and the StatefulSet recreates it sealed.
+Unseal as in [Unsealing Vault](#unsealing-vault). With the setting off, the
+running pod kept the dead device: writes failed with `input/output error`
+while cached reads kept working, and nothing alerted (2026-10-30).
+
 ---
 
 ## Switchyard Vault writer (secret intake + vault-backfill)
