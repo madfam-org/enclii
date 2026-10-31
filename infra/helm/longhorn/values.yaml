@@ -34,9 +34,12 @@ defaultSettings:
   # Auto-salvage replicas when majority are available
   autoSalvage: true
 
-  # Disable auto-deletion of workload pods on volume degradation
-  # (allows time for manual intervention)
-  autoDeletePodWhenVolumeDetachedUnexpectedly: false
+  # Delete workload pods whose volume was detached unexpectedly (salvage or
+  # remount) so the controller recreates them on the new device. With false,
+  # running pods kept the dead device and writes failed with EIO until a
+  # manual restart (2026-10-30, Vault). Only pods with a controller are
+  # deleted; a recreated Vault pod starts sealed and needs unsealing.
+  autoDeletePodWhenVolumeDetachedUnexpectedly: true
 
   # Node drain policy - allow pods to continue during maintenance
   nodeDrainPolicy: always-allow
