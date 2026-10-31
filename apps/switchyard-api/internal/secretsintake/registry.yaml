@@ -603,7 +603,7 @@ targets:
       - porkbun_api_key
       - porkbun_secret_key
 
-  # Telesia (onboarded 2026-09-12, enclii#546). Two targets, one Vault path.
+  # Telesia (onboarded 2026-09-12, enclii#546). Three targets, one Vault path.
   #
   # LOWERCASE properties throughout, matching the `property:` fields telesia's
   # ExternalSecrets reference. ESO is all-or-nothing per ExternalSecret: one
@@ -648,6 +648,28 @@ targets:
       - database_url
       - direct_database_url
       - redis_url
+
+  # Telesia's dashboard session secret (2026-10-31, gate U5). Auth.js signs the
+  # app.telesia.quest session cookie with AUTH_SECRET, and telesia-web refuses
+  # sign-in until AUTH_SECRET, JANUA_CLIENT_ID and JANUA_CLIENT_SECRET are all
+  # present. A separate target from telesia/oidc-janua for the creator-census
+  # reason: the CLI prompts for every key not in --generate, so one target holding
+  # the Janua pair and auth_secret would make `--generate auth_secret` ask for a
+  # client secret no human holds. Written only by
+  # `enclii secrets intake submit telesia/web-session --generate auth_secret`.
+  # 48 bytes matches telesia's own runbook (`openssl rand -base64 48`); its env
+  # schema floors AUTH_SECRET at 32 characters. Same path and ExternalSecret as
+  # telesia/oidc-janua (intake writes merge), so the writer policy needs no new path.
+  telesia/web-session:
+    label: Telesia web session signing secret
+    description: Signs the Telesia dashboard (app.telesia.quest) Auth.js session cookie (AUTH_SECRET). Mint server-side with --generate auth_secret (48 bytes crypto/rand, never returned); rotating it signs every player out.
+    vault_path: secret/telesia
+    namespace: telesia
+    external_secret: telesia-web-secrets  # pragma: allowlist secret
+    generate:
+      bytes: 48
+    keys:
+      - auth_secret
 
   # creator-census (2026-09-24) — the census web (cc-app.madfam.io), a Next.js
   # BFF that signs in through Janua. Its Deployment mounts Secret

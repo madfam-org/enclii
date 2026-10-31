@@ -116,6 +116,8 @@ ESO sources: `enclii-secrets`, `janua-secrets`, `madfam-site-secrets`, `phynd-cr
 | `family-history/api-access` | `secret/family-history` | `fh_early_access_allowlist` |
 | `family-history/web-oidc` | `secret/family-history` | `auth_janua_client_id`, `auth_janua_client_secret` |
 | `family-history/web-session` | `secret/family-history` | `fh_session_secret` |
+| `telesia/oidc-janua` | `secret/telesia` | `janua_client_id`, `janua_client_secret` |
+| `telesia/web-session` | `secret/telesia` | `auth_secret` (`--generate`, 48 bytes) |
 | `pravara-mes/yantra4d-step-reader` | `secret/pravara-mes` | `yantra4d_step_reader_client_id`, `yantra4d_step_reader_client_secret` |
 | `pravara-mes/asset-shells-publisher-madfam-ecosystem` | `secret/pravara-mes` | `asset_shells_publisher_madfam_ecosystem_client_id`, `asset_shells_publisher_madfam_ecosystem_client_secret` |
 | `pravara-mes/fabrication-prep-client` | `secret/pravara-mes` | `fabrication_prep_client_id`, `fabrication_prep_client_secret` |
