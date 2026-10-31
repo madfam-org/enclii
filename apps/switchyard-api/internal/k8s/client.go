@@ -1049,8 +1049,11 @@ func (c *Client) EnsureSecretCopiedFrom(
 	// An immutable Secret's Data cannot be updated in place. If the source
 	// credential rotated (Data differs) or the existing copy predates
 	// owner/immutability, replace it: delete + recreate under the new
-	// invariants. The consumer (CNPG barman) re-reads on its next backup, and
-	// the OwnerReference means a missed delete still gets GC'd with the cluster.
+	// invariants. CNPG does NOT re-read it on its own: its instance manager
+	// reloads the credential only when its Cluster changes, so the addon backup
+	// sweep annotates the Cluster after a replace (backupCredentialAnnotation in
+	// internal/addons). The OwnerReference means a missed delete still gets
+	// GC'd with the cluster.
 	needsReplace := !bytes.Equal(secretDataDigest(existing.Data), secretDataDigest(desired.Data)) ||
 		existing.Immutable == nil || len(existing.OwnerReferences) == 0
 	if !needsReplace {

@@ -73,7 +73,12 @@ sweep) for every existing one. Per cluster, in this order:
    `<base>/<namespace>/<cluster>`, the copied credential, `retentionPolicy: 30d`.
    CNPG archives WAL to the same destination, so this is base backups **and**
    continuous WAL archiving;
-4. create `<cluster>-daily` (`0 0 4 * * *`, `immediate: true`).
+4. annotate the Cluster `enclii.dev/backup-credential-version` with a short
+   SHA-256 prefix of the copied credential (it names a version, never a value).
+   CNPG's instance manager does not watch Secret objects. It reloads the credential
+   only when its Cluster changes, so without this step a replaced copy leaves
+   running instances on the old one;
+5. create `<cluster>-daily` (`0 0 4 * * *`, `immediate: true`).
 
 Setting `spec.backup` switches WAL archiving to the object store. If an
 instance could not authenticate or connect, `archive_command` would fail and
@@ -148,7 +153,9 @@ Properties:
   plan never mints a second token.
 - **Rotation only when asked:** pass `--rotate` to both the dry run and the
   apply. The previous token is reported, not revoked: running clusters keep
-  archiving with their copies until the sweep replaces them. Revoke it in
+  archiving with their copies until the sweep replaces them and annotates each
+  Cluster with the new credential version, which makes its instances reload.
+  Revoke it in
   Cloudflare once `AddonWALArchiveFailing` has stayed quiet for a day.
 - **A refused mint names the missing permission.** If Cloudflare refuses, the
   result is `blocked` (HTTP 424) and names the exact permission the
@@ -192,6 +199,11 @@ kubectl get backups.postgresql.cnpg.io -n project-<id>     # phase completed
 kubectl get clusters.postgresql.cnpg.io -n project-<id> <cluster> \
   -o jsonpath='{.status.lastSuccessfulBackup} {.status.firstRecoverabilityPoint}{"\n"}'
 ```
+
+If an awake instance still logs `Credential access key has length 10` (or
+any `InvalidAccessKeyId`) after the sweep, check that its Cluster carries the
+current `enclii.dev/backup-credential-version`; the sweep logs «Addon backup
+credential version annotated» when it writes one.
 
 Check every **live, awake** addon, including any provisioned before the
 credential existed (those were created without a stanza and are wired by the

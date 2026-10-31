@@ -94,7 +94,7 @@ func TestConvergeBackupsWiresCredentialThenEgressThenStanzaThenSchedule(t *testi
 
 	out, err := p.convergeBackups(ctx, bkAddon())
 	require.NoError(t, err)
-	require.Equal(t, BackupConvergence{StanzaPatched: true, ScheduledBackupCreated: true}, out)
+	require.Equal(t, BackupConvergence{StanzaPatched: true, ScheduledBackupCreated: true, CredentialReloaded: true}, out)
 
 	// Credential copy: owned by THIS cluster, immutable, in the addon namespace.
 	copied, err := kube.CoreV1().Secrets(bkNS).Get(ctx, BackupCredentialsSecretName, metav1.GetOptions{})
@@ -131,7 +131,7 @@ func TestConvergeBackupsWiresCredentialThenEgressThenStanzaThenSchedule(t *testi
 	// Order: nothing that turns WAL archiving on happens before the credential
 	// and the egress rule exist.
 	require.Equal(t, []string{"create secrets", "create networkpolicies"}, writes(kube.Actions()))
-	require.Equal(t, []string{"patch clusters", "create scheduledbackups"}, writes(dyn.Actions()))
+	require.Equal(t, []string{"patch clusters", "patch clusters", "create scheduledbackups"}, writes(dyn.Actions()))
 
 	// Idempotent: a converged cluster writes nothing more.
 	kube.ClearActions()
@@ -141,6 +141,44 @@ func TestConvergeBackupsWiresCredentialThenEgressThenStanzaThenSchedule(t *testi
 	require.Equal(t, BackupConvergence{}, out)
 	require.Empty(t, writes(dyn.Actions()))
 	require.Equal(t, []string{"update networkpolicies"}, writes(kube.Actions()), "only the policy's converge-on-update, as for every other CNPG policy")
+}
+
+// CNPG reloads the barman credential only when its Cluster changes, so a
+// replaced copy alone leaves running instances on the old one (10-31: the
+// 10-character placeholder outlived the real credential). A rotation must
+// therefore reach the Cluster as a new version annotation.
+func TestARotatedCredentialReachesTheRunningInstancesThroughTheCluster(t *testing.T) {
+	bkStore(t)
+	ctx := context.Background()
+	p, dyn, kube := bkProvisioner(t, bkClusterObj(nil), bkCredential(backupCredentialKeys...))
+	_, err := p.convergeBackups(ctx, bkAddon())
+	require.NoError(t, err)
+	live, err := dyn.Resource(cnpgGVR).Namespace(bkNS).Get(ctx, bkCluster, metav1.GetOptions{})
+	require.NoError(t, err)
+	first := live.GetAnnotations()[backupCredentialAnnotation]
+	require.Len(t, first, 16)
+	require.NotContains(t, first, "fixture", "the annotation names a version, never a value")
+
+	rotated := bkCredential(backupCredentialKeys...)
+	rotated.Data["SECRET_ACCESS_KEY"] = []byte("fixture-rotated")
+	_, err = kube.CoreV1().Secrets(BackupCredentialsSourceNS).Update(ctx, rotated, metav1.UpdateOptions{})
+	require.NoError(t, err)
+	kube.ClearActions()
+	dyn.ClearActions()
+
+	out, err := p.convergeBackups(ctx, bkAddon())
+	require.NoError(t, err)
+	require.Equal(t, BackupConvergence{CredentialReloaded: true}, out)
+	require.Equal(t, []string{"delete secrets", "create secrets", "update networkpolicies"}, writes(kube.Actions()), "the copy is replaced first")
+	require.Equal(t, []string{"patch clusters"}, writes(dyn.Actions()), "then the Cluster, which is what wakes the instance manager")
+	copied, err := kube.CoreV1().Secrets(bkNS).Get(ctx, BackupCredentialsSecretName, metav1.GetOptions{})
+	require.NoError(t, err)
+	require.Equal(t, "fixture-rotated", string(copied.Data["SECRET_ACCESS_KEY"]))
+	live, err = dyn.Resource(cnpgGVR).Namespace(bkNS).Get(ctx, bkCluster, metav1.GetOptions{})
+	require.NoError(t, err)
+	require.NotEqual(t, first, live.GetAnnotations()[backupCredentialAnnotation])
+	backup, _, _ := unstructured.NestedMap(live.Object, "spec", "backup")
+	require.True(t, backupStanzaMatches(backup, backupConfigFromEnv().backupStanza(bkNS, bkCluster)), "the annotation patch leaves the stanza alone")
 }
 
 func TestConvergeBackupsRefusesToHalfWireWithoutTheCredential(t *testing.T) {
@@ -217,7 +255,8 @@ func TestConvergeBackupsAcceptsItsOwnStanzaWithCNPGDefaults(t *testing.T) {
 	require.NoError(t, err)
 	require.False(t, out.StanzaPatched)
 	require.True(t, out.ScheduledBackupCreated, "a stanza without its ScheduledBackup still gets one")
-	require.Equal(t, []string{"create scheduledbackups"}, writes(dyn.Actions()))
+	require.True(t, out.CredentialReloaded, "a cluster wired before the version annotation existed is told to reload once")
+	require.Equal(t, []string{"patch clusters", "create scheduledbackups"}, writes(dyn.Actions()))
 }
 
 func TestConvergeAddonBackupsSkipsWhatIsNotALiveCluster(t *testing.T) {
