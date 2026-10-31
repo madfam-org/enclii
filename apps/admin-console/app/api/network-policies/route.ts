@@ -78,9 +78,8 @@ interface RawNetworkPolicy {
 
 async function fetchPolicies(): Promise<NetworkPolicySummary[]> {
   const api = networkingApi()
-  const result = (await api.listNetworkPolicyForAllNamespaces()) as
-    | { body?: { items?: RawNetworkPolicy[] }; items?: RawNetworkPolicy[] }
-  const items: RawNetworkPolicy[] = result.body?.items ?? result.items ?? []
+  const result = (await api.listNetworkPolicyForAllNamespaces()) as { items?: RawNetworkPolicy[] }
+  const items: RawNetworkPolicy[] = result.items ?? []
   return items.map((np) => {
     const ingress = np.spec?.ingress ?? []
     const egress = np.spec?.egress ?? []

@@ -68,15 +68,13 @@ describe('GET /api/storage/volumes', () => {
   it('sorts faulted -> degraded -> healthy and computes summary', async () => {
     mockListCustomObject
       .mockResolvedValueOnce({
-        body: {
-          items: [
-            makeVolume('vol-healthy', 'healthy', 'attached'),
-            makeVolume('vol-faulted', 'faulted', 'detached'),
-            makeVolume('vol-degraded', 'degraded', 'attached'),
-          ],
-        },
+        items: [
+          makeVolume('vol-healthy', 'healthy', 'attached'),
+          makeVolume('vol-faulted', 'faulted', 'detached'),
+          makeVolume('vol-degraded', 'degraded', 'attached'),
+        ],
       })
-      .mockResolvedValueOnce({ body: { items: [] } }) // replicas
+      .mockResolvedValueOnce({ items: [] }) // replicas
 
     const response = await GET()
     const body = (await response.json()) as {
@@ -88,24 +86,42 @@ describe('GET /api/storage/volumes', () => {
     expect(body.summary).toMatchObject({ total: 3, healthy: 1, degraded: 1, faulted: 1 })
   })
 
+  it('lists volumes and replicas with the 1.x object-parameter signature', async () => {
+    mockListCustomObject.mockResolvedValueOnce({ items: [] }).mockResolvedValueOnce({ items: [] })
+
+    await GET()
+
+    expect(mockListCustomObject).toHaveBeenCalledTimes(2)
+    expect(mockListCustomObject).toHaveBeenCalledWith({
+      group: 'longhorn.io',
+      version: 'v1beta2',
+      namespace: 'longhorn-system',
+      plural: 'volumes',
+    })
+    expect(mockListCustomObject).toHaveBeenCalledWith({
+      group: 'longhorn.io',
+      version: 'v1beta2',
+      namespace: 'longhorn-system',
+      plural: 'replicas',
+    })
+  })
+
   it('attaches replicas to their owning volume', async () => {
     mockListCustomObject
-      .mockResolvedValueOnce({ body: { items: [makeVolume('vol-1', 'healthy', 'attached')] } })
+      .mockResolvedValueOnce({ items: [makeVolume('vol-1', 'healthy', 'attached')] })
       .mockResolvedValueOnce({
-        body: {
-          items: [
-            {
-              metadata: { name: 'vol-1-r-aaaa' },
-              spec: { volumeName: 'vol-1', nodeID: 'node-a' },
-              status: { currentState: 'running', mode: 'RW' },
-            },
-            {
-              metadata: { name: 'vol-1-r-bbbb' },
-              spec: { volumeName: 'vol-1', nodeID: 'node-b' },
-              status: { currentState: 'running', mode: 'RW' },
-            },
-          ],
-        },
+        items: [
+          {
+            metadata: { name: 'vol-1-r-aaaa' },
+            spec: { volumeName: 'vol-1', nodeID: 'node-a' },
+            status: { currentState: 'running', mode: 'RW' },
+          },
+          {
+            metadata: { name: 'vol-1-r-bbbb' },
+            spec: { volumeName: 'vol-1', nodeID: 'node-b' },
+            status: { currentState: 'running', mode: 'RW' },
+          },
+        ],
       })
 
     const response = await GET()
@@ -123,7 +139,7 @@ describe('GET /api/storage/volumes', () => {
   it('returns 500 on Longhorn CR list failure', async () => {
     // Both calls in Promise.all get a mock — Promise.all rejects on the first failure.
     mockListCustomObject.mockRejectedValueOnce(new Error('CRD not found'))
-    mockListCustomObject.mockResolvedValueOnce({ body: { items: [] } })
+    mockListCustomObject.mockResolvedValueOnce({ items: [] })
 
     const response = await GET()
     const body = (await response.json()) as { error: string }

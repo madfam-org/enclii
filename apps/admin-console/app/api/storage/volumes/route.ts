@@ -81,11 +81,21 @@ async function fetchVolumes(): Promise<LonghornVolumeSummary[]> {
 
   const [volBody, repBody] = await Promise.all([
     api
-      .listNamespacedCustomObject(LONGHORN_GROUP, LONGHORN_VERSION, LONGHORN_NAMESPACE, VOLUMES_PLURAL)
-      .then((r) => (r as { body: { items?: LonghornVolumeItem[] } }).body),
+      .listNamespacedCustomObject({
+        group: LONGHORN_GROUP,
+        version: LONGHORN_VERSION,
+        namespace: LONGHORN_NAMESPACE,
+        plural: VOLUMES_PLURAL,
+      })
+      .then((r) => r as { items?: LonghornVolumeItem[] }),
     api
-      .listNamespacedCustomObject(LONGHORN_GROUP, LONGHORN_VERSION, LONGHORN_NAMESPACE, 'replicas')
-      .then((r) => (r as { body: { items?: LonghornReplicaItem[] } }).body),
+      .listNamespacedCustomObject({
+        group: LONGHORN_GROUP,
+        version: LONGHORN_VERSION,
+        namespace: LONGHORN_NAMESPACE,
+        plural: 'replicas',
+      })
+      .then((r) => r as { items?: LonghornReplicaItem[] }),
   ])
 
   const replicasByVolume = new Map<string, VolumeReplica[]>()
