@@ -315,7 +315,8 @@ func TestOpsAddonsBackupCredentialRevokesTheTokenWhenVaultRefusesTheWrite(t *tes
 	f.mock.ExpectExec(`INSERT INTO audit_logs`).WillReturnResult(sqlmock.NewResult(1, 1))
 	f.mock.ExpectExec(`INSERT INTO audit_logs`).WillReturnResult(sqlmock.NewResult(1, 1))
 	code, resp, _ := f.apply(t, hash, nil)
-	assert.Equal(t, http.StatusBadGateway, code, resp)
+	assert.Equal(t, http.StatusFailedDependency, code, resp, "an upstream failure is sent as 424 so the summary survives Cloudflare")
+	assert.Contains(t, resp["summary"], "the new token was revoked")
 	assert.Equal(t, []string{"tok-1"}, f.cf.revokes, "a token nobody holds is revoked")
 }
 
@@ -333,7 +334,7 @@ func TestOpsAddonsBackupCredentialRefusesAMismatchedOrMissingStore(t *testing.T)
 	f := newBCFixture(t)
 	t.Setenv("ENCLII_ADDON_BACKUP_ENDPOINT_URL", "https://another-account.r2.cloudflarestorage.com")
 	code, resp, _ := f.post(t, operatorOperationRequest{DryRun: true})
-	assert.Equal(t, http.StatusBadGateway, code, resp)
+	assert.Equal(t, http.StatusFailedDependency, code, resp)
 	assert.Contains(t, resp["summary"], "does not match")
 
 	t.Setenv("ENCLII_ADDON_BACKUP_DESTINATION_BASE", "")
