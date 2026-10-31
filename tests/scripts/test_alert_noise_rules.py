@@ -557,3 +557,131 @@ def test_promtool_canary_is_a_warning_and_not_a_build_failure():
         "canary.test.yml",
         CANARY_TEST,
     )
+
+
+# ---------------------------------------------------------------------------
+# PodNotReady and rule files that are not in git (2026-10-21)
+#
+# The git PodNotReady excludes Succeeded/Failed pods, yet about 30 finished
+# Job pods in crea-map/crea-sim fired it live. The cause was a second
+# PodNotReady, unfiltered, in a ConfigMap key that `kubectl patch` added in
+# April and Argo's server-side apply never removed (it owned no part of it).
+# Pinned here: one PodNotReady and it excludes finished pods; the ConfigMap
+# syncs with Replace=true; PrometheusRuleFileNotInGit knows every key.
+# ---------------------------------------------------------------------------
+
+
+def _rules_configmap() -> dict:
+    for doc in _docs(PROMETHEUS):
+        if doc.get("kind") == "ConfigMap" and doc["metadata"]["name"] == "prometheus-rules":
+            return doc
+    raise AssertionError("prometheus-rules ConfigMap not found")
+
+
+def _all_alert_names() -> list[str]:
+    names = []
+    for text in _rules_configmap()["data"].values():
+        for group in yaml.safe_load(text)["groups"]:
+            names += [r["alert"] for r in group["rules"] if "alert" in r]
+    return names
+
+
+def test_pod_not_ready_is_defined_once():
+    """Two rules with one alertname fire as one alert family and can't be told apart."""
+    assert _all_alert_names().count("PodNotReady") == 1
+
+
+def test_pod_not_ready_excludes_finished_pods():
+    rule = _by_alert(_group(_rules_key("enclii-alerts.yml"), "kubernetes-resources"))["PodNotReady"]
+    expr = " ".join(rule["expr"].split())
+    assert 'unless on(namespace, pod) kube_pod_status_phase{phase=~"Succeeded|Failed"} == 1' in expr
+
+
+def test_rules_configmap_syncs_with_replace():
+    """Server-side apply leaves keys another field manager wrote; Replace does not."""
+    annotations = _rules_configmap()["metadata"].get("annotations", {})
+    assert annotations.get("argocd.argoproj.io/sync-options") == "Replace=true"
+
+
+def _rule_file_guard() -> dict:
+    return _by_alert(_group(_rules_key("alert-delivery-rules.yml"), "alert-delivery"))["PrometheusRuleFileNotInGit"]
+
+
+def test_rule_file_guard_lists_exactly_the_configmap_keys():
+    expr = _rule_file_guard()["expr"]
+    (alternation,) = re.findall(r'rule_group!~"/etc/prometheus/rules/\(([^)]*)\)\\\\\.yml;\.\*"', expr)
+    listed = sorted(f"{name}.yml" for name in alternation.split("|"))
+    assert listed == sorted(_rules_configmap()["data"])
+
+
+def test_rule_file_guard_reads_only_this_prometheus():
+    """rules-eval loads operator rule files from another directory; it is not this check's business."""
+    rule = _rule_file_guard()
+    assert 'job="prometheus"' in rule["expr"]
+    assert rule["labels"]["severity"] == "warning"
+
+
+POD_NOT_READY_TEST = textwrap.dedent(
+    """
+    rule_files:
+      - enclii-alerts.yml
+      - alert-delivery-rules.yml
+    evaluation_interval: 30s
+    tests:
+      - interval: 1m
+        input_series:
+          # A running pod that is not ready: fires.
+          - series: 'kube_pod_status_ready{namespace="crea-map",pod="crea-map-web-1",condition="true"}'
+            values: '0x30'
+          - series: 'kube_pod_status_phase{namespace="crea-map",pod="crea-map-web-1",phase="Running"}'
+            values: '1x30'
+          - series: 'kube_pod_status_phase{namespace="crea-map",pod="crea-map-web-1",phase="Succeeded"}'
+            values: '0x30'
+          # A Completed CronJob pod: never fires.
+          - series: 'kube_pod_status_ready{namespace="crea-map",pod="recordatorios-29000000-abcde",condition="true"}'
+            values: '0x30'
+          - series: 'kube_pod_status_phase{namespace="crea-map",pod="recordatorios-29000000-abcde",phase="Succeeded"}'
+            values: '1x30'
+          # A Job pod that ended in Error: never fires.
+          - series: 'kube_pod_status_ready{namespace="crea-sim",pod="sim-run-xyz12",condition="true"}'
+            values: '0x30'
+          - series: 'kube_pod_status_phase{namespace="crea-sim",pod="sim-run-xyz12",phase="Failed"}'
+            values: '1x30'
+          # Rule files: two from git, one added by hand, and rules-eval's own.
+          - series: 'prometheus_rule_group_rules{job="prometheus",rule_group="/etc/prometheus/rules/enclii-alerts.yml;kubernetes-resources"}'
+            values: '6x30'
+          - series: 'prometheus_rule_group_rules{job="prometheus",rule_group="/etc/prometheus/rules/alert-delivery-rules.yml;alert-delivery"}'
+            values: '4x30'
+          - series: 'prometheus_rule_group_rules{job="prometheus",rule_group="/etc/prometheus/rules/ecosystem-alerts.yml;ecosystem.pod_health"}'
+            values: '3x30'
+          - series: 'prometheus_rule_group_rules{job="rules-eval",rule_group="/etc/prometheus/rules/prometheus-rules-eval-rulefiles-0/data-postgres-ha-rules.yaml;postgres-ha"}'
+            values: '5x30'
+        alert_rule_test:
+          - eval_time: 10m
+            alertname: PodNotReady
+            exp_alerts:
+              - exp_labels: {severity: warning, namespace: crea-map, pod: crea-map-web-1, condition: "true"}
+                exp_annotations: {summary: "Pod not ready"}
+          - eval_time: 20m
+            alertname: PrometheusRuleFileNotInGit
+            exp_alerts:
+              - exp_labels:
+                  severity: warning
+                  service: prometheus
+                  category: alerting-pipeline
+                  rule_group: "/etc/prometheus/rules/ecosystem-alerts.yml;ecosystem.pod_health"
+                exp_annotations:
+                  summary: "Prometheus evaluates a rule file that is not in git: /etc/prometheus/rules/ecosystem-alerts.yml;ecosystem.pod_health"
+    """
+).lstrip()
+
+
+def test_promtool_pod_not_ready_and_rule_file_guard():
+    _run_promtool(
+        {
+            "enclii-alerts.yml": _rules_key("enclii-alerts.yml"),
+            "alert-delivery-rules.yml": _rules_key("alert-delivery-rules.yml"),
+        },
+        "pod-not-ready.test.yml",
+        POD_NOT_READY_TEST,
+    )
