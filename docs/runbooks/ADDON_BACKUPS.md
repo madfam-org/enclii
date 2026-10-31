@@ -75,7 +75,7 @@ sweep) for every existing one. Per cluster, in this order:
    continuous WAL archiving;
 4. annotate the Cluster `enclii.dev/backup-credential-version` with a short
    SHA-256 prefix of the copied credential (it names a version, never a value).
-   CNPG's instance manager does not watch Secrets: it reloads the credential
+   CNPG's instance manager does not watch Secret objects. It reloads the credential
    only when its Cluster changes, so without this step a replaced copy leaves
    running instances on the old one;
 5. create `<cluster>-daily` (`0 0 4 * * *`, `immediate: true`).

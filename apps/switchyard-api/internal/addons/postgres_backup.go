@@ -94,15 +94,15 @@ const backupFieldManager = "enclii-addon-backups"
 // backupCredentialAnnotation records on the Cluster which version of the
 // replicated credential its instances were last told to load.
 //
-// WHY (2026-10-31). CNPG's instance manager does not watch Secrets: it reads
-// the barman credential when it reconciles its Cluster and caches it ("all
+// WHY (2026-10-31). CNPG's instance manager does not watch Secret objects. It
+// reads the barman credential when it reconciles its Cluster and caches it ("all
 // reloads should be driven by changes in the Cluster we are watching",
 // cloudnative-pg internal/cmd/manager/instance/run/cmd.go). Replacing the copy
 // in the addon namespace therefore changed nothing: after the 10-31 credential
 // apply, every awake instance kept presenting the old placeholder ("Credential
 // access key has length 10, should be 32") until something touched its Cluster.
 // Writing this annotation is that touch, done by the sweep instead of by hand.
-const backupCredentialAnnotation = "enclii.dev/backup-credential-version"
+const backupCredentialAnnotation = "enclii.dev/backup-credential-version" // #nosec G101 -- annotation key, not a credential
 
 // suspendedForHibernation marks a ScheduledBackup Enclii suspended because its
 // cluster hibernated, so waking resumes it and never a schedule an operator
