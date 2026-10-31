@@ -422,7 +422,7 @@ func TestOpsPodsRestartReportsForbiddenRBAC(t *testing.T) {
 	f.expectAudit("requested", "workload", "uid-sts", "fixture-logs", "rollout-restart").WillReturnResult(sqlmock.NewResult(1, 1))
 	f.expectAudit("failure", "workload", "uid-sts", "fixture-logs", "rollout-restart").WillReturnResult(sqlmock.NewResult(1, 1))
 	status, resp := f.post(t, restartRequest(restartFixtureNS, "statefulset/fixture-logs", true))
-	require.Equal(t, http.StatusBadGateway, status)
+	require.Equal(t, http.StatusFailedDependency, status)
 	assert.Equal(t, "failed", resp.Status)
 	assert.Contains(t, resp.Summary, "RBAC")
 	require.NoError(t, f.mock.ExpectationsWereMet())
