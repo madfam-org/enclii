@@ -12,6 +12,12 @@
 # line and its behaviour, and a role with no line (ceq, 2026-10-18) starts to
 # work. The end state is a userlist with only pgbouncer_auth and
 # pgbouncer_admin; shrinking it is a separate owner step.
+#   - pgbouncer_admin (admin_users/stats_users, the admin console) gets its
+#     line from Vault too (2026-10-22): secret/enclii, property
+#     pgbouncer_admin_password, intake target data/pgbouncer-admin, through the
+#     pgbouncer-admin ExternalSecret. The console has no Postgres backend, so
+#     auth_query cannot answer for it. That Secret is optional: without it the
+#     pooler runs as before and the console stays closed.
 #   - The DDL is owner-run: scripts/sql/pgbouncer-auth-query.sql through
 #     scripts/pgbouncer-auth-query.sh migrate (rollback: ... rollback).
 #   - pgbouncer_auth's password comes from Vault (secret/enclii, property
@@ -178,8 +184,10 @@ spec:
                   app: pgbouncer
               topologyKey: kubernetes.io/hostname
       # Builds /etc/pgbouncer/userlist.txt in a memory-backed emptyDir:
-      # pgbouncer_auth's line first, then the hand-kept userlist minus any
-      # pgbouncer_auth line. Runs again on every pod start, which is when
+      # pgbouncer_auth's line first; then, when the optional pgbouncer-admin
+      # Secret is mounted, pgbouncer_admin's line (and any pgbouncer_admin line
+      # in the hand-kept list is dropped); then the hand-kept userlist minus
+      # any pgbouncer_auth line. Runs again on every pod start, which is when
       # pgbouncer would re-read the file anyway (switchyard-api restarts the
       # Deployment after it edits the userlist Secret).
       # The password is checked to be what intake --generate mints (unpadded
@@ -198,22 +206,43 @@ spec:
               umask 077
               src=/etc/pgbouncer-userlist-source/userlist.txt
               pw_file=/etc/pgbouncer-auth/pgbouncer_auth_password
+              admin_file=/etc/pgbouncer-admin/pgbouncer_admin_password
               out=/etc/pgbouncer-generated/userlist.txt
+              check_pw() {
+                case "$2" in
+                  *[!A-Za-z0-9_-]*) echo "$1 password has characters outside base64url; refusing" >&2; exit 1 ;;
+                esac
+                if [ "${#2}" -lt 32 ]; then
+                  echo "$1 password is shorter than 32 characters; refusing" >&2
+                  exit 1
+                fi
+              }
               pw="$(cat "$pw_file")"
-              case "$pw" in
-                *[!A-Za-z0-9_-]*) echo "pgbouncer_auth password has characters outside base64url; refusing" >&2; exit 1 ;;
-              esac
-              if [ "${#pw}" -lt 32 ]; then
-                echo "pgbouncer_auth password is shorter than 32 characters; refusing" >&2
-                exit 1
+              check_pw pgbouncer_auth "$pw"
+              admin=""
+              if [ -e "$admin_file" ]; then
+                admin="$(cat "$admin_file")"
+                check_pw pgbouncer_admin "$admin"
               fi
               [ -r "$src" ] || { echo "$src is not readable" >&2; exit 1; }
               {
                 printf '"pgbouncer_auth" "%s"\n' "$pw"
-                grep -v '^"pgbouncer_auth"' "$src" || true
+                if [ -n "$admin" ]; then
+                  printf '"pgbouncer_admin" "%s"\n' "$admin"
+                  grep -v -e '^"pgbouncer_auth"' -e '^"pgbouncer_admin"' "$src" || true
+                else
+                  grep -v '^"pgbouncer_auth"' "$src" || true
+                fi
               } > "$out.tmp"
               mv "$out.tmp" "$out"
-              echo "userlist.txt: pgbouncer_auth + $(( $(grep -c '^"' "$out") - 1 )) line(s) from pgbouncer-userlist"
+              own=1
+              [ -z "$admin" ] || own=2
+              listed=$(( $(grep -c '^"' "$out") - own ))
+              if [ -n "$admin" ]; then
+                echo "userlist.txt: pgbouncer_auth + pgbouncer_admin + ${listed} line(s) from pgbouncer-userlist"
+              else
+                echo "userlist.txt: pgbouncer_auth + ${listed} line(s) from pgbouncer-userlist (admin console closed, pgbouncer-admin not mounted)"
+              fi
           resources:
             requests:
               memory: "16Mi"
@@ -234,6 +263,9 @@ spec:
               readOnly: true
             - name: pgbouncer-auth
               mountPath: /etc/pgbouncer-auth
+              readOnly: true
+            - name: pgbouncer-admin
+              mountPath: /etc/pgbouncer-admin
               readOnly: true
             - name: pgbouncer-generated
               mountPath: /etc/pgbouncer-generated
@@ -304,6 +336,13 @@ spec:
         - name: pgbouncer-auth
           secret:
             secretName: pgbouncer-auth  # pragma: allowlist secret
+        # Synced by the pgbouncer-admin ExternalSecret. Optional: until intake
+        # writes the Vault property the volume is empty, the init container
+        # writes no admin line, and the admin console stays closed.
+        - name: pgbouncer-admin
+          secret:
+            secretName: pgbouncer-admin  # pragma: allowlist secret
+            optional: true
         - name: pgbouncer-generated
           emptyDir:
             medium: Memory

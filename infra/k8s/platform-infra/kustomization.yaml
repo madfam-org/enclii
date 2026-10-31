@@ -9,6 +9,9 @@ resources:
   # pgbouncer_auth's password (auth_query), from Vault through intake target
   # data/pgbouncer-auth. See the file header.
   - pgbouncer-auth.externalsecret.yaml
+  # pgbouncer_admin's password (the admin console), from Vault through intake
+  # target data/pgbouncer-admin. Optional: see the file header.
+  - pgbouncer-admin.externalsecret.yaml
 
   # Backup infrastructure (data namespace)
   - postgres-backup.yaml
