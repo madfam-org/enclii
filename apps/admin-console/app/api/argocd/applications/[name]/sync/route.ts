@@ -10,7 +10,7 @@
  * superadmin requirement.
  */
 import { NextRequest, NextResponse } from 'next/server'
-import { customObjectsApi, invalidateCache } from '@/lib/k8s-client'
+import { customObjectsApi, invalidateCache, mergePatchOptions } from '@/lib/k8s-client'
 import { hasRole, verifyAuth } from '@/lib/api-auth'
 
 export const dynamic = 'force-dynamic'
@@ -39,19 +39,16 @@ export async function POST(
 
   try {
     const api = customObjectsApi()
-    // v0.22.x positional signature: patchNamespacedCustomObject(group, version,
-    // namespace, plural, name, body, dryRun?, fieldManager?, force?, options?).
     await api.patchNamespacedCustomObject(
-      ARGO_GROUP,
-      ARGO_VERSION,
-      ARGO_NAMESPACE,
-      APPLICATIONS_PLURAL,
-      name,
-      { operation: { sync: {} } },
-      undefined,
-      undefined,
-      undefined,
-      { headers: { 'Content-Type': 'application/merge-patch+json' } }
+      {
+        group: ARGO_GROUP,
+        version: ARGO_VERSION,
+        namespace: ARGO_NAMESPACE,
+        plural: APPLICATIONS_PLURAL,
+        name,
+        body: { operation: { sync: {} } },
+      },
+      mergePatchOptions()
     )
 
     invalidateCache('argocd:applications')
