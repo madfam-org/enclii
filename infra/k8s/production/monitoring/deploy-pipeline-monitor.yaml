@@ -223,7 +223,7 @@ spec:
             - name: monitor
               # CI rewrites this to a digest-pinned image — see
               # .github/workflows/deploy-pipeline-monitor.yml run summary.
-              image: ghcr.io/madfam-org/enclii/deploy-pipeline-monitor@sha256:a501f853cc1f29f692d9789b38a4eda0383e1217af37031b8b66c4dcb6693fc4
+              image: ghcr.io/madfam-org/enclii/deploy-pipeline-monitor@sha256:bcaa34a19c092a3f81cfda02b32de4b662d88b6739ff097774e82b0d75168b37
               imagePullPolicy: IfNotPresent
               securityContext:
                 allowPrivilegeEscalation: false
@@ -306,7 +306,7 @@ spec:
               type: RuntimeDefault
           containers:
             - name: monitor
-              image: ghcr.io/madfam-org/enclii/deploy-pipeline-monitor@sha256:a501f853cc1f29f692d9789b38a4eda0383e1217af37031b8b66c4dcb6693fc4
+              image: ghcr.io/madfam-org/enclii/deploy-pipeline-monitor@sha256:bcaa34a19c092a3f81cfda02b32de4b662d88b6739ff097774e82b0d75168b37
               imagePullPolicy: IfNotPresent
               command:
                 - python
