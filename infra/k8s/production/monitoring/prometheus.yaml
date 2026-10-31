@@ -3230,7 +3230,7 @@ data:
           - alert: PrometheusRuleFileNotInGit
             expr: |
               count by (rule_group) (
-                prometheus_rule_group_rules{job="prometheus", rule_group!~"/etc/prometheus/rules/(alert-delivery-rules|arc-pool-health-rules|chronic-restart-rules|client-slo-rules|cloudflared-tunnel-rules|courier-page-budget-rules|courier-receiver-rules|deploy-parity-alerts|deploy-pipeline-freshness-rules|enclii-alerts|geometry-probe-rules|longhorn-filesystem-health|maintenance-alerts|pager-path-drill-rules|pgbackrest-health-rules|postgres-wal-archive-rules|retainer-cycle-rules|revenue-probe-rules|secret-integrity-rules|synthetic-flow-probe-rules)\\.yml;.*"}
+                prometheus_rule_group_rules{job="prometheus", rule_group!~"/etc/prometheus/rules/(alert-delivery-rules|arc-pool-health-rules|chronic-restart-rules|client-slo-rules|cloudflared-tunnel-rules|courier-page-budget-rules|courier-receiver-rules|cv-rules|deploy-parity-alerts|deploy-pipeline-freshness-rules|enclii-alerts|geometry-probe-rules|longhorn-filesystem-health|maintenance-alerts|pager-path-drill-rules|pgbackrest-health-rules|postgres-wal-archive-rules|retainer-cycle-rules|revenue-probe-rules|secret-integrity-rules|synthetic-flow-probe-rules)\\.yml;.*"}
               ) > 0
             for: 15m
             labels:
