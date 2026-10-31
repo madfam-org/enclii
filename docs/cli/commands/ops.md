@@ -382,6 +382,10 @@ enclii ops addons backup-credential --rotate              # plan a rotation
 - A Cloudflare refusal is `blocked` (HTTP 424) and names the permission the
   switchyard-api token lacks; nothing is written to Vault.
 - A failed Vault write revokes the newly minted token.
+- Running instances pick up the new credential within one backup sweep
+  (about 10 minutes): the sweep replaces each addon namespace's copy and
+  annotates the Cluster `enclii.dev/backup-credential-version`, because CNPG
+  reloads the credential only when its Cluster changes.
 
 Runbook: [ADDON_BACKUPS.md](../../runbooks/ADDON_BACKUPS.md#provisioning-the-credential-one-time-no-human-holds-it).
 

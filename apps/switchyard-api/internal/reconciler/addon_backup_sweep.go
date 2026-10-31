@@ -62,6 +62,9 @@ func (r *AddonReconciler) sweepAddonBackups(ctx context.Context) backupSweepResu
 				res.Wired++
 				r.logger.WithFields(fields).WithFields(logrus.Fields{"stanza_patched": out.StanzaPatched, "scheduled_backup_created": out.ScheduledBackupCreated}).Info("Addon backups wired")
 			}
+			if out.CredentialReloaded {
+				r.logger.WithFields(fields).Info("Addon backup credential version annotated: instances reload the replicated credential")
+			}
 		case errors.Is(err, addons.ErrBackupConvergenceNotApplicable):
 			res.Skipped++
 			if out.ScheduleSuspended {

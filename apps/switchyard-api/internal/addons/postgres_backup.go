@@ -2,6 +2,8 @@ package addons
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -43,7 +45,12 @@ import (
 // the addon reconciler's backup sweep for every live one, in an order chosen so
 // that no step can leave a database worse off than it was:
 //
-//	credential copy  →  egress policy  →  Cluster spec.backup  →  ScheduledBackup
+//	credential copy  →  egress policy  →  Cluster spec.backup  →  credential
+//	version annotation  →  ScheduledBackup
+//
+// The annotation is what makes a running instance pick up a replaced
+// credential: CNPG reloads it only when its Cluster changes (see
+// backupCredentialAnnotation).
 //
 // Setting spec.backup turns on WAL archiving to the object store. If the
 // instance could not then authenticate to, or reach, the store, archive_command
@@ -83,6 +90,19 @@ var backupCredentialKeys = []string{"ACCESS_KEY_ID", "SECRET_ACCESS_KEY"}
 
 // backupFieldManager names Enclii's writes to the Cluster and ScheduledBackup.
 const backupFieldManager = "enclii-addon-backups"
+
+// backupCredentialAnnotation records on the Cluster which version of the
+// replicated credential its instances were last told to load.
+//
+// WHY (2026-10-31). CNPG's instance manager does not watch Secrets: it reads
+// the barman credential when it reconciles its Cluster and caches it ("all
+// reloads should be driven by changes in the Cluster we are watching",
+// cloudnative-pg internal/cmd/manager/instance/run/cmd.go). Replacing the copy
+// in the addon namespace therefore changed nothing: after the 10-31 credential
+// apply, every awake instance kept presenting the old placeholder ("Credential
+// access key has length 10, should be 32") until something touched its Cluster.
+// Writing this annotation is that touch, done by the sweep instead of by hand.
+const backupCredentialAnnotation = "enclii.dev/backup-credential-version"
 
 // suspendedForHibernation marks a ScheduledBackup Enclii suspended because its
 // cluster hibernated, so waking resumes it and never a schedule an operator
@@ -211,25 +231,38 @@ func buildBackupEgressPolicy(namespace, resourceName string) *networkingv1.Netwo
 }
 
 // backupCredentialsReady checks that the source credential Secret exists and
-// carries both keys with a value. It reads key NAMES and lengths only; no
-// value is returned, compared or logged.
+// carries both keys with a value. No value is returned or logged.
 func (p *PostgresProvisioner) backupCredentialsReady(ctx context.Context) error {
+	_, err := p.backupCredentialVersion(ctx)
+	return err
+}
+
+// backupCredentialVersion is backupCredentialsReady that also names the
+// credential's current version: the first 16 hex digits of a SHA-256 over the
+// CNPG keys. The bytes are a random R2 token, so the prefix tells versions
+// apart and recovers nothing; it is what backupCredentialAnnotation records.
+func (p *PostgresProvisioner) backupCredentialVersion(ctx context.Context) (string, error) {
 	if p == nil || p.k8sClient == nil {
-		return errors.New("postgres provisioner has no cluster client")
+		return "", errors.New("postgres provisioner has no cluster client")
 	}
 	secret, err := p.k8sClient.Kube().CoreV1().Secrets(BackupCredentialsSourceNS).Get(ctx, BackupCredentialsSecretName, metav1.GetOptions{})
 	if err != nil {
 		if isNotFoundError(err) {
-			return ErrBackupCredentialsMissing
+			return "", ErrBackupCredentialsMissing
 		}
-		return fmt.Errorf("read backup credential Secret %s/%s: %w", BackupCredentialsSourceNS, BackupCredentialsSecretName, err)
+		return "", fmt.Errorf("read backup credential Secret %s/%s: %w", BackupCredentialsSourceNS, BackupCredentialsSecretName, err)
 	}
+	sum := sha256.New()
 	for _, key := range backupCredentialKeys {
 		if len(secret.Data[key]) == 0 {
-			return fmt.Errorf("%w (key %s absent or empty)", ErrBackupCredentialsMissing, key)
+			return "", fmt.Errorf("%w (key %s absent or empty)", ErrBackupCredentialsMissing, key)
 		}
+		sum.Write([]byte(key))
+		sum.Write([]byte{0})
+		sum.Write(secret.Data[key])
+		sum.Write([]byte{0})
 	}
-	return nil
+	return hex.EncodeToString(sum.Sum(nil))[:16], nil
 }
 
 // ensureScheduledBackup creates the cluster's daily ScheduledBackup when it is
@@ -259,6 +292,9 @@ func (p *PostgresProvisioner) ensureScheduledBackup(ctx context.Context, req *Pr
 type BackupConvergence struct {
 	StanzaPatched          bool `json:"stanza_patched"`
 	ScheduledBackupCreated bool `json:"scheduled_backup_created"`
+	// CredentialReloaded: the Cluster was annotated with a new credential
+	// version, which makes its instances re-read the replicated credential.
+	CredentialReloaded bool `json:"credential_reloaded,omitempty"`
 	// ScheduleSuspended / ScheduleResumed: the cluster hibernated / woke and
 	// its Enclii schedule followed.
 	ScheduleSuspended bool `json:"schedule_suspended,omitempty"`
@@ -340,7 +376,8 @@ func (p *PostgresProvisioner) convergeBackups(ctx context.Context, addon *types.
 	if hasStanza && !backupStanzaMatches(existing, desired) {
 		return out, fmt.Errorf("%w: Cluster %s/%s", ErrBackupStanzaDrift, ns, name)
 	}
-	if err := p.backupCredentialsReady(ctx); err != nil {
+	version, err := p.backupCredentialVersion(ctx)
+	if err != nil {
 		return out, err
 	}
 	owner := k8s.SecretCopyOwner{APIVersion: CloudNativePGAPIVersion, Kind: CloudNativePGKind, Name: name, UID: cluster.GetUID()}
@@ -359,6 +396,16 @@ func (p *PostgresProvisioner) convergeBackups(ctx context.Context, addon *types.
 			return out, fmt.Errorf("set spec.backup on Cluster %s/%s: %w", ns, name, err)
 		}
 		out.StanzaPatched = true
+	}
+	if cluster.GetAnnotations()[backupCredentialAnnotation] != version {
+		patch, err := json.Marshal(map[string]interface{}{"metadata": map[string]interface{}{"annotations": map[string]interface{}{backupCredentialAnnotation: version}}})
+		if err != nil {
+			return out, fmt.Errorf("marshal credential-version patch: %w", err)
+		}
+		if _, err := p.dynamicClient.Resource(cnpgGVR).Namespace(ns).Patch(ctx, name, k8stypes.MergePatchType, patch, metav1.PatchOptions{FieldManager: backupFieldManager}); err != nil {
+			return out, fmt.Errorf("annotate Cluster %s/%s with the backup credential version: %w", ns, name, err)
+		}
+		out.CredentialReloaded = true
 	}
 	req := &ProvisionRequest{Addon: addon, Namespace: ns, ProjectID: addon.ProjectID}
 	created, err := p.ensureScheduledBackup(ctx, req, name)
