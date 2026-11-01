@@ -51,6 +51,20 @@ spec:
             topologyKey: kubernetes.io/hostname
             type: soft
             weight: 100
+          # CPU request (2026-11-01). The chart renders limits only, so
+          # Kubernetes set the request equal to the 1-core limit and the
+          # three brokers reserved 3000m while their 7-day max was 80m each
+          # (p99 73m). `podTemplate.spec` is merged into the rendered PodSpec
+          # (containers merge by name), so this adds only `requests.cpu`:
+          # the limit, `--smp=1` and the memory request (= limit, 2Gi) stay
+          # as they were. This frees 2400m on the two workload nodes.
+          podTemplate:
+            spec:
+              containers:
+              - name: redpanda
+                resources:
+                  requests:
+                    cpu: 200m
 
         listeners:
           kafka:
@@ -93,14 +107,11 @@ spec:
 
         resources:
           cpu:
-            # NOTE (2026-07-07): redpanda right-sizing is NOT achievable via
-            # chart values. The chart renders limits-only (no requests block),
-            # so Kubernetes defaults the CPU *request* to equal the limit
-            # (cores). Setting cores fractional violates the chart's
-            # integer-only schema. To actually lower the 1000m×3 reservation,
-            # apply a LimitRange in the `data` namespace or a kustomize
-            # post-render patch — tracked separately. Left at the original
-            # integer default here.
+            # `cores` is the limit and `--smp`, and must stay an integer (the
+            # chart schema rejects fractions). The request is set separately
+            # in `statefulset.podTemplate` above (2026-11-01); a LimitRange
+            # can't do it, because a container with a limit and no request
+            # gets request = limit.
             cores: 1
             overprovisioned: false
           memory:

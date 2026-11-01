@@ -457,6 +457,13 @@ jobs:
       - name: Run addon backup wiring tests
         run: pytest tests/scripts/test_addon_backup_wiring.py -v
 
+      # The Redpanda chart renders a limit and no request, so the request
+      # defaulted to a full core per broker (3000m reserved, 80m used). The
+      # request is set through statefulset.podTemplate; this keeps it in the
+      # live Application and its mirror, below the limit.
+      - name: Run Redpanda CPU request guard
+        run: pytest tests/scripts/test_redpanda_cpu_request.py -v
+
       # Runs scripts/commercial-ga-proof.sh against a local stub. A 404/5xx on
       # signup or checkout must fail; a checkout that lands on the sales
       # booking page must be a CHECK (not a pass, and not an exit 1 that would
