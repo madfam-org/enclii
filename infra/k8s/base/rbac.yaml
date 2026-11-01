@@ -123,13 +123,17 @@ rules:
 # deletes it; before this rule every one of those calls was refused, so no
 # addon could have had a schedule even with the store configured. patch: the
 # sweep suspends the schedule of a hibernated cluster and resumes it on wake.
-# Backup objects are read-only here: CNPG creates them from the schedule.
+# CNPG creates Backup objects from the schedule. delete (2026-11-01): the sweep
+# deletes a Backup of an Enclii schedule stuck in walArchivingFailing once WAL
+# archiving is healthy again, because CNPG never ends that phase and the
+# schedule takes no other backup until it goes. Audited, UID-preconditioned
+# (internal/addons/postgres_backup.go, clearWedgedBackups).
 - apiGroups: ["postgresql.cnpg.io"]
   resources: ["scheduledbackups"]
   verbs: ["create", "get", "list", "watch", "patch", "delete"]
 - apiGroups: ["postgresql.cnpg.io"]
   resources: ["backups"]
-  verbs: ["get", "list", "watch"]
+  verbs: ["get", "list", "watch", "delete"]
 # Longhorn: read diagnostics plus audited orphan prune and CPU settings apply
 - apiGroups: ["longhorn.io"]
   resources: ["volumes"]

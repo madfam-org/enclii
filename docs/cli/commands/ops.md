@@ -386,6 +386,9 @@ enclii ops addons backup-credential --rotate              # plan a rotation
   (about 10 minutes): the sweep replaces each addon namespace's copy and
   annotates the Cluster `enclii.dev/backup-credential-version`, because CNPG
   reloads the credential only when its Cluster changes.
+- A Backup the old credential left in `walArchivingFailing` blocks its
+  schedule. The sweep deletes it, with an audit row, once the Cluster
+  reports `ContinuousArchiving=True`, and the schedule catches up.
 
 Runbook: [ADDON_BACKUPS.md](../../runbooks/ADDON_BACKUPS.md#provisioning-the-credential-one-time-no-human-holds-it).
 

@@ -19,6 +19,8 @@ live addon cluster. Four links were missing, each enough on its own:
     -> switchyard-api env ENCLII_ADDON_BACKUP_DESTINATION_BASE (store on)
     -> switchyard-api ClusterRole may create/get/patch/delete scheduledbackups
        (patch: a hibernated cluster's schedule is suspended, then resumed)
+       and list/delete backups (2026-11-01: a Backup stuck in
+       walArchivingFailing wedges its schedule until it is deleted)
     -> per-cluster backup-egress NetworkPolicy, spec.backup, ScheduledBackup
        (Go: internal/addons/postgres_backup.go, tested there).
 
@@ -127,15 +129,23 @@ def problems(state: dict) -> list[str]:
     if not (env.get("ENCLII_ADDON_BACKUP_ENDPOINT_URL") or "").startswith("https://"):
         out.append("switchyard-api has no ENCLII_ADDON_BACKUP_ENDPOINT_URL")
 
-    verbs: set[str] = set()
+    required = {
+        "scheduledbackups": ("create", "get", "patch", "delete"),
+        "backups": ("list", "delete"),
+    }
+    verbs: dict[str, set[str]] = {resource: set() for resource in required}
     for doc in state["rbac"]:
         if doc.get("kind") == "ClusterRole" and doc["metadata"]["name"] == "switchyard-api":
             for rule in doc.get("rules", []):
-                if "postgresql.cnpg.io" in rule.get("apiGroups", []) and "scheduledbackups" in rule.get("resources", []):
-                    verbs.update(rule.get("verbs", []))
-    for verb in ("create", "get", "patch", "delete"):
-        if verb not in verbs:
-            out.append(f"switchyard-api ClusterRole cannot {verb} scheduledbackups")
+                if "postgresql.cnpg.io" not in rule.get("apiGroups", []):
+                    continue
+                for resource in required:
+                    if resource in rule.get("resources", []):
+                        verbs[resource].update(rule.get("verbs", []))
+    for resource, needed in required.items():
+        for verb in needed:
+            if verb not in verbs[resource]:
+                out.append(f"switchyard-api ClusterRole cannot {verb} {resource}")
     return out
 
 
@@ -177,6 +187,9 @@ def test_finder_catches_each_broken_link():
         "shared platform bucket": lambda s: next(e for e in env(s) if e["name"] == "ENCLII_ADDON_BACKUP_DESTINATION_BASE").__setitem__("value", "s3://enclii-backups"),
         "no scheduledbackups RBAC": lambda s: cluster_role(s).__setitem__(
             "rules", [r for r in cluster_role(s)["rules"] if "scheduledbackups" not in r.get("resources", [])]),
+        "wedged Backup cannot be deleted": lambda s: next(
+            r for r in cluster_role(s)["rules"] if r.get("resources") == ["backups"]
+        )["verbs"].remove("delete"),
         "generatable token": lambda s: s["registry"][TARGET_ID].pop("generate"),
     }
     for name, fn in cases.items():
