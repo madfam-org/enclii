@@ -127,7 +127,7 @@ rules:
 # deletes a Backup of an Enclii schedule stuck in walArchivingFailing once WAL
 # archiving is healthy again, because CNPG never ends that phase and the
 # schedule takes no other backup until it goes. Audited, UID-preconditioned
-# (internal/addons/postgres_backup.go, clearWedgedBackups).
+# (internal/addons/postgres_backup_wedged.go).
 - apiGroups: ["postgresql.cnpg.io"]
   resources: ["scheduledbackups"]
   verbs: ["create", "get", "list", "watch", "patch", "delete"]

@@ -39,7 +39,7 @@ for each. The addon backup sweep now deletes such a Backup itself: only one its
 cluster's own Enclii schedule created, only while the Cluster reports
 `ContinuousArchiving=True`, with an `addon.backup.wedged_deleted` audit row
 before and after the UID-preconditioned delete
-(`apps/switchyard-api/internal/addons/postgres_backup.go`, `clearWedgedBackups`).
+(`apps/switchyard-api/internal/addons/postgres_backup_wedged.go`).
 RBAC: `delete` on `backups.postgresql.cnpg.io`. Procedure:
 [`runbooks/ADDON_BACKUPS.md`](runbooks/ADDON_BACKUPS.md#a-schedule-wedged-behind-walarchivingfailing).
 
