@@ -309,7 +309,7 @@ jobs:
           echo "Render environment smoke check passed."
 
       - name: Set up Node for candidate browser smoke
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v7
         with:
           node-version: '22'
 
