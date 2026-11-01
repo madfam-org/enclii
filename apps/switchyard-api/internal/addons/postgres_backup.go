@@ -68,6 +68,11 @@ import (
 // has one, is SUSPENDED (and marked as suspended for hibernation), because a
 // schedule on a cluster with no instance produces a failed Backup every night.
 // When the cluster wakes, the sweep resumes only a schedule it suspended.
+//
+// The one CNPG object the sweep deletes: a Backup of the cluster's own Enclii
+// schedule that CNPG left in walArchivingFailing, once the Cluster reports WAL
+// archiving healthy again. Until it goes, the schedule takes no other backup
+// (clearWedgedBackups).
 
 var (
 	// ErrBackupConvergenceNotApplicable: nothing to converge. Not a live
@@ -299,6 +304,9 @@ type BackupConvergence struct {
 	// its Enclii schedule followed.
 	ScheduleSuspended bool `json:"schedule_suspended,omitempty"`
 	ScheduleResumed   bool `json:"schedule_resumed,omitempty"`
+	// WedgedBackupsDeleted names the walArchivingFailing Backups deleted so
+	// the schedule can run again (clearWedgedBackups).
+	WedgedBackupsDeleted []string `json:"wedged_backups_deleted,omitempty"`
 }
 
 // setScheduleSuspended suspends (hibernated) or resumes (awake) the cluster's
@@ -359,8 +367,7 @@ func (p *PostgresProvisioner) convergeBackups(ctx context.Context, addon *types.
 		}
 		return out, fmt.Errorf("read CNPG cluster %s/%s: %w", ns, name, err)
 	}
-	labels := cluster.GetLabels()
-	if labels[LabelManagedBy] != LabelManagedValue || labels[LabelAddonID] != addon.ID.String() {
+	if !managedForAddon(cluster, addon) {
 		return out, fmt.Errorf("%w: Cluster %s/%s is not managed by Enclii for this addon", ErrBackupConvergenceNotApplicable, ns, name)
 	}
 	if cluster.GetAnnotations()[CNPGHibernationAnnotation] == "on" {
@@ -459,9 +466,16 @@ func (p *PostgresProvisioner) wireNewClusterBackups(ctx context.Context, req *Pr
 	}
 }
 
+// managedForAddon: the Cluster carries Enclii's labels for this very addon.
+func managedForAddon(cluster *unstructured.Unstructured, addon *types.DatabaseAddon) bool {
+	labels := cluster.GetLabels()
+	return labels[LabelManagedBy] == LabelManagedValue && labels[LabelAddonID] == addon.ID.String()
+}
+
 // ConvergeAddonBackups wires backups onto one live managed-Postgres addon
-// cluster (see the file comment). Called by the addon reconciler's backup
-// sweep for every live cluster.
+// cluster (see the file comment), then clears a schedule wedged behind a
+// walArchivingFailing Backup. Called by the addon reconciler's backup sweep for
+// every live cluster.
 func (s *AddonService) ConvergeAddonBackups(ctx context.Context, addon *types.DatabaseAddon) (BackupConvergence, error) {
 	if isKarafielStagingAddon(addon) || !networkConvergible(addon) {
 		return BackupConvergence{}, ErrBackupConvergenceNotApplicable
@@ -470,5 +484,14 @@ func (s *AddonService) ConvergeAddonBackups(ctx context.Context, addon *types.Da
 	if !ok || pg == nil {
 		return BackupConvergence{}, errors.New("postgres provisioner is not configured")
 	}
-	return pg.convergeBackups(ctx, addon)
+	out, err := pg.convergeBackups(ctx, addon)
+	if err != nil {
+		return out, err
+	}
+	var audit backupAuditLog
+	if s.repos != nil && s.repos.AuditLogs != nil {
+		audit = s.repos.AuditLogs
+	}
+	out.WedgedBackupsDeleted, err = pg.clearWedgedBackups(ctx, addon, audit)
+	return out, err
 }
