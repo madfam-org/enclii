@@ -26,7 +26,10 @@ func (r *AddonReconciler) SetBackupConverger(c BackupConverger) {
 // backupSweepResult tallies one sweep. Exported to the log, and to tests.
 type backupSweepResult struct {
 	Live, Wired, Skipped, Unprotected, Drifted, Failed int
-	StoreUnconfigured                                  bool
+	// Unwedged counts walArchivingFailing Backups deleted so their schedule
+	// runs again.
+	Unwedged          int
+	StoreUnconfigured bool
 }
 
 // sweepAddonBackups converges backups for every live managed-Postgres addon.
@@ -65,6 +68,10 @@ func (r *AddonReconciler) sweepAddonBackups(ctx context.Context) backupSweepResu
 			if out.CredentialReloaded {
 				r.logger.WithFields(fields).Info("Addon backup credential version annotated: instances reload the replicated credential")
 			}
+			if len(out.WedgedBackupsDeleted) > 0 {
+				res.Unwedged += len(out.WedgedBackupsDeleted)
+				r.logger.WithFields(fields).WithField("backups", out.WedgedBackupsDeleted).Warn("Addon backup schedule was wedged: deleted its walArchivingFailing Backup now that WAL archiving is healthy; the schedule catches up")
+			}
 		case errors.Is(err, addons.ErrBackupConvergenceNotApplicable):
 			res.Skipped++
 			if out.ScheduleSuspended {
@@ -84,7 +91,7 @@ func (r *AddonReconciler) sweepAddonBackups(ctx context.Context) backupSweepResu
 			r.logger.WithError(err).WithFields(fields).Warn("Addon backups not converged; next sweep retries")
 		}
 	}
-	summary := r.logger.WithFields(logrus.Fields{"live": res.Live, "wired": res.Wired, "skipped": res.Skipped, "unprotected": res.Unprotected, "drifted": res.Drifted, "failed": res.Failed})
+	summary := r.logger.WithFields(logrus.Fields{"live": res.Live, "wired": res.Wired, "skipped": res.Skipped, "unprotected": res.Unprotected, "drifted": res.Drifted, "failed": res.Failed, "unwedged": res.Unwedged})
 	switch {
 	case res.StoreUnconfigured:
 		summary.Error("Addon backups are NOT configured (ENCLII_ADDON_BACKUP_DESTINATION_BASE unset): live managed-Postgres addons have no backups")

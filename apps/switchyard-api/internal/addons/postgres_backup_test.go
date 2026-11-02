@@ -20,15 +20,19 @@ import (
 	"github.com/madfam-org/enclii/packages/sdk-go/pkg/types"
 )
 
+// bkNS is the addon's project namespace: project-<first 8 of bkProjectID>.
 const (
-	bkNS      = "project-fixture"
+	bkNS      = "project-000000b2"
 	bkCluster = "pg-kernel09-fixture"
 )
 
-var bkAddonID = uuid.MustParse("00000000-0000-0000-0000-0000000000b1")
+var (
+	bkAddonID   = uuid.MustParse("00000000-0000-0000-0000-0000000000b1")
+	bkProjectID = uuid.MustParse("000000b2-0000-0000-0000-000000000000")
+)
 
 func bkAddon() *types.DatabaseAddon {
-	return &types.DatabaseAddon{ID: bkAddonID, ProjectID: uuid.New(), Type: types.DatabaseAddonTypePostgres, Status: types.DatabaseAddonStatusReady, K8sNamespace: bkNS, K8sResourceName: bkCluster}
+	return &types.DatabaseAddon{ID: bkAddonID, ProjectID: bkProjectID, Type: types.DatabaseAddonTypePostgres, Status: types.DatabaseAddonStatusReady, K8sNamespace: bkNS, K8sResourceName: bkCluster}
 }
 
 func bkStore(t *testing.T) {
@@ -71,6 +75,7 @@ func bkProvisioner(t *testing.T, cluster *unstructured.Unstructured, kubeObjects
 	dyn := dynamicfake.NewSimpleDynamicClientWithCustomListKinds(runtime.NewScheme(), map[schema.GroupVersionResource]string{
 		cnpgGVR:                "ClusterList",
 		cnpgScheduledBackupGVR: "ScheduledBackupList",
+		cnpgBackupGVR:          "BackupList",
 	}, objects...)
 	kube := kubefake.NewSimpleClientset(kubeObjects...)
 	return &PostgresProvisioner{k8sClient: &k8s.Client{KubeClient: kube}, dynamicClient: dyn, logger: testLogger()}, dyn, kube
@@ -313,6 +318,7 @@ func bkProvisionerWith(t *testing.T, dynObjects []runtime.Object, kubeObjects ..
 	dyn := dynamicfake.NewSimpleDynamicClientWithCustomListKinds(runtime.NewScheme(), map[schema.GroupVersionResource]string{
 		cnpgGVR:                "ClusterList",
 		cnpgScheduledBackupGVR: "ScheduledBackupList",
+		cnpgBackupGVR:          "BackupList",
 	}, dynObjects...)
 	kube := kubefake.NewSimpleClientset(kubeObjects...)
 	return &PostgresProvisioner{k8sClient: &k8s.Client{KubeClient: kube}, dynamicClient: dyn, logger: testLogger()}, dyn, kube
