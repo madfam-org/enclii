@@ -743,6 +743,59 @@ func TestLoadRegistry_cvHCMBenchmarksMachineEdge(t *testing.T) {
 	}, buildIntakeValues(reg.Issuer, "jnc_fixture", "fixture-secret", p))
 }
 
+// symbiosis-hcm-karafiel: HCM's API and worker calling Karafiel for contract
+// drafts (legal:contractor-draft, legal:employment-draft) and, later, CFDI
+// (fiscal:invoice). A confidential client_credentials edge with no browser
+// leg, audience karafiel-api (Karafiel's JANUA_AUDIENCE), platform-admin like
+// zavlo-cfdi-emitter: Karafiel pins machine tokens to its own service RFC and
+// reads no org. The pair lands at symbiosis-hcm/karafiel-client as the two
+// lowercase properties HCM's hcm-service-clients ExternalSecret maps.
+// client_id is deliberately NOT asserted: it is pinned after the first run.
+func TestLoadRegistry_symbiosisHCMKarafielMachineEdge(t *testing.T) {
+	reg, err := LoadRegistry("")
+	require.NoError(t, err)
+
+	p, ok := reg.Platforms["symbiosis-hcm-karafiel"]
+	require.True(t, ok, "platform symbiosis-hcm-karafiel missing")
+	assert.Equal(t, "symbiosis-hcm/karafiel-client", p.IntakeTarget)
+	assert.Empty(t, p.SessionIntakeTarget, "a machine edge has no session secret")
+	require.Equal(t, map[string]string{
+		"karafiel_service_client_id":     "client_id",
+		"karafiel_service_client_secret": "client_secret",
+	}, p.IntakeKeyMap)
+	for k := range p.IntakeKeyMap {
+		assert.Equal(t, strings.ToLower(k), k,
+			"intake key %q must be lowercase to match HCM's hcm-service-clients ExternalSecret property", k)
+	}
+
+	jc := p.JanuaClient
+	assert.Equal(t, "symbiosis-hcm-karafiel", jc.Name)
+	assert.Equal(t, "symbiosis-hcm-karafiel", jc.ClientKey)
+	assert.Equal(t, "karafiel-api", jc.Audience, "Karafiel's JANUA_AUDIENCE")
+	assert.Empty(t, jc.OrganizationID, "Karafiel reads no org from machine tokens; the edge is platform-admin")
+	assert.Equal(t, []string{"legal:contractor-draft", "legal:employment-draft", "fiscal:invoice"}, jc.AllowedScopes)
+	for _, scope := range jc.AllowedScopes {
+		assert.Regexp(t, `^[a-z][a-z0-9._-]*:[a-z][a-z0-9_-]*$`, scope,
+			"Janua registers only namespace:action scopes")
+	}
+	assert.Equal(t, []string{"client_credentials"}, jc.GrantTypes)
+	assert.Empty(t, jc.RedirectURIs, "a client_credentials client has no browser leg")
+	require.NotNil(t, jc.IsConfidential)
+	assert.True(t, jc.confidential())
+	assert.False(t, p.publicLogin())
+	assert.NotEmpty(t, jc.Description)
+	require.NoError(t, validatePlatform(p))
+
+	kind, err := jc.kind()
+	require.NoError(t, err)
+	assert.Equal(t, machineClient, kind)
+
+	assert.Equal(t, map[string]string{
+		"karafiel_service_client_id":     "jnc_fixture",
+		"karafiel_service_client_secret": "fixture-secret",
+	}, buildIntakeValues(reg.Issuer, "jnc_fixture", "fixture-secret", p))
+}
+
 func TestReviewedRegistryGrantKindsDoNotDependOnTenant(t *testing.T) {
 	reg, err := LoadRegistry("")
 	require.NoError(t, err)
@@ -759,7 +812,7 @@ func TestReviewedRegistryGrantKindsDoNotDependOnTenant(t *testing.T) {
 		}
 	}
 	require.Equal(t, 25, humans) // Includes the two isolated Karafiel staging login clients and the eight SSO wave 1 clients.
-	require.Equal(t, 15, machines)
+	require.Equal(t, 16, machines)
 	p := reg.Platforms["selva-yantra4d"]
 	require.Empty(t, p.JanuaClient.OrganizationID)
 	kind, err := p.JanuaClient.kind()

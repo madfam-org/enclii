@@ -12,7 +12,7 @@ import (
 func TestLoadRegistry(t *testing.T) {
 	reg, err := LoadRegistry()
 	require.NoError(t, err)
-	assert.Len(t, reg, 109)
+	assert.Len(t, reg, 110)
 	assert.Contains(t, reg, "ceq/vast-api-key")
 	assert.Contains(t, reg, "karafiel/web-oidc-janua")
 	adminSession := reg["karafiel/admin-session"]
@@ -37,7 +37,7 @@ func TestGetTarget(t *testing.T) {
 func TestListTargetsSorted(t *testing.T) {
 	list, err := ListTargets()
 	require.NoError(t, err)
-	require.Len(t, list, 109)
+	require.Len(t, list, 110)
 	for i := 1; i < len(list); i++ {
 		assert.Less(t, list[i-1].ID, list[i].ID, "targets should be sorted by id")
 	}
@@ -117,6 +117,7 @@ func TestListTargetsSorted(t *testing.T) {
 		"routecraft/billing-relay",
 		"selva/pravara-mes-client",
 		"selva/yantra4d-client",
+		"symbiosis-hcm/karafiel-client",
 		"symbiosis-hcm/map-absence-feed",
 		"synthetics/dhanam-staging-checkout",
 		"telesia/oidc-janua",
@@ -1022,5 +1023,36 @@ func TestSSOWave1WebOIDCTargets(t *testing.T) {
 	require.NoError(t, err)
 	for _, k := range admin.Keys {
 		assert.NotContains(t, web.Keys, k)
+	}
+}
+
+// symbiosis-hcm → Karafiel machine edge (2026-11-02). Pinned end to end
+// because each link fails silently: a wrong Vault path is a write nothing
+// reads, a wrong property is an ExternalSecret that syncs zero keys, and a
+// wrong ExternalSecret name means intake force-syncs a Secret no pod reads.
+// It must NEVER route to hcm-secrets: that Secret carries DATABASE_URL and is
+// mounted optional: false, so a machine-client pair must not share its fate.
+func TestSymbiosisHCMKarafielClientTarget(t *testing.T) {
+	tgt, err := GetTarget("symbiosis-hcm/karafiel-client")
+	require.NoError(t, err)
+	assert.Equal(t, "secret/symbiosis-hcm", tgt.VaultPath)
+	assert.Equal(t, "symbiosis-hcm", tgt.Namespace)
+	assert.Equal(t, "hcm-service-clients", tgt.ExternalSecret,
+		"must be HCM's dedicated service-clients ExternalSecret, never hcm-secrets")
+	assert.Equal(t, []string{"karafiel_service_client_id", "karafiel_service_client_secret"}, tgt.Keys)
+	for _, k := range tgt.Keys {
+		assert.Equal(t, strings.ToLower(k), k,
+			"key %q must be lowercase to match HCM's ExternalSecret property", k)
+	}
+	require.NotNil(t, tgt.Generate)
+	assert.True(t, tgt.Generate.Disabled, "a Janua credential is minted by Janua, never generated")
+	assert.NotEmpty(t, tgt.Label)
+	assert.Contains(t, tgt.Description, "--platform symbiosis-hcm-karafiel")
+
+	// Shares secret/symbiosis-hcm with the absence feed (a merge): no key overlap.
+	feed, err := GetTarget("symbiosis-hcm/map-absence-feed")
+	require.NoError(t, err)
+	for _, k := range tgt.Keys {
+		assert.NotContains(t, feed.Keys, k)
 	}
 }
