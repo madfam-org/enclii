@@ -796,6 +796,43 @@ func TestLoadRegistry_symbiosisHCMKarafielMachineEdge(t *testing.T) {
 	}, buildIntakeValues(reg.Issuer, "jnc_fixture", "fixture-secret", p))
 }
 
+// symbiosis-hcm-dhanam-writer: HCM pushing contractor retainer plans into
+// Dhanam. Org-bound to madfam-ecosystem because Dhanam's writer strategy
+// refuses a token without org_id; one scope, one colon (Janua's grammar).
+func TestLoadRegistry_symbiosisHCMDhanamWriterMachineEdge(t *testing.T) {
+	reg, err := LoadRegistry("")
+	require.NoError(t, err)
+
+	p, ok := reg.Platforms["symbiosis-hcm-dhanam-writer"]
+	require.True(t, ok, "platform symbiosis-hcm-dhanam-writer missing")
+	assert.Equal(t, "symbiosis-hcm/dhanam-writer-client", p.IntakeTarget)
+	assert.Empty(t, p.SessionIntakeTarget, "a machine edge has no session secret")
+	require.Equal(t, map[string]string{
+		"dhanam_writer_client_id":     "client_id",
+		"dhanam_writer_client_secret": "client_secret",
+	}, p.IntakeKeyMap)
+
+	jc := p.JanuaClient
+	assert.Equal(t, "symbiosis-hcm-dhanam-writer", jc.Name)
+	assert.Equal(t, "symbiosis-hcm-dhanam-writer", jc.ClientKey)
+	assert.Equal(t, "dhanam-api", jc.Audience)
+	assert.Equal(t, "1a6233ef-185f-43ee-9181-e2591fbb2643", jc.OrganizationID,
+		"Dhanam's writer strategy requires org_id; Janua sets it only for org-bound clients")
+	assert.Equal(t, []string{"dhanam-scheduled-payments:write"}, jc.AllowedScopes)
+	assert.Regexp(t, `^[a-z][a-z0-9._-]*:[a-z][a-z0-9_-]*$`, jc.AllowedScopes[0],
+		"Janua registers only namespace:action scopes")
+	assert.Equal(t, []string{"client_credentials"}, jc.GrantTypes)
+	assert.Empty(t, jc.RedirectURIs)
+	require.NotNil(t, jc.IsConfidential)
+	assert.True(t, jc.confidential())
+	require.NoError(t, validatePlatform(p))
+
+	assert.Equal(t, map[string]string{
+		"dhanam_writer_client_id":     "jnc_fixture",
+		"dhanam_writer_client_secret": "fixture-secret",
+	}, buildIntakeValues(reg.Issuer, "jnc_fixture", "fixture-secret", p))
+}
+
 func TestReviewedRegistryGrantKindsDoNotDependOnTenant(t *testing.T) {
 	reg, err := LoadRegistry("")
 	require.NoError(t, err)
@@ -812,7 +849,7 @@ func TestReviewedRegistryGrantKindsDoNotDependOnTenant(t *testing.T) {
 		}
 	}
 	require.Equal(t, 25, humans) // Includes the two isolated Karafiel staging login clients and the eight SSO wave 1 clients.
-	require.Equal(t, 16, machines)
+	require.Equal(t, 17, machines)
 	p := reg.Platforms["selva-yantra4d"]
 	require.Empty(t, p.JanuaClient.OrganizationID)
 	kind, err := p.JanuaClient.kind()
