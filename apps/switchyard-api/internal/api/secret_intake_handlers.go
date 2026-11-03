@@ -150,10 +150,11 @@ func (h *Handler) SubmitSecretIntake(c *gin.Context) {
 		return
 	}
 	var vaultVersion int
-	if target.Generate != nil && target.Generate.Profile != "" {
+	signingAuthority := target.ID == "karafiel/hcm-signing-bindings" || target.ID == "symbiosis-hcm/signing-bindings"
+	if signingAuthority || (target.Generate != nil && target.Generate.Profile != "") {
 		initializer, ok := h.vaultClient.(vaultSecretInitializer)
 		if !ok {
-			c.JSON(http.StatusServiceUnavailable, gin.H{"error": "vault_initializer_disabled", "message": "atomic staging initialization is unavailable"})
+			c.JSON(http.StatusServiceUnavailable, gin.H{"error": "vault_initializer_disabled", "message": "atomic secret initialization is unavailable"})
 			return
 		}
 		vaultVersion, err = initializer.InitializeSecretData(ctx, target.VaultPath, updates)
@@ -166,6 +167,10 @@ func (h *Handler) SubmitSecretIntake(c *gin.Context) {
 			return
 		}
 		if errors.Is(err, lockbox.ErrSecretInitializationConflict) {
+			if signingAuthority {
+				c.JSON(http.StatusConflict, gin.H{"error": "vault_initialization_conflict", "message": "signing authority already exists or changed; inspect and review the existing binding, do not retry blindly"})
+				return
+			}
 			c.JSON(http.StatusConflict, gin.H{"error": "vault_initialization_conflict", "message": "staging custody already exists or changed; no retry or rotation was performed"})
 			return
 		}

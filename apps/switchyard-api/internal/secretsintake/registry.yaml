@@ -134,6 +134,22 @@ targets:
     keys:
       - admin_session_secret
 
+  # Private reviewed authority map for HCM simple electronic acceptance.
+  # Supplied JSON only: RFC -> {organization_id, company_signer_sub}.
+  # Its isolated ExternalSecret is registered after intake; an absent object
+  # makes force-sync report false without blocking the Vault write. This
+  # target never enables signing, reads identities, or generates a subject.
+  karafiel/hcm-signing-bindings:
+    label: Karafiel HCM signing authority bindings
+    description: Reviewed private JSON RFC-to-organization and personal company-signer bindings for LEGAL_HCM_SIGNING_BINDINGS. Supplied only; validate with the consumer parser before intake. Dedicated optional projection; signing remains disabled.
+    vault_path: secret/karafiel
+    namespace: karafiel
+    external_secret: karafiel-hcm-signing-bindings # pragma: allowlist secret -- Kubernetes ExternalSecret object name; not a credential
+    keys:
+      - hcm_signing_bindings
+    generate:
+      disabled: true
+
   # Karafiel Admin Janua client (SSO wave 1, 2026-10-27): the confidential pair
   # of ecosystem-oidc platform karafiel-admin, written ONLY by
   # `enclii secrets provision oidc --platform karafiel-admin`. karafiel splits
@@ -472,6 +488,20 @@ targets:
     keys:
       - dhanam_writer_client_id
       - dhanam_writer_client_secret
+    generate:
+      disabled: true
+
+  # HCM's view of the same reviewed company signer, keyed by organization.
+  # No real subject or organization values belong in the registry. Keep this
+  # separate from service credentials and the mandatory database Secret.
+  symbiosis-hcm/signing-bindings:
+    label: Symbiosis HCM company signer bindings
+    description: Reviewed private JSON organization-to-personal-subject bindings for KARAFIEL_COMPANY_SIGNERS. Supplied only; validate with the consumer parser before intake. Dedicated optional projection; signing remains disabled.
+    vault_path: secret/symbiosis-hcm
+    namespace: symbiosis-hcm
+    external_secret: hcm-signing-bindings # pragma: allowlist secret -- Kubernetes ExternalSecret object name; not a credential
+    keys:
+      - company_signers
     generate:
       disabled: true
 

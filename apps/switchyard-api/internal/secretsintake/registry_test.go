@@ -12,7 +12,7 @@ import (
 func TestLoadRegistry(t *testing.T) {
 	reg, err := LoadRegistry()
 	require.NoError(t, err)
-	assert.Len(t, reg, 111)
+	assert.Len(t, reg, 113)
 	assert.Contains(t, reg, "ceq/vast-api-key")
 	assert.Contains(t, reg, "karafiel/web-oidc-janua")
 	adminSession := reg["karafiel/admin-session"]
@@ -37,7 +37,7 @@ func TestGetTarget(t *testing.T) {
 func TestListTargetsSorted(t *testing.T) {
 	list, err := ListTargets()
 	require.NoError(t, err)
-	require.Len(t, list, 111)
+	require.Len(t, list, 113)
 	for i := 1; i < len(list); i++ {
 		assert.Less(t, list[i-1].ID, list[i].ID, "targets should be sorted by id")
 	}
@@ -98,6 +98,7 @@ func TestListTargetsSorted(t *testing.T) {
 		"karafiel/admin-oidc-janua",
 		"karafiel/admin-session",
 		"karafiel/dhanam-webhook-secret",
+		"karafiel/hcm-signing-bindings",
 		"karafiel/web-oidc-janua",
 		"lexidrop/oidc-janua",
 		"lexidrop/selva-inference",
@@ -120,6 +121,7 @@ func TestListTargetsSorted(t *testing.T) {
 		"symbiosis-hcm/dhanam-writer-client",
 		"symbiosis-hcm/karafiel-client",
 		"symbiosis-hcm/map-absence-feed",
+		"symbiosis-hcm/signing-bindings",
 		"synthetics/dhanam-staging-checkout",
 		"telesia/oidc-janua",
 		"telesia/runtime",
