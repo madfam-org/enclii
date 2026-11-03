@@ -75,6 +75,19 @@ INSERT INTO managed_db_plans VALUES('standard-0',true,'postgres','100m','256Mi',
 	require.NoError(t, januastage.ValidateAuthorityShape(a))
 	payload, err := json.Marshal(a)
 	require.NoError(t, err)
+
+	for _, table := range []string{"environments", "onboarding_registrations"} {
+		id := environment
+		if table == "onboarding_registrations" {
+			id = registration
+		}
+		_, err = db.ExecContext(ctx, "UPDATE "+table+" SET project_id=$1 WHERE id=$2", uuid.New(), id)
+		require.NoError(t, err)
+		_, err = db.ExecContext(ctx, `INSERT INTO janua_staging_inert_operations(id,held_intent_id,project_id,environment_id,repository_registration_id,actor_id,held_service_id,profile,plan_sha256,request_sha256,reason,payload) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$9,'synthetic native receipts',$10)`, a.ID, intent, project, environment, registration, actor, a.HeldServiceID, a.Profile, a.PlanSHA256, payload)
+		nativeState(t, err, "P0001")
+		_, err = db.ExecContext(ctx, "UPDATE "+table+" SET project_id=$1 WHERE id=$2", project, id)
+		require.NoError(t, err)
+	}
 	_, err = db.ExecContext(ctx, `INSERT INTO janua_staging_inert_operations(id,held_intent_id,project_id,environment_id,repository_registration_id,actor_id,held_service_id,profile,plan_sha256,request_sha256,reason,payload) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$9,'synthetic native receipts',$10)`, a.ID, intent, project, environment, registration, actor, a.HeldServiceID, a.Profile, a.PlanSHA256, payload)
 	require.NoError(t, err)
 	objects := map[string]string{"AppProject:argocd/janua-staging": a.AppProjectUID, "Application:argocd/janua-staging": a.ApplicationUID, "Deployment:janua-staging/janua-api-staging": a.DeploymentUID, "Deployment:janua-staging/janua-staging-redis": a.RedisDeploymentUID, "Service:janua-staging/janua-api-staging": a.APIServiceUID, "Service:janua-staging/janua-staging-redis": a.RedisServiceUID}

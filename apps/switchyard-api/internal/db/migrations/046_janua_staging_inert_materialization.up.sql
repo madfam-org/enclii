@@ -63,8 +63,8 @@ BEGIN
  IF NOT EXISTS (
   SELECT 1 FROM janua_staging_preregistration_intents i
   JOIN projects p ON p.id=i.project_id
-  JOIN environments e ON e.id=i.environment_id
-  JOIN onboarding_registrations r ON r.id=i.repository_registration_id
+  JOIN environments e ON e.id=i.environment_id AND e.project_id=p.id
+  JOIN onboarding_registrations r ON r.id=i.repository_registration_id AND r.project_id=p.id
   JOIN users u ON u.id=NEW.actor_id
   WHERE i.id=NEW.held_intent_id AND p.id=NEW.project_id AND p.slug='janua'
    AND e.id=NEW.environment_id AND e.name='staging' AND e.kube_namespace='janua-staging'
