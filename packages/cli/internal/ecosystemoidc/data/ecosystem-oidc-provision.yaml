@@ -1162,11 +1162,11 @@ platforms:
   # must be the organization_id below.
   #
   # SCOPE: `dhanam-scheduled-payments:write`, ONE colon, because Janua (and
-  # this registry's contract) register only `namespace:action`. Dhanam #924 and
-  # HCM #192 shipped `dhanam:scheduled-payments:write`, which Janua refuses at
-  # registration; both must rename their constant to this string (Dhanam
-  # WRITER_SCOPE, HCM prestadores/dhanam_plan.py ALCANCE) before this client is
-  # provisioned, or the token is refused by Dhanam with 401.
+  # this registry's contract) register only `namespace:action`. Janua #758
+  # reserves this spelling and Dhanam #926 consumes it; HCM #197 updates its
+  # caller. Provision only AFTER the Janua image is promoted and its runtime
+  # reservation verified; keep HCM sync off until all callers, the reviewed
+  # Dhanam grant and adoption of any existing schedule are ready.
   #
   # The pair lands at secret/symbiosis-hcm through
   # symbiosis-hcm/dhanam-writer-client (LOWERCASE keys), read by HCM's
