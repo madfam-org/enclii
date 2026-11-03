@@ -59,7 +59,7 @@ func (h *Handler) handleOpsAppsSyncApply(ctx context.Context, operation string, 
 			Status: "conflict", Summary: "Application release binding changed; no operation submitted"}, http.StatusConflict
 	}
 
-	if activeOperation, found, _ := unstructured.NestedMap(app.Object, "operation"); found && len(activeOperation) > 0 {
+	if activeOperation, found, readErr := unstructured.NestedMap(app.Object, "operation"); readErr != nil || (found && len(activeOperation) > 0) {
 		return operatorOperationResponse{
 			OperationID: operationID,
 			Operation:   operation,
@@ -78,6 +78,15 @@ func (h *Handler) handleOpsAppsSyncApply(ctx context.Context, operation string, 
 				{Name: "audit", Status: "skipped", Detail: "no mutation was submitted"},
 			},
 			Warnings: []string{"retry after the active Argo operation completes"},
+		}, http.StatusConflict
+	}
+	previousState, hasState, stateErr := unstructured.NestedMap(app.Object, "status", "operationState")
+	phase, hasPhase, phaseErr := unstructured.NestedString(previousState, "phase")
+	if stateErr != nil || (hasState && (phaseErr != nil || !hasPhase || (phase != "Succeeded" && phase != "Failed" && phase != "Error"))) {
+		return operatorOperationResponse{
+			OperationID: operationID, Operation: operation, Status: "conflict", DryRun: false,
+			Summary:  "Application operation state is active or unconfirmed; no operation submitted",
+			Warnings: []string{"inspect the current Application operation state before retrying"},
 		}, http.StatusConflict
 	}
 
@@ -125,6 +134,11 @@ func (h *Handler) handleOpsAppsSyncApply(ctx context.Context, operation string, 
 	// fields; Update uses metadata.resourceVersion as an atomic precondition.
 	// Never retry a conflict here: the caller must inspect the new operation.
 	requested := app.DeepCopy()
+	// Match Argo CD v3.2.5 SetAppOperation: its controller later merge-patches
+	// the new state. Retaining old state would inherit omitted selective-sync
+	// resources/automated fields on that patch and contaminate resumed work.
+	// Clear only the confirmed terminal state in the same versioned Update.
+	unstructured.RemoveNestedField(requested.Object, "status", "operationState")
 	requested.Object["operation"] = map[string]any{
 		"initiatedBy": map[string]any{"username": "enclii-ops"},
 		"sync":        syncSpec,
