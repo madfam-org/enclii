@@ -89,7 +89,8 @@ raw fallback or automatic cleanup claim.
 
 After owner-approved execution, independently verify actual isolated schema,
 runtime credential intake, API/Redis startup, public issuer/JWKS separation,
-real authentication/refresh, denied production access, schedule adoption and a
+a separately reviewed synthetic principal/client bootstrap, real authentication/refresh,
+denied production access, schedule adoption and a
 continuous healthy 30-minute soak. Production promotion remains blocked until
 those native/runtime receipts exist. There is no executable owner command for
 this kernel in the current CLI; existing capability/intake inspections remain
