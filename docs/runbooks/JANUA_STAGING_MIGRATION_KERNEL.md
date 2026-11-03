@@ -22,6 +22,33 @@ no new attestation or BOM pipeline is required. Fulcio documents its signed
 [workflow/source digest extensions](https://github.com/sigstore/fulcio/blob/main/docs/oid-info.md).
 A source hint or mutable tag alone is insufficient.
 
+The internal API source observer now reads the freshly qualified inert native
+authority, retained plan and exact manifest files at its recorded revision. It
+derives the API digest from that held overlay. The existing Janua API producer
+does not set OCI source/revision labels; the observer discovers a candidate SHA
+only from bounded, successfully verified cosign output and independently verifies
+the same immutable digest again with the exact certificate SHA/event/repository/
+main-ref/issuer/workflow identity filters. Candidate JSON alone is not authority.
+The pinned cosign version's [certificate output implementation](https://github.com/sigstore/cosign/blob/v3.1.3/cmd/cosign/cli/verify/common.go)
+exposes these fields; absent or ambiguous metadata refuses. No new image build,
+OCI-label exception or SLSA pipeline is required.
+
+The observer reuses the native content-addressed registry reader, corroborates
+the exact revision tag, and requires the completed exact-SHA main API build and
+normal CI/test workflows. Jobs must belong to the observed run and attempt;
+mandatory API/PostgreSQL checks cannot be skipped. The existing disabled CI API
+and dependent E2E jobs may remain skipped. The approved Playwright job is advisory
+internally, so workflow success is not represented as a real portal/login proof.
+The full source descriptor comes from the exact Git commit/tree and bounded,
+Git-hash-verified blobs, refusing truncation, symlinks and submodules. Source
+reads execute no producer code. CI/image evidence, native authority and dedicated
+registry custody are re-read before the observation receives its current timestamp.
+
+Dedicated registry custody remains a mandatory internal reader dependency with
+no implementation or shared-secret fallback in this increment. Missing custody
+fails before registry or source HTTP. No endpoint or kernel constructor wires
+this observer, and no observed JSON or successful unit test supplies custody.
+
 The descriptor hashes all application/migration Python files and Alembic config,
 rejects ambiguous/disconnected/cyclic/dynamic revision declarations, and requires
 one complete linear head. The actual image filesystem must match exactly before
@@ -80,8 +107,9 @@ there is no speculative adoption or recovery under another operation ID.
 
 ## Remaining activation gates
 
-Concrete native source/CI/certificate/descriptor, migration network and dedicated
-registry-custody observers must be wired before exposing any execution endpoint.
+The source/CI/certificate/descriptor observer is source-complete but still needs
+dedicated registry custody. That custody adapter and concrete migration-network
+observations must exist and be wired before exposing any execution endpoint.
 The database kernel's namespace/network/capacity/cost/custody gates still apply.
 A safe recovery adapter for unretained unknown writes or a revoked original actor
 is not provided; retain and inspect the same operation rather than inventing a
@@ -108,3 +136,11 @@ An additional owned loopback PG14/verify-full proof ran all 22 actual Janua sour
 revisions to head 021 and refused a populated rerun. It used synthetic DNS routing
 and a source directory; it is not a container, real Janua login, Kubernetes,
 registry signature or CNI proof. No production database or identity was read.
+
+Source-observer tests run the actual held-manifest, OCI byte/digest, CI workflow,
+Git tree/blob and descriptor readers through synthetic transports and simulated
+crypto-subprocess results. They include a label-free image and distinct manifest/
+build commits, rejected certificate hints, skipped or foreign mandatory jobs,
+pending latest runs, truncated trees, wrong blob bytes, custody/authority changes
+and redirected credential-bearing requests. They are not live registry,
+certificate or native staging receipts.
