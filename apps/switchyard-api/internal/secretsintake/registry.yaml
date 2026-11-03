@@ -431,6 +431,29 @@ targets:
       - map_absence_feed_url
       - map_absence_feed_key
 
+  # symbiosis-hcm → Karafiel machine edge (2026-11-02). The client_credentials
+  # pair of ecosystem-oidc platform symbiosis-hcm-karafiel (audience
+  # karafiel-api; scopes legal:contractor-draft, legal:employment-draft,
+  # fiscal:invoice), written ONLY by
+  # `enclii secrets provision oidc --platform symbiosis-hcm-karafiel`; no human
+  # types either value. Same path as symbiosis-hcm/map-absence-feed
+  # (secret/symbiosis-hcm, a merge), but delivered by HCM's DEDICATED
+  # hcm-service-clients ExternalSecret, never by hcm-secrets: hcm-secrets
+  # carries DATABASE_URL and is mounted optional: false, so it must never wait
+  # on, or be rewritten by, a machine-client pair. LOWERCASE keys, as Vault
+  # stores them; the ExternalSecret maps these `property:` names byte for byte.
+  symbiosis-hcm/karafiel-client:
+    label: Symbiosis-HCM → Karafiel service client
+    description: Janua client_credentials pair (symbiosis-hcm-karafiel; scopes legal:contractor-draft, legal:employment-draft, fiscal:invoice) HCM's API and worker use for Karafiel contract drafts and CFDI. Filed by `enclii secrets provision oidc --platform symbiosis-hcm-karafiel`.
+    vault_path: secret/symbiosis-hcm
+    namespace: symbiosis-hcm
+    external_secret: hcm-service-clients  # pragma: allowlist secret
+    keys:
+      - karafiel_service_client_id
+      - karafiel_service_client_secret
+    generate:
+      disabled: true
+
   nauta/kalya-feed-tokens:
     label: Nauta tokens de feeds de kalya
     description: Tokens con los que nauta lee los feeds de kalya para las superficies de cliente

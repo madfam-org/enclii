@@ -104,6 +104,7 @@ ESO sources: `enclii-secrets`, `janua-secrets`, `madfam-site-secrets`, `phynd-cr
 | `<client-portal>/internal-api-key` | `secret/<client-portal>` | `internal_api_key` |
 | `<client-portal>/kalya-feeds` | `secret/<client-portal>` | `kalya_occupancy_feed_url`, `kalya_capacity_feed_url` |
 | `symbiosis-hcm/<portal>-absence-feed` | `secret/symbiosis-hcm` | `<portal>_absence_feed_url`, `<portal>_absence_feed_key` |
+| `symbiosis-hcm/karafiel-client` | `secret/symbiosis-hcm` | `karafiel_service_client_id`, `karafiel_service_client_secret`: **provisioned, never submitted** (`enclii secrets provision oidc --platform symbiosis-hcm-karafiel`) |
 | `nauta/kalya-feed-tokens` | `secret/nauta` | `kalya_feed_tokens` |
 | `nauta/symbiosis-hcm-token` | `secret/nauta` | `symbiosis_hcm_token` |
 | `angelia/courier-producer-keys` | `secret/angelia` | `courier_producer_key_alarms`, `courier_producer_key_enclii_ops`, `courier_producer_key_tulana`, `courier_producer_key_madfam_site` |
@@ -365,6 +366,41 @@ enclii secrets provision oidc --profile admin --platform voxa-selva --json --rea
 
 Then pin the printed `jnc_…` id as `janua_client.client_id` for `voxa-selva` in
 both registry copies.
+
+### Symbiosis-HCM → Karafiel edge (2026-11-02)
+
+One Janua `client_credentials` client for HCM's API and Celery worker calling
+Karafiel: `symbiosis-hcm-karafiel` (Janua client `symbiosis-hcm-karafiel`,
+audience `karafiel-api`, scopes `legal:contractor-draft`,
+`legal:employment-draft` and `fiscal:invoice`, platform-admin with no
+organization, like `zavlo-cfdi-emitter`). HCM asks Janua for ONE scope per
+token, so a contract-draft token never carries `fiscal:invoice`. The pair is
+filed at `symbiosis-hcm/karafiel-client` → `secret/symbiosis-hcm` and delivered
+by HCM's dedicated `hcm-service-clients` ExternalSecret (symbiosis-hcm
+`infra/k8s/production/externalsecret-service-clients.yaml`), never by the
+hand-made `hcm-secrets`. That ExternalSecret maps the two lowercase properties
+to `KARAFIEL_SERVICE_CLIENT_ID`/`_SECRET`, `KARAFIEL_CONTRACTOR_DRAFT_CLIENT_ID`/
+`_SECRET` and `KARAFIEL_EMPLOYMENT_CLIENT_ID`/`_SECRET`. HCM ignores the pair
+until `KARAFIEL_CONTRACTOR_DRAFTS` / `KARAFIEL_EMPLOYMENT_CONTRACTS_ENABLED`
+are on.
+
+Janua must reserve `legal:contractor-draft` and `legal:employment-draft` for
+platform admins (its RESERVED_SCOPES) before this client is registered; until
+then a non-platform org admin could register a client holding the same scopes.
+
+Owner sequence, after the Janua reservation is deployed and this registry
+change is deployed (switchyard-api digest bump), from an up-to-date checkout.
+`secret/symbiosis-hcm` is already in the switchyard Vault policy:
+
+```bash
+cd ~/labspace/enclii && git pull --ff-only
+make -C ~/labspace/enclii install-cli CLI_INSTALL_DIR=$HOME/.local/bin
+enclii login --profile admin   # only if the admin session expired
+enclii --profile admin secrets provision oidc --platform symbiosis-hcm-karafiel --intake-profile default --json --reason "symbiosis-hcm to karafiel machine edge: contract drafts and CFDI"
+```
+
+Then pin the printed `jnc_…` id as `janua_client.client_id` for
+`symbiosis-hcm-karafiel` in both registry copies.
 
 ### Voxa web session and API runtime (2026-10-04)
 

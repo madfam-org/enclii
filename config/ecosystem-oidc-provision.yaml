@@ -1,6 +1,6 @@
 # MADFAM ecosystem OIDC auto-provision registry
 # Consumed by: enclii secrets provision oidc
-# Last Updated: 2026-10-27
+# Last Updated: 2026-11-02
 #
 # TWO COPIES, ONE CONTENT. The CLI embeds
 # packages/cli/internal/ecosystemoidc/data/ecosystem-oidc-provision.yaml (go:embed
@@ -1091,6 +1091,56 @@ platforms:
       is_confidential: true
       allowed_scopes:
         - hcm-benchmarks:read
+      grant_types:
+        - client_credentials
+
+  # ---------------------------------------------------------------------------
+  # symbiosis-hcm → Karafiel (2026-11-02). HCM's API and Celery worker ask
+  # Karafiel for contract drafts as a MACHINE: contractor retainer agreements
+  # (symbiosis-hcm #193, scope legal:contractor-draft, Karafiel #328) and
+  # employment contracts (symbiosis-hcm #194, scope legal:employment-draft,
+  # Karafiel #323), and later the payroll CFDI, recibidos/validar and
+  # retenciones calls that still use the static KARAFIEL_API_TOKEN today
+  # (scope fiscal:invoice, which Karafiel maps to /api/v1/cfdi/ only). One
+  # client for the whole HCM → Karafiel edge, three scopes; HCM requests ONE
+  # scope per token (core/janua_service_token.py caches per client and scope),
+  # so a drafts token never carries fiscal:invoice and vice versa.
+  #
+  # audience `karafiel-api` is Karafiel's JANUA_AUDIENCE (core/janua_audience.py),
+  # the audience zavlo-cfdi-emitter already holds. HCM's token
+  # request names no audience: Janua stamps the client's. Karafiel admits the
+  # token on `sub` = service-account:<client_id> plus the scope, and pins the
+  # tenant to its own LEGAL_SERVICE_RFC, so it reads no org from the token:
+  # PLATFORM-ADMIN, no organization_id, like zavlo-cfdi-emitter. Registering
+  # it needs a Janua platform-admin session (`--profile admin`).
+  #
+  # The pair lands at secret/symbiosis-hcm through symbiosis-hcm/karafiel-client
+  # (LOWERCASE keys), read by HCM's DEDICATED hcm-service-clients
+  # ExternalSecret (symbiosis-hcm infra/k8s/production/
+  # externalsecret-service-clients.yaml), never by the hand-made hcm-secrets.
+  # That ExternalSecret maps the one pair to every env name HCM reads it under:
+  # KARAFIEL_SERVICE_CLIENT_ID/_SECRET, KARAFIEL_CONTRACTOR_DRAFT_CLIENT_ID/
+  # _SECRET and KARAFIEL_EMPLOYMENT_CLIENT_ID/_SECRET.
+  #
+  # NOT pinned yet: the first provision run CREATES the client and prints its
+  # jnc_… id; pin it here (both copies) so later runs reconcile this client
+  # instead of creating a twin. Every later run rotates the secret.
+  # ---------------------------------------------------------------------------
+  symbiosis-hcm-karafiel:
+    intake_target: symbiosis-hcm/karafiel-client
+    intake_key_map:
+      karafiel_service_client_id: client_id
+      karafiel_service_client_secret: client_secret  # pragma: allowlist secret
+    janua_client:
+      name: symbiosis-hcm-karafiel
+      client_key: symbiosis-hcm-karafiel  # pragma: allowlist secret
+      audience: karafiel-api
+      description: Machine edge (client_credentials) from Symbiosis-HCM's API and worker to Karafiel. Platform-admin, scopes legal:contractor-draft and legal:employment-draft (contract drafts) and fiscal:invoice (CFDI); HCM requests one scope per token.
+      is_confidential: true
+      allowed_scopes:
+        - legal:contractor-draft
+        - legal:employment-draft
+        - fiscal:invoice
       grant_types:
         - client_credentials
 
