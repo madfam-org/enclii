@@ -107,7 +107,7 @@ func TestCustodyRejectsOwnershipRoleCADNSAndReplacement(t *testing.T) {
 				edit(Cluster+"-app", func(s *corev1.Secret) { s.Data["dbname"] = []byte("production") })
 			case "ca-private-pem":
 				edit(Cluster+"-ca", func(s *corev1.Secret) {
-					s.Data["ca.crt"] = append(s.Data["ca.crt"], []byte("-----BEGIN PRIVATE KEY-----\nsynthetic\n-----END PRIVATE KEY-----\n")...)
+					s.Data["ca.crt"] = append(s.Data["ca.crt"], pem.EncodeToMemory(&pem.Block{Type: "PRIVATE KEY", Bytes: []byte("synthetic")})...)
 				})
 			case "wrong-dns":
 				ca, leaf := certificateFixture(t, "production.invalid")
