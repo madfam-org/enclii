@@ -73,7 +73,7 @@ func (j SQLJournal) Claim(ctx context.Context, p Plan) error {
 	if err != nil {
 		return ErrRefused
 	}
-	defer tx.Rollback()
+	defer func() { _ = tx.Rollback() }()
 	if verifyStoredAuthority(bounded, tx, p, true) != nil {
 		return ErrRefused
 	}
@@ -107,7 +107,7 @@ func (j SQLJournal) Record(ctx context.Context, p Plan, phase, uid string) error
 	if err != nil {
 		return ErrRefused
 	}
-	defer tx.Rollback()
+	defer func() { _ = tx.Rollback() }()
 	if verifyStoredAuthority(bounded, tx, p, true) != nil {
 		return ErrRefused
 	}
@@ -136,7 +136,7 @@ func (j SQLJournal) Receipt(ctx context.Context, p Plan) (NativeReceipt, error) 
 	if err != nil {
 		return NativeReceipt{}, ErrRefused
 	}
-	defer tx.Rollback()
+	defer func() { _ = tx.Rollback() }()
 	if verifyStoredAuthority(bounded, tx, p, false) != nil {
 		return NativeReceipt{}, ErrRefused
 	}

@@ -74,7 +74,7 @@ func (j SQLJournal) Claim(ctx context.Context, p Plan) error {
 	if e != nil {
 		return ErrRefused
 	}
-	defer tx.Rollback()
+	defer func() { _ = tx.Rollback() }()
 	if verifyDatabase(ctx, tx, p, true) != nil {
 		return ErrRefused
 	}
@@ -134,7 +134,7 @@ func (j SQLJournal) Record(ctx context.Context, p Plan, phase string, uid ktypes
 	if e != nil {
 		return ErrRefused
 	}
-	defer tx.Rollback()
+	defer func() { _ = tx.Rollback() }()
 	if phase == "OWNER_SECRET_REMOVED" {
 		if verifyCleanup(ctx, tx, p) != nil {
 			return ErrRefused
@@ -160,7 +160,7 @@ func (j SQLJournal) Receipt(ctx context.Context, p Plan) (NativeReceipt, error) 
 	if e != nil {
 		return NativeReceipt{}, ErrRefused
 	}
-	defer tx.Rollback()
+	defer func() { _ = tx.Rollback() }()
 	if verifyCleanup(ctx, tx, p) != nil {
 		return NativeReceipt{}, ErrRefused
 	}
@@ -182,7 +182,7 @@ func (j SQLJournal) Outcome(ctx context.Context, p Plan, outcome Outcome) error 
 	if e != nil {
 		return ErrRefused
 	}
-	defer tx.Rollback()
+	defer func() { _ = tx.Rollback() }()
 	if verifyCleanup(ctx, tx, p) != nil {
 		return ErrRefused
 	}
@@ -226,7 +226,7 @@ func (j SQLJournal) ReadOutcome(ctx context.Context, p Plan) (*Outcome, error) {
 	if e != nil {
 		return nil, ErrRefused
 	}
-	defer tx.Rollback()
+	defer func() { _ = tx.Rollback() }()
 	if verifyCleanup(ctx, tx, p) != nil {
 		return nil, ErrRefused
 	}
