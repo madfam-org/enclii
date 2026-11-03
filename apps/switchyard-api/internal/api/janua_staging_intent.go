@@ -52,6 +52,7 @@ func parseJanuaStagingIntent(raw []byte) (januaStagingIntentRequest, bool) {
 }
 func registerJanuaStagingIntentRoutes(platform *gin.RouterGroup, h *Handler) {
 	registerJanuaInertMaterializationRoutes(platform, h)
+	registerJanuaNetworkPreparationRoutes(platform, h)
 	platform.POST("/projects/:slug/environments/staging/preregistration-intents", h.RequirePlatformOperator(), h.JanuaStagingIntent)
 	platform.GET("/projects/:slug/environments/staging/preregistration-intents/:operation_id", h.RequirePlatformOperator(), h.ReadJanuaStagingIntent)
 }
