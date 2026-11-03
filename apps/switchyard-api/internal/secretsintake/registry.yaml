@@ -454,6 +454,27 @@ targets:
     generate:
       disabled: true
 
+  # symbiosis-hcm → Dhanam scheduled-payments writer (2026-11-02). The pair of
+  # ecosystem-oidc platform symbiosis-hcm-dhanam-writer (audience dhanam-api,
+  # scope dhanam-scheduled-payments:write, org-bound to madfam-ecosystem),
+  # written ONLY by `enclii secrets provision oidc --platform
+  # symbiosis-hcm-dhanam-writer`. Its OWN ExternalSecret, hcm-dhanam-writer,
+  # not hcm-service-clients: ESO is all-or-nothing per ExternalSecret and the
+  # two edges are provisioned on different days, so one missing pair must
+  # never hold the other's Secret. LOWERCASE keys, mapped to
+  # DHANAM_WRITER_CLIENT_ID / DHANAM_WRITER_CLIENT_SECRET.
+  symbiosis-hcm/dhanam-writer-client:
+    label: Symbiosis-HCM → Dhanam scheduled-payments writer client
+    description: Janua client_credentials pair (symbiosis-hcm-dhanam-writer, scope dhanam-scheduled-payments:write, org-bound) HCM uses to push contractor retainer plans into Dhanam. Filed by `enclii secrets provision oidc --platform symbiosis-hcm-dhanam-writer`.
+    vault_path: secret/symbiosis-hcm
+    namespace: symbiosis-hcm
+    external_secret: hcm-dhanam-writer  # pragma: allowlist secret
+    keys:
+      - dhanam_writer_client_id
+      - dhanam_writer_client_secret
+    generate:
+      disabled: true
+
   nauta/kalya-feed-tokens:
     label: Nauta tokens de feeds de kalya
     description: Tokens con los que nauta lee los feeds de kalya para las superficies de cliente

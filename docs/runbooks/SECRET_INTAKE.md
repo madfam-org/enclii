@@ -105,6 +105,7 @@ ESO sources: `enclii-secrets`, `janua-secrets`, `madfam-site-secrets`, `phynd-cr
 | `<client-portal>/kalya-feeds` | `secret/<client-portal>` | `kalya_occupancy_feed_url`, `kalya_capacity_feed_url` |
 | `symbiosis-hcm/<portal>-absence-feed` | `secret/symbiosis-hcm` | `<portal>_absence_feed_url`, `<portal>_absence_feed_key` |
 | `symbiosis-hcm/karafiel-client` | `secret/symbiosis-hcm` | `karafiel_service_client_id`, `karafiel_service_client_secret`: **provisioned, never submitted** (`enclii secrets provision oidc --platform symbiosis-hcm-karafiel`) |
+| `symbiosis-hcm/dhanam-writer-client` | `secret/symbiosis-hcm` | `dhanam_writer_client_id`, `dhanam_writer_client_secret`: **provisioned, never submitted** (`enclii secrets provision oidc --platform symbiosis-hcm-dhanam-writer`) |
 | `nauta/kalya-feed-tokens` | `secret/nauta` | `kalya_feed_tokens` |
 | `nauta/symbiosis-hcm-token` | `secret/nauta` | `symbiosis_hcm_token` |
 | `angelia/courier-producer-keys` | `secret/angelia` | `courier_producer_key_alarms`, `courier_producer_key_enclii_ops`, `courier_producer_key_tulana`, `courier_producer_key_madfam_site` |
@@ -401,6 +402,28 @@ enclii --profile admin secrets provision oidc --platform symbiosis-hcm-karafiel 
 
 Then pin the printed `jnc_…` id as `janua_client.client_id` for
 `symbiosis-hcm-karafiel` in both registry copies.
+
+### Symbiosis-HCM → Dhanam scheduled-payments writer (2026-11-02)
+
+`symbiosis-hcm-dhanam-writer` (audience `dhanam-api`, scope
+`dhanam-scheduled-payments:write`, org-bound to `madfam-ecosystem` because
+Dhanam's writer strategy refuses a token without `org_id`), filed at
+`symbiosis-hcm/dhanam-writer-client` → `secret/symbiosis-hcm` and delivered by
+HCM's dedicated `hcm-dhanam-writer` ExternalSecret as `DHANAM_WRITER_CLIENT_ID`
+/ `DHANAM_WRITER_CLIENT_SECRET`. The token alone authorizes nothing: Dhanam's
+`ScheduledPaymentWriterGrant` (Dhanam `apps/api/scripts/provision-scheduled-payment-writer-grant.ts`)
+binds this client id and organization to one business space.
+
+The scope has ONE colon because Janua registers only `namespace:action`.
+Dhanam (`WRITER_SCOPE`) and HCM (`prestadores/dhanam_plan.py` `ALCANCE`) must
+use this exact string before the client is provisioned.
+
+```bash
+enclii --profile admin secrets provision oidc --platform symbiosis-hcm-dhanam-writer --intake-profile default --json --reason "symbiosis-hcm to dhanam scheduled-payments writer"
+```
+
+Then pin the printed `jnc_…` id in both registry copies and use it as the
+grant's `clientId`.
 
 ### Voxa web session and API runtime (2026-10-04)
 

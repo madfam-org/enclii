@@ -1144,6 +1144,57 @@ platforms:
       grant_types:
         - client_credentials
 
+  # ---------------------------------------------------------------------------
+  # symbiosis-hcm → Dhanam scheduled payments (2026-11-02). HCM's API and
+  # Celery worker push a contractor's retainer plan into Dhanam as a MACHINE
+  # (symbiosis-hcm #192 prestadores/dhanam_plan.py, Dhanam #924): PUT/GET
+  # /v1/scheduled-payments/external/symbiosis-hcm/<id>. One edge, one client,
+  # one scope, client_credentials only, no browser leg.
+  #
+  # audience `dhanam-api` is what Dhanam's janua-scheduled-payments-writer
+  # strategy checks `aud` against, the audience routecraft-billing-relay holds.
+  # ORG-BOUND to madfam-ecosystem: the strategy refuses a token without an
+  # `org_id`, and Janua sets org_id only on an org-bound client. The token alone
+  # authorizes nothing: Dhanam's operator-reviewed ScheduledPaymentWriterGrant
+  # binds THIS client id and THIS organization to one business space and the
+  # source system `symbiosis-hcm` (apps/api/scripts/
+  # provision-scheduled-payment-writer-grant.ts), so the grant's organizationId
+  # must be the organization_id below.
+  #
+  # SCOPE: `dhanam-scheduled-payments:write`, ONE colon, because Janua (and
+  # this registry's contract) register only `namespace:action`. Janua #758
+  # reserves this spelling and Dhanam #926 consumes it; HCM #197 updates its
+  # caller. Provision only AFTER the Janua image is promoted and its runtime
+  # reservation verified; keep HCM sync off until all callers, the reviewed
+  # Dhanam grant and adoption of any existing schedule are ready.
+  #
+  # The pair lands at secret/symbiosis-hcm through
+  # symbiosis-hcm/dhanam-writer-client (LOWERCASE keys), read by HCM's
+  # DEDICATED hcm-dhanam-writer ExternalSecret, which maps them to
+  # DHANAM_WRITER_CLIENT_ID / DHANAM_WRITER_CLIENT_SECRET. HCM ignores the pair
+  # until DHANAM_SCHEDULED_PAYMENTS_SYNC=true.
+  #
+  # NOT pinned yet: the first provision run CREATES the client and prints its
+  # jnc_… id; pin it here (both copies) and use the same id in the Dhanam
+  # writer grant.
+  # ---------------------------------------------------------------------------
+  symbiosis-hcm-dhanam-writer:
+    intake_target: symbiosis-hcm/dhanam-writer-client
+    intake_key_map:
+      dhanam_writer_client_id: client_id
+      dhanam_writer_client_secret: client_secret  # pragma: allowlist secret
+    janua_client:
+      name: symbiosis-hcm-dhanam-writer
+      client_key: symbiosis-hcm-dhanam-writer  # pragma: allowlist secret
+      audience: dhanam-api
+      description: Machine edge (client_credentials) from Symbiosis-HCM to Dhanam's scheduled-payments machine writer route. Org-bound to madfam-ecosystem, scope dhanam-scheduled-payments:write only; Dhanam's writer grant binds it to one space.
+      is_confidential: true
+      organization_id: 1a6233ef-185f-43ee-9181-e2591fbb2643
+      allowed_scopes:
+        - dhanam-scheduled-payments:write
+      grant_types:
+        - client_credentials
+
   crea-sim:
     intake_target: crea-sim/ui-oidc
     intake_key_map:

@@ -12,7 +12,7 @@ import (
 func TestLoadRegistry(t *testing.T) {
 	reg, err := LoadRegistry()
 	require.NoError(t, err)
-	assert.Len(t, reg, 110)
+	assert.Len(t, reg, 111)
 	assert.Contains(t, reg, "ceq/vast-api-key")
 	assert.Contains(t, reg, "karafiel/web-oidc-janua")
 	adminSession := reg["karafiel/admin-session"]
@@ -37,7 +37,7 @@ func TestGetTarget(t *testing.T) {
 func TestListTargetsSorted(t *testing.T) {
 	list, err := ListTargets()
 	require.NoError(t, err)
-	require.Len(t, list, 110)
+	require.Len(t, list, 111)
 	for i := 1; i < len(list); i++ {
 		assert.Less(t, list[i-1].ID, list[i].ID, "targets should be sorted by id")
 	}
@@ -117,6 +117,7 @@ func TestListTargetsSorted(t *testing.T) {
 		"routecraft/billing-relay",
 		"selva/pravara-mes-client",
 		"selva/yantra4d-client",
+		"symbiosis-hcm/dhanam-writer-client",
 		"symbiosis-hcm/karafiel-client",
 		"symbiosis-hcm/map-absence-feed",
 		"synthetics/dhanam-staging-checkout",
@@ -1054,5 +1055,28 @@ func TestSymbiosisHCMKarafielClientTarget(t *testing.T) {
 	require.NoError(t, err)
 	for _, k := range tgt.Keys {
 		assert.NotContains(t, feed.Keys, k)
+	}
+}
+
+// symbiosis-hcm → Dhanam scheduled-payments writer (2026-11-02). Its own
+// ExternalSecret, hcm-dhanam-writer, so an unprovisioned Dhanam pair never
+// holds the Karafiel pair's Secret (ESO is all-or-nothing per object).
+func TestSymbiosisHCMDhanamWriterClientTarget(t *testing.T) {
+	tgt, err := GetTarget("symbiosis-hcm/dhanam-writer-client")
+	require.NoError(t, err)
+	assert.Equal(t, "secret/symbiosis-hcm", tgt.VaultPath)
+	assert.Equal(t, "symbiosis-hcm", tgt.Namespace)
+	assert.Equal(t, "hcm-dhanam-writer", tgt.ExternalSecret)
+	assert.Equal(t, []string{"dhanam_writer_client_id", "dhanam_writer_client_secret"}, tgt.Keys)
+	require.NotNil(t, tgt.Generate)
+	assert.True(t, tgt.Generate.Disabled, "a Janua credential is minted by Janua, never generated")
+	assert.Contains(t, tgt.Description, "--platform symbiosis-hcm-dhanam-writer")
+
+	karafiel, err := GetTarget("symbiosis-hcm/karafiel-client")
+	require.NoError(t, err)
+	assert.NotEqual(t, karafiel.ExternalSecret, tgt.ExternalSecret,
+		"each edge has its own ExternalSecret")
+	for _, k := range tgt.Keys {
+		assert.NotContains(t, karafiel.Keys, k)
 	}
 }
