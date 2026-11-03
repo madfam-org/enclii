@@ -22,10 +22,10 @@ const Manager = "janua-staging-inert-materialization"
 // This initial closed profile is reviewed together with Janua's held overlay.
 // Resource changes require a new reviewed profile; image pins remain variable.
 var resourceHashes = map[string]string{
-	"api.yaml":     "92dfda2e8c71db057413665a95bdbf2f3554f25410dad739b418b7434d44916a",
-	"service.yaml": "cb10882022e6efb4bc178a0b41005939eaa4b66311308f9473c7b74c0fac957b",
-	"secrets.yaml": "ba9593db0f90e6df17fe58392c9953d3e560c01b304e9529ff76b3c6a6e66bde",
-	"redis.yaml":   "5762ae974719abc2e2f0b17c6b05b4fafe26aa2d299fd48b098ee10d72223605",
+	"api.yaml":     "92dfda2e8c71db057413665a95bdbf2f3554f25410dad739b418b7434d44916a", // pragma: allowlist secret -- public SHA-256 of exact reviewed source fixture; not a credential
+	"service.yaml": "cb10882022e6efb4bc178a0b41005939eaa4b66311308f9473c7b74c0fac957b", // pragma: allowlist secret -- public SHA-256 of exact reviewed source fixture; not a credential
+	"secrets.yaml": "ba9593db0f90e6df17fe58392c9953d3e560c01b304e9529ff76b3c6a6e66bde", // pragma: allowlist secret -- public SHA-256 of exact reviewed source fixture; not a credential
+	"redis.yaml":   "5762ae974719abc2e2f0b17c6b05b4fafe26aa2d299fd48b098ee10d72223605", // pragma: allowlist secret -- public SHA-256 of exact reviewed source fixture; not a credential
 }
 
 type Object struct {
