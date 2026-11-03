@@ -26,10 +26,6 @@ type januaBatchARequest struct {
 	DryRun       *bool  `json:"dry_run"`
 }
 
-func registerJanuaStagingBatchARoutes(platform *gin.RouterGroup, h *Handler) {
-	platform.POST("/projects/:slug/environments/staging/prepare", h.RequirePlatformOperator(), h.JanuaStagingBatchAPrepare)
-}
-
 func (h *Handler) JanuaStagingBatchAPrepare(c *gin.Context) {
 	var request januaBatchARequest
 	if decodeKarafielStageBody(c, &request) != nil || c.Param("slug") != "janua" || !januaBatchAPhaseValid(request.Phase) || request.Plan == "" {

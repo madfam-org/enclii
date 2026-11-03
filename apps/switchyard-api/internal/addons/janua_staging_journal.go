@@ -169,7 +169,7 @@ func WriteJanuaStagingCustodyReceipt(ctx context.Context, client kubernetes.Inte
 		return fmt.Errorf("Janua staging public CA metadata refused")
 	}
 	birth, err := ReadJanuaStagingBirthReceipt(ctx, client, o, journalUID)
-	if err != nil || birth.ClusterUID != custody.ClusterUID || birth.RuntimeSecretUID != custody.RuntimeUID {
+	if err != nil || birth.ClusterUID != custody.ClusterUID || birth.RuntimeSecretUID != custody.RuntimeUID { // pragma: allowlist secret -- Compares public Kubernetes object UIDs, no credential.
 		return fmt.Errorf("Janua staging custody birth identity changed")
 	}
 	desired := o.claimObject()

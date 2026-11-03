@@ -18,7 +18,7 @@ const (
 	JanuaStagingRuntime           = "janua_staging_runtime"
 	JanuaStagingNamespace         = "janua-staging"
 	JanuaStagingClusterName       = "pg-janua-staging-db"
-	JanuaStagingRuntimeSecretName = JanuaStagingClusterName + "-runtime"
+	JanuaStagingRuntimeSecretName = JanuaStagingClusterName + "-runtime" // pragma: allowlist secret -- Public Kubernetes object name, no credential.
 	JanuaStagingPostgresVersion   = "18"
 )
 
@@ -36,7 +36,7 @@ func JanuaStagingAddonOwned(a *types.DatabaseAddon, project, environment uuid.UU
 		a.Config.Version == JanuaStagingPostgresVersion &&
 		(a.K8sNamespace == "" || a.K8sNamespace == "project-"+project.String()[:8]) &&
 		(a.K8sResourceName == "" || a.K8sResourceName == JanuaStagingClusterName) &&
-		(a.ConnectionSecret == "" || a.ConnectionSecret == JanuaStagingRuntimeSecretName)
+		(a.ConnectionSecret == "" || a.ConnectionSecret == JanuaStagingRuntimeSecretName) // pragma: allowlist secret -- Public object-name comparison, no credential.
 }
 
 func januaStageAllocationValid(a *types.DatabaseAddon) bool {

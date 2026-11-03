@@ -12,7 +12,7 @@ import (
 )
 
 // Kubernetes object name, never credential material.
-const januaStagingRuntimeSecretName = "pg-janua-staging-db-runtime"
+const januaStagingRuntimeSecretName = "pg-janua-staging-db-runtime" // pragma: allowlist secret -- Public Kubernetes object name, no credential.
 
 // ReserveJanuaStaging creates held metadata only, with server-assigned IDs.
 // It cannot deploy, retarget production, provision Kubernetes, attach a binding,
@@ -86,7 +86,7 @@ func (r *Repositories) ReserveJanuaStaging(ctx context.Context, project, environ
 		if _, err = tx.ManagedDBAddonEvents.Insert(ctx, InsertEventParams{AddonID: addonID, ProjectID: project, EventType: EventAddonCreateRequested, ActorUserSub: actor.String(), Details: map[string]interface{}{"profile": "janua-api-staging-v1", "operation_id": operation.String(), "service_id": serviceID.String(), "held": true, "reason": strings.TrimSpace(reason)}}); err != nil {
 			return fmt.Errorf("Janua staging reservation audit unavailable")
 		}
-		addon = &types.DatabaseAddon{ID: addonID, ProjectID: project, EnvironmentID: &environment, Name: "janua-staging-db", Type: types.DatabaseAddonTypePostgres, Plan: plan.Code, Status: types.DatabaseAddonStatusPending, Config: config, K8sNamespace: "project-" + project.String()[:8], K8sResourceName: "pg-janua-staging-db", ConnectionSecret: januaStagingRuntimeSecretName, CreatedBy: &actor}
+		addon = &types.DatabaseAddon{ID: addonID, ProjectID: project, EnvironmentID: &environment, Name: "janua-staging-db", Type: types.DatabaseAddonTypePostgres, Plan: plan.Code, Status: types.DatabaseAddonStatusPending, Config: config, K8sNamespace: "project-" + project.String()[:8], K8sResourceName: "pg-janua-staging-db", ConnectionSecret: januaStagingRuntimeSecretName, CreatedBy: &actor} // pragma: allowlist secret -- ConnectionSecret holds only the public object name.
 		return nil
 	})
 	if err != nil {
