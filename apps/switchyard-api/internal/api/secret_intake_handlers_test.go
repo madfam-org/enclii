@@ -312,6 +312,16 @@ func TestSubmitSecretIntake_GenerateRejections(t *testing.T) {
 			`{"target":"crea-map/internal-api-key","reason":"r"}`,
 			http.StatusBadRequest,
 		},
+		{
+			"Karafiel signing authority cannot be generated",
+			`{"target":"karafiel/hcm-signing-bindings","generate":["hcm_signing_bindings"],"reason":"r"}`,
+			http.StatusBadRequest,
+		},
+		{
+			"HCM company signer cannot be generated",
+			`{"target":"symbiosis-hcm/signing-bindings","generate":["company_signers"],"reason":"r"}`,
+			http.StatusBadRequest,
+		},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {

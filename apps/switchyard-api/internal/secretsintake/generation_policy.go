@@ -15,6 +15,19 @@ const (
 // Typed profiles are deliberately scoped to the isolated staging destination.
 // A copied policy must not silently turn into a production key generator.
 func validateGenerationPolicy(t Target) error {
+	// Identity authority comes from reviewed operator evidence, never entropy.
+	// Keep these supplied-only destinations fixed just like staging OIDC groups.
+	for _, fixed := range []Target{
+		{ID: "karafiel/hcm-signing-bindings", VaultPath: "secret/karafiel", Namespace: "karafiel", ExternalSecret: "karafiel-hcm-signing-bindings", Keys: []string{"hcm_signing_bindings"}},
+		{ID: "symbiosis-hcm/signing-bindings", VaultPath: "secret/symbiosis-hcm", Namespace: "symbiosis-hcm", ExternalSecret: "hcm-signing-bindings", Keys: []string{"company_signers"}},
+	} {
+		if t.ID == fixed.ID {
+			if t.VaultPath != fixed.VaultPath || t.Namespace != fixed.Namespace || t.ExternalSecret != fixed.ExternalSecret || !slices.Equal(t.Keys, fixed.Keys) || t.Generate == nil || !t.Generate.Disabled || t.Generate.Profile != "" || t.Generate.Bytes != 0 {
+				return fmt.Errorf("target %q must remain the fixed supplied-only signing authority group", t.ID)
+			}
+			return nil
+		}
+	}
 	if keys, fixed := map[string][]string{
 		"karafiel-staging/web-oidc":   {"web_oidc_client_id", "web_janua_secret_key", "web_oidc_issuer"},
 		"karafiel-staging/admin-oidc": {"admin_oidc_client_id", "admin_janua_secret_key", "admin_oidc_issuer"},
