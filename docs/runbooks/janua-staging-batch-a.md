@@ -68,8 +68,9 @@ effects. The adapter does not write `argocd-cm`.
 
 ## Local source proof
 
-The bounded one-thread proof passed the addon, namespace and repository unit
-packages. The positive custody case verifies exact native birth, managed-role
+At source checkpoint `f96107c6`, the bounded one-thread proof passed the addon,
+namespace and repository unit packages. The positive custody case verifies exact
+native birth, managed-role
 readiness, public CA and verify-full while the public generic parser still
 refuses non-synthetic Janua configuration. The integration-tagged PostgreSQL
 proof passed against all current migrations in a fresh disposable database; it
@@ -77,6 +78,13 @@ verifies current actor authority inside the transaction, held metadata, original
 reasons, duplicate refusal and zero Ready events. Full API compilation/runtime
 and ordinary CI remain required. No native staging or production operation was
 performed.
+
+The later CI repair removes an unused registration helper while keeping the
+handler unregistered and ApplySupported false. Five narrow scanner annotations
+cover public object names and UID comparisons, with no baseline or detector
+change. Four changed Go files pass the offline secret detector; formatting,
+Markdown and the boundary checkpoint pass. Local Go lint was unavailable. Full
+compilation and exact-head CI after integration with current main remain pending.
 
 ## Required review and proof before activation
 
