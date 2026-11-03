@@ -146,7 +146,7 @@ func (j SQLJournal) Receipt(ctx context.Context, p Plan) (NativeReceipt, error) 
  JOIN janua_staging_database_objects c ON c.operation_id=o.id AND c.phase='CLUSTER_CREATED'
  JOIN janua_staging_database_objects r ON r.operation_id=o.id AND r.phase='CLUSTER_SUBMITTED_RUNTIME_UNQUALIFIED'
  WHERE o.id=$1 AND o.plan_sha256=$2 AND o.actor_id=$3`, p.OperationID, p.SHA256, p.ActorID).Scan(&secret, &cluster, &submitted)
-	if err != nil || secret == "" || cluster == "" || cluster != submitted || secret == cluster || tx.Commit() != nil {
+	if err != nil || secret == "" || cluster == "" || cluster != submitted || secret == cluster || tx.Commit() != nil { // pragma: allowlist secret -- retained native Secret UID comparison; no credential literal
 		return NativeReceipt{}, ErrRefused
 	}
 	return NativeReceipt{ClusterUID: ktypes.UID(cluster), RuntimeSecretUID: ktypes.UID(secret)}, nil

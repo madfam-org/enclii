@@ -18,7 +18,7 @@ import (
 )
 
 func clusterOwned(secret *corev1.Secret, uid ktypes.UID) bool {
-	if secret == nil || secret.UID == "" || secret.ResourceVersion == "" || secret.DeletionTimestamp != nil {
+	if secret == nil || secret.UID == "" || secret.ResourceVersion == "" || secret.DeletionTimestamp != nil { // pragma: allowlist secret -- Kubernetes Secret UID/resourceVersion metadata guard; no credential literal
 		return false
 	}
 	for _, owner := range secret.OwnerReferences {
