@@ -28,6 +28,22 @@ When closing a gap, remove the row and link the PR that added the adapter.
 
 ## Progress log
 
+### 2026-11-02 — Full sync clears completed Argo operation state atomically
+
+Boundary checkpoint: platform engineering; public source behavior only. Runtime
+receipts and recovery details remain in `internal-devops`; see
+[PUBLIC_REPO_BOUNDARY.md](PUBLIC_REPO_BOUNDARY.md).
+
+Replacing an Application's root `operation` alone can retain a previous
+selective sync in `status.operationState`: Argo's controller merge-patches the
+new state and can inherit omitted resource filters and automated flags. The
+source fix matches [Argo CD v3.2.5 SetAppOperation](https://github.com/argoproj/argo-cd/blob/v3.2.5/util/argo/argo.go#L811-L835): clear only the completed operation state and assign the
+new operation in one resource-version-conditional Application Update. The
+[Application CRD](https://github.com/argoproj/argo-cd/blob/v3.2.5/manifests/crds/application-crd.yaml)
+has no status subresource. Other status/history remains; active or unknown
+operation state refuses and a concurrent update is never retried. Source tests
+do not establish deployed hook execution; release verification remains separate.
+
 ### 2026-11-01 — The backup sweep clears a ScheduledBackup wedged behind `walArchivingFailing`
 
 In CloudNativePG 1.29 a Backup in phase `walArchivingFailing` never ends, and
