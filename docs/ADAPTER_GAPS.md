@@ -28,6 +28,21 @@ When closing a gap, remove the row and link the PR that added the adapter.
 
 ## Progress log
 
+### 2026-11-01 — The backup sweep clears a ScheduledBackup wedged behind `walArchivingFailing`
+
+In CloudNativePG 1.29 a Backup in phase `walArchivingFailing` never ends, and
+its ScheduledBackup takes no other backup while it exists («The system is
+already taking a backup for this ScheduledBackup, retrying in 60 seconds»).
+That kept two addon schedules without a daily for 4–5 days after archiving
+recovered, and the fix on 2026-11-01 was a break-glass `kubectl delete backup`
+for each. The addon backup sweep now deletes such a Backup itself: only one its
+cluster's own Enclii schedule created, only while the Cluster reports
+`ContinuousArchiving=True`, with an `addon.backup.wedged_deleted` audit row
+before and after the UID-preconditioned delete
+(`apps/switchyard-api/internal/addons/postgres_backup_wedged.go`).
+RBAC: `delete` on `backups.postgresql.cnpg.io`. Procedure:
+[`runbooks/ADDON_BACKUPS.md`](runbooks/ADDON_BACKUPS.md#a-schedule-wedged-behind-walarchivingfailing).
+
 ### 2026-10-26 — `ops pods restart` recreates CNPG instance pods in project namespaces
 
 On 2026-10-24 a project database instance kept a broken volume mount after a

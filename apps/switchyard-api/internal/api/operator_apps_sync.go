@@ -86,9 +86,15 @@ func (h *Handler) handleOpsAppsSyncApply(ctx context.Context, operation string, 
 	if strings.EqualFold(strings.TrimSpace(req.Args["prune"]), "false") {
 		prune = false
 	}
-	syncOptions := []string{"PruneLast=true"}
-	if options := strings.TrimSpace(req.Args["sync_options"]); options != "" {
-		syncOptions = splitCSV(options)
+	syncOptions, err := appsSyncOptions(app, req.Args["sync_options"])
+	if err != nil {
+		return operatorOperationResponse{
+			OperationID: operationID,
+			Operation:   operation,
+			Status:      "failed",
+			Summary:     fmt.Sprintf("failed to read sync options for Argo Application %s/%s; no operation submitted", namespace, target),
+			Warnings:    []string{err.Error()},
+		}, http.StatusInternalServerError
 	}
 
 	optionValues := make([]any, len(syncOptions))
@@ -185,4 +191,23 @@ func (h *Handler) handleOpsAppsSyncApply(ctx context.Context, operation string, 
 			"escalate to human review if Argo reports Degraded, Error, or Unknown after timeout",
 		},
 	}, http.StatusAccepted
+}
+
+func appsSyncOptions(app *unstructured.Unstructured, override string) ([]string, error) {
+	if options := strings.TrimSpace(override); options != "" {
+		return splitCSV(options), nil
+	}
+
+	// Argo consumes the operation's options, so retain the policy on the exact
+	// Application version reviewed above instead of replacing it with defaults.
+	options, _, err := unstructured.NestedStringSlice(app.Object, "spec", "syncPolicy", "syncOptions")
+	if err != nil {
+		return nil, err
+	}
+	for _, option := range options {
+		if strings.HasPrefix(option, "PruneLast=") {
+			return options, nil
+		}
+	}
+	return append(options, "PruneLast=true"), nil
 }

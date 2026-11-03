@@ -103,8 +103,13 @@ spec:
             # (2026-10-17): Grafana applies an intake-submitted admin password
             # at pod start (monitoring/grafana-admin), so the submit is followed
             # by `ops pods restart deployment/grafana -n monitoring`.
+            # cloudflare-tunnel and marca (2026-10-29): madf.am, the host
+            # every printed QR code resolves through, stalled and returned
+            # 520s while its tunnel connector and marca-web shared a CI
+            # builder node; moving them off it took a break-glass
+            # `kubectl rollout restart` in both namespaces.
             - name: ENCLII_OPS_RESTART_NAMESPACES
-              value: "logging,dhanam,digifab-quoting,monitoring"
+              value: "logging,dhanam,digifab-quoting,monitoring,cloudflare-tunnel,marca"
           ports:
             - containerPort: 4200
               name: http

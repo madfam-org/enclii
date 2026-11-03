@@ -14,6 +14,8 @@ import (
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/client-go/kubernetes"
+
+	"github.com/madfam-org/enclii/apps/switchyard-api/internal/logging"
 )
 
 type operatorOperationRequest struct {
@@ -79,6 +81,30 @@ func (h *Handler) HandleProviderOperation(c *gin.Context) {
 	h.handleOperatorOperation(c, "providers", provider, action, providerCapabilities)
 }
 
+// writeOperatorResult sends an operator response. api.enclii.dev is served
+// through Cloudflare, which replaces an origin's 502 or 504 body with its own
+// error page, so an upstream failure reported that way reached the CLI without
+// its summary (the 31-oct-2026 addon backup-credential apply: Cloudflare
+// refused the token mint and nobody could read why). Those two are answered as
+// 424 Failed Dependency, which passes through untouched, with the original
+// status named in a warning, and the summary is logged so the reason survives
+// even when the client loses the body.
+func (h *Handler) writeOperatorResult(c *gin.Context, status int, resp operatorOperationResponse) {
+	if status == http.StatusBadGateway || status == http.StatusGatewayTimeout {
+		if h.logger != nil {
+			h.logger.Warn(c.Request.Context(), "Operator operation failed upstream",
+				logging.String("operation", resp.Operation),
+				logging.String("status", resp.Status),
+				logging.Int("upstream_status", status),
+				logging.String("audit_id", resp.AuditID),
+				logging.String("summary", resp.Summary))
+		}
+		resp.Warnings = append(resp.Warnings, fmt.Sprintf("an upstream dependency failed (reported as HTTP %d, sent as 424 so the summary survives the edge proxy)", status))
+		status = http.StatusFailedDependency
+	}
+	c.JSON(status, resp)
+}
+
 func (h *Handler) handleOperatorOperation(c *gin.Context, prefix, domain, action string, capabilities []operatorCapability) {
 	if prefix == "ops" && domain == "jobs" && action == "run-target" {
 		h.RunJobForVerifiedTarget(c)
@@ -109,32 +135,32 @@ func (h *Handler) handleOperatorOperation(c *gin.Context, prefix, domain, action
 
 	if prefix == "ops" && domain == "jobs" && action == "suspend" {
 		resp, status := h.handleOpsJobsSuspend(c.Request.Context(), req, c.GetString("user_id"))
-		c.JSON(status, resp)
+		h.writeOperatorResult(c, status, resp)
 		return
 	}
 	if prefix == "ops" && domain == "apps" && action == "tracking" {
 		resp, status := h.handleOpsAppsTracking(c.Request.Context(), req, c.GetString("user_id"))
-		c.JSON(status, resp)
+		h.writeOperatorResult(c, status, resp)
 		return
 	}
 	if prefix == "ops" && domain == "addons" && action == "backup-credential" {
 		resp, status := h.handleOpsAddonsBackupCredential(c.Request.Context(), req, opsActorFromContext(c))
-		c.JSON(status, resp)
+		h.writeOperatorResult(c, status, resp)
 		return
 	}
 	if prefix == "ops" && domain == "addons" && action == "hibernate" {
 		resp, status := h.handleOpsAddonsHibernate(c.Request.Context(), req, opsActorFromContext(c))
-		c.JSON(status, resp)
+		h.writeOperatorResult(c, status, resp)
 		return
 	}
 	if prefix == "ops" && domain == "storage" && action == "prune-detached" {
 		resp, status := h.handleOpsStoragePruneDetached(c.Request.Context(), req, opsActorFromContext(c))
-		c.JSON(status, resp)
+		h.writeOperatorResult(c, status, resp)
 		return
 	}
 	if prefix == "ops" && domain == "pods" && action == "restart" {
 		resp, status := h.handleOpsPodsRestart(c.Request.Context(), req, opsActorFromContext(c))
-		c.JSON(status, resp)
+		h.writeOperatorResult(c, status, resp)
 		return
 	}
 	if req.DryRun {
@@ -149,7 +175,7 @@ func (h *Handler) handleOperatorOperation(c *gin.Context, prefix, domain, action
 	}
 	if !req.DryRun {
 		if resp, statusCode, handled := h.handleApplyOperatorOperation(c.Request.Context(), prefix, domain, action, operation, req); handled {
-			c.JSON(statusCode, resp)
+			h.writeOperatorResult(c, statusCode, resp)
 			return
 		}
 	}
