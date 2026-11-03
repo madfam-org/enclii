@@ -1,0 +1,232 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: janua-api-staging
+  namespace: janua-staging
+  labels:
+    app: janua-api-staging
+    app.kubernetes.io/name: janua-api-staging
+    app.kubernetes.io/component: api
+    app.kubernetes.io/part-of: janua-staging
+  annotations:
+    enclii.dev/reconcile: disabled
+spec:
+  replicas: 0
+  revisionHistoryLimit: 3
+  selector:
+    matchLabels:
+      app: janua-api-staging
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
+  template:
+    metadata:
+      labels:
+        app: janua-api-staging
+        app.kubernetes.io/name: janua-api-staging
+        app.kubernetes.io/part-of: janua-staging
+        enclii.dev/service: janua-api-staging
+      annotations:
+        prometheus.io/scrape: 'true'
+        prometheus.io/port: '9464'
+        prometheus.io/path: /metrics
+    spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        runAsGroup: 1000
+        fsGroup: 1000
+        seccompProfile:
+          type: RuntimeDefault
+      imagePullSecrets:
+      - name: ghcr-credentials
+      containers:
+      - name: janua-api-staging
+        securityContext:
+          privileged: false
+          allowPrivilegeEscalation: false
+          readOnlyRootFilesystem: true
+          capabilities:
+            drop:
+            - ALL
+        image: ghcr.io/madfam-org/janua-api
+        imagePullPolicy: Always
+        ports:
+        - containerPort: 8080
+          name: http
+          protocol: TCP
+        - containerPort: 9464
+          name: metrics
+          protocol: TCP
+        env:
+        - name: PORT
+          value: '8080'
+        - name: METRICS_PORT
+          value: '9464'
+        - name: ENVIRONMENT
+          value: staging
+        - name: LOG_LEVEL
+          value: info
+        - name: DEBUG
+          value: 'false'
+        - name: BASE_URL
+          value: https://staging-auth.madfam.io
+        - name: API_BASE_URL
+          value: https://staging-auth.madfam.io
+        - name: JANUA_CUSTOM_DOMAIN
+          value: staging-auth.madfam.io
+        - name: JWT_ISSUER
+          value: https://staging-auth.madfam.io
+        - name: JWT_AUDIENCE
+          value: janua-staging
+        - name: FRONTEND_URL
+          value: https://staging-auth.madfam.io
+        - name: DOMAIN
+          value: staging-auth.madfam.io
+        - name: CORS_ORIGINS
+          value: https://staging-auth.madfam.io
+        - name: COOKIE_DOMAIN
+          value: ''
+        - name: PASSWORD_RESET_REDIRECT_ORIGINS
+          value: ''
+        - name: EMAIL_ENABLED
+          value: 'false'
+        - name: SMTP_HOST
+          value: ''
+        - name: SMTP_PASSWORD
+          value: ''
+        - name: RESEND_API_KEY
+          value: ''
+        - name: CTM_RESEND_API_KEY
+          value: ''
+        - name: CTM_TRACKING_HOST
+          value: ''
+        - name: DHANAM_FEDERATION_URL
+          value: ''
+        - name: FEDERATION_API_TOKEN
+          value: ''
+        - name: JANUA_SERVICE_TOKEN
+          value: ''
+        - name: INTERNAL_API_KEY
+          value: ''
+        - name: ENABLE_DOCS
+          value: 'false'
+        - name: ENABLE_SIGNUPS
+          value: 'false'
+        - name: ENABLE_MAGIC_LINKS
+          value: 'false'
+        - name: ENABLE_OAUTH
+          value: 'true'
+        - name: ENABLE_MFA
+          value: 'true'
+        - name: ENABLE_ORGANIZATIONS
+          value: 'true'
+        - name: AUTO_MIGRATE
+          value: 'false'
+        - name: JANUA_APPLY_MIGRATIONS
+          value: 'false'
+        - name: DATABASE_POOL_SIZE
+          value: '3'
+        - name: DATABASE_MAX_OVERFLOW
+          value: '2'
+        - name: DATABASE_SSL_MODE
+          value: verify-full
+        - name: DATABASE_SSL_CA_FILE
+          value: /var/run/janua-staging/ca/ca.crt
+        - name: JWT_KID
+          value: janua-staging-key
+        - name: JWT_ALGORITHM
+          value: RS256
+        - name: DATABASE_URL
+          valueFrom:
+            secretKeyRef:
+              name: janua-staging-secrets
+              key: database-url
+        - name: REDIS_URL
+          valueFrom:
+            secretKeyRef:
+              name: janua-staging-secrets
+              key: redis-url
+        - name: JWT_SECRET_KEY
+          valueFrom:
+            secretKeyRef:
+              name: janua-staging-secrets
+              key: jwt-secret-key
+        - name: JWT_PRIVATE_KEY
+          valueFrom:
+            secretKeyRef:
+              name: janua-staging-secrets
+              key: jwt-private-key
+        - name: JWT_PUBLIC_KEY
+          valueFrom:
+            secretKeyRef:
+              name: janua-staging-secrets
+              key: jwt-public-key
+        - name: SECRET_KEY
+          valueFrom:
+            secretKeyRef:
+              name: janua-staging-secrets
+              key: secret-key
+        - name: FIELD_ENCRYPTION_KEY
+          valueFrom:
+            secretKeyRef:
+              name: janua-staging-secrets
+              key: field-encryption-key
+        resources:
+          requests:
+            cpu: 100m
+            memory: 256Mi
+          limits:
+            cpu: 500m
+            memory: 512Mi
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 8080
+            httpHeaders:
+            - name: Host
+              value: localhost
+          initialDelaySeconds: 15
+          periodSeconds: 30
+          timeoutSeconds: 5
+        readinessProbe:
+          httpGet:
+            path: /api/v1/health/ready?require_dependencies=true
+            port: 8080
+            httpHeaders:
+            - name: Host
+              value: localhost
+          initialDelaySeconds: 10
+          periodSeconds: 10
+          timeoutSeconds: 5
+        startupProbe:
+          httpGet:
+            path: /health
+            port: 8080
+            httpHeaders:
+            - name: Host
+              value: localhost
+          initialDelaySeconds: 10
+          periodSeconds: 5
+          failureThreshold: 30
+          timeoutSeconds: 5
+        volumeMounts:
+        - name: tmp
+          mountPath: /tmp
+        - name: database-ca
+          mountPath: /var/run/janua-staging/ca
+          readOnly: true
+      volumes:
+      - name: tmp
+        emptyDir: {}
+      - name: database-ca
+        secret:
+          secretName: janua-staging-ca
+          items:
+          - key: ca.crt
+            path: ca.crt
+      restartPolicy: Always
+      terminationGracePeriodSeconds: 30
+      automountServiceAccountToken: false

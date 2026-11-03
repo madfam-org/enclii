@@ -1,0 +1,20 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: janua-api-staging
+  namespace: janua-staging
+  labels:
+    app: janua-api-staging
+spec:
+  type: ClusterIP
+  ports:
+  - port: 80
+    targetPort: 8080
+    protocol: TCP
+    name: http
+  - port: 9464
+    targetPort: metrics
+    protocol: TCP
+    name: metrics
+  selector:
+    app: janua-api-staging
