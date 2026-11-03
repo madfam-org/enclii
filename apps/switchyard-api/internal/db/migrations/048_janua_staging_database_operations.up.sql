@@ -39,7 +39,7 @@ BEGIN
    AND (a.payload->'activation_held') IS NOT DISTINCT FROM 'true'::jsonb
    AND (a.payload->'active_service_registered') IS NOT DISTINCT FROM 'false'::jsonb
    AND (a.payload->'native_043_binding_proven') IS NOT DISTINCT FROM 'false'::jsonb
-   AND (NEW.payload->'authority' - 'observed_at') = (a.payload - 'observed_at')
+   AND ((NEW.payload->'authority') - 'observed_at') = (a.payload - 'observed_at')
  ) THEN RAISE EXCEPTION 'closed inert Janua database authority required'; END IF;
  RETURN NEW;
 END;

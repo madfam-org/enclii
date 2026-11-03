@@ -27,6 +27,7 @@ const authoritySQL = `SELECT a.payload FROM janua_staging_inert_authorities a
  WHERE a.id=$1 AND e.name='staging' AND e.kube_namespace='janua-staging'
  AND m.cpu_request=$4 AND m.memory_request=$5 AND m.storage_gb=$6
  AND m.replica_count=$7 AND m.max_connections=$8 AND m.price_cents_month=$10
+ AND NOT EXISTS (SELECT 1 FROM services s WHERE s.id=a.held_service_id)
  AND NOT EXISTS (SELECT 1 FROM database_addons d WHERE d.deleted_at IS NULL
  AND (d.environment_id=e.id OR d.k8s_namespace=$9))`
 
