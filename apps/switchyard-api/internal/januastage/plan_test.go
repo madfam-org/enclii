@@ -56,7 +56,7 @@ func TestPlanMaterializesOnlyInertObjectsOutsideActiveInventory(t *testing.T) {
 		case "Application":
 			enabled, found, err := unstructured.NestedBool(object.Body.Object, "spec", "syncPolicy", "automated", "enabled")
 			require.NoError(t, err)
-			require.True(t, found)
+			require.False(t, found)
 			require.False(t, enabled)
 			ref, _, _ := unstructured.NestedString(object.Body.Object, "spec", "source", "targetRevision")
 			require.Equal(t, p.SourceRevision, ref)

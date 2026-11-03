@@ -40,7 +40,7 @@ Only six native objects are selected:
 
 - `janua-staging` AppProject: one repo/destination, no cluster resources,
   Deployment/Service whitelist only.
-- `janua-staging` Application: exact source SHA; automatic sync/prune/self-heal off.
+- `janua-staging` Application: exact source SHA; automatic sync is omitted entirely.
 - API and Redis Deployments: zero replicas, reviewed source and operation ownership.
 - API and Redis Services: namespace-local ClusterIP selectors and fixed ports.
 
@@ -55,13 +55,19 @@ locks all history before checking emptiness and refuses retained history.
 Prepared intent commits before any create. Execution locks the operation/project
 and current operator/ownership metadata. Each create has fresh namespace/inventory
 checks. There is no update/delete/repair/replica-release branch. Existing objects
-must match the same retained operation and source projection. Actual API-assigned
+must have a durably retained exact UID and readback hash, as well as matching the
+same retained operation and source projection. Actual API-assigned
 defaults are captured in full canonical readbacks; subsequent hashes/UIDs must
 match. Foreign ownership, drift, extra containers and host namespaces refuse.
 
-Uncertain writes retain prepared intent and any zero-replica partial objects.
-Inspect/retry the **same UUID**; no automatic deletion or invented UID is allowed.
-Completion requires six actual object receipts and final fresh readbacks.
+Uncertain writes retain prepared intent and may leave zero-replica partial
+objects. Per-object UID receipts share the completion transaction: a rolled-back
+partial operation has no durable native-incarnation proof. Inspect the **same
+UUID**; a retry refuses any existing object without that durable UID/hash proof,
+even if its operation labels and specification match. Separate reviewed recovery
+is required; there is no automatic adoption, deletion or invented UID. Completed
+retries may only read the original retained incarnations. Completion requires six
+actual object receipts and final fresh readbacks.
 
 `GET .../inert-materialization/{operation_id}` independently rechecks current
 ownership and native UID/spec hashes. Partial/unconfirmed operations have no

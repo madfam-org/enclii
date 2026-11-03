@@ -5,6 +5,7 @@ package workloadtargets
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"net/url"
 	"os"
 	"strings"
@@ -16,12 +17,13 @@ import (
 	"github.com/madfam-org/enclii/apps/switchyard-api/internal/januastage"
 	"github.com/madfam-org/enclii/apps/switchyard-api/internal/stagingintents"
 	"github.com/stretchr/testify/require"
+	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/types"
 )
 
 // Real SQL, synthetic source/native objects only. No Kubernetes API is called.
 // This is included by the required native PG18/TLS proof's TestNativeTarget filter.
-func nativeJanuaInertAuthorityFixture(t *testing.T) (*sql.DB, januastage.Authority, uuid.UUID) {
+func nativeJanuaInertPlanFixture(t *testing.T) (*sql.DB, januastage.Plan, uuid.UUID) {
 	t.Helper()
 	owner := nativeConnection(t, "ENCLII_TARGET_OWNER_PROOF_URL", "binding_owner")
 	ctx := context.Background()
@@ -78,6 +80,68 @@ CREATE TABLE services(id uuid PRIMARY KEY,name text,k8s_namespace text);`)
 	store := januastage.Store{DB: database}
 	require.NoError(t, store.Prepare(ctx, actor, "synthetic inert objects", plan.SHA256, plan))
 	require.NoError(t, store.Prepare(ctx, actor, "synthetic inert objects", plan.SHA256, plan))
+	return database, plan, actor
+}
+
+type existingInertNative struct {
+	object  *unstructured.Unstructured
+	creates int
+}
+
+func (n *existingInertNative) Guard(context.Context, januastage.Plan) error { return nil }
+func (n *existingInertNative) Get(context.Context, januastage.Object) (*unstructured.Unstructured, error) {
+	return n.object.DeepCopy(), nil
+}
+func (n *existingInertNative) Create(context.Context, januastage.Object) (*unstructured.Unstructured, error) {
+	n.creates++
+	return nil, errors.New("must not create after unconfirmed native incarnation")
+}
+
+func TestNativeTargetJanuaInertPartialRollbackCannotAdoptRecreatedUID(t *testing.T) {
+	database, plan, actor := nativeJanuaInertPlanFixture(t)
+	ctx := context.Background()
+	store := januastage.Store{DB: database}
+	first := plan.Objects[0]
+	prior := first.Body.DeepCopy()
+	prior.SetUID("original-synthetic-native-uid")
+	session, err := store.Begin(ctx, actor, "synthetic inert objects", plan.ID)
+	require.NoError(t, err)
+	require.NoError(t, session.RecordObject(ctx, first, prior))
+	session.Close() // The partial SQL transaction rolled back; only intent persists.
+	replacement := prior.DeepCopy()
+	replacement.SetUID("replacement-synthetic-native-uid") // Same spec/op labels, different incarnation.
+	native := &existingInertNative{object: replacement}
+	session, err = store.Begin(ctx, actor, "synthetic inert objects", plan.ID)
+	require.NoError(t, err)
+	defer session.Close()
+	_, err = januastage.Materialize(ctx, plan, native, session)
+	require.ErrorIs(t, err, januastage.ErrUnknown)
+	require.Zero(t, native.creates)
+	uid, _, err := session.RetainedObject(ctx, first)
+	require.NoError(t, err)
+	require.Empty(t, uid, "an unconfirmed object must never become retained UID authority")
+}
+
+func TestNativeTargetJanuaInertRefusesOwnershipReassignment(t *testing.T) {
+	for _, table := range []string{"environments", "onboarding_registrations"} {
+		t.Run(table, func(t *testing.T) {
+			database, plan, actor := nativeJanuaInertPlanFixture(t)
+			ctx := context.Background()
+			_, err := database.ExecContext(ctx, "UPDATE "+table+" SET project_id=$1", uuid.New())
+			require.NoError(t, err)
+			store := januastage.Store{DB: database}
+			require.ErrorIs(t, store.Prepare(ctx, actor, "synthetic inert objects", plan.SHA256, plan), januastage.ErrRefused)
+			_, err = store.Begin(ctx, actor, "synthetic inert objects", plan.ID)
+			require.ErrorIs(t, err, januastage.ErrRefused)
+		})
+	}
+}
+
+func nativeJanuaInertAuthorityFixture(t *testing.T) (*sql.DB, januastage.Authority, uuid.UUID) {
+	t.Helper()
+	database, plan, actor := nativeJanuaInertPlanFixture(t)
+	ctx := context.Background()
+	store := januastage.Store{DB: database}
 	session, err := store.Begin(ctx, actor, "synthetic inert objects", plan.ID)
 	require.NoError(t, err)
 	defer session.Close()
@@ -101,8 +165,8 @@ CREATE TABLE services(id uuid PRIMARY KEY,name text,k8s_namespace text);`)
 		uids[object.Kind+"/"+object.Name] = uid
 		require.NoError(t, session.RecordObject(ctx, object, live))
 	}
-	authority := januastage.Authority{ID: plan.ID, ProjectID: project, EnvironmentID: environment,
-		RepositoryRegistrationID: registration, HeldIntentID: intentID, HeldServiceID: plan.HeldServiceID,
+	authority := januastage.Authority{ID: plan.ID, ProjectID: plan.ProjectID, EnvironmentID: plan.EnvironmentID,
+		RepositoryRegistrationID: plan.RepositoryRegistrationID, HeldIntentID: plan.HeldIntentID, HeldServiceID: plan.HeldServiceID,
 		Profile: januastage.Profile, NamespaceUID: plan.NamespaceUID,
 		DeploymentUID: uids["Deployment/janua-api-staging"], APIServiceUID: uids["Service/janua-api-staging"],
 		RedisDeploymentUID: uids["Deployment/janua-staging-redis"], RedisServiceUID: uids["Service/janua-staging-redis"],

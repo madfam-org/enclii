@@ -131,7 +131,7 @@ func currentAuthority(ctx context.Context, tx *sql.Tx, actor uuid.UUID, p Plan) 
 		return ErrRefused
 	}
 	var intent, environment, registration uuid.UUID
-	if tx.QueryRowContext(ctx, `SELECT i.id,e.id,r.id FROM janua_staging_preregistration_intents i JOIN environments e ON e.id=i.environment_id JOIN onboarding_registrations r ON r.id=i.repository_registration_id WHERE i.id=$1 AND i.project_id=$2 AND e.id=$3 AND e.name='staging' AND e.kube_namespace='janua-staging' AND r.id=$4 AND r.repo_full_name='madfam-org/janua' AND r.onboard_status='completed' FOR SHARE OF i,e,r`, p.HeldIntentID, p.ProjectID, p.EnvironmentID, p.RepositoryRegistrationID).Scan(&intent, &environment, &registration) != nil || intent != p.HeldIntentID || environment != p.EnvironmentID || registration != p.RepositoryRegistrationID {
+	if tx.QueryRowContext(ctx, `SELECT i.id,e.id,r.id FROM janua_staging_preregistration_intents i JOIN environments e ON e.id=i.environment_id JOIN onboarding_registrations r ON r.id=i.repository_registration_id WHERE i.id=$1 AND i.project_id=$2 AND e.project_id=i.project_id AND r.project_id=i.project_id AND e.id=$3 AND e.name='staging' AND e.kube_namespace='janua-staging' AND r.id=$4 AND r.repo_full_name='madfam-org/janua' AND r.onboard_status='completed' FOR SHARE OF i,e,r`, p.HeldIntentID, p.ProjectID, p.EnvironmentID, p.RepositoryRegistrationID).Scan(&intent, &environment, &registration) != nil || intent != p.HeldIntentID || environment != p.EnvironmentID || registration != p.RepositoryRegistrationID {
 		return ErrRefused
 	}
 	var collision bool
@@ -172,6 +172,16 @@ func (s Store) Begin(ctx context.Context, actor uuid.UUID, reason string, id uui
 }
 
 func (s *Session) Close() { _ = s.tx.Rollback() }
+
+func (s *Session) RetainedObject(ctx context.Context, object Object) (string, string, error) {
+	key := object.Kind + ":" + object.Namespace + "/" + object.Name
+	var uid, digest string
+	err := s.tx.QueryRowContext(ctx, `SELECT uid,object_sha256 FROM janua_staging_inert_objects WHERE operation_id=$1 AND object_key=$2`, s.Plan.ID, key).Scan(&uid, &digest)
+	if errors.Is(err, sql.ErrNoRows) {
+		return "", "", nil
+	}
+	return uid, digest, err
+}
 
 func (s *Session) RecordObject(ctx context.Context, object Object, live *unstructured.Unstructured) error {
 	key := object.Kind + ":" + object.Namespace + "/" + object.Name

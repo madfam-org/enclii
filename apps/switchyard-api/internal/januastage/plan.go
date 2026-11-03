@@ -261,7 +261,6 @@ func nativeArgoApplication(sourceRevision string) *unstructured.Unstructured {
 			"project":     Application,
 			"source":      map[string]any{"repoURL": Repository, "path": ManifestPath, "targetRevision": sourceRevision},
 			"destination": map[string]any{"server": "https://kubernetes.default.svc", "namespace": Namespace},
-			"syncPolicy":  map[string]any{"automated": map[string]any{"enabled": false, "prune": false, "selfHeal": false}},
 		},
 	}}
 }

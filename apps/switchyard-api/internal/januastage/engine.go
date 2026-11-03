@@ -2,11 +2,14 @@ package januastage
 
 import (
 	"context"
+	"net"
+	"reflect"
 	"time"
 
 	apiequality "k8s.io/apimachinery/pkg/api/equality"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
+	"k8s.io/apimachinery/pkg/runtime"
 )
 
 // Native must verify namespace UID, exclusive DNS-only network baseline, no
@@ -19,6 +22,7 @@ type Native interface {
 }
 
 type Journal interface {
+	RetainedObject(context.Context, Object) (string, string, error)
 	RecordObject(context.Context, Object, *unstructured.Unstructured) error
 	Complete(context.Context, Authority) error
 }
@@ -29,7 +33,7 @@ func ProjectionMatches(want Object, actual *unstructured.Unstructured) bool {
 	if actual == nil || actual.GetUID() == "" || actual.GetDeletionTimestamp() != nil || len(actual.GetOwnerReferences()) != 0 ||
 		actual.GetAPIVersion() != want.APIVersion || actual.GetKind() != want.Kind ||
 		actual.GetNamespace() != want.Namespace || actual.GetName() != want.Name ||
-		!apiequality.Semantic.DeepDerivative(want.Body.Object["spec"], actual.Object["spec"]) {
+		!apiequality.Semantic.DeepDerivative(projectionSpec(want.Body), projectionSpec(actual)) {
 		return false
 	}
 	for k, v := range want.Body.GetLabels() {
@@ -53,6 +57,55 @@ func ProjectionMatches(want Object, actual *unstructured.Unstructured) bool {
 		if err != nil || !found || replicas != 0 {
 			return false
 		}
+		podSecurity, _, _ := unstructured.NestedMap(actual.Object, "spec", "template", "spec", "securityContext")
+		wantedPodSecurity, _, _ := unstructured.NestedMap(want.Body.Object, "spec", "template", "spec", "securityContext")
+		if !reflect.DeepEqual(podSecurity, wantedPodSecurity) {
+			return false
+		}
+		mountToken, found, err := unstructured.NestedBool(actual.Object, "spec", "template", "spec", "automountServiceAccountToken")
+		if err != nil || !found || mountToken {
+			return false
+		}
+		for _, key := range []string{"serviceAccountName", "serviceAccount"} {
+			account, _, err := unstructured.NestedString(actual.Object, "spec", "template", "spec", key)
+			if err != nil || (account != "" && account != "default") {
+				return false
+			}
+		}
+		pod, _, _ := unstructured.NestedMap(actual.Object, "spec", "template", "spec")
+		wantedPod, _, _ := unstructured.NestedMap(want.Body.Object, "spec", "template", "spec")
+		for key, value := range pod {
+			if wantedValue, exists := wantedPod[key]; exists {
+				if key != "containers" && key != "volumes" && !reflect.DeepEqual(value, wantedValue) {
+					return false
+				}
+				continue
+			}
+			allowed := false
+			switch key {
+			case "dnsPolicy":
+				allowed = value == "ClusterFirst"
+			case "schedulerName":
+				allowed = value == "default-scheduler"
+			case "serviceAccount", "serviceAccountName":
+				allowed = value == "default" || value == ""
+			case "restartPolicy":
+				allowed = value == "Always"
+			case "terminationGracePeriodSeconds":
+				allowed = value == int64(30)
+			case "enableServiceLinks", "hostUsers":
+				allowed = value == true
+			case "hostNetwork", "hostPID", "hostIPC":
+				allowed = value == false
+			case "preemptionPolicy":
+				allowed = value == "PreemptLowerPriority"
+			case "priority":
+				allowed = value == int64(0)
+			}
+			if !allowed {
+				return false
+			}
+		}
 		for _, key := range []string{"containers", "volumes"} {
 			a, _, e := unstructured.NestedSlice(actual.Object, "spec", "template", "spec", key)
 			w, _, _ := unstructured.NestedSlice(want.Body.Object, "spec", "template", "spec", key)
@@ -68,12 +121,47 @@ func ProjectionMatches(want Object, actual *unstructured.Unstructured) bool {
 			if !ok || !wantedOK {
 				return false
 			}
-			for _, key := range []string{"env", "envFrom", "ports", "volumeMounts"} {
-				actualList, _ := container[key].([]any)
-				wantedList, _ := w[key].([]any)
-				if len(actualList) != len(wantedList) {
+			for _, key := range []string{"securityContext", "envFrom", "command", "args", "volumeMounts", "volumeDevices", "resources"} {
+				if !reflect.DeepEqual(container[key], w[key]) {
 					return false
 				}
+			}
+			if !reflect.DeepEqual(canonicalEnv(container["env"]), canonicalEnv(w["env"])) {
+				return false
+			}
+			for key, value := range container {
+				if _, exists := w[key]; exists {
+					continue
+				}
+				allowed := (key == "terminationMessagePath" && value == "/dev/termination-log") ||
+					(key == "terminationMessagePolicy" && value == "File") ||
+					(key == "imagePullPolicy" && value == "IfNotPresent") ||
+					((key == "stdin" || key == "stdinOnce" || key == "tty") && value == false)
+				if !allowed {
+					return false
+				}
+			}
+			if !sameServicePorts(container["ports"], w["ports"]) {
+				return false
+			}
+		}
+		volumes, _, _ := unstructured.NestedSlice(actual.Object, "spec", "template", "spec", "volumes")
+		wantedVolumes, _, _ := unstructured.NestedSlice(want.Body.Object, "spec", "template", "spec", "volumes")
+		for i, raw := range volumes {
+			volume, ok := raw.(map[string]any)
+			w, wantedOK := wantedVolumes[i].(map[string]any)
+			if !ok || !wantedOK {
+				return false
+			}
+			copy := (&unstructured.Unstructured{Object: volume}).DeepCopy().Object
+			if secret, ok := copy["secret"].(map[string]any); ok {
+				// The API's default mode for the public CA volume is harmless.
+				if mode, exists := secret["defaultMode"]; exists && mode == int64(420) {
+					delete(secret, "defaultMode")
+				}
+			}
+			if !reflect.DeepEqual(copy, w) {
+				return false
 			}
 		}
 		for _, key := range []string{"initContainers", "ephemeralContainers"} {
@@ -90,6 +178,39 @@ func ProjectionMatches(want Object, actual *unstructured.Unstructured) bool {
 		}
 	}
 	if want.Kind == "Service" {
+		spec, _, _ := unstructured.NestedMap(actual.Object, "spec")
+		wantedSpec, _, _ := unstructured.NestedMap(want.Body.Object, "spec")
+		if !reflect.DeepEqual(spec["selector"], wantedSpec["selector"]) || !sameServicePorts(spec["ports"], wantedSpec["ports"]) {
+			return false
+		}
+		for key, value := range spec {
+			if _, exists := wantedSpec[key]; exists {
+				continue
+			}
+			allowed := false
+			switch key {
+			case "clusterIP":
+				s, ok := value.(string)
+				allowed = ok && net.ParseIP(s) != nil
+			case "clusterIPs":
+				items, ok := value.([]any)
+				allowed = ok && len(items) == 1 && items[0] == spec["clusterIP"]
+			case "ipFamilies":
+				items, ok := value.([]any)
+				allowed = ok && len(items) == 1 && (items[0] == "IPv4" || items[0] == "IPv6")
+			case "ipFamilyPolicy":
+				allowed = value == "SingleStack"
+			case "internalTrafficPolicy":
+				allowed = value == "Cluster"
+			case "sessionAffinity":
+				allowed = value == "None"
+			case "publishNotReadyAddresses":
+				allowed = value == false
+			}
+			if !allowed {
+				return false
+			}
+		}
 		for _, key := range []string{"externalIPs", "loadBalancerSourceRanges"} {
 			v, _, err := unstructured.NestedSlice(actual.Object, "spec", key)
 			if err != nil || len(v) != 0 {
@@ -102,6 +223,61 @@ func ProjectionMatches(want Object, actual *unstructured.Unstructured) bool {
 		}
 	}
 	return true
+}
+
+func projectionSpec(object *unstructured.Unstructured) any {
+	copy := object.DeepCopy()
+	if object.GetKind() == "Deployment" {
+		containers, _, _ := unstructured.NestedSlice(copy.Object, "spec", "template", "spec", "containers")
+		for _, raw := range containers {
+			if container, ok := raw.(map[string]any); ok {
+				if env, exists := container["env"]; exists {
+					container["env"] = canonicalEnv(env)
+				}
+			}
+		}
+		_ = unstructured.SetNestedSlice(copy.Object, containers, "spec", "template", "spec", "containers")
+	}
+	return copy.Object["spec"]
+}
+
+func sameServicePorts(actual, wanted any) bool {
+	a, aOK := runtime.DeepCopyJSONValue(actual).([]any)
+	w, wOK := wanted.([]any)
+	if !aOK || !wOK || len(a) != len(w) {
+		return false
+	}
+	for i, raw := range a {
+		item, ok := raw.(map[string]any)
+		want, wantedOK := w[i].(map[string]any)
+		if !ok || !wantedOK {
+			return false
+		}
+		if _, exists := want["protocol"]; !exists && item["protocol"] == "TCP" {
+			delete(item, "protocol")
+		}
+		if !reflect.DeepEqual(item, want) {
+			return false
+		}
+	}
+	return true
+}
+
+func canonicalEnv(value any) any {
+	if value == nil {
+		return nil
+	}
+	list, ok := runtime.DeepCopyJSONValue(value).([]any)
+	if !ok {
+		return value
+	}
+	for _, raw := range list {
+		if env, ok := raw.(map[string]any); ok && env["value"] == "" {
+			// Kubernetes omits an explicitly empty literal EnvVar.value.
+			delete(env, "value")
+		}
+	}
+	return list
 }
 
 // Materialize performs create-only inert writes after durable Prepare/Begin.
@@ -125,6 +301,14 @@ func Materialize(ctx context.Context, plan Plan, native Native, journal Journal)
 			}
 		} else if err != nil {
 			return Authority{}, ErrRefused
+		} else {
+			uid, digest, proofErr := journal.RetainedObject(ctx, object)
+			if proofErr != nil || actual == nil || uid == "" || uid != string(actual.GetUID()) || digest != ObjectDigest(actual) {
+				// A plan/op label cannot prove which native incarnation an
+				// uncertain create produced. Partial rollback retains no UID:
+				// refuse rather than adopting a replacement or guessed object.
+				return Authority{}, ErrUnknown
+			}
 		}
 		if !ProjectionMatches(object, actual) {
 			return Authority{}, ErrRefused
