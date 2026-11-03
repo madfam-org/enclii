@@ -22,7 +22,7 @@ stable hash. An arbitrary JSON plan or valid hash is not execution authority.
 
 Every execution/readback requires all server-owned observers:
 
-1. A fresh completed inert-authority observation, at most30 seconds old, with
+1. A fresh completed inert-authority observation, at most 30 seconds old, with
    actual app/Redis/Argo UIDs and held source/specs unchanged. Shape validation
    alone cannot qualify it.
 2. A current active platform administrator and matching retained authority,
@@ -93,7 +93,7 @@ an HTTP response. Logs and errors must never include bundle fields.
 
 Custody qualification still does not submit secret intake, run migrations,
 activate API or Redis, establish denied network-path proof, adopt a schedule,
-prove real login, qualify a30-minute soak or authorize production promotion.
+prove real login, qualify a 30-minute soak or authorize production promotion.
 The next fixed Alembic executor needs its own immutable operation journal,
 reviewed image/source/head proof, verified database identity and lineage, owner
 credential isolation, exact network qualification, runtime receipt and cleanup.

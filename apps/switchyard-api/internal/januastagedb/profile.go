@@ -26,7 +26,7 @@ const Cluster = "pg-janua-staging-db"
 const Database = "janua_staging"
 const RuntimeRole = "janua_staging_runtime"
 const OwnerRole = "enclii_migrator"
-const RuntimeSecret = Cluster + "-runtime"
+const RuntimeSecret = Cluster + "-runtime" // pragma: allowlist secret -- fixed Kubernetes runtime Secret object name; not a credential
 const RuntimeIntake = "janua-staging/database"
 const CAIntake = "janua-staging/database-ca"
 

@@ -18,7 +18,7 @@ import (
 )
 
 func clusterOwned(secret *corev1.Secret, uid ktypes.UID) bool {
-	if secret == nil || secret.UID == "" || secret.ResourceVersion == "" || secret.DeletionTimestamp != nil {
+	if secret == nil || secret.UID == "" || secret.ResourceVersion == "" || secret.DeletionTimestamp != nil { // pragma: allowlist secret -- Kubernetes Secret UID/resourceVersion metadata guard; no credential literal
 		return false
 	}
 	for _, owner := range secret.OwnerReferences {
@@ -161,4 +161,19 @@ func (k *Kernel) unchangedSecret(ctx context.Context, p Plan, before *corev1.Sec
 func (k *Kernel) sameReadyCluster(ctx context.Context, p Plan, uid ktypes.UID) bool {
 	current, err := k.readyCluster(ctx, p)
 	return err == nil && current.GetUID() == uid
+}
+
+// ObserveReadiness is credential-free and remains bound to the retained native
+// receipt. It is a prerequisite observation for the separate fixed migrator,
+// not a statement that schema/runtime/intake/soak are qualified.
+func (k *Kernel) ObserveReadiness(ctx context.Context, p Plan) (NativeReceipt, error) {
+	cluster, err := k.readyCluster(ctx, p)
+	if err != nil {
+		return NativeReceipt{}, ErrRefused
+	}
+	receipt, err := k.journal.Receipt(ctx, p)
+	if err != nil || receipt.ClusterUID != cluster.GetUID() {
+		return NativeReceipt{}, ErrRefused
+	}
+	return receipt, nil
 }

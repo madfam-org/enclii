@@ -23,7 +23,8 @@ import (
 // Actual PostgreSQL journal/trigger proof, synthetic retained native records.
 // The required native PG18/TLS lane includes this TestNativeTarget filter.
 // It never contacts Kubernetes or establishes live staging authority.
-func TestNativeTargetJanuaDatabaseJournalRequiresOrderedExactNativeUIDs(t *testing.T) {
+func nativeJanuaDatabaseFixture(t *testing.T) (*sql.DB, januastagedb.Plan, januastage.Authority) {
+	t.Helper()
 	owner := nativeConnection(t, "ENCLII_TARGET_OWNER_PROOF_URL", "binding_owner")
 	ctx := context.Background()
 	schema := "stage_db_" + strings.ReplaceAll(uuid.NewString(), "-", "")
@@ -37,7 +38,7 @@ func TestNativeTargetJanuaDatabaseJournalRequiresOrderedExactNativeUIDs(t *testi
 	u.RawQuery = q.Encode()
 	db, err := sql.Open("postgres", u.String())
 	require.NoError(t, err)
-	defer db.Close()
+	t.Cleanup(func() { _ = db.Close() })
 	_, err = db.ExecContext(ctx, `CREATE TABLE projects(id uuid PRIMARY KEY,slug text);
 CREATE TABLE environments(id uuid PRIMARY KEY,project_id uuid,name text,kube_namespace text);
 CREATE TABLE onboarding_registrations(id uuid PRIMARY KEY,project_id uuid,repo_full_name text,onboard_status text);
@@ -99,6 +100,15 @@ INSERT INTO managed_db_plans VALUES('standard-0',true,'postgres','100m','256Mi',
 	require.NoError(t, err)
 	p, err := januastagedb.PlanFor(a, januastagedb.Allocation{CatalogPlan: "standard-0", CPU: "100m", Memory: "256Mi", StorageGi: 1, Replicas: 1, MaxConnections: 10}, januastagedb.NativeBinding{AddonNamespaceUID: "synthetic-addon-namespace", StorageClassUID: "synthetic-storage", StorageClassVersion: "1", NetworkSHA256: strings.Repeat("e", 64), CapacityBudgetSHA256: strings.Repeat("f", 64)}, uuid.New(), actor, "synthetic database operation")
 	require.NoError(t, err)
+	return db, p, a
+}
+
+func TestNativeTargetJanuaDatabaseJournalRequiresOrderedExactNativeUIDs(t *testing.T) {
+	db, p, a := nativeJanuaDatabaseFixture(t)
+	var err error
+	ctx := context.Background()
+	actor := p.ActorID
+	environment := p.Authority.EnvironmentID
 	journal := januastagedb.SQLJournal{DB: db}
 	require.NoError(t, journal.Check(ctx, p))
 	var wg sync.WaitGroup
