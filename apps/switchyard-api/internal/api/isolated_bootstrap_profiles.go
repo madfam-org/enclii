@@ -94,6 +94,8 @@ func isolatedBootstrapProfileFor(name string) (isolatedBootstrapProfile, error) 
 		return profile, nil
 	}
 	switch name {
+	case k8s.JanuaSchemaProfile:
+		return januaStageMigrationProfile(), nil
 	case k8s.KarafielSchemaProfile:
 		return isolatedBootstrapProfile{Name: k8s.KarafielSchemaProfile, Project: "karafiel", Service: "karafiel-api-staging", Namespace: "enclii-karafiel-staging", Database: "karafiel_staging_sim", RuntimeRole: "karafiel_staging_runtime", Producer: "madfam-org/karafiel", Workflow: "release-build-candidate.yml", PinPath: "infra/k8s/overlays/staging/kustomization.yaml", Image: "ghcr.io/madfam-org/karafiel/api", CIWorkflow: "ci.yml", SignerIdentity: `^https://github\.com/madfam-org/karafiel/\.github/workflows/release-build-candidate\.yml@refs/heads/main$`, RequiredChecks: []string{"NetworkPolicy port consistency", "Celery task signature consistency", "Ops script unit tests", "API lint and test", "lint-and-test"}, SourceRequirements: []bootstrapSourceRequirement{{Path: "apps/api/core/migrations/0009_seed_madfam_admin_access.py", SHA256: karafielStageCoreSeedSHA256}, {Path: "apps/api/legalgen/migrations/0003_seed_madfam_data.py", SHA256: karafielStageLegalSeedSHA256}}}, nil
 	case k8s.PortalFenceReadProfile:

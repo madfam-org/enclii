@@ -39,7 +39,14 @@ type KarafielSchemaRuntime struct {
 }
 
 func validKarafielRuntime(r *KarafielSchemaRuntime, receipt InitialNativeReceipt) bool {
-	digest := strings.TrimPrefix(receipt.Image, "ghcr.io/madfam-org/karafiel/api@sha256:")
+	return validSchemaRuntime(r, receipt, "ghcr.io/madfam-org/karafiel/api@sha256:")
+}
+
+func validSchemaRuntime(r *KarafielSchemaRuntime, receipt InitialNativeReceipt, prefix string) bool {
+	if !strings.HasPrefix(receipt.Image, prefix) {
+		return false
+	}
+	digest := strings.TrimPrefix(receipt.Image, prefix)
 	if !initialSHA.MatchString(digest) || r == nil || r.PodName == "" || r.PodUID != receipt.PodUID || r.JobUID != receipt.JobUID || r.ExitCode != 0 || r.RestartCount != 0 || (r.ImageID != receipt.Image && r.ImageID != "docker-pullable://"+receipt.Image && r.ImageID != "containerd://sha256:"+digest) {
 		return false
 	}

@@ -41,35 +41,6 @@ func initialStatusImage(reported, pinned string) bool {
 	return reported == pinned || initialImageConfigID.MatchString(reported)
 }
 
-// Constructed only by the authenticated server after source/CI/signature,
-// binding, workload and CNPG custody verification. No owner URI or human actor.
-// PinPayloadSHA256 hashes the verified payload; it is NOT a Git pin revision.
-type InitialBootstrapIdentity struct {
-	ApplicationNamespaceUID   string    `json:"application_namespace_uid"`
-	AddonNamespaceUID         string    `json:"addon_namespace_uid"`
-	DeploymentUID             string    `json:"deployment_uid"`
-	DeploymentResourceVersion string    `json:"deployment_resource_version"`
-	WorkloadServiceUID        string    `json:"workload_service_uid"`
-	ClusterUID                string    `json:"cluster_uid"`
-	BindingID                 uuid.UUID `json:"binding_id"`
-	OnboardingID              uuid.UUID `json:"onboarding_id"`
-	Database                  string    `json:"database"`
-	OwnerRole                 string    `json:"owner_role"`
-	RuntimeRole               string    `json:"runtime_role"`
-	PublicCASHA256            string    `json:"public_ca_sha256"`
-	Producer                  string    `json:"producer"`
-	SourceRevision            string    `json:"source_revision"`
-	BuildRunID                int64     `json:"build_run_id"`
-	Checks                    int       `json:"checks"`
-	SignatureVerified         bool      `json:"signature_verified"`
-	PinPayloadSHA256          string    `json:"pin_payload_sha256"`
-	// A fixed step binds its live workload by generation instead of
-	// DeploymentResourceVersion: status updates move a running Deployment's
-	// resourceVersion, not its generation. Omitted when zero, so retained
-	// initial intents stay byte-for-byte canonical.
-	DeploymentGeneration int64 `json:"deployment_generation,omitempty"`
-}
-
 type initialIntent struct {
 	Version                 string                          `json:"version"`
 	Classification          string                          `json:"classification"`
@@ -142,36 +113,6 @@ type InitialMAPReceipt struct {
 	Cases         int    `json:"casos"`
 }
 
-// A historical INITIAL_ONLY receipt proves the fixed process completed. It
-// never represents current readiness, a reset origin, release ACK or reuse.
-type InitialNativeReceipt struct {
-	Version          string                    `json:"version"`
-	Classification   string                    `json:"classification"`
-	IntentSHA256     string                    `json:"intent_sha256"`
-	IntentUID        string                    `json:"intent_uid"`
-	JobUID           string                    `json:"job_uid"`
-	PodUID           string                    `json:"pod_uid"`
-	Image            string                    `json:"image"`
-	SourceRevision   string                    `json:"source_revision"`
-	StdoutSHA256     string                    `json:"stdout_sha256"`
-	InitStdoutSHA256 string                    `json:"init_stdout_sha256,omitempty"`
-	Portal001        *InitialPortal001Receipt  `json:"portal001,omitempty"`
-	Portal002        *InitialPortal002Receipt  `json:"portal002,omitempty"`
-	MAP              *InitialMAPReceipt        `json:"map,omitempty"`
-	KarafielSchema   *KarafielSchemaReceipt    `json:"karafiel_schema,omitempty"`
-	KarafielIdentity *InitialBootstrapIdentity `json:"database_identity,omitempty"`
-	KarafielRuntime  *KarafielSchemaRuntime    `json:"runtime,omitempty"`
-	// Fixed step only: the typed step output when accredited, or the closed
-	// reason its terminal receipt is held.
-	TurnoVigente               *FixedStepTurnoVigenteReceipt             `json:"turno_vigente,omitempty"`
-	CierreReconstruccionPaso   *FixedStepCierreReconstruccionPasoReceipt `json:"cierre_reconstruccion_paso,omitempty"`
-	HeldReason                 string                                    `json:"held_reason,omitempty"`
-	GenerationRead             *PortalGenerationReadReceipt              `json:"generation_read,omitempty"`
-	FenceRead                  *PortalFenceReadReceipt                   `json:"fence_read,omitempty"`
-	ReconstructionOriginSHA256 string                                    `json:"reconstruction_origin_sha256,omitempty"`
-	ReconstructionClose        *PortalReconstructionCloseReceipt         `json:"cierre_reconstruccion,omitempty"`
-}
-
 func initialHash(b []byte) string { s := sha256.Sum256(b); return hex.EncodeToString(s[:]) }
 
 // workloadBound reports whether an identity binds its workload the way its
@@ -198,7 +139,7 @@ func (p IsolatedInitialJobPlan) initialIntent(job *batchv1.Job) (initialIntent, 
 	if !id.workloadBound(p.Profile) {
 		return initialIntent{}, fmt.Errorf("initial authoritative identity incomplete")
 	}
-	if id.BindingID == uuid.Nil || id.OnboardingID == uuid.Nil || id.Database != want.Database || id.OwnerRole != expectedOwnerRole(p.Profile) || id.RuntimeRole != want.RuntimeRole || id.Producer != want.Producer || !initialRevision.MatchString(id.SourceRevision) || id.BuildRunID <= 0 || id.Checks < want.Checks || !id.SignatureVerified || !initialSHA.MatchString(id.PinPayloadSHA256) || id.PublicCASHA256 != initialHash(p.Data["ca.crt"]) {
+	if !initialBindingValid(p.Profile, id) || id.OnboardingID == uuid.Nil || id.Database != want.Database || id.OwnerRole != expectedOwnerRole(p.Profile) || id.RuntimeRole != want.RuntimeRole || id.Producer != want.Producer || !initialRevision.MatchString(id.SourceRevision) || id.BuildRunID <= 0 || id.Checks < want.Checks || !id.SignatureVerified || !initialSHA.MatchString(id.PinPayloadSHA256) || id.PublicCASHA256 != initialHash(p.Data["ca.crt"]) {
 		return initialIntent{}, fmt.Errorf("initial verified provenance incomplete")
 	}
 	spec, _ := json.Marshal(job.Spec)
@@ -269,7 +210,7 @@ func (c *Client) checkOperationExclusion(ctx context.Context, p IsolatedInitialJ
 // proceed, so an uncollectable history cannot wedge the step. A Job held
 // suspended is unfinished and blocks, as initial history does.
 func (c *Client) checkFixedStepExclusion(ctx context.Context, p IsolatedInitialJobPlan) error {
-	for _, manager := range []string{fixedStepKind.manager, initialKind.manager, provenanceReadKind.manager, karafielSchemaKind.manager} {
+	for _, manager := range []string{fixedStepKind.manager, initialKind.manager, provenanceReadKind.manager, karafielSchemaKind.manager, januaSchemaKind.manager} {
 		selector := labels.Set(map[string]string{"enclii.dev/managed-by": manager, LabelProjectNamespace: p.ProjectID.String(), "enclii.dev/addon-id": p.AddonID.String(), "enclii.dev/service-id": p.ServiceID.String()}).String()
 		jobs, e := c.kubeClient().BatchV1().Jobs(p.Namespace).List(ctx, metav1.ListOptions{LabelSelector: selector})
 		if e != nil {
@@ -305,7 +246,7 @@ func initialJobFinished(job *batchv1.Job) bool {
 
 func (c *Client) checkInitialOperationExclusion(ctx context.Context, p IsolatedInitialJobPlan) error {
 	// Initial is not a reset or an adoption protocol, even under a new key.
-	selector := labels.Set(map[string]string{"enclii.dev/managed-by": initialJobManager, LabelProjectNamespace: p.ProjectID.String(), "enclii.dev/addon-id": p.AddonID.String(), "enclii.dev/service-id": p.ServiceID.String()}).String()
+	selector := labels.Set(map[string]string{"enclii.dev/managed-by": p.kind().manager, LabelProjectNamespace: p.ProjectID.String(), "enclii.dev/addon-id": p.AddonID.String(), "enclii.dev/service-id": p.ServiceID.String()}).String()
 	cms, e := c.kubeClient().CoreV1().ConfigMaps(p.Namespace).List(ctx, metav1.ListOptions{LabelSelector: selector})
 	if e != nil {
 		return fmt.Errorf("initial history unavailable")
@@ -390,6 +331,12 @@ func validInitialNative(r InitialNativeReceipt, p IsolatedInitialJobPlan, cm *co
 	}
 	// Evidence of the one Pod that ran and its bounded main stdout.
 	observed := initialUID.MatchString(r.PodUID) && initialSHA.MatchString(r.StdoutSHA256)
+	if p.Profile == JanuaSchemaProfile {
+		return r.Classification == kind.retained && observed && r.HeldReason == "" && r.MAP == nil && r.Portal001 == nil && r.Portal002 == nil && fixedStepOutputAbsent(r) && r.GenerationRead == nil && r.FenceRead == nil && r.InitStdoutSHA256 == "" && r.KarafielSchema == nil && r.KarafielIdentity == nil && r.KarafielRuntime == nil && validJanuaSchema(r.JanuaSchema, p.Identity.SourceRevision) && validJanuaRuntime(r.JanuaRuntime, r) && r.JanuaIdentity != nil && reflect.DeepEqual(*r.JanuaIdentity, p.Identity)
+	}
+	if r.JanuaSchema != nil || r.JanuaIdentity != nil || r.JanuaRuntime != nil {
+		return false
+	}
 	if p.Profile == KarafielSchemaProfile {
 		if r.MAP != nil || r.Portal001 != nil || r.Portal002 != nil || !fixedStepOutputAbsent(r) || r.GenerationRead != nil || r.FenceRead != nil || r.InitStdoutSHA256 != "" {
 			return false
@@ -615,7 +562,18 @@ func (c *Client) collectInitialReceipt(ctx context.Context, p IsolatedInitialJob
 	kind := p.kind()
 	r := InitialNativeReceipt{Version: kind.version, Classification: kind.retained, IntentSHA256: intent.Data["sha256"], IntentUID: string(intent.UID), JobUID: string(job.UID), PodUID: string(pod.UID), Image: p.Image, SourceRevision: p.Identity.SourceRevision, StdoutSHA256: initialHash(b)}
 	r.ReconstructionOriginSHA256 = reconstructionOriginHash(p.Profile, p.FenceOrigin)
-	if p.Profile == KarafielSchemaProfile {
+	if p.Profile == JanuaSchemaProfile {
+		identity := p.Identity
+		r.JanuaIdentity = &identity
+		status := pod.Status.ContainerStatuses[0]
+		termination := status.State.Terminated
+		r.JanuaRuntime = &KarafielSchemaRuntime{PodName: pod.Name, PodUID: string(pod.UID), JobUID: string(job.UID), ImageID: status.ImageID, StartedAt: termination.StartedAt.UTC().Format(time.RFC3339Nano), FinishedAt: termination.FinishedAt.UTC().Format(time.RFC3339Nano), ExitCode: termination.ExitCode, RestartCount: status.RestartCount}
+		out := &JanuaSchemaReceipt{}
+		if DecodeInitialBootstrapJSON(b, out) != nil || !validJanuaSchema(out, p.Identity.SourceRevision) {
+			return nil, fmt.Errorf("Janua migration result held; no replay")
+		}
+		r.JanuaSchema = out
+	} else if p.Profile == KarafielSchemaProfile {
 		identity := p.Identity
 		r.KarafielIdentity = &identity
 		status := pod.Status.ContainerStatuses[0]
@@ -791,8 +749,19 @@ func validateInitialStatusIntent(cm *corev1.ConfigMap, p IsolatedInitialJobPlan,
 		return fmt.Errorf("initial status identity refused")
 	}
 	prefix := want.ImagePrefix
-	if !strings.HasPrefix(in.Image, prefix) || !initialSHA.MatchString(strings.TrimPrefix(in.Image, prefix)) || id.Producer != want.Producer || id.Database != want.Database || id.RuntimeRole != want.RuntimeRole || id.OwnerRole != expectedOwnerRole(in.Profile) || !id.SignatureVerified || !initialSHA.MatchString(id.PinPayloadSHA256) || !initialRevision.MatchString(id.SourceRevision) || id.BindingID == uuid.Nil || id.OnboardingID == uuid.Nil || !initialSHA.MatchString(id.PublicCASHA256) || id.BuildRunID <= 0 || id.Checks < want.Checks || !validProvenanceInput(p.Profile, in.GenerationRead, in.FenceRead) || !compatibleFenceOrigin(p.Profile, in.FenceRead, in.FenceOrigin) || !compatibleReconstructionClose(p) {
+	if !strings.HasPrefix(in.Image, prefix) || !initialSHA.MatchString(strings.TrimPrefix(in.Image, prefix)) || id.Producer != want.Producer || id.Database != want.Database || id.RuntimeRole != want.RuntimeRole || id.OwnerRole != expectedOwnerRole(in.Profile) || !id.SignatureVerified || !initialSHA.MatchString(id.PinPayloadSHA256) || !initialRevision.MatchString(id.SourceRevision) || !initialBindingValid(in.Profile, id) || id.OnboardingID == uuid.Nil || !initialSHA.MatchString(id.PublicCASHA256) || id.BuildRunID <= 0 || id.Checks < want.Checks || !validProvenanceInput(p.Profile, in.GenerationRead, in.FenceRead) || !compatibleFenceOrigin(p.Profile, in.FenceRead, in.FenceOrigin) || !compatibleReconstructionClose(p) {
 		return fmt.Errorf("initial status source refused")
 	}
 	return nil
+}
+
+// Janua BatchA deliberately does not attach an application binding. Its closed
+// migration authority is the protected operation journal/custody, never a
+// fabricated active binding or an activation side effect.
+func initialBindingValid(profile string, id InitialBootstrapIdentity) bool {
+	if profile == JanuaSchemaProfile {
+		operation, e := uuid.Parse(id.JanuaOperationID)
+		return id.BindingID == uuid.Nil && e == nil && operation != uuid.Nil && operation.String() == id.JanuaOperationID && initialUID.MatchString(id.JanuaJournalUID) && initialUID.MatchString(id.JanuaCustodyUID) && initialUID.MatchString(id.OwnerSecretUID) && initialUID.MatchString(id.JanuaOwnerVersion)
+	}
+	return id.BindingID != uuid.Nil && id.JanuaJournalUID == "" && id.JanuaCustodyUID == "" && id.JanuaOperationID == "" && id.OwnerSecretUID == "" && id.JanuaOwnerVersion == ""
 }

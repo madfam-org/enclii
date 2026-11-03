@@ -66,6 +66,9 @@ var provenanceReadKind = bootstrapKind{
 }
 
 func bootstrapKindFor(profile string) bootstrapKind {
+	if profile == JanuaSchemaProfile {
+		return januaSchemaKind
+	}
 	if profile == KarafielSchemaProfile {
 		return karafielSchemaKind
 	}
@@ -115,6 +118,9 @@ type initialProvenance struct {
 }
 
 func initialProvenanceFor(profile string) (initialProvenance, bool) {
+	if profile == JanuaSchemaProfile {
+		return initialProvenance{Producer: "madfam-org/janua", ImagePrefix: "ghcr.io/madfam-org/janua-api@sha256:", Database: "janua_staging", RuntimeRole: "janua_staging_runtime", Checks: 4}, true
+	}
 	if profile == KarafielSchemaProfile {
 		return initialProvenance{Producer: "madfam-org/karafiel", ImagePrefix: "ghcr.io/madfam-org/karafiel/api@sha256:", Database: "karafiel_staging_sim", RuntimeRole: "karafiel_staging_runtime", Checks: 5}, true
 	}

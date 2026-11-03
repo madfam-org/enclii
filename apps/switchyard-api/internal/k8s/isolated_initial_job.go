@@ -138,6 +138,15 @@ func BuildIsolatedInitialJob(p IsolatedInitialJobPlan) (*batchv1.Job, error) {
 	var command, migration []string
 	allowed := map[string]bool{"ca.crt": true}
 	switch {
+	case p.Profile == JanuaSchemaProfile:
+		var err error
+		command, err = januaMigrationCommand(p)
+		if err != nil {
+			return nil, err
+		}
+		for _, name := range []string{"DATABASE_URL", "JANUA_STAGE_RUNTIME_DATABASE_URL", "SOURCE_SHA", "CLUSTER_UID"} {
+			allowed[name] = true
+		}
 	case p.Profile == KarafielSchemaProfile:
 		if string(p.Data["DB_HOST"]) != p.Cluster+"-rw."+p.Namespace+".svc.cluster.local" || string(p.Data["DB_PORT"]) != "5432" || string(p.Data["DB_NAME"]) != "karafiel_staging_sim" || string(p.Data["DB_USER"]) != "enclii_migrator" || string(p.Data["SOURCE_SHA"]) != p.Identity.SourceRevision || string(p.Data["CLUSTER_UID"]) != p.Identity.ClusterUID {
 			return nil, fmt.Errorf("fixed Karafiel database/source custody refused")
@@ -273,6 +282,9 @@ func BuildIsolatedInitialJob(p IsolatedInitialJobPlan) (*batchv1.Job, error) {
 		sort.Slice(job.Spec.Template.Spec.Containers[0].Env, func(i, j int) bool {
 			return job.Spec.Template.Spec.Containers[0].Env[i].Name < job.Spec.Template.Spec.Containers[0].Env[j].Name
 		})
+	}
+	if p.Profile == JanuaSchemaProfile {
+		configureJanuaMigrationJob(job)
 	}
 	return job, nil
 }
@@ -637,14 +649,14 @@ func (c *Client) RunIsolatedInitialJob(ctx context.Context, p IsolatedInitialJob
 	owner := metav1.OwnerReference{APIVersion: "batch/v1", Kind: "Job", Name: job.Name, UID: job.UID, Controller: ptr.To(true)}
 	stage = "transient_custody"
 	secret := &corev1.Secret{ObjectMeta: metav1.ObjectMeta{Name: job.Name + "-credentials", Namespace: p.Namespace, Labels: p.jobLabels(), OwnerReferences: []metav1.OwnerReference{owner}}, Type: corev1.SecretTypeOpaque, Data: p.Data}
-	if IsProvenanceReadProfile(p.Profile) {
+	if IsProvenanceReadProfile(p.Profile) || p.Profile == JanuaSchemaProfile {
 		secret.Immutable = ptr.To(true)
 	}
 	secrets := c.kubeClient().CoreV1().Secrets(p.Namespace)
 	oldSecret, getErr := secrets.Get(ctx, secret.Name, metav1.GetOptions{})
 	if k8serrors.IsNotFound(getErr) {
 		_, err = secrets.Create(ctx, secret, metav1.CreateOptions{})
-	} else if getErr != nil || !reflect.DeepEqual(oldSecret.OwnerReferences, secret.OwnerReferences) || !reflect.DeepEqual(oldSecret.Data, secret.Data) || IsProvenanceReadProfile(p.Profile) && (oldSecret.Immutable == nil || !*oldSecret.Immutable) {
+	} else if getErr != nil || !reflect.DeepEqual(oldSecret.OwnerReferences, secret.OwnerReferences) || !reflect.DeepEqual(oldSecret.Data, secret.Data) || (IsProvenanceReadProfile(p.Profile) || p.Profile == JanuaSchemaProfile) && (oldSecret.Immutable == nil || !*oldSecret.Immutable) {
 		err = fmt.Errorf("initial transient custody conflicts")
 	}
 	if err != nil {
@@ -693,7 +705,7 @@ func (c *Client) IsolatedInitialJobStatus(ctx context.Context, namespace, name s
 		return nil, nil, fmt.Errorf("initial Job status scope refused")
 	}
 	suffix := ""
-	for _, kind := range []bootstrapKind{initialKind, fixedStepKind, provenanceReadKind, karafielSchemaKind} {
+	for _, kind := range []bootstrapKind{initialKind, fixedStepKind, provenanceReadKind, karafielSchemaKind, januaSchemaKind} {
 		if strings.HasPrefix(name, kind.namePrefix) {
 			suffix = name[len(kind.namePrefix):]
 		}

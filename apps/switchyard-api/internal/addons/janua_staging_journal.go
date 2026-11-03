@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"reflect"
+	"strconv"
 
 	"github.com/google/uuid"
 	corev1 "k8s.io/api/core/v1"
@@ -185,4 +186,44 @@ func WriteJanuaStagingCustodyReceipt(ctx context.Context, client kubernetes.Inte
 		return fmt.Errorf("Janua staging custody receipt uncertain; operation held")
 	}
 	return nil
+}
+
+// ReadJanuaStagingOperation is an observation, never a claim or repair.
+func ReadJanuaStagingOperation(ctx context.Context, client kubernetes.Interface, o JanuaStagingOperation) (k8stypes.UID, error) {
+	if client == nil || !o.valid() {
+		return "", fmt.Errorf("Janua staging journal authority refused")
+	}
+	got, err := client.CoreV1().ConfigMaps("enclii").Get(ctx, o.journalName(), metav1.GetOptions{})
+	if err != nil || !januaJournalExact(got, o.claimObject()) {
+		return "", fmt.Errorf("Janua staging immutable journal unavailable")
+	}
+	return got.UID, nil
+}
+
+// ReadJanuaStagingCustodyReceipt checks protected lineage without reading Vault
+// or exporting credentials. A missing uncertain receipt is never reconstructed.
+func ReadJanuaStagingCustodyReceipt(ctx context.Context, client kubernetes.Interface, o JanuaStagingOperation, journalUID k8stypes.UID, custody *JanuaStagingCustody) (k8stypes.UID, error) {
+	if client == nil || !o.valid() || journalUID == "" || custody == nil {
+		return "", fmt.Errorf("Janua staging custody proof refused")
+	}
+	desired := o.claimObject()
+	desired.Name += "-custody"
+	got, err := client.CoreV1().ConfigMaps("enclii").Get(ctx, desired.Name, metav1.GetOptions{})
+	if err != nil || got == nil {
+		return "", fmt.Errorf("Janua staging custody receipt absent")
+	}
+	version, err := strconv.Atoi(got.Data["vault_version"])
+	if err != nil || version <= 0 || fmt.Sprint(version) != got.Data["vault_version"] {
+		return "", fmt.Errorf("Janua staging custody receipt version refused")
+	}
+	desired.Data["journal_uid"] = string(journalUID)
+	desired.Data["vault_path"] = "secret/janua-staging"
+	desired.Data["vault_version"] = fmt.Sprint(version)
+	desired.Data["cluster_uid"] = string(custody.ClusterUID)
+	desired.Data["runtime_uid"] = string(custody.RuntimeUID)
+	desired.Data["public_ca_sha256"] = custody.PublicCASHA256
+	if !januaJournalExact(got, desired) {
+		return "", fmt.Errorf("Janua staging custody receipt changed")
+	}
+	return got.UID, nil
 }

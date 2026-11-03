@@ -1,0 +1,138 @@
+{
+  "source_revision": "73ae24ab4e0cfbd0d09f94c2bfb5e7935d606386",
+  "head": "021_map_email_traceability",
+  "migrations": [
+    {
+      "path": "apps/api/alembic/versions/000_init.py",
+      "revision": "000",
+      "down_revision": null,
+      "checksum": "7374aa07d332462f18278704b7b676d9d02477e31447539030ae755b2c8728f6"
+    },
+    {
+      "path": "apps/api/alembic/versions/001_system_settings.py",
+      "revision": "001",
+      "down_revision": "000",
+      "checksum": "a4a6cecdd39d7e7e0d16cba025d431341d26b24a224325cbf7d1d7e3b256a608"
+    },
+    {
+      "path": "apps/api/alembic/versions/002_add_oauth_client_audience.py",
+      "revision": "002",
+      "down_revision": "001",
+      "checksum": "c4d71fc49d73e9482f8f6617cda048f51713fed217aff089bf0138afd1d46192"
+    },
+    {
+      "path": "apps/api/alembic/versions/003_add_product_tiers.py",
+      "revision": "003",
+      "down_revision": "002",
+      "checksum": "af6507c9f6d6ddbcad4ce812568acf868008f16f8871aa2a0697ede8d6a86cc0"
+    },
+    {
+      "path": "apps/api/alembic/versions/004_add_guest_invites.py",
+      "revision": "004_add_guest_invites",
+      "down_revision": "003",
+      "checksum": "1c2ab50da0902e4ac6186aed35cf3356da834b46f6a7e34ab1e6f41ad66c5995"
+    },
+    {
+      "path": "apps/api/alembic/versions/005_set_tezca_client_audience.py",
+      "revision": "005_set_tezca_client_audience",
+      "down_revision": "004_add_guest_invites",
+      "checksum": "775984e5a26f4634a7fede38c05ca1c777ba596f319f895c9b344d2c404cfb5a"
+    },
+    {
+      "path": "apps/api/alembic/versions/006_api_key_rate_limit_revoked.py",
+      "revision": "006_api_key_rate_limit_revoked",
+      "down_revision": "005_set_tezca_client_audience",
+      "checksum": "7aa69d70ca0e26fc9f885fdf12716e90f2e5c5eb76dd374ee1e06c866305ec93"
+    },
+    {
+      "path": "apps/api/alembic/versions/007_add_user_entitlements.py",
+      "revision": "007_add_user_entitlements",
+      "down_revision": "006_api_key_rate_limit_revoked",
+      "checksum": "290f954ed7270d28557a8f735f26df87825a6dc21f38a08c15f61d9e3084a4e8"
+    },
+    {
+      "path": "apps/api/alembic/versions/008_connected_accounts.py",
+      "revision": "008_connected_accounts",
+      "down_revision": "007_add_user_entitlements",
+      "checksum": "ae5ff098131ff9ef6bb39393c89d48a345b0d52220416b2eaf19ffe077a05d0b"
+    },
+    {
+      "path": "apps/api/alembic/versions/009_add_legacy_webhook_events.py",
+      "revision": "009_add_legacy_webhook_events",
+      "down_revision": "008_connected_accounts",
+      "checksum": "bf1ac8ca790c3c8e40c8d812a1491bb20c359668efed22e38897e5f510e4cb59"
+    },
+    {
+      "path": "apps/api/alembic/versions/010_policy_authz_columns.py",
+      "revision": "010_policy_authz_columns",
+      "down_revision": "009_add_legacy_webhook_events",
+      "checksum": "4aaa4229e808fdc6882c7a55b68cb9f5798571830adf9e0332d8ed75eb42f143"
+    },
+    {
+      "path": "apps/api/alembic/versions/011_invitation_columns.py",
+      "revision": "011_invitation_columns",
+      "down_revision": "010_policy_authz_columns",
+      "checksum": "0016b7dfe1ef4712edbfe02f7d12592f55f84e0cb65d70a6b2403eb453b5c146"
+    },
+    {
+      "path": "apps/api/alembic/versions/012_user_spanish_formality.py",
+      "revision": "012_user_spanish_formality",
+      "down_revision": "011_invitation_columns",
+      "checksum": "790744c49a696e0a5cc9e87640df6c81b369d2e5e6cc8c0b0b99ea9db8f7b3ce"
+    },
+    {
+      "path": "apps/api/alembic/versions/013_per_tenant_email_uniqueness.py",
+      "revision": "013_per_tenant_email_uniqueness",
+      "down_revision": "012_user_spanish_formality",
+      "checksum": "c0facc949a1f42c138655d8bf69e0b80210dcb8ffb044188042ad34472c1658e"
+    },
+    {
+      "path": "apps/api/alembic/versions/014_capability_links.py",
+      "revision": "014_capability_links",
+      "down_revision": "013_per_tenant_email_uniqueness",
+      "checksum": "31dbb08528720a7f189372a7f489fbba4b28aa5d5e4d56a28685d67aefc58f73"
+    },
+    {
+      "path": "apps/api/alembic/versions/015_user_is_service_account.py",
+      "revision": "015_user_is_service_acct",
+      "down_revision": "014_capability_links",
+      "checksum": "2c8cd7df34445aa81f98607300bd151b5303f47e821d833907be06c57be4f38c"
+    },
+    {
+      "path": "apps/api/alembic/versions/016_org_member_app_roles.py",
+      "revision": "016_org_member_app_roles",
+      "down_revision": "015_user_is_service_acct",
+      "checksum": "37036cf5f209cf203956c450fb192429f233b48f54df957bcbfb959968ba22ac"
+    },
+    {
+      "path": "apps/api/alembic/versions/017_payment_mail_dispatch.py",
+      "revision": "017_payment_mail_dispatch",
+      "down_revision": "016_org_member_app_roles",
+      "checksum": "82b7550a9c164b0b639e6eaa7919be08619851d064e3a54136fec7fdffc7adcc"
+    },
+    {
+      "path": "apps/api/alembic/versions/018_email_events.py",
+      "revision": "018_email_events",
+      "down_revision": "017_payment_mail_dispatch",
+      "checksum": "0381aa5e026429609fb22e271d2d9137caa4c14f9f18748539e4b2d6da9b8536"
+    },
+    {
+      "path": "apps/api/alembic/versions/019_email_first_party_engagement.py",
+      "revision": "019_email_first_party_engagement",
+      "down_revision": "018_email_events",
+      "checksum": "0b34883264c7eeef80f9b2efd0144ec25f40009c44002a2d4905edc7fda6c6a4"
+    },
+    {
+      "path": "apps/api/alembic/versions/020_organization_authentication_policy.py",
+      "revision": "020_org_authentication_policy",
+      "down_revision": "019_email_first_party_engagement",
+      "checksum": "2c5ed58ad34f1997d82520eb051e22a51858b675c1d4427ac068932bfebb37d2"
+    },
+    {
+      "path": "apps/api/alembic/versions/021_map_email_traceability.py",
+      "revision": "021_map_email_traceability",
+      "down_revision": "020_org_authentication_policy",
+      "checksum": "79ca35a2e2d130b50f063eaa8c01a61470dd2c8587a5618e075082b3530fd269"
+    }
+  ]
+}

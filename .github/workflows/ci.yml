@@ -68,6 +68,29 @@ jobs:
           ENCLII_RUNTIME_POSTGRES_PROOF_URL: postgres://postgres@127.0.0.1:5432/postgres?sslmode=disable
         run: go test -count=1 -run '^TestRuntimeBootstrapOnNativePostgres$' ./internal/addons
 
+  janua-stage-native-proof:
+    name: Janua staging migration and runtime on PostgreSQL 18
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v7
+      - name: Read immutable reviewed Janua image source
+        uses: actions/checkout@v7
+        with:
+          repository: madfam-org/janua
+          ref: d327f8df3eb6b1e3a1313a04833856ea1536dfe0
+          path: .janua-stage-source
+          persist-credentials: false
+      - uses: actions/setup-python@v7
+        with:
+          python-version: '3.11'
+      - name: Require actual fixed image migration and runtime authority
+        env:
+          JANUA_STAGE_NATIVE_REQUIRED: 'true'
+        run: python tests/janua-stage/run_native.py
+
   blueprint-publisher-contract:
     name: Blueprint publisher gates
     runs-on: ubuntu-24.04

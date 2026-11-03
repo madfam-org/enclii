@@ -246,6 +246,8 @@ func initialNativeHTTPProfile(t *testing.T, profile string, customize ...func(*I
 		for _, key := range []string{"DATABASE_URL", "DIRECT_DATABASE_URL", "MAP_SIMULATION_RUNTIME_DATABASE_URL", "MAP_SIMULATION_SEED_ENABLED", "MAP_SIMULATION_ENABLED", "MAP_SIMULATION_KERNEL_ID", "APP_ORIGIN", "JANUA_AUDIENCE", "JANUA_ISSUER_URL", "JANUA_JWKS_URL", "RLS_POR_CASO", "MAP_SIMULATION_CONTEXT_KEY", "MAP_SIMULATION_CONTROL_KEY", "MAP_SIMULATION_MAIL_KEY", "MAP_SIMULATION_MCP_CLIENT_ID", "MAP_MCP_PSEUDONYM_KEY"} {
 			p.Data[key] = []byte("synthetic-value")
 		}
+	} else if profile == JanuaSchemaProfile {
+		p = januaSchemaPlan()
 	} else if profile == KarafielSchemaProfile {
 		p = karafielSchemaPlan()
 	} else if profile == PortalReconstructionCloseProfile {
@@ -292,6 +294,9 @@ func initialNativeHTTPProfile(t *testing.T, profile string, customize ...func(*I
 	}
 	f := &initialHTTPFixture{p: p, expected: expected, job: job, pod: pod, intent: cm, stdout: `{"fuente":"portal-sim-reset-custody","version":"crea-sim-reset-custody-v1","estado":"PREPARADO","schemaSha256":"` + strings.Repeat("d", 64) + `","databaseIdentitySha256":"` + strings.Repeat("e", 64) + `"}` + "\n", initStdout: `{"perfil":"crea-sim-portal-inicial","version":"portal-inicial-v1","estado":"PREPARADO"}` + "\n"}
 
+	if profile == JanuaSchemaProfile {
+		januaNativeFixture(f)
+	}
 	if profile == KarafielSchemaProfile {
 		for i := range f.pod.Status.ContainerStatuses {
 			f.pod.Status.ContainerStatuses[i].State.Terminated.StartedAt = metav1.NewTime(time.Date(2026, 10, 25, 12, 0, 0, 0, time.UTC))

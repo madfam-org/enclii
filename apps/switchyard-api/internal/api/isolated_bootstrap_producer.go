@@ -346,6 +346,11 @@ func (a bootstrapProducerIO) verify(ctx context.Context, profile isolatedBootstr
 		}
 		checked = checks.TotalCount
 	}
+	if profile.Name == k8s.JanuaSchemaProfile {
+		if err = a.verifyJanuaStageMainCI(ctx, profile, revision); err != nil {
+			return nil, err
+		}
+	}
 	verified, err := a.verifySources(ctx, profile, revision)
 	if err != nil {
 		return nil, err
