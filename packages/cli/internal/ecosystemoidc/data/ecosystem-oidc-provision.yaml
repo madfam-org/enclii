@@ -1123,8 +1123,7 @@ platforms:
   # _SECRET and KARAFIEL_EMPLOYMENT_CLIENT_ID/_SECRET.
   #
   # Public client id pinned after the owner-authorized first provision.
-  # Later runs reconcile this same client rather than creating a twin.
-  # Credential material remains in Enclii intake/Vault, never in this registry.
+  # Reconcile reuses this identity; credentials remain in Enclii intake/Vault.
   # ---------------------------------------------------------------------------
   symbiosis-hcm-karafiel:
     intake_target: symbiosis-hcm/karafiel-client
@@ -1144,6 +1143,7 @@ platforms:
         - fiscal:invoice
       grant_types:
         - client_credentials
+
   crea-sim:
     intake_target: crea-sim/ui-oidc
     intake_key_map:
