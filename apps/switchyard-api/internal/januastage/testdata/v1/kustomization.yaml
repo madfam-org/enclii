@@ -1,0 +1,24 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+namespace: janua-staging
+resources:
+- api.yaml
+- service.yaml
+- secrets.yaml
+- redis.yaml
+images:
+- digest: sha256:3131b27d873ad084d6a7e92cd647cdf9ba4063237608e05e5bd5c28df29cbe4f
+  name: ghcr.io/madfam-org/janua-admin
+  newName: ghcr.io/madfam-org/janua-admin
+- digest: sha256:b360e5c66fcb6ce08feb13698b6a61d1a1d2973bdff25f8b678ba290149a2a88
+  name: ghcr.io/madfam-org/janua-api
+  newName: ghcr.io/madfam-org/janua-api
+- digest: sha256:23caa94b95467d1136d249b087c7216ebca1d82f67fc62f1af9521cec8db718a
+  name: ghcr.io/madfam-org/janua-dashboard
+  newName: ghcr.io/madfam-org/janua-dashboard
+- digest: sha256:b861fb3f1cf19b6ed8426c4a1057dcd5955098bf66769ed3a7936580a93a261e
+  name: ghcr.io/madfam-org/janua-docs
+  newName: ghcr.io/madfam-org/janua-docs
+- digest: sha256:9b16d116be11f8ef88e494721c40198ce7bc487b24b7dd52e63702c75a62da9b
+  name: ghcr.io/madfam-org/janua-website
+  newName: ghcr.io/madfam-org/janua-website
