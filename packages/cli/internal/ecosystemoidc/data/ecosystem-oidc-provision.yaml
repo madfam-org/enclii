@@ -1122,9 +1122,8 @@ platforms:
   # KARAFIEL_SERVICE_CLIENT_ID/_SECRET, KARAFIEL_CONTRACTOR_DRAFT_CLIENT_ID/
   # _SECRET and KARAFIEL_EMPLOYMENT_CLIENT_ID/_SECRET.
   #
-  # NOT pinned yet: the first provision run CREATES the client and prints its
-  # jnc_… id; pin it here (both copies) so later runs reconcile this client
-  # instead of creating a twin. Every later run rotates the secret.
+  # Public client id pinned after the owner-authorized first provision.
+  # Reconcile reuses this identity; credentials remain in Enclii intake/Vault.
   # ---------------------------------------------------------------------------
   symbiosis-hcm-karafiel:
     intake_target: symbiosis-hcm/karafiel-client
@@ -1133,6 +1132,7 @@ platforms:
       karafiel_service_client_secret: client_secret  # pragma: allowlist secret
     janua_client:
       name: symbiosis-hcm-karafiel
+      client_id: jnc_gWbJCFfVZsv6J7cJXcieW7VJrCsNmvPp  # pragma: allowlist secret -- public OAuth client id
       client_key: symbiosis-hcm-karafiel  # pragma: allowlist secret
       audience: karafiel-api
       description: Machine edge (client_credentials) from Symbiosis-HCM's API and worker to Karafiel. Platform-admin, scopes legal:contractor-draft and legal:employment-draft (contract drafts) and fiscal:invoice (CFDI); HCM requests one scope per token.
