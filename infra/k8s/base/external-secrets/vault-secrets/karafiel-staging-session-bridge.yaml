@@ -28,7 +28,7 @@ spec:
     creationPolicy: Merge
     deletionPolicy: Retain
   data:
-    - secretKey: KARAFIEL_ADMIN_SESSION_SECRET
+    - secretKey: KARAFIEL_ADMIN_SESSION_SECRET  # pragma: allowlist secret -- Kubernetes Secret key name; not a credential
       remoteRef:
         key: secret/karafiel-staging
         property: admin_session_secret
