@@ -12,7 +12,7 @@ halved capacity.
 | Path | What it is | Synced by |
 | --- | --- | --- |
 | `controller/rendered.yaml` | the ARC controller (chart 0.14.0) | `arc-runners` |
-| `runner-blue/rendered.yaml` | `madfam-runners-blue` — the whole org's CI pool, `maxRunners: 20` | `arc-runners-blue` |
+| `runner-blue/rendered.yaml` | `madfam-runners-blue` — the whole org's CI pool, `maxRunners: 30` | `arc-runners-blue` |
 | `runner-deploy/rendered.yaml` | `madfam-runners-deploy` — the ADR-010a deploy pool, `maxRunners: 2` | `arc-runners-deploy` |
 | `pool-health-alert.yaml` | the detector that pages when the pool stops serving jobs | `arc-watchdog` |
 | `stuck-runner-watchdog.yaml` | purges EphemeralRunners stuck against completed runs | `arc-watchdog` |
@@ -38,14 +38,31 @@ kills, no cgroup OOMs), stopped answering the control plane and went NotReady
 twice. The taint-eviction controller then deleted its runners and its Longhorn
 instance-manager, and the volume replicas on that node had to be rebuilt.
 
-Since then both pools request runner `1` CPU / `4Gi` and dind `100m` /
-`512Mi`: the p90 per-pod peak measured over the following week. How many
-runners run at once is therefore set by what the builder nodes hold by
+From 2026-10-26 both pools requested runner `1` CPU / `4Gi`, the p90
+per-pod peak of the following week, so a wave queued at GitHub instead of
+taking a node down. That reserved a heavy job's peak for every job.
+
+Since 2026-11-04 (owner decision) the runner requests `500m` / `2.5Gi`
+(written `2560Mi`) with a `2` CPU / `7Gi` limit; dind still requests `100m` /
+`512Mi`. Over 2 days and 3,436 runner pods the median job peaked at 0.23 CPU /
+0.3GiB, p95 at 1.37 CPU / 4.75GiB, and the largest at 6GiB. The request now
+matches a typical job and the limit covers the measured max. Blue's
+`maxRunners` went from 20 to 30 at the same time.
+
+How many runners run at once is still set by what the builder nodes hold by
 request, not by `maxRunners`; the node layout and its per-node runner counts
-are kept in the private ops repo (`internal-devops`). `maxRunners` stays 20:
-runners beyond what the builders hold wait as Pending pods and their jobs wait
-queued at GitHub; the pool-health alert pages only when nothing is running.
-Each job runs at full speed instead of dying with the node.
+are kept in the private ops repo (`internal-devops`). Runners beyond that wait
+as Pending pods and their jobs wait queued at GitHub; the pool-health alert
+pages only when nothing is running.
+
+The trade-off, stated plainly: the scheduler now places more runners per node
+than their combined peaks would fit, betting that heavy jobs rarely coincide
+on one node. When they do, memory pressure is the 2026-10-24 failure again.
+The guard against that is the builder kubelet's memory eviction threshold
+(engineering backlog), which turns pressure into one evicted runner instead
+of a NotReady node. Watch for runner pods evicted or OOM-killed on the
+builders after this change; if they appear, raise the memory request before
+lowering `maxRunners`.
 
 Changing `maxRunners` replaces the listener. Under `updateStrategy: eventual`
 the new listener waits until the running runners finish, so no new job is
@@ -56,11 +73,12 @@ If `AutoscalingListener` is still absent once no job is running, scale the
 blue `EphemeralRunnerSet` to 0 replicas, which is break-glass, and let ARC
 recreate both.
 
-`tests/scripts/test_arc_runner_requests.py` keeps the Helm values and both
-rendered pools in agreement and refuses requests below the measured floor.
-More capacity is a hardware or node-role decision (see the ARC items in the
-[engineering backlog](../../../../ROADMAP.md#engineering-backlog-platform-and-fleet-wide)),
-not a request cut.
+`tests/scripts/test_arc_runner_requests.py` keeps the Helm values, both
+rendered pools and `infra/scripts/arc/blue-green-switch.sh` in agreement,
+refuses requests below the approved floor and limits below the measured
+peaks. Moving either is a capacity decision made with new measurements; see
+the ARC items in the
+[engineering backlog](../../../../ROADMAP.md#engineering-backlog-platform-and-fleet-wide).
 
 ## Capacity recovery without cancelling jobs
 
