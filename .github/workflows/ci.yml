@@ -382,12 +382,6 @@ jobs:
       - name: Run ArgoCD ignoreDifferences lint
         run: python3 scripts/check-argocd-ignore-differences.py infra/argocd/
 
-      # `"lifecycle": "retired"` in a project's config.json drops that one
-      # Application's auto-sync and resources finalizer; every other project
-      # must render unchanged. Deleting a config.json instead would cascade.
-      - name: Run project ApplicationSet lifecycle guard
-        run: pytest tests/scripts/test_project_appset_lifecycle.py -v
-
       # Most Argo apps apply server-side. Switching an existing Deployment to
       # `strategy.type: Recreate` then never syncs: the live object keeps the
       # defaulted rollingUpdate block and the API refuses the pair (#799; the
@@ -2636,6 +2630,12 @@ jobs:
 
       - name: Install Python test deps
         run: pip install --quiet pyyaml pytest
+
+      # `"lifecycle": "retired"` in a project's config.json drops that one
+      # Application's auto-sync and resources finalizer; every other project
+      # must render unchanged. Deleting a config.json instead would cascade.
+      - name: Run project ApplicationSet lifecycle guard
+        run: pytest tests/scripts/test_project_appset_lifecycle.py -v
 
       - name: Verify actual Trivy image command parser
         run: |
