@@ -185,7 +185,7 @@
 
 ### Unified K8s-Only Architecture
 
-All services run exclusively in K8s. Docker containers (Verdaccio, registry) run on the host for non-K8s workloads. systemd tunnels disabled.
+All services run exclusively in K8s. Docker containers (Verdaccio) run on the host for non-K8s workloads. systemd tunnels disabled. The legacy host container registry was retired on 2026-11-04; production images come from GHCR.
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
@@ -211,7 +211,7 @@ All services run exclusively in K8s. Docker containers (Verdaccio, registry) run
 │                                                                 │
 │  Host-level Docker:                                             │
 │    verdaccio (4873) — npm registry                              │
-│    foundry-registry (5000) — container registry                 │
+│    (legacy container registry retired 2026-11-04)               │
 └─────────────────────────────────────────────────────────────────┘
 ```
 
@@ -639,7 +639,7 @@ Single unified tunnel. Routes managed remotely via Cloudflare Tunnel Configurati
 | postgres-shared | **127.0.0.1:5432** | ✅ Secured |
 | redis-shared | **127.0.0.1:6379** | ✅ Secured |
 | verdaccio | 0.0.0.0:4873 | Up |
-| foundry-registry | 0.0.0.0:5000 | Up |
+| foundry-registry | — | Retired 2026-11-04 (production images come from GHCR) |
 
 > **Note:** `janua-proxy` was deleted in Session 10 (0/0 replicas, no longer needed).
 
