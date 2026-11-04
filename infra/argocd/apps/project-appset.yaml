@@ -27,6 +27,24 @@ spec:
         revision: main
         files:
           - path: "infra/argocd/projects/*/config.json"
+  # Retiring a project. A config.json with `"lifecycle": "retired"` keeps the
+  # project's Application and everything it deployed, and changes two things:
+  #   - no automated sync: Argo stops applying the (archived) repo and stops
+  #     self-healing what an operator changes by hand, such as Deployments
+  #     scaled to 0;
+  #   - no resources finalizer: deleting the Application later, by removing
+  #     the config.json, leaves the workloads in place (a non-cascading prune).
+  # Without the key the patch renders empty and every other project's
+  # Application is unchanged. Procedure: infra/argocd/README.md, "Retiring a
+  # project". Tested by tests/scripts/test_project_appset_lifecycle.py.
+  templatePatch: |
+    {{- if eq (default "active" .lifecycle) "retired" }}
+    metadata:
+      finalizers: null
+    spec:
+      syncPolicy:
+        automated: null
+    {{- end }}
   template:
     metadata:
       name: '{{ .name }}-services'
