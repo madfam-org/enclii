@@ -433,6 +433,83 @@ data:
             action: keep
             regex: true
 
+      # Longhorn (RFC 0049 Phase 1). Every longhorn-manager pod serves
+      # /metrics on 9500 for the volumes, replicas, disks and node it owns;
+      # longhorn-backend's endpoints are those pods, so each is scraped once.
+      # Nothing scraped it before 2026-11-04: volume actual size, disk
+      # capacity and robustness existed only in the Longhorn UI. Egress to
+      # longhorn-system is already open in network-policies.yaml, and the
+      # namespace has no ingress policy. The manager's own client-go and
+      # workqueue histograms are most of its series and are dropped.
+      - job_name: 'longhorn'
+        kubernetes_sd_configs:
+          - role: endpoints
+            namespaces:
+              names:
+                - longhorn-system
+        relabel_configs:
+          - source_labels: [__meta_kubernetes_service_name, __meta_kubernetes_endpoint_port_name]
+            action: keep
+            regex: longhorn-backend;manager
+          - source_labels: [__meta_kubernetes_pod_node_name]
+            target_label: node
+        metric_relabel_configs:
+          - source_labels: [__name__]
+            regex: longhorn_(rest_client|workqueue)_.+
+            action: drop
+
+      # ARC controller (RFC 0049 Phase 1): per-scale-set pending, running and
+      # failed ephemeral runners and running listeners. The controller already
+      # serves :8080/metrics and arc-controller-metrics-ingress already admits
+      # this namespace on 8080 (infra/k8s/policies/arc-default-deny.yaml), but
+      # no job read it: arc/monitoring.yaml's ServiceMonitor has no Service to
+      # select and is not deployed. Pod discovery, so no Service is needed.
+      # Only the gha_* gauges and the reconcile counters are kept. The
+      # LISTENER metrics (queue time, assigned jobs) stay off until the
+      # controller's --listener-metrics-addr is set; see arc/monitoring.yaml.
+      - job_name: 'arc-controller'
+        kubernetes_sd_configs:
+          - role: pod
+            namespaces:
+              names:
+                - arc-system
+        relabel_configs:
+          - source_labels: [__meta_kubernetes_pod_label_app_kubernetes_io_name, __meta_kubernetes_pod_container_port_name]
+            action: keep
+            regex: gha-rs-controller;metrics
+          - source_labels: [__meta_kubernetes_pod_name]
+            target_label: pod
+        metric_relabel_configs:
+          - source_labels: [__name__]
+            regex: gha_.+|controller_runtime_reconcile_(total|errors_total)
+            action: keep
+
+      # Selva provider credit grants (RFC 0049 Phase 1): remaining and spent
+      # USD and seconds to expiry per grant, from nexus-api's /metrics
+      # (selva-office docs/PROVIDER_CREDIT_GRANTS.md). Selva's ServiceMonitor
+      # feeds only the 24h rules-eval instance; this keeps the grant history
+      # where the capacity plane reads it. The amount series disappear (not
+      # zero) while Selva's meter is unreadable, so absence means "unknown".
+      # selva is labelled enclii.dev/data-access=true (egress open) and has no
+      # ingress policy. Only selva_* series are kept; the HTTP instrumentation
+      # stays with rules-eval.
+      - job_name: 'selva-nexus-api'
+        kubernetes_sd_configs:
+          - role: endpoints
+            namespaces:
+              names:
+                - selva
+        relabel_configs:
+          - source_labels: [__meta_kubernetes_service_name, __meta_kubernetes_endpoint_port_name]
+            action: keep
+            regex: nexus-api;http
+          - source_labels: [__meta_kubernetes_pod_name]
+            target_label: pod
+        metric_relabel_configs:
+          - source_labels: [__name__]
+            regex: selva_.+
+            action: keep
+
       # Synthetic HTTP probes of the revenue flows (money-machine audit
       # 2026-10-11, M2 F1/F2/F5), through blackbox-exporter.yaml. Each target
       # is a PUBLIC URL, probed through Cloudflare and the tunnel like a
