@@ -665,6 +665,28 @@ jobs:
           image="$(python3 -c 'import yaml; d=[x for x in yaml.safe_load_all(open("infra/k8s/production/monitoring/blackbox-exporter.yaml")) if x and x.get("kind")=="Deployment"][0]; print(d["spec"]["template"]["spec"]["containers"][0]["image"])')"
           docker run --rm -v "$dir":/w:ro "$image" --config.file=/w/config.yml --config.check
 
+  capacity-scrapes-test:
+    name: Capacity plane scrapes
+    runs-on: ubuntu-24.04
+    # Cheap. The Longhorn, ARC controller and Selva grant scrape jobs (RFC
+    # 0049 Phase 1) select their targets by port name and keep a bounded set
+    # of series. A port name the target does not serve, or a keep regex that
+    # misses, gives an empty job that looks configured. Pins the selectors,
+    # the kept/dropped metric names and the egress path to each target.
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Set up Python
+        uses: actions/setup-python@v7
+        with:
+          python-version: '3.11'
+
+      - name: Install deps
+        run: pip install --quiet pyyaml pytest
+
+      - name: Run capacity scrape tests
+        run: pytest tests/scripts/test_capacity_scrapes.py -v -rs
+
   courier-envelope-lint:
     name: Courier envelope shape (ops scripts)
     runs-on: ubuntu-24.04
