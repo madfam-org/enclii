@@ -122,6 +122,11 @@ func (h *Handler) proxyBilling(c *gin.Context, method, tailFmt string) {
 	}
 	defer func() { _ = resp.Body.Close() }()
 
+	if waybillRejectedServiceKey(resp.StatusCode) {
+		c.JSON(http.StatusBadGateway, gin.H{"error": "billing service rejected the platform's credentials"})
+		return
+	}
+
 	respBody, _ := io.ReadAll(resp.Body)
 	// Pass through Content-Type if Waybill set one; default to JSON.
 	if ct := resp.Header.Get("Content-Type"); ct != "" {
@@ -129,6 +134,15 @@ func (h *Handler) proxyBilling(c *gin.Context, method, tailFmt string) {
 	}
 	c.Status(resp.StatusCode)
 	_, _ = c.Writer.Write(respBody)
+}
+
+// waybillRejectedServiceKey reports whether Waybill refused switchyard-api's
+// own service key (ENCLII_WAYBILL_INTERNAL_API_KEY). That is never about the
+// caller's session, so the proxy answers 502 instead of passing the status
+// through: a 401 here would send the dashboard into a token refresh, and into
+// a logout when the token is old.
+func waybillRejectedServiceKey(status int) bool {
+	return status == http.StatusUnauthorized || status == http.StatusForbidden
 }
 
 // --- Handler wrappers. These are the bound methods that RegisterRoutes calls. ---
