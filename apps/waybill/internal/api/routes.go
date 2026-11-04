@@ -1,6 +1,11 @@
 package api
 
 import (
+	"crypto/sha256"
+	"crypto/subtle"
+	"net/http"
+	"strings"
+
 	"github.com/gin-gonic/gin"
 	"go.opentelemetry.io/contrib/instrumentation/github.com/gin-gonic/gin/otelgin"
 	"go.uber.org/zap"
@@ -16,6 +21,11 @@ type Server struct {
 
 // ServerConfig contains server configuration
 type ServerConfig struct {
+	// InternalAPIKey is the service key every caller presents on /internal
+	// and /api/v1 (X-API-Key, or Authorization: Bearer). Empty never means
+	// "open": both groups then answer 503 to every request. cmd/api refuses
+	// to start without it, so an empty key here only happens in a caller
+	// that builds the server by hand.
 	InternalAPIKey string
 }
 
@@ -45,23 +55,29 @@ func NewServer(handlers *Handlers, costHandlers *CostHandlers, cfg *ServerConfig
 }
 
 func (s *Server) setupRoutes(cfg *ServerConfig) {
-	// Health check (no auth)
+	// Health check (no auth): kubelet probes carry no key.
 	s.router.GET("/health", s.handlers.HealthCheck)
 	s.router.GET("/ready", s.handlers.HealthCheck)
 
-	// Internal API (for Switchyard/Roundhouse)
-	internal := s.router.Group("/internal")
-	if cfg.InternalAPIKey != "" {
-		internal.Use(apiKeyAuth(cfg.InternalAPIKey))
+	var key string
+	if cfg != nil {
+		key = cfg.InternalAPIKey
 	}
+	auth := apiKeyAuth(key, s.logger)
+
+	// Internal API: event ingest from switchyard-api, the Roundhouse worker
+	// and Weighbridge.
+	internal := s.router.Group("/internal")
+	internal.Use(auth)
 	{
 		internal.POST("/events", s.handlers.RecordEvent)
 		internal.POST("/events/batch", s.handlers.RecordEventBatch)
 	}
 
-	// Public API (authenticated via JWT from Switchyard)
+	// Query API: read and budget calls, made only by switchyard-api, which
+	// resolves the caller's project under its own RBAC before forwarding.
 	api := s.router.Group("/api/v1")
-	// Add JWT validation middleware in production
+	api.Use(auth)
 	{
 		// Usage
 		api.GET("/projects/:project_id/usage/current", s.handlers.GetCurrentUsage)
@@ -110,7 +126,22 @@ func requestLogger(logger *zap.Logger) gin.HandlerFunc {
 	}
 }
 
-func apiKeyAuth(apiKey string) gin.HandlerFunc {
+// apiKeyAuth admits a request only when it presents the service key, as
+// X-API-Key or as Authorization: Bearer. It fails closed: with no key
+// configured every request gets 503, so a missing secret can never turn
+// into an open API.
+func apiKeyAuth(apiKey string, logger *zap.Logger) gin.HandlerFunc {
+	apiKey = strings.TrimSpace(apiKey)
+	if apiKey == "" {
+		logger.Error("no service key configured: /internal and /api/v1 will refuse every request")
+		return func(c *gin.Context) {
+			c.AbortWithStatusJSON(http.StatusServiceUnavailable, gin.H{"error": "service key not configured"})
+		}
+	}
+	// Compare digests, so neither the comparison time nor an early length
+	// mismatch says anything about the key.
+	want := sha256.Sum256([]byte(apiKey))
+
 	return func(c *gin.Context) {
 		key := c.GetHeader("X-API-Key")
 		if key == "" {
@@ -120,8 +151,16 @@ func apiKeyAuth(apiKey string) gin.HandlerFunc {
 			}
 		}
 
-		if key != apiKey {
-			c.AbortWithStatusJSON(401, gin.H{"error": "unauthorized"})
+		got := sha256.Sum256([]byte(key))
+		if key == "" || subtle.ConstantTimeCompare(got[:], want[:]) != 1 {
+			// Who called, never what they sent.
+			logger.Warn("rejected request without a valid service key",
+				zap.String("method", c.Request.Method),
+				zap.String("path", c.FullPath()),
+				zap.String("user_agent", c.Request.UserAgent()),
+				zap.String("client_ip", c.ClientIP()),
+			)
+			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
 			return
 		}
 

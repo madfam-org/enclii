@@ -143,3 +143,31 @@ func TestLoad_EmptyAPIKey(t *testing.T) {
 		t.Errorf("InternalAPIKey should be empty when not set, got %q", cfg.InternalAPIKey)
 	}
 }
+
+func TestLoad_TrimsAPIKey(t *testing.T) {
+	// A key projected from a file can end in a newline no caller sends.
+	t.Setenv("INTERNAL_API_KEY", "  test-api-key-12345\n")
+
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("Load() error: %v", err)
+	}
+
+	if cfg.InternalAPIKey != "test-api-key-12345" {
+		t.Errorf("InternalAPIKey: got %q, want %q", cfg.InternalAPIKey, "test-api-key-12345")
+	}
+}
+
+func TestLoad_WhitespaceAPIKeyIsEmpty(t *testing.T) {
+	// cmd/api refuses to start on an empty key; whitespace must count as empty.
+	t.Setenv("INTERNAL_API_KEY", " \n\t")
+
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("Load() error: %v", err)
+	}
+
+	if cfg.InternalAPIKey != "" {
+		t.Errorf("InternalAPIKey should be empty for a whitespace value, got %q", cfg.InternalAPIKey)
+	}
+}

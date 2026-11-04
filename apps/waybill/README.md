@@ -47,6 +47,7 @@ docker-compose up -d
 
 # Or run locally
 export DATABASE_URL=postgresql://localhost/enclii_dev
+export INTERNAL_API_KEY=dev-key   # any value locally; the API will not start without one
 
 # Start API
 go run ./cmd/api
@@ -61,7 +62,7 @@ go run ./cmd/aggregator
 |----------|-------------|---------|
 | `API_PORT` | API server port | `8082` |
 | `DATABASE_URL` | PostgreSQL connection URL | required |
-| `INTERNAL_API_KEY` | API key for internal services | - |
+| `INTERNAL_API_KEY` | API: service key callers present on `/internal` and `/api/v1` (see [Authentication](#authentication)). The API refuses to start without it | required |
 | `STRIPE_SECRET_KEY` | Stripe secret key | - |
 | `STRIPE_WEBHOOK_SECRET` | Stripe webhook secret | - |
 | `PRICE_COMPUTE_GB_HOUR` | Compute cost per GB-hour | `0.000463` |
@@ -70,15 +71,29 @@ go run ./cmd/aggregator
 | `PRICE_BANDWIDTH_GB` | Bandwidth cost per GB | `0.10` |
 | `WAYBILL_METERING_STALE_AFTER` | API: how old the aggregator heartbeat may be before cost reads report `metering.status: stale`. Keep it above the aggregator's `WAYBILL_ALERT_INTERVAL` | `1h` |
 
+## Authentication
+
+Every route under `/internal` and `/api/v1` requires the service key, sent as
+`X-API-Key: <key>` or `Authorization: Bearer <key>`. A missing or wrong key gets
+`401`. There is no anonymous mode: the API will not start without
+`INTERNAL_API_KEY`, and a server built without a key answers `503` on both
+groups. `/health` and `/ready` need no key.
+
+In production the key comes from the intake target
+`enclii/waybill-internal-api-key` (`docs/runbooks/SECRET_INTAKE.md`). It is
+projected into `enclii/enclii-secrets` (key `waybill-internal-api-key`) for
+Waybill, switchyard-api and the Roundhouse worker, and into
+`monitoring/weighbridge-waybill-key` for Weighbridge.
+
 ## API Endpoints
 
-### Internal (Switchyard/Roundhouse)
+### Internal (Switchyard, Roundhouse, Weighbridge)
 ```
 POST /internal/events         # Record single event
 POST /internal/events/batch   # Record batch of events
 ```
 
-### Public API
+### Query API (called by switchyard-api)
 ```
 # Usage
 GET  /api/v1/projects/:id/usage/current   # Current period usage

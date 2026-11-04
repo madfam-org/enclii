@@ -36,6 +36,20 @@ spec:
                 secretKeyRef:
                   name: waybill-secrets
                   key: DATABASE_URL
+            # The service key every caller presents on /internal and /api/v1.
+            # NOT optional, on purpose: Waybill refuses to start without it,
+            # and a missing key here holds the new pod in
+            # CreateContainerConfigError while the running one keeps serving.
+            # Projected into enclii-secrets by the waybill-internal-api-key
+            # ExternalSecret from intake target enclii/waybill-internal-api-key
+            # (docs/runbooks/SECRET_INTAKE.md). The callers read the same key:
+            # switchyard-api (ENCLII_WAYBILL_INTERNAL_API_KEY), the Roundhouse
+            # worker (WAYBILL_API_KEY) and Weighbridge (monitoring namespace).
+            - name: INTERNAL_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: enclii-secrets
+                  key: waybill-internal-api-key
           ports:
             - containerPort: 8080
               name: metrics
