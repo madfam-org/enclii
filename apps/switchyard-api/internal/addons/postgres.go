@@ -295,7 +295,7 @@ func (p *PostgresProvisioner) buildClusterManifest(req *ProvisionRequest, resour
 		limits := map[string]interface{}{}
 
 		if config.CPU != "" {
-			requests["cpu"] = config.CPU
+			requests["cpu"] = postgresCPURequest(config.CPU) // the plan CPU stays the limit (postgres_cpu_request.go)
 			limits["cpu"] = config.CPU
 		}
 		if config.Memory != "" {
