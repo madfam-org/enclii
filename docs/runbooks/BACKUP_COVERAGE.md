@@ -69,7 +69,7 @@ All backup CronJobs are monitored by Prometheus (`cronjob-health` rule group):
 
 | Alert | Condition | Severity |
 |-------|-----------|----------|
-| `CronJobFailed` | Any job failure in `enclii\|monitoring\|data` | warning |
+| `CronJobFailed` | Latest run of a CronJob in `enclii\|monitoring\|data` did not succeed (no run in progress) | warning |
 | `PostgresBackupMissing` | No successful postgres-backup in 25h | critical |
 | `K3sBackupMissing` | No successful k3s-datastore-backup in 25h | critical |
 | `GitHubBackupMissing` | No successful github-repos-backup in 25h | critical |

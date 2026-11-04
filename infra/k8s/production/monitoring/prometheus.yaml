@@ -1345,15 +1345,38 @@ data:
       - name: cronjob-health
         interval: 60s
         rules:
-          # CronJob Failures
+          # CronJob Failures: the LATEST run of a CronJob finished without
+          # succeeding (or the CronJob has never succeeded), and no run is in
+          # progress. This used to be `kube_job_status_failed > 0`, the same
+          # never-resolving pattern BackupVerifyFailed had: it matched every
+          # failed Job object kept by failedJobsHistoryLimit, so a failure
+          # weeks ago (already followed by hundreds of good runs) kept it
+          # firing permanently and hid any new failure behind it.
           - alert: CronJobFailed
-            expr: kube_job_status_failed{namespace=~"enclii|monitoring|data"} > 0
-            for: 5m
+            expr: |
+              (
+                (
+                  kube_cronjob_status_last_schedule_time{namespace=~"enclii|monitoring|data"}
+                  > on (namespace, cronjob)
+                  kube_cronjob_status_last_successful_time{namespace=~"enclii|monitoring|data"}
+                )
+                or on (namespace, cronjob)
+                (
+                  kube_cronjob_status_last_schedule_time{namespace=~"enclii|monitoring|data"}
+                  unless on (namespace, cronjob)
+                  kube_cronjob_status_last_successful_time{namespace=~"enclii|monitoring|data"}
+                )
+              )
+              and on (namespace, cronjob)
+              (kube_cronjob_status_active{namespace=~"enclii|monitoring|data"} == 0)
+              unless on (namespace, cronjob)
+              (kube_cronjob_spec_suspend{namespace=~"enclii|monitoring|data"} == 1)
+            for: 15m
             labels:
               severity: warning
             annotations:
-              summary: "CronJob failed"
-              description: "Job {{ $labels.namespace }}/{{ $labels.job_name }} has failed."
+              summary: "CronJob's latest run did not succeed"
+              description: "The latest run of {{ $labels.namespace }}/{{ $labels.cronjob }} finished without succeeding (or it has never succeeded). Find it with: kubectl -n {{ $labels.namespace }} get jobs --sort-by=.metadata.creationTimestamp | grep {{ $labels.cronjob }}"
 
           # The LATEST scheduled run has not succeeded: scheduled more than 2h
           # ago (the Job's own deadline is 30m) with no success since. This
