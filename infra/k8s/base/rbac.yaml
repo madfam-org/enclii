@@ -75,6 +75,15 @@ rules:
 - apiGroups: [""]
   resources: ["pods/log"]
   verbs: ["get"]
+# Resource metrics (metrics-server): read-only pod and node usage for
+# /v1/usage, /v1/usage/realtime and /v1/services/:id/metrics. Without this
+# rule every metrics.k8s.io read answers 403, GetClusterMetrics reports
+# metrics as disabled, and the usage page falls back to "unavailable" even
+# though metrics-server is installed and serving. Read-only; nothing else in
+# the group exists to grant.
+- apiGroups: ["metrics.k8s.io"]
+  resources: ["pods", "nodes"]
+  verbs: ["get", "list"]
 # Pods: `enclii ops pods restart pod/<name>` deletes ONE pod owned by a
 # ReplicaSet, StatefulSet or DaemonSet, with a UID precondition and the pod's
 # own grace period, so its controller recreates it (the StatefulSet
