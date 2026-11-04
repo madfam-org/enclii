@@ -1,0 +1,93 @@
+---
+# Waybill aggregator: rolls usage_events into hourly_usage (hourly, :05) and
+# hourly_usage into daily_usage (daily, 00:20 UTC), and runs the budget
+# evaluator whose heartbeat Waybill's `metering.status` reads
+# (apps/waybill/README.md#metering-status-read-proof). RFC 0049 Phase 1.
+#
+# Until this Deployment existed the API ran alone: hourly_usage and
+# daily_usage stayed empty, every spend read `metering.status: not_running`,
+# and the capacity plane had no daily history to read.
+#
+# - ONE replica, and a rollout never runs two: maxSurge 0 stops the old pod
+#   before the new one starts. The hourly upsert and the daily rollup are
+#   idempotent, but two budget evaluators would each judge and alert. No HPA,
+#   no PDB.
+# - NOT labelled `app: waybill`. The `waybill` Service and PDB select that
+#   label; this pod serves no HTTP and must never receive the API's traffic.
+# - No probes: there is no HTTP listener. A crashed process exits and the
+#   kubelet restarts it.
+# - Same database and Secret as the API (`waybill-secrets/DATABASE_URL`),
+#   same egress as the API (waybill-aggregator-egress in network-policies.yaml).
+# - Dhanam budget alerts stay off until WAYBILL_ALERT_ENDPOINT and
+#   WAYBILL_ALERT_SIGNING_KEY are delivered; without both the evaluator still
+#   runs and records its heartbeat, and dispatches nothing.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: waybill-aggregator
+  labels:
+    app: waybill-aggregator
+    app.kubernetes.io/name: waybill-aggregator
+    app.kubernetes.io/component: billing
+    app.kubernetes.io/part-of: enclii
+    enclii.dev/managed-by: switchyard
+spec:
+  replicas: 1
+  revisionHistoryLimit: 3
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 0
+      maxUnavailable: 1
+  selector:
+    matchLabels:
+      app: waybill-aggregator
+  template:
+    metadata:
+      labels:
+        app: waybill-aggregator
+        app.kubernetes.io/name: waybill-aggregator
+        app.kubernetes.io/component: billing
+        app.kubernetes.io/part-of: enclii
+        enclii.dev/managed-by: switchyard
+    spec:
+      imagePullSecrets:
+        - name: ghcr-credentials
+      automountServiceAccountToken: false
+      containers:
+        - name: waybill-aggregator
+          image: waybill-aggregator
+          imagePullPolicy: IfNotPresent
+          env:
+            - name: DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: waybill-secrets
+                  key: DATABASE_URL
+            - name: APP_ENV
+              value: production
+            # No OTel collector is deployed (base/monitoring.yaml); without
+            # this the exporter retries a default endpoint forever.
+            - name: ENCLII_OTEL_DISABLED
+              value: "1"
+          resources:
+            requests:
+              memory: "64Mi"
+              cpu: "20m"
+            limits:
+              memory: "256Mi"
+              cpu: "250m"
+          securityContext:
+            privileged: false
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            runAsNonRoot: true
+            capabilities:
+              drop:
+                - ALL
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 65532
+        runAsGroup: 65532
+        seccompProfile:
+          type: RuntimeDefault

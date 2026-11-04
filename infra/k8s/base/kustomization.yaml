@@ -16,6 +16,7 @@ resources:
   # Keeping the file for local development reference
   - roundhouse.yaml
   - waybill.yaml
+  - waybill-aggregator.yaml
   - monitoring.yaml
   - network-policies.yaml
   - kyverno-exceptions/roundhouse-exception.yaml
