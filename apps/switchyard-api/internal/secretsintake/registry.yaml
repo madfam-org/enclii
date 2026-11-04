@@ -261,6 +261,28 @@ targets:
     keys:
       - INTERNAL_API_KEY
 
+  # Waybill service key (2026-11-03). Waybill VERIFIES it, so this one
+  # property is the only copy (verifier-owns, cross-path read): every caller
+  # reads it through its own ExternalSecret and nobody holds a second one that
+  # drifts on rotation. Kept apart from enclii/internal-api-key so a caller of
+  # Waybill holds only Waybill's key.
+  #   enclii/waybill-internal-api-key ExternalSecret → enclii-secrets
+  #     (key waybill-internal-api-key): waybill INTERNAL_API_KEY,
+  #     switchyard-api ENCLII_WAYBILL_INTERNAL_API_KEY, Roundhouse worker
+  #     WAYBILL_API_KEY. Force-synced by the submit.
+  #   monitoring/weighbridge-waybill-key → WEIGHBRIDGE_WAYBILL_API_KEY. Lands
+  #     on its own 15-minute refresh (or `enclii ops secrets sync-sweep`).
+  # Same Vault path as the other enclii targets (the write is a merge), so
+  # the writer policy needs no new path (scripts/check-intake-policy-parity.sh).
+  enclii/waybill-internal-api-key:
+    label: Waybill service key
+    description: Key every caller presents to Waybill on /internal and /api/v1 (switchyard-api, the Roundhouse worker, Weighbridge). Mint server-side with --generate waybill_internal_api_key (32 bytes crypto/rand, never returned). Rotating it is a re-run of the same command; until every caller and Waybill have restarted on the new value, the ones still on the old value get 401.
+    vault_path: secret/enclii
+    namespace: enclii
+    external_secret: waybill-internal-api-key
+    keys:
+      - waybill_internal_api_key
+
   coupler/janua-service-token:
     label: Coupler Janua service token
     description: Shared machine token for Coupler gateway delegation to Janua (must match JANUA_SERVICE_TOKEN on janua-api)
