@@ -15,10 +15,16 @@ on:
       - "infra/docker/minio/**"
       - ".github/workflows/minio-image.yml"
   workflow_dispatch:
+    inputs:
+      sign_digest:
+        description: "Only sign this already-published sha256 digest of the image (no build)."
+        required: false
+        type: string
 
 permissions:
   contents: read
   packages: write
+  id-token: write  # cosign keyless signing; the cluster admits only signed madfam-org images (Kyverno)
 
 concurrency:
   group: minio-image-${{ github.ref }}
@@ -30,8 +36,37 @@ env:
   MINIO_COMMIT: 07c3a429bfed433e49018cb0f78a52145d4bedeb  # pragma: allowlist secret -- public upstream git commit id, not a secret
 
 jobs:
+  sign-existing:
+    name: Sign an already-published digest
+    if: github.event_name == 'workflow_dispatch' && inputs.sign_digest != ''
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - name: Install cosign
+        uses: sigstore/cosign-installer@dc72c7d5c4d10cd6bcb8cf6e3fd625a9e5e537da # v3.7.0
+        with:
+          cosign-release: v2.4.3
+      - name: Log in to GHCR
+        uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3.7.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Sign (keyless)
+        env:
+          DIGEST: ${{ inputs.sign_digest }}
+        run: |
+          set -euo pipefail
+          case "$DIGEST" in sha256:*) ;; *) echo "::error::sign_digest must be sha256:<hex>"; exit 1;; esac
+          for wait in 0 20 60; do
+            [ "$wait" -gt 0 ] && sleep "$wait"
+            if cosign sign --yes "${IMAGE_NAME}@${DIGEST}"; then echo "Signed ${IMAGE_NAME}@${DIGEST}" | tee -a "$GITHUB_STEP_SUMMARY"; exit 0; fi
+          done
+          echo "::error::cosign sign failed 3 times"; exit 1
+
   build:
     name: Build + push minio image
+    if: github.event_name != 'workflow_dispatch' || inputs.sign_digest == ''
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     steps:
@@ -105,3 +140,24 @@ jobs:
           docker push "${IMAGE_NAME}:${MINIO_RELEASE}"
           digest="$(docker inspect --format '{{index .RepoDigests 0}}' "${IMAGE_NAME}:${MINIO_RELEASE}")"
           echo "Published ${digest}" | tee -a "$GITHUB_STEP_SUMMARY"
+          echo "ref=${digest}" >> "$GITHUB_OUTPUT"
+        id: push
+
+      - name: Install cosign
+        if: steps.meta.outputs.push_image == 'true'
+        uses: sigstore/cosign-installer@dc72c7d5c4d10cd6bcb8cf6e3fd625a9e5e537da # v3.7.0
+        with:
+          cosign-release: v2.4.3
+
+      # Keyless, by digest, retried: Kyverno admits only signed madfam-org images.
+      - name: Sign image (keyless)
+        if: steps.meta.outputs.push_image == 'true'
+        env:
+          REF: ${{ steps.push.outputs.ref }}
+        run: |
+          set -euo pipefail
+          for wait in 0 20 60; do
+            [ "$wait" -gt 0 ] && sleep "$wait"
+            if cosign sign --yes "$REF"; then echo "Signed ${REF}" | tee -a "$GITHUB_STEP_SUMMARY"; exit 0; fi
+          done
+          echo "::error::cosign sign failed 3 times for ${REF}; rerun the failed job"; exit 1
