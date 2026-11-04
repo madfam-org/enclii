@@ -3281,7 +3281,7 @@ data:
           - alert: PrometheusRuleFileNotInGit
             expr: |
               count by (rule_group) (
-                prometheus_rule_group_rules{job="prometheus", rule_group!~"/etc/prometheus/rules/(alert-delivery-rules|arc-pool-health-rules|chronic-restart-rules|client-slo-rules|cloudflared-tunnel-rules|courier-page-budget-rules|courier-receiver-rules|cv-rules|deploy-parity-alerts|deploy-pipeline-freshness-rules|enclii-alerts|geometry-probe-rules|longhorn-filesystem-health|maintenance-alerts|pager-path-drill-rules|pgbackrest-health-rules|postgres-wal-archive-rules|retainer-cycle-rules|revenue-probe-rules|secret-integrity-rules|synthetic-flow-probe-rules)\\.yml;.*"}
+                prometheus_rule_group_rules{job="prometheus", rule_group!~"/etc/prometheus/rules/(alert-delivery-rules|arc-pool-health-rules|chronic-restart-rules|client-slo-rules|cloudflared-tunnel-rules|courier-page-budget-rules|courier-receiver-rules|critical-coverage-rules|cv-rules|deploy-parity-alerts|deploy-pipeline-freshness-rules|enclii-alerts|geometry-probe-rules|longhorn-filesystem-health|maintenance-alerts|pager-path-drill-rules|pgbackrest-health-rules|postgres-wal-archive-rules|retainer-cycle-rules|revenue-probe-rules|secret-integrity-rules|synthetic-flow-probe-rules)\\.yml;.*"}
               ) > 0
             for: 15m
             labels:
@@ -3739,6 +3739,384 @@ data:
                 kube-state-metrics exports nothing for namespace cv, so CVPreSyncMigrateFailing cannot fire. Either
                 kube-state-metrics is not scraped, or the namespace was renamed or deleted.
               runbook_url: https://github.com/madfam-org/internal-devops/blob/main/runbooks/cv-alerts.md#cvmigratejobunobservable
+
+
+  # =========================================================================
+  # critical-coverage-rules.yml: the failure modes an operator expects to be
+  # paged for that had no live rule on 2026-11-04 (read-only check of both
+  # Prometheus instances and Alertmanager that day):
+  #   node down ............. no rule at all          -> NodeNotReady
+  #   node-exporter gone .... disk/CPU/memory rules silently blind -> NodeExporterMissing
+  #   kube-state-metrics down every kube_* rule blind -> KubeStateMetricsDown
+  #   volume full ........... only the pgBackRest spool was watched -> PersistentVolumeFillingUp
+  #   platform crash loop ... warning only (PodCrashLooping) -> PlatformPodCrashLooping
+  #   backup CronJob failed . only data/ and karafiel by name -> BackupCronJobFailed
+  #   certificate expiry .... only blackbox-geometry -> ProbedTLSCertificateExpiring,
+  #                           KubeClientCertificateExpiration (k3s client certs)
+  #   retention below 7 d ... none; the size cap held ~56 h for weeks -> PrometheusRetentionBelow7Days
+  #   ARC queue saturation .. arc-alerts reads listener metrics that do not exist -> ARCPoolSaturated,
+  #                           ARCRunnersCannotSchedule (arc-pool-health heartbeat gauges)
+  # Already covered and left alone: NodeDiskSpaceWarning/Critical (85%/90%),
+  # PodCrashLooping, BackupJobFailed, BackupVerifyFailed, the pgBackRest rules.
+  # Every metric read here had a live series when the rules were written; each
+  # rule was evaluated against the live Prometheus first. Paired warning and
+  # critical rules share an alertname so Alertmanager's critical->warning
+  # inhibition (equal: alertname, service) keeps one notification per state.
+  # Fixture tests: tests/scripts/test_critical_coverage_rules.py.
+  # =========================================================================
+  critical-coverage-rules.yml: |
+    groups:
+      - name: node-availability
+        interval: 30s
+        rules:
+          - alert: NodeNotReady
+            expr: |
+              max by (node) (kube_node_status_condition{condition="Ready", status="true"}) == 0
+            for: 5m
+            labels:
+              severity: critical
+              service: kubernetes
+              category: node-health
+            annotations:
+              summary: "Node {{ $labels.node }} is not Ready"
+              description: |
+                The kubelet on {{ $labels.node }} has not reported Ready for 5
+                minutes (NotReady or Unknown). Its pods are not running or not
+                reachable, and once the eviction timeout passes they are
+                rescheduled onto the remaining nodes, which may not have room.
+                Check `kubectl describe node {{ $labels.node }}` (Conditions,
+                Events) and whether the host answers at all.
+              runbook_url: "https://github.com/madfam-org/enclii/blob/main/docs/runbooks/INCIDENT_RESPONSE.md"
+
+          - alert: NodeExporterMissing
+            expr: |
+              (count(kube_node_info) - (count(up{job="node-exporter"} == 1) or vector(0))) > 0
+            for: 15m
+            labels:
+              severity: warning
+              service: monitoring
+              category: node-health
+            annotations:
+              summary: "{{ $value }} node(s) have no reachable node-exporter"
+              description: |
+                Fewer node-exporter targets are up than there are nodes. On those
+                nodes NodeDiskSpaceWarning/Critical, NodeHighMemory and
+                NodeHighCPU evaluate an empty vector and cannot fire. Check the
+                node-exporter DaemonSet (a new node with a taint it does not
+                tolerate, a crash loop) and `up{job="node-exporter"}`.
+              runbook_url: "https://github.com/madfam-org/enclii/blob/main/docs/runbooks/INCIDENT_RESPONSE.md"
+
+          - alert: KubeStateMetricsDown
+            expr: |
+              absent(up{job="kube-state-metrics"} == 1)
+            for: 10m
+            labels:
+              severity: critical
+              service: monitoring
+              category: alerting-pipeline
+            annotations:
+              summary: "kube-state-metrics is down: object-state alerts are blind"
+              description: |
+                No kube-state-metrics target has been up for 10 minutes. Every
+                rule that reads kube_* series evaluates an empty vector while
+                this lasts and cannot fire: NodeNotReady, PodCrashLooping,
+                BackupJobFailed, BackupCronJobFailed, the pgBackRest freshness
+                rules and the Prometheus cross-watch among them. This is the
+                2026-08 failure mode (exporter never deployed, 19 rules dead).
+              runbook_url: "https://github.com/madfam-org/enclii/blob/main/docs/runbooks/INCIDENT_RESPONSE.md"
+
+      - name: storage-capacity
+        interval: 1m
+        rules:
+          # Node root/data filesystems are covered by NodeDiskSpaceWarning (85%)
+          # and NodeDiskSpaceCritical (90%) in enclii-alerts.yml. This covers the
+          # volumes inside them: a full Longhorn volume stops its database or TSDB
+          # (Prometheus died with SIGBUS on a full volume on 2026-09-26).
+          - alert: PersistentVolumeFillingUp
+            expr: |
+              max by (namespace, persistentvolumeclaim) (kubelet_volume_stats_used_bytes)
+                / max by (namespace, persistentvolumeclaim) (kubelet_volume_stats_capacity_bytes) > 0.85
+            for: 15m
+            labels:
+              severity: warning
+              service: storage
+              category: disk-capacity
+            annotations:
+              summary: "PVC {{ $labels.namespace }}/{{ $labels.persistentvolumeclaim }} is {{ $value | humanizePercentage }} full"
+              description: |
+                The volume is above 85% used. Expand it (Longhorn expands online)
+                or reduce what writes to it before it reaches 95%, which pages.
+              runbook_url: "https://github.com/madfam-org/enclii/blob/main/docs/runbooks/LONGHORN_VOLUME_RECOVERY.md"
+
+          - alert: PersistentVolumeFillingUp
+            expr: |
+              max by (namespace, persistentvolumeclaim) (kubelet_volume_stats_used_bytes)
+                / max by (namespace, persistentvolumeclaim) (kubelet_volume_stats_capacity_bytes) > 0.95
+            for: 5m
+            labels:
+              severity: critical
+              service: storage
+              category: disk-capacity
+            annotations:
+              summary: "PVC {{ $labels.namespace }}/{{ $labels.persistentvolumeclaim }} is {{ $value | humanizePercentage }} full"
+              description: |
+                The volume is above 95% used. Databases stop accepting writes and
+                Prometheus crashes when their volume fills. Expand the PVC now
+                (Longhorn expands online) and find what grew.
+              runbook_url: "https://github.com/madfam-org/enclii/blob/main/docs/runbooks/LONGHORN_VOLUME_RECOVERY.md"
+
+      - name: platform-pods
+        interval: 30s
+        rules:
+          # PodCrashLooping (warning, enclii-alerts.yml) covers every namespace.
+          # A crash loop in the platform itself (ingress, GitOps, policy, storage,
+          # secrets, monitoring, shared data) takes products down with it, so it
+          # pages. Job pods are excluded: a failing CronJob has its own alerts.
+          - alert: PlatformPodCrashLooping
+            expr: |
+              max by (namespace, pod, container) (
+                kube_pod_container_status_waiting_reason{
+                  reason="CrashLoopBackOff",
+                  namespace=~"argocd|arc-system|cloudflare-tunnel|cnpg-system|data|enclii|external-secrets|keda|kube-system|kyverno|logging|longhorn-system|monitoring|reloader|vault"
+                }
+              ) == 1
+              unless on (namespace, pod) kube_pod_owner{owner_kind="Job"}
+            for: 15m
+            labels:
+              severity: critical
+              service: kubernetes
+              category: platform-health
+            annotations:
+              summary: "Platform pod {{ $labels.namespace }}/{{ $labels.pod }} ({{ $labels.container }}) is crash-looping"
+              description: |
+                The container has been in CrashLoopBackOff for 15 minutes in a
+                platform namespace. Read its previous log
+                (`kubectl -n {{ $labels.namespace }} logs {{ $labels.pod }} -c {{ $labels.container }} --previous`)
+                and recent events before restarting anything.
+              runbook_url: "https://github.com/madfam-org/enclii/blob/main/docs/runbooks/INCIDENT_RESPONSE.md"
+
+      - name: backup-cronjobs
+        interval: 1m
+        rules:
+          # Every CronJob whose name contains "backup", in every namespace, except
+          # the ones that already page by name: data's four in BackupJobFailed,
+          # backup-verify (BackupVerifyFailed), the pgbackrest-* jobs
+          # (pgbackrest-health-rules.yml) and karafiel's document backups
+          # (KarafielDocumentBackupUnproven, a PrometheusRule on rules-eval).
+          # Fires when the last scheduled run did not succeed: the newest schedule
+          # is newer than the newest success (or there has never been a success),
+          # nothing is running, and the schedule is over an hour old.
+          - alert: BackupCronJobFailed
+            expr: |
+              (
+                (
+                  kube_cronjob_status_last_schedule_time{cronjob=~".*backup.*"}
+                    > on (namespace, cronjob) kube_cronjob_status_last_successful_time{cronjob=~".*backup.*"}
+                )
+                or
+                (
+                  kube_cronjob_status_last_schedule_time{cronjob=~".*backup.*"}
+                    unless on (namespace, cronjob) kube_cronjob_status_last_successful_time{cronjob=~".*backup.*"}
+                )
+              )
+              and on (namespace, cronjob) (time() - kube_cronjob_status_last_schedule_time{cronjob=~".*backup.*"}) > 3600
+              unless on (namespace, cronjob) (kube_cronjob_status_active{cronjob=~".*backup.*"} > 0)
+              unless on (namespace, cronjob) (kube_cronjob_spec_suspend{cronjob=~".*backup.*"} == 1)
+              unless on (namespace, cronjob) kube_cronjob_info{namespace="data", cronjob=~"(k3s-datastore|github-repos|cloudflare-config|argocd-secrets)-backup|backup-verify|pgbackrest-.*"}
+              unless on (namespace, cronjob) kube_cronjob_info{namespace="karafiel", cronjob=~"karafiel-(legalgen|supplier-invoices|documents)-backup"}
+            for: 15m
+            labels:
+              severity: critical
+              service: backups
+              category: data-safety
+            annotations:
+              summary: "Backup CronJob {{ $labels.namespace }}/{{ $labels.cronjob }}: last run did not succeed"
+              description: |
+                The newest scheduled run of {{ $labels.namespace }}/{{ $labels.cronjob }}
+                started over an hour ago, nothing is running, and it has not
+                succeeded since (or never has). Until the next success the
+                newest restorable copy is the previous one. Read the failed Job's
+                log (`kubectl -n {{ $labels.namespace }} get jobs` then `logs job/<name>`).
+              runbook_url: "https://github.com/madfam-org/enclii/blob/main/docs/runbooks/BACKUP_COVERAGE.md"
+
+      - name: certificate-expiry
+        interval: 5m
+        rules:
+          # Every blackbox probe target's served chain. blackbox-geometry has its
+          # own 14-day rule (GeometryTLSCertExpiring). Edge certificates renew
+          # about 30 days before expiry, so under 21 days means a renewal failed.
+          - alert: ProbedTLSCertificateExpiring
+            expr: |
+              min by (job, instance) (probe_ssl_earliest_cert_expiry{job=~"blackbox-.+", job!="blackbox-geometry"}) - time() < 21 * 86400
+            for: 1h
+            labels:
+              severity: warning
+              service: tls
+              category: certificate-expiry
+            annotations:
+              summary: "TLS certificate for {{ $labels.instance }} expires in {{ $value | humanizeDuration }}"
+              description: |
+                The earliest-expiring certificate in the chain served for
+                {{ $labels.instance }} expires in under 21 days. Automatic
+                renewal normally happens about 30 days out, so it has failed or
+                the hostname is outside the managed zone.
+              runbook_url: "https://github.com/madfam-org/enclii/blob/main/docs/runbooks/DOMAIN_AND_EMAIL_DNS_ONBOARDING.md"
+
+          - alert: ProbedTLSCertificateExpiring
+            expr: |
+              min by (job, instance) (probe_ssl_earliest_cert_expiry{job=~"blackbox-.+", job!="blackbox-geometry"}) - time() < 7 * 86400
+            for: 30m
+            labels:
+              severity: critical
+              service: tls
+              category: certificate-expiry
+            annotations:
+              summary: "TLS certificate for {{ $labels.instance }} expires in {{ $value | humanizeDuration }}"
+              description: |
+                Under 7 days left on a certificate a probed public endpoint
+                serves. Browsers and API clients will refuse it at expiry.
+              runbook_url: "https://github.com/madfam-org/enclii/blob/main/docs/runbooks/DOMAIN_AND_EMAIL_DNS_ONBOARDING.md"
+
+          # k3s issues its component client certificates for one year and renews
+          # them only when k3s restarts within 90 days of expiry. If no restart
+          # happens, the kubelets and controllers lose the API server at expiry.
+          - alert: KubeClientCertificateExpiration
+            expr: |
+              apiserver_client_certificate_expiration_seconds_count{job="kubernetes-apiservers"} > 0
+              and on (job)
+              histogram_quantile(0.01, sum by (job, le) (rate(apiserver_client_certificate_expiration_seconds_bucket{job="kubernetes-apiservers"}[5m]))) < 30 * 86400
+            for: 1h
+            labels:
+              severity: warning
+              service: kubernetes
+              category: certificate-expiry
+            annotations:
+              summary: "A client certificate used against the API server expires within 30 days"
+              description: |
+                At least 1% of requests to the API server present a client
+                certificate that expires in under 30 days. On k3s, restarting the
+                k3s service on each node renews certificates that are within 90
+                days of expiry; do it in a maintenance window before this pages.
+              runbook_url: "https://github.com/madfam-org/enclii/blob/main/docs/runbooks/K3S_UPGRADE.md"
+
+          - alert: KubeClientCertificateExpiration
+            expr: |
+              apiserver_client_certificate_expiration_seconds_count{job="kubernetes-apiservers"} > 0
+              and on (job)
+              histogram_quantile(0.01, sum by (job, le) (rate(apiserver_client_certificate_expiration_seconds_bucket{job="kubernetes-apiservers"}[5m]))) < 7 * 86400
+            for: 1h
+            labels:
+              severity: critical
+              service: kubernetes
+              category: certificate-expiry
+            annotations:
+              summary: "A client certificate used against the API server expires within 7 days"
+              description: |
+                Under 7 days before kubelets or control-plane components lose the
+                API server. Restart k3s on the affected nodes (it renews
+                certificates within 90 days of expiry) or rotate them with
+                `k3s certificate rotate`.
+              runbook_url: "https://github.com/madfam-org/enclii/blob/main/docs/runbooks/K3S_UPGRADE.md"
+
+      - name: prometheus-retention
+        interval: 5m
+        rules:
+          # The 7-day panels and every [7d]/[1w] lookback assume 7 days of history.
+          # Until 2026-11-04 the size cap silently held this Prometheus to about
+          # 56 hours. Fires only while the TSDB is deleting data (size or time
+          # retention ran in the last 6 h) and holds less than 7 days, so a fresh
+          # or recently grown TSDB that is still filling up does not fire.
+          - alert: PrometheusRetentionBelow7Days
+            expr: |
+              (time() - prometheus_tsdb_lowest_timestamp_seconds{job="prometheus"}) < 7 * 86400
+              and on (instance)
+              (
+                increase(prometheus_tsdb_size_retentions_total{job="prometheus"}[6h]) > 0
+                or
+                increase(prometheus_tsdb_time_retentions_total{job="prometheus"}[6h]) > 0
+              )
+            for: 1h
+            labels:
+              severity: warning
+              service: prometheus
+              category: alerting-pipeline
+            annotations:
+              summary: "Prometheus is deleting data while it holds only {{ $value | humanizeDuration }}"
+              description: |
+                Retention removed blocks in the last 6 hours, and the oldest
+                sample is less than 7 days old, so every 7-day panel and [7d]
+                lookback reads less than it claims. Usually the size cap
+                (--storage.tsdb.retention.size) is too small for the ingest:
+                compare prometheus_tsdb_storage_blocks_bytes with
+                prometheus_tsdb_retention_limit_bytes, then grow the cap and the
+                volume or drop series.
+              runbook_url: "https://github.com/madfam-org/enclii/blob/main/docs/runbooks/CONFIG_RELOAD_RUNBOOK.md"
+
+      - name: arc-saturation
+        interval: 1m
+        rules:
+          # Read from the arc-pool-health heartbeat gauges (pushgateway). The
+          # arc-alerts PrometheusRule reads listener metrics the controller does
+          # not export (--listener-metrics-addr is empty), so it cannot see a
+          # queue. Each rule also requires a fresh heartbeat: the pushgateway
+          # keeps the last value forever, and a dead detector is
+          # ARCPoolHealthDetectorStale's job, not a saturation.
+          - alert: ARCPoolSaturated
+            expr: |
+              max by (scale_set) (arc_pool_current_runners) >= max by (scale_set) (arc_pool_max_runners)
+              and on (scale_set) max by (scale_set) (arc_pool_max_runners) > 0
+              and on (scale_set) (time() - max by (scale_set) (arc_pool_health_last_run_timestamp_seconds)) < 900
+            for: 30m
+            labels:
+              severity: warning
+              service: arc
+              category: ci-capacity
+            annotations:
+              summary: "ARC scale set {{ $labels.scale_set }} has been at maxRunners for 30 minutes"
+              description: |
+                Every runner slot is in use, so new jobs queue on GitHub. Short
+                bursts are normal; sustained saturation delays every private
+                repo's CI and every deploy behind it. Check
+                arc_pool_pending_runners (runners that cannot be scheduled point
+                at node capacity, not at the slot count).
+              runbook_url: "https://github.com/madfam-org/internal-devops/blob/main/runbooks/arc-runner-image-rebuild.md"
+
+          - alert: ARCPoolSaturated
+            expr: |
+              max by (scale_set) (arc_pool_current_runners) >= max by (scale_set) (arc_pool_max_runners)
+              and on (scale_set) max by (scale_set) (arc_pool_max_runners) > 0
+              and on (scale_set) (time() - max by (scale_set) (arc_pool_health_last_run_timestamp_seconds)) < 900
+            for: 2h
+            labels:
+              severity: critical
+              service: arc
+              category: ci-capacity
+            annotations:
+              summary: "ARC scale set {{ $labels.scale_set }} has been at maxRunners for 2 hours"
+              description: |
+                The runner pool has been full for two hours: queued CI and
+                deploy jobs are waiting behind it. Find what holds the slots
+                (long or stuck jobs, the stuck-runner watchdog's log) or raise
+                maxRunners if the builder nodes have room.
+              runbook_url: "https://github.com/madfam-org/internal-devops/blob/main/runbooks/arc-runner-image-rebuild.md"
+
+          - alert: ARCRunnersCannotSchedule
+            expr: |
+              max by (scale_set) (arc_pool_pending_runners) > 0
+              and on (scale_set) (time() - max by (scale_set) (arc_pool_health_last_run_timestamp_seconds)) < 900
+            for: 20m
+            labels:
+              severity: warning
+              service: arc
+              category: ci-capacity
+            annotations:
+              summary: "{{ $value }} ARC runner(s) on {{ $labels.scale_set }} have been pending for 20 minutes"
+              description: |
+                Runner pods exist but have not started for 20 minutes: usually no
+                builder node has the requested CPU or memory free, or the runner
+                image cannot be pulled. `kubectl -n arc-runners get pods` and the
+                Pending pods' events say which.
+              runbook_url: "https://github.com/madfam-org/internal-devops/blob/main/runbooks/arc-runner-image-rebuild.md"
 
 ---
 # Prometheus PVC

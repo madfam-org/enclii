@@ -514,3 +514,15 @@ def test_selftest_read_does_not_disturb_the_breach_counter(h):
     assert h.written_streak() == "3"
     assert "ARCPoolServingNoJobs" in h.alertnames()
     assert "ARCPoolHealthSelfTest" in h.alertnames()
+
+
+def test_heartbeat_body_ends_with_a_newline(h):
+    """The text exposition format needs a newline after the last sample; the
+    pushgateway answers 400 ("unexpected end of input stream") without one.
+    `$(...)` strips it, which is how every heartbeat was rejected until
+    2026-11-04 while the line-splitting parser above still read it fine."""
+    result = h.run()
+    assert result.returncode == 0, result.stderr
+    body = (h.fixtures / "pushed.txt").read_text()
+    assert body.endswith("\n"), repr(body[-40:])
+    assert not body.endswith("\n\n"), "one trailing newline, not a blank line"
