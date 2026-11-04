@@ -1211,6 +1211,7 @@ platforms:
       selva_service_client_secret: client_secret  # pragma: allowlist secret
     janua_client:
       name: converge-dash-selva
+      client_id: jnc_z_4adG2yCUMVWL8UwmMiVgrI4lAr3zpm  # pragma: allowlist secret -- public OAuth client id
       client_key: converge-dash-selva  # pragma: allowlist secret
       audience: selva-office
       description: Machine edge (client_credentials) from converge-dash's worker to Selva's read-only convergence feed (AI tasks and usage). Org-bound to madfam-ecosystem, scope selva:read only.
