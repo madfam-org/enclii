@@ -326,16 +326,21 @@ spec:
                   key: WAYBILL_INTERNAL_API_KEY
                   # See the ExternalSecret above for why this is optional.
                   optional: true
-            # Attribution for the shared pool. DELIBERATELY UNSET: there is one
-            # org-wide scale set today and no tenant→project mapping for it, so
-            # setting a value here would file every tenant's minutes under one
-            # project and look entirely normal on the invoice. Unset means
-            # unlabelled runners are counted in
-            # weighbridge_runners_unattributed_total and dropped, which is the
-            # honest state and the thing to watch until per-tenant scale sets
-            # land in Wave 2.
-            # - name: WEIGHBRIDGE_DEFAULT_PROJECT_ID
-            #   value: "<project uuid>"
+            # Attribution for the shared pool: the `platform-ci` project
+            # (switchyard-api migration 046, RFC 0049 Phase 1). The org-wide
+            # scale set runs MADFAM's own CI, so filing its minutes under one
+            # internal project is true; no tenant is invoiced for it. Until
+            # 2026-11-04 this was unset and every runner's minutes were counted
+            # in weighbridge_runners_unattributed_total and dropped.
+            #
+            # A pod that carries enclii.dev/project-id (the Wave 2 per-tenant
+            # path) is still attributed to that project; only unlabelled
+            # runners land here. Must equal the id in migration 046, or every
+            # event fails the usage_events foreign key and shows up in
+            # weighbridge_events_rejected_total
+            # (migration_046_test.go pins the pair).
+            - name: WEIGHBRIDGE_DEFAULT_PROJECT_ID
+              value: "02799103-7f4d-443a-af62-b4ba6015a92c"
             - name: WEIGHBRIDGE_METRICS_PORT
               value: "9102"
           livenessProbe:

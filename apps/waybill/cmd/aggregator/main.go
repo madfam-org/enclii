@@ -72,6 +72,7 @@ func main() {
 	// Initialize services
 	collector := events.NewCollector(db, logger)
 	hourlyAggregator := aggregation.NewHourlyAggregator(db, collector, logger)
+	dailyRollup := aggregation.NewDailyRollup(db, logger)
 
 	// P2.2: budget alert evaluator — posts to Dhanam on threshold crossings.
 	store := budgets.NewStore(db)
@@ -122,6 +123,25 @@ func main() {
 	})
 	if err != nil {
 		logger.Fatal("failed to schedule hourly aggregation", zap.Error(err))
+	}
+
+	// Roll yesterday's hourly_usage into daily_usage (UTC day), after the
+	// 00:05 hourly run has written yesterday's last hour. Idempotent, so a
+	// restart that re-runs it, or a manual rerun, replaces the day rather than
+	// adding to it. This is the daily history the capacity plane reads
+	// (RFC 0049); until it ran, daily_usage had no writer at all.
+	_, err = c.AddFunc("0 20 0 * * *", func() {
+		yesterday := time.Now().UTC().AddDate(0, 0, -1)
+
+		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Minute)
+		defer cancel()
+
+		if _, err := dailyRollup.Run(ctx, yesterday); err != nil {
+			logger.Error("daily rollup failed", zap.Error(err))
+		}
+	})
+	if err != nil {
+		logger.Fatal("failed to schedule daily rollup", zap.Error(err))
 	}
 
 	// Start the scheduler

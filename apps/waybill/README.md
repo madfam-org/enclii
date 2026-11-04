@@ -201,8 +201,14 @@ budget". `enclii billing show` prints such spend as unknown instead of `$0.00`.
 
 The aggregator runs on a cron schedule:
 - **Hourly** (5 min past): Aggregate raw events → hourly_usage
-- **Daily** (midnight): Roll up hourly → daily_usage
-- **Monthly** (1st of month): Generate billing_records
+- **Daily** (00:20 UTC): Roll up yesterday's hourly → daily_usage (SUM per
+  project and metric; a rerun replaces the day)
+- **Monthly** (1st of month): not implemented; nothing writes billing_records
+
+Deployed as `waybill-aggregator` (one replica, `infra/k8s/base/waybill-aggregator.yaml`,
+image built from this Dockerfile's `aggregator` stage). Never run two: the
+hourly upsert is idempotent, but two budget evaluators would each judge and
+alert.
 
 ## Stripe Integration
 

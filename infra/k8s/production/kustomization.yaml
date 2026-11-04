@@ -78,6 +78,9 @@ images:
 - digest: sha256:59c588ba8c98825d1afd833fd9eaa9db701260e1ffd6a874d2ad1a99ad76082a
   name: waybill
   newName: ghcr.io/madfam-org/enclii/waybill
+- digest: sha256:0000000000000000000000000000000000000000000000000000000000000000
+  name: waybill-aggregator
+  newName: ghcr.io/madfam-org/enclii/waybill-aggregator
 # Note: commonLabels removed - it adds to selectors which are immutable.
 # Labels are already defined in base manifests.
 commonAnnotations:
