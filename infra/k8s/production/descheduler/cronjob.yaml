@@ -1,0 +1,85 @@
+# Descheduler, run as a CronJob: every run is a fresh process that reads the
+# current policy (policy.yaml, mounted from the descheduler-policy
+# ConfigMap), evicts at most 5 pods and exits. Every 30 minutes, off the
+# hour; pods drift off the control-plane node over hours, not at once.
+#
+# Pause it without a deploy: `suspend: true` here, in Git. Argo self-heals a
+# hand patch back.
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: descheduler
+  namespace: descheduler
+  labels:
+    app.kubernetes.io/name: descheduler
+    app.kubernetes.io/part-of: enclii
+spec:
+  schedule: "7,37 * * * *"
+  timeZone: Etc/UTC
+  suspend: false
+  concurrencyPolicy: Forbid
+  startingDeadlineSeconds: 300
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    metadata:
+      labels:
+        app.kubernetes.io/name: descheduler
+        app.kubernetes.io/part-of: enclii
+    spec:
+      # A failed run is not retried: the next one is 30 minutes away and
+      # re-reads the cluster from scratch.
+      backoffLimit: 0
+      activeDeadlineSeconds: 600
+      ttlSecondsAfterFinished: 86400
+      template:
+        metadata:
+          labels:
+            app.kubernetes.io/name: descheduler
+            app.kubernetes.io/part-of: enclii
+        spec:
+          serviceAccountName: descheduler
+          restartPolicy: Never
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 1000
+            runAsGroup: 1000
+            seccompProfile:
+              type: RuntimeDefault
+          containers:
+            - name: descheduler
+              # v0.33.0 matches the cluster's Kubernetes minor (1.33).
+              # Multi-arch index digest, read from registry.k8s.io on
+              # 2026-11-04. Bump the tag and digest together.
+              image: registry.k8s.io/descheduler/descheduler:v0.33.0@sha256:de38c88dcb1e7d822c4bd320551cc55e541c160c6ba380d99772949b0c967ab0
+              imagePullPolicy: IfNotPresent
+              command:
+                - /bin/descheduler
+              args:
+                - --policy-config-file=/policy-dir/policy.yaml
+                # Level 3 logs each node's class (under/over/appropriately
+                # utilized, with its usage) and each eviction or refusal.
+                - --v=3
+                # Nothing scrapes it, and a run lasts seconds.
+                - --disable-metrics=true
+              resources:
+                requests:
+                  cpu: 50m
+                  memory: 128Mi
+                limits:
+                  memory: 512Mi
+              securityContext:
+                allowPrivilegeEscalation: false
+                privileged: false
+                readOnlyRootFilesystem: true
+                capabilities:
+                  drop:
+                    - ALL
+              volumeMounts:
+                - name: policy
+                  mountPath: /policy-dir
+                  readOnly: true
+          volumes:
+            - name: policy
+              configMap:
+                name: descheduler-policy

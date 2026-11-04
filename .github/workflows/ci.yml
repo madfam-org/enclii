@@ -464,6 +464,12 @@ jobs:
       - name: Run Redpanda CPU request guard
         run: pytest tests/scripts/test_redpanda_cpu_request.py -v
 
+      # The descheduler evicts pods on a schedule. Pins what it may never
+      # evict (local storage, PVCs, DaemonSets, excluded namespaces, builder
+      # nodes), its 5-per-run cap and its least-privilege RBAC.
+      - name: Run descheduler policy guard
+        run: pytest tests/scripts/test_descheduler_policy.py -v
+
       # Runs scripts/commercial-ga-proof.sh against a local stub. A 404/5xx on
       # signup or checkout must fail; a checkout that lands on the sales
       # booking page must be a CHECK (not a pass, and not an exit 1 that would
