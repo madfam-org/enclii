@@ -66,8 +66,8 @@ export function MetricsTab({ snapshot, history, timeRange }: MetricsTabProps) {
                 <YAxis unit="ms" />
                 <Tooltip
                   labelFormatter={(label) => new Date(label).toLocaleString()}
-                  formatter={(value: number | null) => [
-                    value == null ? "no requests" : `${value.toFixed(2)}ms`,
+                  formatter={(value) => [
+                    typeof value === "number" ? `${value.toFixed(2)}ms` : "no requests",
                     "Latency",
                   ]}
                 />
@@ -101,8 +101,8 @@ export function MetricsTab({ snapshot, history, timeRange }: MetricsTabProps) {
                 <YAxis unit="%" domain={[0, "auto"]} />
                 <Tooltip
                   labelFormatter={(label) => new Date(label).toLocaleString()}
-                  formatter={(value: number | null) => [
-                    value == null ? "no requests" : `${(value * 100).toFixed(2)}%`,
+                  formatter={(value) => [
+                    typeof value === "number" ? `${(value * 100).toFixed(2)}%` : "no requests",
                     "5xx rate",
                   ]}
                 />
