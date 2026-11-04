@@ -288,7 +288,7 @@ spec:
           # .github/workflows/weighbridge.yml on the first push to main that
           # touches apps/waybill/**. See "ORDER OF OPERATIONS" at the top of
           # this file. An all-zero digest cannot resolve, so this fails closed.
-          image: ghcr.io/madfam-org/enclii/weighbridge@sha256:eea96e884044e3b017bd2cd2013782338a29194f161fb82f7264a16cb8e5cf46
+          image: ghcr.io/madfam-org/enclii/weighbridge@sha256:a08faf101df0958673cd58e9dc73e613f50d73fd7bb34525cd06ed74e2ad2146
           imagePullPolicy: IfNotPresent
           securityContext:
             allowPrivilegeEscalation: false
