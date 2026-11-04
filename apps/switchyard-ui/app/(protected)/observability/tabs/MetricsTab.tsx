@@ -36,25 +36,40 @@ export function MetricsTab({ snapshot, history, timeRange }: MetricsTabProps) {
     const date = new Date(timestamp);
     return date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
   };
+  const points = history?.data_points ?? [];
+  const scope = history?.scope ?? snapshot?.scope ?? "one switchyard-api replica";
 
   return (
     <div className="space-y-6">
+      {/* What these charts are. They used to read a registry the API never
+          wrote to and drew flat zeros; they now plot one replica's own
+          requests, minute by minute, and say so. */}
+      <p className="text-sm text-muted-foreground" data-testid="metrics-scope">
+        These charts show the requests served by {scope}, kept in memory for at
+        most 24 hours and reset when it restarts. They are not platform-wide.
+        Minutes without requests are left as gaps.
+        {history?.note ? ` ${history.note}` : ""}
+      </p>
+
       {/* Latency Chart */}
       <Card>
         <CardHeader>
           <CardTitle>Response Latency</CardTitle>
-          <CardDescription>Average response time over {timeRange}</CardDescription>
+          <CardDescription>Average response time per minute, {timeRange} window</CardDescription>
         </CardHeader>
         <CardContent>
           <div className="h-80">
             <ResponsiveContainer width="100%" height="100%">
-              <AreaChart data={history?.data_points || []}>
+              <AreaChart data={points}>
                 <CartesianGrid strokeDasharray="3 3" className="stroke-muted" />
                 <XAxis dataKey="timestamp" tickFormatter={formatTime} />
                 <YAxis unit="ms" />
                 <Tooltip
                   labelFormatter={(label) => new Date(label).toLocaleString()}
-                  formatter={(value: number) => [`${value.toFixed(2)}ms`, "Latency"]}
+                  formatter={(value: number | null) => [
+                    value == null ? "no requests" : `${value.toFixed(2)}ms`,
+                    "Latency",
+                  ]}
                 />
                 <Area
                   type="monotone"
@@ -72,23 +87,23 @@ export function MetricsTab({ snapshot, history, timeRange }: MetricsTabProps) {
       {/* Error Rate Chart */}
       <Card>
         <CardHeader>
-          <CardTitle>Error Rate</CardTitle>
+          <CardTitle>Server Error Rate</CardTitle>
           <CardDescription>
-            Percentage of failed requests over {timeRange}
+            Share of 5xx responses per minute, {timeRange} window
           </CardDescription>
         </CardHeader>
         <CardContent>
           <div className="h-80">
             <ResponsiveContainer width="100%" height="100%">
-              <LineChart data={history?.data_points || []}>
+              <LineChart data={points}>
                 <CartesianGrid strokeDasharray="3 3" className="stroke-muted" />
                 <XAxis dataKey="timestamp" tickFormatter={formatTime} />
                 <YAxis unit="%" domain={[0, "auto"]} />
                 <Tooltip
                   labelFormatter={(label) => new Date(label).toLocaleString()}
-                  formatter={(value: number) => [
-                    `${(value * 100).toFixed(2)}%`,
-                    "Error Rate",
+                  formatter={(value: number | null) => [
+                    value == null ? "no requests" : `${(value * 100).toFixed(2)}%`,
+                    "5xx rate",
                   ]}
                 />
                 <Line
@@ -110,7 +125,7 @@ export function MetricsTab({ snapshot, history, timeRange }: MetricsTabProps) {
         <Card>
           <CardHeader>
             <CardTitle>Database</CardTitle>
-            <CardDescription>Connection pool and query metrics</CardDescription>
+            <CardDescription>This replica&apos;s connection pool and queries since it started</CardDescription>
           </CardHeader>
           <CardContent>
             <div className="space-y-4">
@@ -143,7 +158,7 @@ export function MetricsTab({ snapshot, history, timeRange }: MetricsTabProps) {
         <Card>
           <CardHeader>
             <CardTitle>Cache</CardTitle>
-            <CardDescription>Cache hit rate and performance</CardDescription>
+            <CardDescription>This replica&apos;s cache since it started</CardDescription>
           </CardHeader>
           <CardContent>
             <div className="space-y-4">
