@@ -105,22 +105,21 @@ export function UsageOverview({ className, variant = 'full' }: UsageOverviewProp
           </CardTitle>
         </CardHeader>
         <CardContent>
-          <div className="flex flex-wrap gap-4 justify-center">
-            {metrics.slice(0, 4).map((metric) => {
-              const percentage = metric.included > 0 ? (metric.used / metric.included) * 100 : 0;
-              return (
-                <CircularGauge
-                  key={metric.type}
-                  value={percentage}
-                  max={100}
-                  size={80}
-                  strokeWidth={6}
-                  label={metric.label}
-                  variant="auto"
-                />
-              );
-            })}
-          </div>
+          {/* Measured values, or "Not measured yet". These were percentage
+              gauges against invented allowances; with no allowance they read
+              0% for everything (RFC 0049 Phase 1 truth pass). */}
+          <ul className="space-y-1 text-sm">
+            {metrics.slice(0, 4).map((metric) => (
+              <li key={metric.type} className="flex items-center justify-between gap-4">
+                <span className="text-muted-foreground">{metric.label}</span>
+                <span className={cn('font-mono', metric.unavailable && 'text-muted-foreground')}>
+                  {metric.unavailable
+                    ? 'Not measured yet'
+                    : `${Number.isFinite(metric.used) ? metric.used.toFixed(1) : '—'} ${metric.unit}`}
+                </span>
+              </li>
+            ))}
+          </ul>
         </CardContent>
       </Card>
     );
@@ -157,7 +156,9 @@ export function UsageOverview({ className, variant = 'full' }: UsageOverviewProp
                       </div>
                     </div>
                     <span className="text-xs text-muted-foreground font-medium">{metric.label}</span>
-                    <span className="text-[10px] text-muted-foreground/70">Unlimited</span>
+                    <span className="text-[10px] text-muted-foreground/70">
+                      {metric.unavailable ? 'Not measured yet' : `${metric.used.toFixed(1)} ${metric.unit}, no allowance`}
+                    </span>
                   </div>
                 );
               }
@@ -319,7 +320,8 @@ function AdminUsageOverview({
     const m = tilesByType.get(type);
     const Icon = metricIcons[type] ?? Activity;
     const label = m?.label ?? defaultLabel(type);
-    const display = formatAbsoluteMetric(type, m?.used, m?.unit ?? '');
+    // An unmeasured metric says so; its `used` of 0 means nothing.
+    const display = m?.unavailable ? 'Not measured yet' : formatAbsoluteMetric(type, m?.used, m?.unit ?? '');
     return { type, label, display, Icon };
   });
 
