@@ -107,3 +107,16 @@ def test_pools_and_helm_values_request_the_same():
             container(blue, name, key)["resources"]
             == container(deploy, name, key)["resources"]
         ), name
+
+
+def test_blue_cap_agrees_between_values_and_rendered():
+    # The one time these drifted (2026-08), a raise lived only in the rendered
+    # manifest and the next Helm-path deploy would have halved capacity.
+    values = documents("infra/helm/arc/values-runner-set-blue.yaml")[0]
+    scale_set = next(
+        d
+        for d in documents("infra/k8s/production/arc/runner-blue/rendered.yaml")
+        if d["kind"] == "AutoscalingRunnerSet"
+    )
+    assert scale_set["spec"]["maxRunners"] == values["maxRunners"]
+    assert scale_set["spec"]["minRunners"] == values["minRunners"]

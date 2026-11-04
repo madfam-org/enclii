@@ -39,11 +39,22 @@ twice. The taint-eviction controller then deleted its runners and its Longhorn
 instance-manager, and the volume replicas on that node had to be rebuilt.
 
 Since then both pools request runner `1` CPU / `4Gi` and dind `100m` /
-`512Mi`: the p90 per-pod peak measured over the following week. That holds
-the 8 vCPU builder to 6 runners. `maxRunners` stays 20, so the extra runners
-wait as Pending pods and their jobs wait queued at GitHub; the pool-health
-alert pages only when nothing is running. Concurrency is lower in a wave, and
-each job runs at full speed instead of dying with the node.
+`512Mi`: the p90 per-pod peak measured over the following week. How many
+runners run at once is therefore set by what the builder nodes hold by
+request, not by `maxRunners`; the node layout and its per-node runner counts
+are kept in the private ops repo (`internal-devops`). `maxRunners` stays 20:
+runners beyond what the builders hold wait as Pending pods and their jobs wait
+queued at GitHub; the pool-health alert pages only when nothing is running.
+Each job runs at full speed instead of dying with the node.
+
+Changing `maxRunners` replaces the listener. Under `updateStrategy: eventual`
+the new listener waits until the running runners finish, so no new job is
+assigned for up to one job's length; merge such a change in a quiet hour.
+On chart 0.14.0 an idle warm runner (`minRunners: 1`) can keep the listener
+from coming back at all ([upstream report](https://github.com/actions/actions-runner-controller/issues/4432)).
+If `AutoscalingListener` is still absent once no job is running, scale the
+blue `EphemeralRunnerSet` to 0 replicas, which is break-glass, and let ARC
+recreate both.
 
 `tests/scripts/test_arc_runner_requests.py` keeps the Helm values and both
 rendered pools in agreement and refuses requests below the measured floor.
