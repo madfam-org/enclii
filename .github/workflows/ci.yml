@@ -432,12 +432,6 @@ jobs:
       - name: Run ARC watchdog + pool-health tests
         run: pytest tests/scripts/test_stuck_runner_watchdog.py tests/scripts/test_arc_pool_health.py -v
 
-      # Runner requests decide how many runners share a builder node, and the
-      # limits must cover the measured peaks. Keeps the Helm values, both
-      # rendered pools and the blue-green switch script in agreement.
-      - name: Run ARC runner requests guard
-        run: pytest tests/scripts/test_arc_runner_requests.py -v
-
       # Runs the download step of the monthly logical restore drill straight
       # out of its manifest against a stub `aws`. It must pick the newest DATED
       # dump and never the rolling latest.sql.gz, which the restore step
@@ -2660,4 +2654,4 @@ jobs:
             --trivy "$parser_fixture/trivy" --archive "$archive"
 
       - name: Run workflow contract tests
-        run: pytest tests/scripts/test_digest_pin_push_retry.py tests/scripts/test_arc_runner_image_promotion.py tests/scripts/test_commit_digests_unpinned_gate.py tests/scripts/test_arc_control_scheduling.py tests/scripts/test_check_arc_runner_render_env.py tests/scripts/test_conservation_root_dependencies.py tests/scripts/test_build_publish_scan_gate.py -v -rs
+        run: pytest tests/scripts/test_digest_pin_push_retry.py tests/scripts/test_arc_runner_image_promotion.py tests/scripts/test_commit_digests_unpinned_gate.py tests/scripts/test_arc_control_scheduling.py tests/scripts/test_arc_runner_requests.py tests/scripts/test_check_arc_runner_render_env.py tests/scripts/test_conservation_root_dependencies.py tests/scripts/test_build_publish_scan_gate.py -v -rs
