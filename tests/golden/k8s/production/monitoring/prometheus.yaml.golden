@@ -145,6 +145,15 @@ data:
           - source_labels: [__meta_kubernetes_namespace, __meta_kubernetes_service_name, __meta_kubernetes_endpoint_port_name]
             action: keep
             regex: default;kubernetes;https
+        # Two of the heaviest bucket families, read by nothing here.
+        # apiserver_request_sli_duration_seconds is the same request latency
+        # as apiserver_request_duration_seconds minus webhook time, so the
+        # latency signal stays in the latter; request body size is a capacity
+        # curiosity. _sum and _count stay. RFC 0049 Phase 1.
+        metric_relabel_configs:
+          - source_labels: [__name__]
+            regex: apiserver_(request_sli_duration_seconds|request_body_size_bytes)_bucket
+            action: drop
 
       # Kubernetes nodes
       # Kubelet and cadvisor go through the API server's node proxy. Direct
@@ -171,6 +180,19 @@ data:
             replacement: /api/v1/nodes/$1/proxy/metrics
           - source_labels: [__meta_kubernetes_node_name]
             target_label: instance
+        # k3s runs the API server, scheduler, controllers and datastore client
+        # in the same process as the kubelet, and the kubelet endpoint of a
+        # control-plane node serves that whole process's registry. So every
+        # apiserver_*/etcd_*/scheduler_* series arrived twice: once here and
+        # once from the `kubernetes-apiservers` job. Measured 2026-11-04, the
+        # copy was about a sixth of all samples and every dropped name is also
+        # served by `kubernetes-apiservers`, which stays the one source. Worker
+        # nodes do not match (no control-plane role label), so their kubelet
+        # series are untouched. RFC 0049 Phase 1.
+        metric_relabel_configs:
+          - source_labels: [node_role_kubernetes_io_control_plane, __name__]
+            regex: 'true;(apiserver|etcd|scheduler|apiextensions|aggregator|authentication|authorization|field_validation|watch_cache)_.+'
+            action: drop
 
       # Kubernetes node cadvisor metrics
       - job_name: 'kubernetes-cadvisor'
@@ -200,6 +222,14 @@ data:
           - source_labels: [__meta_kubernetes_pod_annotation_prometheus_io_scrape]
             action: keep
             regex: true
+          # Scrape every exporter ONCE. node-exporter has its own
+          # `node-exporter` job; its pods also carry the scrape annotation, so
+          # without this every node_* series was stored three times (this job,
+          # `kubernetes-services` and `node-exporter`) and every
+          # `sum by (instance)` of a node_* metric read 3x. RFC 0049 Phase 1.
+          - source_labels: [__meta_kubernetes_namespace, __meta_kubernetes_pod_label_app_kubernetes_io_name]
+            action: drop
+            regex: monitoring;node-exporter
           - source_labels: [__meta_kubernetes_pod_annotation_prometheus_io_path]
             action: replace
             target_label: __metrics_path__
@@ -226,6 +256,15 @@ data:
           - source_labels: [__meta_kubernetes_service_annotation_prometheus_io_scrape]
             action: keep
             regex: true
+          # Scrape every exporter ONCE. Each of these Services is annotated
+          # AND has a dedicated job, so it was stored twice (node-exporter
+          # three times, with the pod job): `node-exporter`, `prometheus`
+          # (self, via localhost), `redis` and `postgres`. Rules and
+          # dashboards select those dedicated jobs (or no job at all, where a
+          # duplicate doubles every sum). RFC 0049 Phase 1.
+          - source_labels: [__meta_kubernetes_namespace, __meta_kubernetes_service_name]
+            action: drop
+            regex: monitoring;(node-exporter|prometheus)|data;(redis-exporter|postgres-exporter)
           - source_labels: [__meta_kubernetes_service_annotation_prometheus_io_path]
             action: replace
             target_label: __metrics_path__
@@ -420,6 +459,18 @@ data:
             action: keep
             regex: metrics-port
         metrics_path: /metrics
+        # The two heaviest histogram bucket families in this Prometheus
+        # (measured 2026-11-04: together about a fifth of every sample
+        # ingested). Labelled per policy, rule, resource kind and operation,
+        # so the bucket count multiplies. Nothing reads them: no rule, no
+        # dashboard. _sum and _count stay, so mean latency per policy is still
+        # rate(_sum) / rate(_count); kyverno_policy_results_total and
+        # kyverno_admission_requests_total (the alert inputs) are untouched.
+        # RFC 0049 Phase 1.
+        metric_relabel_configs:
+          - source_labels: [__name__]
+            regex: kyverno_(policy_execution|admission_review)_duration_seconds_bucket
+            action: drop
 
       # External Secrets metrics
       - job_name: 'external-secrets'
@@ -3705,7 +3756,12 @@ spec:
     - ReadWriteOnce
   resources:
     requests:
-      storage: 20Gi
+      # 2026-11-04 (RFC 0049 Phase 1, D6): 20Gi -> 24Gi to hold the 16GB size
+      # cap below with room for WAL replay, compaction (which writes the new
+      # block before deleting its sources) and the filesystem's reserved
+      # blocks, which the non-root Prometheus user cannot use. Longhorn
+      # expands the volume online; a PVC can only grow.
+      storage: 24Gi
   storageClassName: longhorn
 ---
 # Prometheus Deployment
@@ -3751,8 +3807,18 @@ spec:
           args:
             - "--config.file=/etc/prometheus/prometheus.yml"
             - "--storage.tsdb.path=/prometheus"
-            - "--storage.tsdb.retention.time=7d"
-            - "--storage.tsdb.retention.size=8GB"
+            # History target 7-9 days (RFC 0049 D6). Until 2026-11-04 this was
+            # 7d / 8GB and the size cap always fired first: the oldest sample
+            # was about 56 hours old, so every [7d] rule and 7-day panel really
+            # saw ~2.3 days. The scrape dedupe and bucket drops above cut the
+            # ingest roughly in half, so 9d now fits under 16GB; the size cap
+            # stays as the guard and, if ingest grows, it trims history to
+            # what fits rather than filling the volume. Check with
+            # `time() - prometheus_tsdb_lowest_timestamp_seconds` (>= 7d).
+            # The 16GB counts blocks, WAL and head chunks (Prometheus GB are
+            # powers of two).
+            - "--storage.tsdb.retention.time=9d"
+            - "--storage.tsdb.retention.size=16GB"
             - "--web.console.libraries=/usr/share/prometheus/console_libraries"
             - "--web.console.templates=/usr/share/prometheus/consoles"
             - "--web.enable-lifecycle"

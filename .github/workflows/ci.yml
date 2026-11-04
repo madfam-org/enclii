@@ -553,6 +553,35 @@ jobs:
             test rules /w/{name}
         run: pytest tests/scripts/test_alert_noise_rules.py tests/scripts/test_pager_path_drill.py tests/scripts/test_retainer_cycle_rules.py tests/scripts/test_cv_rules.py tests/scripts/test_cnpg_project_rules.py -v -rs
 
+  prometheus-storage-budget-test:
+    name: Prometheus storage budget
+    runs-on: ubuntu-24.04
+    # Cheap. The main Prometheus must hold 7-9 days inside its 16GB cap
+    # (RFC 0049 D6). Until 2026-11-04 the size cap fired first and history was
+    # about 56 hours. Pins the retention flags and the volume headroom, that
+    # every exporter is scraped by one job only, and that no bucket drop
+    # removes a metric a rule or a git-provisioned dashboard reads. promtool
+    # parses the rendered prometheus.yml with the image production runs; a
+    # failed pull skips with a reason.
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Set up Python
+        uses: actions/setup-python@v7
+        with:
+          python-version: '3.11'
+
+      - name: Install deps
+        run: pip install --quiet pyyaml pytest
+
+      - name: Run Prometheus storage budget tests
+        env:
+          ENCLII_PROMTOOL_CHECK_CONFIG: >-
+            docker run --rm --entrypoint /bin/promtool -v {dir}:/w:ro
+            docker.io/prom/prometheus:v2.53.3
+            check config --syntax-only /w/{name}
+        run: pytest tests/scripts/test_prometheus_storage_budget.py -v -rs
+
   client-slo-rules-test:
     name: Client SLO rule coverage
     runs-on: ubuntu-24.04
