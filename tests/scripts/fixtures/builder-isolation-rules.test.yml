@@ -1,0 +1,97 @@
+rule_files:
+  - builder-isolation-rules.yml
+evaluation_interval: 1m
+tests:
+  # One builder keeps its taint, the other loses it. Only the untainted
+  # builder alerts, and only after 30m; a worker without the taint is not a
+  # builder and never alerts.
+  - interval: 1m
+    input_series:
+      - series: 'kube_node_info{node="foundry-builder-01"}'
+        values: '1x40'
+      - series: 'kube_node_info{node="foundry-builder-03"}'
+        values: '1x40'
+      - series: 'kube_node_info{node="foundry-worker-01"}'
+        values: '1x40'
+      - series: 'kube_node_spec_taint{node="foundry-builder-01",key="builder",value="true",effect="NoSchedule"}'
+        values: '1x40'
+      # A softer effect is not the contract.
+      - series: 'kube_node_spec_taint{node="foundry-builder-03",key="builder",value="true",effect="PreferNoSchedule"}'
+        values: '1x40'
+    alert_rule_test:
+      - eval_time: 29m
+        alertname: BuilderNodeTaintMissing
+        exp_alerts: []
+      - eval_time: 31m
+        alertname: BuilderNodeTaintMissing
+        exp_alerts:
+          - exp_labels: {severity: critical, category: platform, node: foundry-builder-03}
+            exp_annotations:
+              summary: "Builder node foundry-builder-03 has lost its builder=true:NoSchedule taint"
+      - eval_time: 31m
+        alertname: BuilderIsolationUnobservable
+        exp_alerts: []
+
+  # A tainted builder runs runners, a DaemonSet pod, Longhorn, a finished Job
+  # and two stranded app pods: the count is 2, after 1h. The same app pod on a
+  # builder WITHOUT the taint is BuilderNodeTaintMissing's business, not
+  # counted here.
+  - interval: 1m
+    input_series:
+      - series: 'kube_node_spec_taint{node="foundry-builder-03",key="builder",value="true",effect="NoSchedule"}'
+        values: '1x80'
+      - series: 'kube_pod_info{node="foundry-builder-03",namespace="arc-runners",pod="runner-a",created_by_kind="EphemeralRunner"}'
+        values: '1x80'
+      - series: 'kube_pod_status_phase{namespace="arc-runners",pod="runner-a",phase="Running"}'
+        values: '1x80'
+      - series: 'kube_pod_info{node="foundry-builder-03",namespace="logging",pod="fluent-bit-x",created_by_kind="DaemonSet"}'
+        values: '1x80'
+      - series: 'kube_pod_status_phase{namespace="logging",pod="fluent-bit-x",phase="Running"}'
+        values: '1x80'
+      - series: 'kube_pod_info{node="foundry-builder-03",namespace="longhorn-system",pod="instance-manager-x",created_by_kind="InstanceManager"}'
+        values: '1x80'
+      - series: 'kube_pod_status_phase{namespace="longhorn-system",pod="instance-manager-x",phase="Running"}'
+        values: '1x80'
+      - series: 'kube_pod_info{node="foundry-builder-03",namespace="shop",pod="shop-job-x",created_by_kind="Job"}'
+        values: '1x80'
+      - series: 'kube_pod_status_phase{namespace="shop",pod="shop-job-x",phase="Succeeded"}'
+        values: '1x80'
+      - series: 'kube_pod_info{node="foundry-builder-03",namespace="shop",pod="shop-web-x",created_by_kind="ReplicaSet"}'
+        values: '1x80'
+      - series: 'kube_pod_status_phase{namespace="shop",pod="shop-web-x",phase="Running"}'
+        values: '1x80'
+      - series: 'kube_pod_info{node="foundry-builder-03",namespace="data",pod="cache-2",created_by_kind="StatefulSet"}'
+        values: '1x80'
+      - series: 'kube_pod_status_phase{namespace="data",pod="cache-2",phase="Running"}'
+        values: '1x80'
+      - series: 'kube_pod_info{node="foundry-builder-01",namespace="shop",pod="shop-web-y",created_by_kind="ReplicaSet"}'
+        values: '1x80'
+      - series: 'kube_pod_status_phase{namespace="shop",pod="shop-web-y",phase="Running"}'
+        values: '1x80'
+    alert_rule_test:
+      - eval_time: 59m
+        alertname: NonCIPodOnBuilder
+        exp_alerts: []
+      - eval_time: 61m
+        alertname: NonCIPodOnBuilder
+        exp_alerts:
+          - exp_labels: {severity: warning, category: platform, node: foundry-builder-03}
+            exp_annotations:
+              summary: "2 non-CI pod(s) running on builder node foundry-builder-03"
+
+  # kube-state-metrics publishes no builder node: the blindness warning, not
+  # a silent pass.
+  - interval: 1m
+    input_series:
+      - series: 'kube_node_info{node="foundry-cp"}'
+        values: '1x40'
+    alert_rule_test:
+      - eval_time: 31m
+        alertname: BuilderIsolationUnobservable
+        exp_alerts:
+          - exp_labels: {severity: warning, category: platform}
+            exp_annotations:
+              summary: "Builder isolation rules are blind (no kube-state-metrics series for any builder node)"
+      - eval_time: 31m
+        alertname: BuilderNodeTaintMissing
+        exp_alerts: []
