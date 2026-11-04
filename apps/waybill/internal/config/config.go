@@ -1,6 +1,7 @@
 package config
 
 import (
+	"strings"
 	"time"
 
 	"github.com/spf13/viper"
@@ -57,6 +58,9 @@ func Load() (*Config, error) {
 	if err := viper.Unmarshal(&cfg); err != nil {
 		return nil, err
 	}
+	// A key projected from a file often carries a trailing newline that no
+	// caller sends; a whitespace-only value is no key at all.
+	cfg.InternalAPIKey = strings.TrimSpace(cfg.InternalAPIKey)
 
 	return &cfg, nil
 }

@@ -37,6 +37,11 @@ func main() {
 	if cfg.DatabaseURL == "" {
 		logger.Fatal("DATABASE_URL is required")
 	}
+	// Fail closed: /internal and /api/v1 have no anonymous mode, so a
+	// missing key stops the pod here rather than at the first request.
+	if cfg.InternalAPIKey == "" {
+		logger.Fatal("INTERNAL_API_KEY is required")
+	}
 
 	// P2.5: OpenTelemetry — service.name=waybill-api so waybill's two
 	// processes (api + aggregator) show up distinctly on the service
