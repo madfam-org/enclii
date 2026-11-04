@@ -1,0 +1,34 @@
+# Karafiel staging: deliver the server-generated admin session key.
+#
+# `enclii secrets intake submit karafiel-staging/admin-session --generate ...`
+# writes `admin_session_secret` to Vault `secret/karafiel-staging`, but the
+# staging bridge Secret `enclii/karafiel-staging-core-source` was seeded by hand
+# and never receives Vault values, so `enclii-karafiel-staging/karafiel-admin-session`
+# stays in SecretSyncedError and the staging admin cannot start.
+#
+# Merge, not Owner: the bridge still carries hand-seeded keys that
+# `karafiel-secrets` reads (database, broker, storage, PAC). ESO manages only the
+# key below and leaves the rest untouched. The native staging custody migration
+# (docs/runbooks/KARAFIEL_STAGING_DATABASE.md) later replaces this bridge with an
+# Owner ExternalSecret over exactly the custody keys; delete this file then.
+apiVersion: external-secrets.io/v1beta1
+kind: ExternalSecret
+metadata:
+  name: karafiel-staging-session-bridge
+  namespace: enclii
+  labels:
+    app.kubernetes.io/managed-by: enclii
+spec:
+  refreshInterval: 15m
+  secretStoreRef:
+    name: vault-store
+    kind: ClusterSecretStore
+  target:
+    name: karafiel-staging-core-source
+    creationPolicy: Merge
+    deletionPolicy: Retain
+  data:
+    - secretKey: KARAFIEL_ADMIN_SESSION_SECRET
+      remoteRef:
+        key: secret/karafiel-staging
+        property: admin_session_secret
