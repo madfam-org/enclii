@@ -12,7 +12,7 @@ import (
 func TestLoadRegistry(t *testing.T) {
 	reg, err := LoadRegistry()
 	require.NoError(t, err)
-	assert.Len(t, reg, 113)
+	assert.Len(t, reg, 114)
 	assert.Contains(t, reg, "ceq/vast-api-key")
 	assert.Contains(t, reg, "karafiel/web-oidc-janua")
 	adminSession := reg["karafiel/admin-session"]
@@ -37,7 +37,7 @@ func TestGetTarget(t *testing.T) {
 func TestListTargetsSorted(t *testing.T) {
 	list, err := ListTargets()
 	require.NoError(t, err)
-	require.Len(t, list, 113)
+	require.Len(t, list, 114)
 	for i := 1; i < len(list); i++ {
 		assert.Less(t, list[i-1].ID, list[i].ID, "targets should be sorted by id")
 	}
@@ -84,6 +84,7 @@ func TestListTargetsSorted(t *testing.T) {
 		"digifab-quoting/web-session",
 		"enclii/addon-db-backups",
 		"enclii/internal-api-key",
+		"enclii/waybill-internal-api-key",
 		"family-history/api-access",
 		"family-history/web-oidc",
 		"family-history/web-session",
@@ -837,6 +838,22 @@ func TestEncliiAddonDBBackupsTarget(t *testing.T) {
 	assert.Contains(t, tgt.Description, "never generated")
 	assert.Contains(t, tgt.Description, "bucket only")
 	assert.Contains(t, tgt.Description, "enclii ops addons backup-credential", "the provisioned path, not a human, supplies it")
+}
+
+// Waybill service key (2026-11-03). Waybill verifies it and every caller reads
+// the same property: the enclii ExternalSecret (force-synced by the submit,
+// merged into enclii-secrets) and monitoring/weighbridge-waybill-key. A rename
+// of the key or the ExternalSecret here is a silent 401 for every caller.
+func TestEncliiWaybillInternalAPIKeyTarget(t *testing.T) {
+	tgt, err := GetTarget("enclii/waybill-internal-api-key")
+	require.NoError(t, err)
+	assert.Equal(t, "secret/enclii", tgt.VaultPath, "an existing writer-policy path; the merge keeps the other enclii properties")
+	assert.Equal(t, "enclii", tgt.Namespace)
+	assert.Equal(t, "waybill-internal-api-key", tgt.ExternalSecret)
+	assert.Equal(t, []string{"waybill_internal_api_key"}, tgt.Keys, "lowercase: the intake API lowercases keys before the Vault merge")
+	assert.Nil(t, tgt.Generate, "no human needs the value: --generate must stay available")
+	assert.Equal(t, DefaultGenerateBytes, tgt.GenerateBytes())
+	assert.Contains(t, tgt.Description, "--generate waybill_internal_api_key")
 }
 
 // S-Gate 1 synthetic buyer (2026-10-14). The journeys CronJob reads exactly

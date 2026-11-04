@@ -10,6 +10,7 @@ resources:
 - enclii-internal-api-key.externalsecret.yaml
 - enclii-resend-api-key.externalsecret.yaml
 - enclii-db-backup-credentials.externalsecret.yaml
+- waybill-internal-api-key.externalsecret.yaml
 - switchyard-api-signature-policyexception.yaml
 - roundhouse-waybill-signature-policyexception.yaml
 - docs-site-signature-policyexception.yaml

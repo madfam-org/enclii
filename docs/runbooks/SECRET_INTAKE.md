@@ -98,6 +98,7 @@ After `platform/comms-resend-api-key` intake, fan-out to all consumers:
 
 ESO sources: `enclii-secrets`, `janua-secrets`, `madfam-site-secrets`, `phynd-crm-secrets` (and staging) read `secret/comms.resend_api_key`.
 | `enclii/internal-api-key` | `secret/enclii` | `INTERNAL_API_KEY` |
+| `enclii/waybill-internal-api-key` | `secret/enclii` | `waybill_internal_api_key` (`--generate`; see [Waybill service key](#waybill-service-key-2026-11-03)) |
 | `enclii/addon-db-backups` | `secret/enclii` | `addon_backup_access_key_id`, `addon_backup_secret_access_key`: **provisioned, never submitted.** `enclii ops addons backup-credential` ensures the bucket, mints a token scoped to it and writes both keys; no human holds the value (see [ADDON_BACKUPS.md](ADDON_BACKUPS.md#provisioning-the-credential-one-time-no-human-holds-it)). A hand submit is break-glass only. |
 | `coupler/janua-service-token` | `secret/coupler` | `JANUA_SERVICE_TOKEN` |
 | `janua/internal-api-key` | `secret/janua` | `internal_api_key` |
@@ -835,6 +836,36 @@ intakes it, but `enclii secrets provision kalya-feed` reads
 writing the client portal's Vault path and `secret/nauta`. The parity check scans
 switchyard-api Go sources too, so a provisioner's Vault literal cannot drift out
 of the policy either.
+
+### Waybill service key (2026-11-03)
+
+Every caller presents this key to Waybill on `/internal` and `/api/v1`. Waybill
+verifies it, so `secret/enclii:waybill_internal_api_key` is the only copy and
+each consumer reads it through its own ExternalSecret:
+
+| Reader | ExternalSecret → Secret (key) | Env var |
+|---|---|---|
+| waybill | `enclii/waybill-internal-api-key` → `enclii-secrets` (`waybill-internal-api-key`, Merge) | `INTERNAL_API_KEY` |
+| switchyard-api | same | `ENCLII_WAYBILL_INTERNAL_API_KEY` |
+| Roundhouse worker | same | `WAYBILL_API_KEY` |
+| Weighbridge | `monitoring/weighbridge-waybill-key` (`WAYBILL_INTERNAL_API_KEY`) | `WEIGHBRIDGE_WAYBILL_API_KEY` |
+
+No human needs the value, so mint it server-side:
+
+```bash
+enclii secrets intake submit enclii/waybill-internal-api-key \
+  --generate waybill_internal_api_key \
+  --reason "waybill service key"
+```
+
+The submit force-syncs the `enclii` ExternalSecret. The `monitoring` one lands
+on its 15-minute refresh; `enclii ops secrets sync-sweep --apply --reason "..."`
+shortens that.
+
+**Order matters.** Callers first, then Waybill: the key has to reach every
+caller before Waybill starts checking it, or the callers still on no key get
+`401`. Rotation follows the same rule, and until every caller and Waybill have
+restarted on the new value, the ones still on the old value get `401`.
 
 ## Server-side generation
 
