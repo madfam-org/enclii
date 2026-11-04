@@ -13,6 +13,61 @@ import (
 func newOpsAddonsCommand(cfg *config.Config) *cobra.Command {
 	cmd := &cobra.Command{Use: "addons", Short: "Managed database addon operations (platform rank)"}
 	cmd.AddCommand(newOpsAddonsBackupCredentialCommand(cfg))
+	cmd.AddCommand(newOpsAddonsCPURequestCommand(cfg))
+	return cmd
+}
+
+// newOpsAddonsCPURequestCommand lowers one existing managed-Postgres addon's
+// CPU request to the provisioning default and keeps its plan CPU as the limit.
+// CNPG restarts the instance, so it is one addon per apply, at a time the
+// operator chooses.
+func newOpsAddonsCPURequestCommand(cfg *config.Config) *cobra.Command {
+	var flags operationFlags
+	var expected string
+	cmd := &cobra.Command{
+		Use:   "cpu-request <addon-uuid>",
+		Short: "Lower one managed-Postgres addon's CPU request to the default, keeping its plan CPU as the limit",
+		Long: `Lower one existing managed-Postgres addon's CPU request to the provisioning
+default (100m) and keep its plan CPU as the limit. Addons created since
+2026-11-04 already have that shape; this moves one created earlier, whose
+request equals its limit.
+
+CNPG restarts the instance when its resources change. A single-instance addon
+is unavailable until the new pod is Ready, so run it per addon, at a quiet
+time. The dry run says which restart applies (single instance, replicas and
+switchover, supervised, or hibernated).
+
+Without --apply this is a dry run: it prints the current and desired CPU, the
+restart, and a plan_hash, and writes nothing. Apply with the reviewed plan:
+
+  enclii ops addons cpu-request <addon-uuid> --project <slug> --apply \
+    --expect-plan <plan_hash> --idempotency-key <key> --reason "..."
+
+An addon already at the default reports succeeded and an apply writes nothing.`,
+		Args: cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			expected = strings.TrimSpace(expected)
+			if strings.TrimSpace(flags.project) == "" {
+				return &exitcodes.ValidationError{Err: fmt.Errorf("--project (the addon's project slug) is required")}
+			}
+			if flags.apply && expected == "" {
+				return &exitcodes.ValidationError{Err: fmt.Errorf("--apply requires --expect-plan with the plan_hash of the reviewed dry run")}
+			}
+			if !flags.apply && expected != "" {
+				return &exitcodes.ValidationError{Err: fmt.Errorf("--expect-plan requires --apply")}
+			}
+			if flags.apply && strings.TrimSpace(flags.idempotencyKey) == "" {
+				return &exitcodes.ValidationError{Err: fmt.Errorf("--apply requires --idempotency-key")}
+			}
+			extra := map[string]string{"target": strings.TrimSpace(args[0])}
+			if expected != "" {
+				extra["expected_plan"] = expected
+			}
+			return runOperation(cmd, cfg, opsPath("addons", "cpu-request"), "ops.addons.cpu-request", flags, extra)
+		},
+	}
+	addOperationFlags(cmd, &flags)
+	cmd.Flags().StringVar(&expected, "expect-plan", "", "plan_hash returned by the reviewed dry run (required with --apply)")
 	return cmd
 }
 

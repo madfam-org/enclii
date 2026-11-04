@@ -34,6 +34,7 @@ encouraging direct `kubectl`.
 | `enclii ops storage volumes|pvc|longhorn|repair-plan|settings-apply|prune-detached|storageclass-apply|r2-audit` | PVC/PV/Longhorn inspection, repair planning, CPU settings (O-5), orphan prune (O-4), StorageClass reconcile, R2 credential audit (incomplete, shared, or mismatched buckets) |
 | `enclii ops secrets external|vault|refresh|sync|sync-sweep|rotate|vault-backfill` | ExternalSecrets and Vault readiness workflows |
 | `enclii ops addons backup-credential` | Server-side provisioning of the addon backup bucket and its bucket-scoped R2 credential into Vault; no human holds it ([below](#ops-addons-backup-credential)) |
+| `enclii ops addons cpu-request` | Lower one existing managed-Postgres addon's CPU request to the 100m default, keeping its plan CPU as the limit; CNPG restarts the instance ([below](#ops-addons-cpu-request)) |
 | `enclii ops secrets provision-kalya-feed` | Server-side kalya standing-feed credential provisioning ([below](#ops-secrets-provision-kalya-feed)) |
 | `enclii ops domains reconcile` | Declared-vs-live hostname reconcile for a service ([below](#ops-domains-reconcile)) |
 | `enclii secrets intake` | Chat-safe operator credential handoff into Vault ([secrets.md](./secrets.md#enclii-secrets-intake)) |
@@ -356,6 +357,48 @@ POST /v1/ops/addons/hibernate
 - **Never deletes** a Cluster, PVC, Secret or pod, and never changes the
   addon's status.
 - **Reverse:** remove the annotation; CNPG recreates the instance from its PVC.
+
+## `ops addons cpu-request`
+
+Since 2026-11-04 a new managed-Postgres addon's CloudNativePG Cluster requests
+`100m` CPU and keeps its plan CPU as the **limit**, so it still bursts to
+what its plan sells; memory keeps request = limit. Before that the plan CPU
+was both, so a `standard-1` addon reserved 500m on its node while idle. This
+moves one addon created earlier to the new shape (owner decision,
+2026-11-04).
+
+```bash
+enclii ops addons cpu-request <addon-uuid> --project <slug>
+enclii ops addons cpu-request <addon-uuid> --project <slug> --apply \
+  --expect-plan <plan_hash> --idempotency-key <key> \
+  --reason "addon CPU request default (2026-11-04)"
+```
+
+- **Restart:** CNPG restarts the instance when its resources change. A
+  single-instance addon is **unavailable until the new pod is Ready**; with
+  replicas CNPG rolls them and switches over; with
+  `primaryUpdateStrategy: supervised` it waits for an operator; a hibernated
+  cluster changes nothing until it is woken. The dry run's `restart` field
+  says which. Run it per addon, at a quiet time for that project.
+- **Who:** platform rank only.
+- **Refused** unless the addon is managed Postgres, `ready` and in the project.
+  Bound addons are allowed; a live database is the point.
+- **Blocked** (HTTP 409, nothing changed) when the Cluster lacks Enclii's labels
+  for this addon, sets no CPU request, or is not in `Cluster in healthy state`
+  while it still needs a change.
+- **Apply:** sets `spec.resources.requests.cpu` to the default (or keeps a
+  smaller one) and `spec.resources.limits.cpu` to the current limit, or to
+  the old request when there was no limit. It is an Update carrying the
+  reviewed resourceVersion, so a Cluster changed since the plan is a 409.
+  Nothing else changes: not memory, not the addon row (its `config.cpu` is the
+  plan CPU, now the limit, so usage metering is unchanged).
+- **Done:** a Cluster already at the default reports `succeeded` and an apply
+  writes nothing. Take the dry run again to follow CNPG's `phase` back to
+  healthy.
+- **Audit:** a row before the mutation (no row, no mutation) and a result row
+  with the CPU before and after.
+- **Reverse:** set the request back on the Cluster (break-glass); new addons
+  keep the default.
 
 ## `ops addons backup-credential`
 
