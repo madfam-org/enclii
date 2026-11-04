@@ -495,6 +495,15 @@ func isAdmissionRejection(err error) bool {
 	return strings.Contains(strings.ToLower(err.Error()), "admission webhook")
 }
 
+// oneOffJobTTLSeconds is how long a finished one-off Job (and its pod and
+// logs) stays in the cluster. Without a TTL nothing ever removed them:
+// failed one-off Jobs from months earlier stayed in tenant namespaces as
+// failed Jobs and Error pods long after the outcome was recorded in the
+// database. Seven days is far longer than the status sync needs (it records
+// the outcome on the next reconcile pass) and leaves a week to read the pod
+// log with kubectl.
+const oneOffJobTTLSeconds int32 = 7 * 24 * 60 * 60
+
 // buildOneOffJob constructs the desired K8s Job spec from the database record
 // and the resolved service runtime context (image, env, serviceAccount,
 // imagePullSecrets -- see resolveJobRuntimeContext).
@@ -503,6 +512,7 @@ func (r *TimetableReconciler) buildOneOffJob(job *types.OneOffJob, namespace str
 	if timeout <= 0 {
 		timeout = 3600
 	}
+	ttl := oneOffJobTTLSeconds
 
 	// One-off jobs do not retry by default.
 	var backoffLimit int32
@@ -519,8 +529,9 @@ func (r *TimetableReconciler) buildOneOffJob(job *types.OneOffJob, namespace str
 			Labels:    labels,
 		},
 		Spec: batchv1.JobSpec{
-			ActiveDeadlineSeconds: &timeout,
-			BackoffLimit:          &backoffLimit,
+			ActiveDeadlineSeconds:   &timeout,
+			BackoffLimit:            &backoffLimit,
+			TTLSecondsAfterFinished: &ttl,
 			Template: corev1.PodTemplateSpec{
 				ObjectMeta: metav1.ObjectMeta{
 					Labels: labels,
