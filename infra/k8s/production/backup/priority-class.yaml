@@ -1,0 +1,34 @@
+# Scheduling priority for backups that can only run on one node.
+#
+# k3s-datastore-backup is pinned to the control-plane node (it nsenters into
+# the host to read the k3s datastore). When that node is at its request
+# ceiling, the pod waits in Pending behind whatever else is queued for it.
+# This class puts the backup at the FRONT of that queue.
+#
+# WHY preemptionPolicy: Never
+# Preemption would evict a running priority-0 pod from the control-plane node
+# to make room, and the scheduler, not us, would pick the victim: it could be
+# the shared database or an ingress pod. Evicting production to take a backup
+# is the wrong trade. Queue order plus the job's 3 h deadline is the fix;
+# enabling preemption is a separate, deliberate decision.
+#
+# WHY THIS NUMBER
+# Above the runner classes in infra/k8s/production/arc/priority-classes.yaml
+# (a backup outranks CI and deploy jobs in the queue), far below
+# system-cluster-critical (2000000000) and longhorn-critical (1000000000).
+---
+apiVersion: scheduling.k8s.io/v1
+kind: PriorityClass
+metadata:
+  name: enclii-backup-critical
+  labels:
+    app.kubernetes.io/part-of: enclii
+    app.kubernetes.io/component: backup
+  annotations:
+    argocd.argoproj.io/sync-wave: "-1"
+value: 500000
+globalDefault: false
+preemptionPolicy: Never
+description: >-
+  Queue-first (non-preempting) priority for backups pinned to a single node,
+  such as the k3s datastore backup.

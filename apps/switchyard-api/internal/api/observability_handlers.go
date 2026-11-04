@@ -661,11 +661,14 @@ func (h *Handler) GetActiveAlerts(c *gin.Context) {
 		})
 	}
 
-	// Usage overage alerts — surface billing exposure on the dashboard so the
-	// operator can't miss compute/build/storage going materially over plan
-	// (audit 2026-04-29 caught a $311.91/mo overage hidden behind clamped
-	// usage gauges). 100% threshold is the included limit; we alert at 105%
-	// to avoid noise from rounding right at the boundary.
+	// Usage overage alerts. Since 2026-11-04 (RFC 0049 Phase 1) no usage
+	// metric carries a plan allowance (Included is -1 everywhere: the old
+	// allowances and rates were literals, not a plan), so this block raises
+	// nothing until a real allowance exists. Before that it paged "Compute
+	// Over Plan Limit" from a guessed 5 GB-hours per service per day priced at
+	// an invented rate. Kept so a real allowance alerts without new code.
+	// 100% threshold is the included limit; we alert at 105% to avoid noise
+	// from rounding right at the boundary.
 	//
 	// `calculateUsage` is the same helper that powers /v1/usage and itself
 	// loops over services × releases × K8s metrics. We give it its own short

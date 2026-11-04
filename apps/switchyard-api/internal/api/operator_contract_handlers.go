@@ -590,6 +590,14 @@ func (h *Handler) handleOpsJobsTriggerUnlocked(ctx context.Context, operation st
 		},
 		Spec: *cronJob.Spec.JobTemplate.Spec.DeepCopy(),
 	}
+	// A manual run has no ownerReference to the CronJob, so the CronJob's
+	// history limits never prune it. Without a TTL, failed manual runs stayed
+	// in the namespace indefinitely (some since June). Keep the template's own
+	// TTL when it sets one.
+	if job.Spec.TTLSecondsAfterFinished == nil {
+		ttl := manualCronJobRunTTLSeconds
+		job.Spec.TTLSecondsAfterFinished = &ttl
+	}
 
 	created, err := kubeClient.BatchV1().Jobs(namespace).Create(ctx, job, metav1.CreateOptions{})
 	if err != nil {
@@ -654,6 +662,10 @@ func operationSupported(domain, action string, capabilities []operatorCapability
 	}
 	return false
 }
+
+// manualCronJobRunTTLSeconds expires a finished manual CronJob run after 7
+// days unless the CronJob's template sets its own TTL.
+const manualCronJobRunTTLSeconds int32 = 7 * 24 * 60 * 60
 
 func manualCronJobRunName(cronJobName string, now time.Time) string {
 	const separator = "-manual-"
