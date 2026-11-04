@@ -532,11 +532,7 @@ jobs:
     # the Job's Failed condition). And the per-project CNPG health rules
     # (test_cnpg_project_rules.py: every kube_cnpg_cluster_* series they read
     # is one kube-state-metrics' custom-resource config publishes; hibernated
-    # clusters excluded only once CNPG confirms). And the critical-coverage
-    # rules (test_critical_coverage_rules.py: node down, full volumes, platform
-    # crash loops, failed backups, certificate expiry, retention below 7 days,
-    # ARC saturation; each fires on its failure state and is silent when
-    # healthy). promtool evaluates the real
+    # clusters excluded only once CNPG confirms). And test_critical_coverage_rules.py. promtool evaluates the real
     # rules with the image production runs; a failed pull skips with a reason.
     steps:
       - uses: actions/checkout@v7
