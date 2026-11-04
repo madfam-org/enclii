@@ -274,6 +274,10 @@ func TestBuildOneOffJob(t *testing.T) {
 		assert.Equal(t, "my-ns", result.Namespace)
 		assert.Equal(t, int64(1800), *result.Spec.ActiveDeadlineSeconds)
 		assert.Equal(t, int32(0), *result.Spec.BackoffLimit)
+		// Finished one-off Jobs must age out; before the TTL they stayed forever.
+		if assert.NotNil(t, result.Spec.TTLSecondsAfterFinished) {
+			assert.Equal(t, int32(7*24*60*60), *result.Spec.TTLSecondsAfterFinished)
+		}
 
 		containers := result.Spec.Template.Spec.Containers
 		assert.Len(t, containers, 1)
