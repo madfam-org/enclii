@@ -1,5 +1,6 @@
 {
   "branch": "main",
+  "lifecycle": "retired",
   "manifestPath": "infra/k8s/production",
   "name": "sim4d",
   "namespace": "sim4d",

@@ -2653,6 +2653,12 @@ jobs:
       - name: Install Python test deps
         run: pip install --quiet pyyaml pytest
 
+      # `"lifecycle": "retired"` in a project's config.json drops that one
+      # Application's auto-sync and resources finalizer; every other project
+      # must render unchanged. Deleting a config.json instead would cascade.
+      - name: Run project ApplicationSet lifecycle guard
+        run: pytest tests/scripts/test_project_appset_lifecycle.py -v
+
       - name: Verify actual Trivy image command parser
         run: |
           set -euo pipefail
