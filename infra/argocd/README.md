@@ -168,11 +168,11 @@ Coordinator steps after the change merges:
    namespace is deleted on purpose.
 
 Do not use `enclii ops apps retire` for this. While the `config.json` exists
-the ApplicationSet recreates the Application within minutes. Also, that
-command deletes with Kubernetes orphan propagation, but Argo CD decides
-cascade by the `resources-finalizer` alone (v3.2.5
-`Application.CascadedDeletion`): on an Application that still carries the
-finalizer it deletes the workloads anyway.
+the ApplicationSet recreates the Application within minutes. The command
+refuses an Application that an ApplicationSet generated, in either mode
+(`refused`, HTTP 409), changes nothing, and points back to the
+`"lifecycle": "retired"` flag above
+([`ops.md`](../../docs/cli/commands/ops.md#remaining-adapter-work)).
 
 ### Retired projects
 
