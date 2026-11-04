@@ -1286,6 +1286,71 @@ targets:
     generate:
       disabled: true
 
+  # Dhanam convergence read API bearer (2026-11-04, RFC 0049): the one value
+  # converge-dash presents to Dhanam's GET /v1/convergence/* routes. Dhanam
+  # verifies it (ConvergenceAuthGuard, constant-time against
+  # CONVERGENCE_API_TOKEN), so its canonical copy is Dhanam's (secret/dhanam,
+  # merged into dhanam-secrets by the dedicated ExternalSecret
+  # dhanam-secrets-convergence, dhanam repo infra/k8s/production);
+  # converge-dash holds the SAME value at secret/converge-dash, which
+  # converge-dash-secrets already maps to DHANAM_API_TOKEN. Same two-target,
+  # supplied-only mechanics as phynd-crm/convergence above.
+  dhanam/convergence:
+    label: Dhanam convergence API bearer (verifier copy)
+    description: CONVERGENCE_API_TOKEN, the bearer Dhanam checks on GET /v1/convergence/*. Must equal converge-dash/dhanam-token; supply the same value to both targets. Supplied-only.
+    vault_path: secret/dhanam
+    namespace: dhanam
+    external_secret: dhanam-secrets-convergence  # pragma: allowlist secret
+    keys:
+      - convergence_api_token
+    generate:
+      disabled: true
+
+  converge-dash/dhanam-token:
+    label: converge-dash Dhanam convergence API bearer (caller copy)
+    description: DHANAM_API_TOKEN, the bearer converge-dash presents to Dhanam's convergence read API. Must equal dhanam/convergence; supply the same value to both targets. Supplied-only.
+    vault_path: secret/converge-dash
+    namespace: converge-dash
+    external_secret: converge-dash-secrets  # pragma: allowlist secret
+    keys:
+      - dhanam_api_token
+    generate:
+      disabled: true
+
+  # converge-dash → Enclii (2026-11-04, RFC 0049): ENCLII_API_TOKEN, a
+  # read-scoped Enclii API token (`enclii tokens create`, value shown once and
+  # piped straight into this target) that converge-dash's worker presents to
+  # Switchyard's observability reads. Supplied-only: a random value is not an
+  # Enclii token.
+  converge-dash/enclii-token:
+    label: converge-dash Enclii API token
+    description: ENCLII_API_TOKEN, a read-scoped Enclii API token converge-dash's worker presents to Switchyard. Created with `enclii tokens create` and piped here; never typed. Supplied-only.
+    vault_path: secret/converge-dash
+    namespace: converge-dash
+    external_secret: converge-dash-secrets  # pragma: allowlist secret
+    keys:
+      - enclii_api_token
+    generate:
+      disabled: true
+
+  # converge-dash → Selva (2026-11-04, RFC 0049): the Janua client_credentials
+  # pair of ecosystem-oidc platform converge-dash-selva (audience selva-office,
+  # scope selva:read, org-bound to madfam-ecosystem), written ONLY by
+  # `enclii secrets provision oidc --platform converge-dash-selva`. Its own
+  # ExternalSecret, converge-dash-service-clients, because ESO is all-or-nothing
+  # and converge-dash-secrets must keep syncing while this pair does not exist.
+  converge-dash/selva-client:
+    label: converge-dash → Selva service client
+    description: Janua client_credentials pair (converge-dash-selva, scope selva:read) converge-dash's worker uses to fetch a token for Selva's convergence feed. Filed by `enclii secrets provision oidc --platform converge-dash-selva`.
+    vault_path: secret/converge-dash
+    namespace: converge-dash
+    external_secret: converge-dash-service-clients  # pragma: allowlist secret
+    keys:
+      - selva_service_client_id
+      - selva_service_client_secret
+    generate:
+      disabled: true
+
   # Avala Janua client (SSO wave 1, 2026-10-27): the confidential pair of
   # ecosystem-oidc platform avala. Avala still reads its pair from a hand-made
   # Secret; this target writes secret/avala for the PLANNED avala-janua-oidc

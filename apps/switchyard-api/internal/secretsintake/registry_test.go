@@ -12,7 +12,7 @@ import (
 func TestLoadRegistry(t *testing.T) {
 	reg, err := LoadRegistry()
 	require.NoError(t, err)
-	assert.Len(t, reg, 115)
+	assert.Len(t, reg, 119)
 	assert.Contains(t, reg, "ceq/vast-api-key")
 	assert.Contains(t, reg, "karafiel/web-oidc-janua")
 	adminSession := reg["karafiel/admin-session"]
@@ -37,7 +37,7 @@ func TestGetTarget(t *testing.T) {
 func TestListTargetsSorted(t *testing.T) {
 	list, err := ListTargets()
 	require.NoError(t, err)
-	require.Len(t, list, 115)
+	require.Len(t, list, 119)
 	for i := 1; i < len(list); i++ {
 		assert.Less(t, list[i-1].ID, list[i].ID, "targets should be sorted by id")
 	}
@@ -54,8 +54,11 @@ func TestListTargetsSorted(t *testing.T) {
 		"avala/oidc-janua",
 		"ceq/janua-client-secret",
 		"ceq/vast-api-key",
+		"converge-dash/dhanam-token",
+		"converge-dash/enclii-token",
 		"converge-dash/internal-read",
 		"converge-dash/phynd-crm-token",
+		"converge-dash/selva-client",
 		"converge-dash/session",
 		"converge-dash/web-oidc",
 		"coupler/janua-service-token",
@@ -76,6 +79,7 @@ func TestListTargetsSorted(t *testing.T) {
 		"data/pgbouncer-auth",
 		"dhanam/app-infra",
 		"dhanam/banxico",
+		"dhanam/convergence",
 		"dhanam/karafiel-callback-secret",
 		"dhanam/oidc-janua",
 		"dhanam/session-auth",

@@ -1195,6 +1195,32 @@ platforms:
       grant_types:
         - client_credentials
 
+  # ---------------------------------------------------------------------------
+  # converge-dash → Selva convergence feed (2026-11-04, RFC 0049). converge-dash's
+  # worker reads GET /api/v1/convergence/ai-tasks on Selva's nexus-api, which
+  # only accepts a Janua JWT whose `aud` contains `selva-office` (the audience
+  # voxa-selva's machine tokens carry). Org-bound to madfam-ecosystem so the
+  # token carries the org Selva scopes its tasks by. Read only, client_credentials
+  # only, no browser leg. converge-dash fetches a token per sync from the pair
+  # intake writes to secret/converge-dash.
+  # ---------------------------------------------------------------------------
+  converge-dash-selva:
+    intake_target: converge-dash/selva-client
+    intake_key_map:
+      selva_service_client_id: client_id
+      selva_service_client_secret: client_secret  # pragma: allowlist secret
+    janua_client:
+      name: converge-dash-selva
+      client_key: converge-dash-selva  # pragma: allowlist secret
+      audience: selva-office
+      description: Machine edge (client_credentials) from converge-dash's worker to Selva's read-only convergence feed (AI tasks and usage). Org-bound to madfam-ecosystem, scope selva:read only.
+      is_confidential: true
+      organization_id: 1a6233ef-185f-43ee-9181-e2591fbb2643
+      allowed_scopes:
+        - selva:read
+      grant_types:
+        - client_credentials
+
   crea-sim:
     intake_target: crea-sim/ui-oidc
     intake_key_map:
