@@ -277,14 +277,16 @@ spec:
               drop:
                 - ALL
           # Memory limit 128Mi -> 256Mi for up to 32 chunks in memory
-          # (storage.max_chunks_up). Requests unchanged.
+          # (storage.max_chunks_up).
+          # 2026-11-04 right-sizing wave 3: working set peaked at 253Mi, 99% of
+          # the 256Mi limit. Request = peak x 1.25, limit >= 1.5 x peak.
           resources:
             requests:
               cpu: 50m
-              memory: 64Mi
+              memory: 320Mi
             limits:
               cpu: 100m
-              memory: 256Mi
+              memory: 384Mi
           volumeMounts:
             - name: config
               mountPath: /fluent-bit/etc/fluent-bit.conf
