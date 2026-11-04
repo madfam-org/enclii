@@ -12,11 +12,13 @@ runnerScaleSetName: "madfam-runners-blue"
 # nodes. On 2026-05-21 the blue pool saturated at 9 assigned jobs while
 # private-repo workflows stayed queued, and the CPU request was cut to 400m so
 # 12 runners fit on the 8 vCPU builder. That over-packing is what took the
-# node down on 2026-10-24 (15 runners, memory thrash, NotReady twice). Since
-# 2026-10-26 the request is 1 CPU / 4Gi (values-runner-set.yaml), so how many
-# runners run at once is set by what the builder nodes hold by request, not by
-# this cap. The node layout lives in the private ops repo (internal-devops).
-# maxRunners stays 20: runners beyond what the nodes hold wait as Pending pods
+# node down on 2026-10-24 (15 runners, memory thrash, NotReady twice). From
+# 2026-10-26 the request was 1 CPU / 4Gi, a p90 peak reserved for every job.
+# Since 2026-11-04 it is 500m / 2.5Gi with a 2 CPU / 7Gi limit
+# (values-runner-set.yaml), sized to the measured median job, and maxRunners
+# is 30 (owner decision, 2026-11-04). How many runners run at once is still
+# set by what the builder nodes hold by request; the node layout lives in the
+# private ops repo (internal-devops). Runners beyond that wait as Pending pods
 # and their jobs wait queued at GitHub. That is the intended back-pressure,
 # not starvation; the pool-health alert pages only when running == 0.
 #
@@ -25,9 +27,11 @@ runnerScaleSetName: "madfam-runners-blue"
 # infra/k8s/production/arc/runner-blue/rendered.yaml, not here. The cluster
 # has run maxRunners=20 since; this file lagging at 12 meant the next
 # successful helm-path self-deploy would have silently clamped capacity
-# back to 12. Keep BOTH this file and rendered.yaml in agreement.
+# back to 12. Keep BOTH this file and rendered.yaml in agreement
+# (tests/scripts/test_arc_runner_requests.py); blue-green-switch.sh reads
+# maxRunners from this file.
 minRunners: 1
-maxRunners: 20
+maxRunners: 30
 
 # Blue-specific labels for identification
 template:
