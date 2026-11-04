@@ -12,7 +12,7 @@ import (
 func TestLoadRegistry(t *testing.T) {
 	reg, err := LoadRegistry()
 	require.NoError(t, err)
-	assert.Len(t, reg, 113)
+	assert.Len(t, reg, 115)
 	assert.Contains(t, reg, "ceq/vast-api-key")
 	assert.Contains(t, reg, "karafiel/web-oidc-janua")
 	adminSession := reg["karafiel/admin-session"]
@@ -37,7 +37,7 @@ func TestGetTarget(t *testing.T) {
 func TestListTargetsSorted(t *testing.T) {
 	list, err := ListTargets()
 	require.NoError(t, err)
-	require.Len(t, list, 113)
+	require.Len(t, list, 115)
 	for i := 1; i < len(list); i++ {
 		assert.Less(t, list[i-1].ID, list[i].ID, "targets should be sorted by id")
 	}
@@ -55,6 +55,7 @@ func TestListTargetsSorted(t *testing.T) {
 		"ceq/janua-client-secret",
 		"ceq/vast-api-key",
 		"converge-dash/internal-read",
+		"converge-dash/phynd-crm-token",
 		"converge-dash/session",
 		"converge-dash/web-oidc",
 		"coupler/janua-service-token",
@@ -110,6 +111,7 @@ func TestListTargetsSorted(t *testing.T) {
 		"nauta/oidc-janua-portal",
 		"nauta/symbiosis-hcm-oauth",
 		"nauta/symbiosis-hcm-token",
+		"phynd-crm/convergence",
 		"phynd-crm/oidc-janua",
 		"platform/comms-resend-api-key",
 		"pravara-mes/asset-shells-publisher-madfam-ecosystem",
@@ -783,6 +785,38 @@ func TestConvergeDashTargets(t *testing.T) {
 			assert.NotEmpty(t, tgt.Label)
 			assert.NotEmpty(t, tgt.Description)
 			assert.GreaterOrEqual(t, base64.RawURLEncoding.EncodedLen(tgt.GenerateBytes()), 32)
+		})
+	}
+}
+
+// phynd-crm convergence API bearer (2026-11-04, phynd-crm#123): one value held
+// on both sides, phynd-crm verifying and converge-dash presenting it. Pinned end
+// to end because each link fails silently: a wrong Vault path is a write nothing
+// reads, a wrong property is an ExternalSecret that syncs zero keys, and a wrong
+// ExternalSecret name means intake never force-syncs the Secret the pod reads.
+// Both stay supplied-only: a server-minted value would differ on each side.
+func TestPhyndCRMConvergenceTokenTargets(t *testing.T) {
+	cases := []struct {
+		id, vaultPath, namespace, externalSecret, key string
+	}{
+		{"phynd-crm/convergence", "secret/phynd-crm", "phynd-crm", "phynd-crm-convergence-secrets", "convergence_api_token"},
+		{"converge-dash/phynd-crm-token", "secret/converge-dash", "converge-dash", "converge-dash-secrets", "phynd_crm_api_token"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.id, func(t *testing.T) {
+			tgt, err := GetTarget(tc.id)
+			require.NoError(t, err)
+			assert.Equal(t, tc.vaultPath, tgt.VaultPath)
+			assert.Equal(t, tc.namespace, tgt.Namespace)
+			assert.Equal(t, tc.externalSecret, tgt.ExternalSecret)
+			assert.Equal(t, []string{tc.key}, tgt.Keys)
+			assert.Equal(t, strings.ToLower(tc.key), tc.key,
+				"Vault stores lowercase; an upper-case key would never match the ExternalSecret property")
+			require.NotNil(t, tgt.Generate)
+			assert.True(t, tgt.Generate.Disabled,
+				"the value must be identical on both sides; a generated value would differ per target")
+			assert.NotEmpty(t, tgt.Label)
+			assert.NotEmpty(t, tgt.Description)
 		})
 	}
 }
