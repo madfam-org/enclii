@@ -1251,6 +1251,41 @@ targets:
     generate:
       disabled: true
 
+  # phynd-crm convergence read API bearer (2026-11-04, phynd-crm#123): the one
+  # value that converge-dash (dash.madfam.io) presents to phynd-crm's
+  # GET /api/v1/convergence/* routes. phynd-crm verifies it, so its canonical
+  # copy is phynd-crm's (secret/phynd-crm, projected by the dedicated
+  # ExternalSecret phynd-crm-convergence-secrets as CONVERGENCE_API_TOKEN);
+  # converge-dash holds the SAME value at secret/converge-dash, which
+  # converge-dash-secrets already maps to PHYND_CRM_API_TOKEN.
+  #
+  # Two targets because intake writes one Vault path per target. Generation
+  # is disabled on both: a server-minted value would differ on each side, so
+  # the operator mints one value and supplies it to both targets in the same
+  # window. Rotating it means re-supplying both, then restarting
+  # phynd-crm-web and converge-dash's worker (env is read at container start).
+  phynd-crm/convergence:
+    label: phynd-crm convergence API bearer (verifier copy)
+    description: CONVERGENCE_API_TOKEN, the bearer phynd-crm checks on GET /api/v1/convergence/* (leads, opportunities). Must equal converge-dash/phynd-crm-token; supply the same value to both targets. Supplied-only.
+    vault_path: secret/phynd-crm
+    namespace: phynd-crm
+    external_secret: phynd-crm-convergence-secrets  # pragma: allowlist secret
+    keys:
+      - convergence_api_token
+    generate:
+      disabled: true
+
+  converge-dash/phynd-crm-token:
+    label: converge-dash phynd-crm convergence API bearer (caller copy)
+    description: PHYND_CRM_API_TOKEN, the bearer converge-dash presents to phynd-crm's convergence read API. Must equal phynd-crm/convergence; supply the same value to both targets. Supplied-only.
+    vault_path: secret/converge-dash
+    namespace: converge-dash
+    external_secret: converge-dash-secrets  # pragma: allowlist secret
+    keys:
+      - phynd_crm_api_token
+    generate:
+      disabled: true
+
   # Avala Janua client (SSO wave 1, 2026-10-27): the confidential pair of
   # ecosystem-oidc platform avala. Avala still reads its pair from a hand-made
   # Secret; this target writes secret/avala for the PLANNED avala-janua-oidc
