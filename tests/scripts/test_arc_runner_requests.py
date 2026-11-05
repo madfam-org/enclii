@@ -7,7 +7,7 @@ went NotReady (2026-10-24). From 2026-10-26 the request was the p90 peak
 
 Since 2026-11-04 (owner decision, from 2 days / 3,436 runner pods: median
 0.23 CPU / 0.3GiB, p95 1.37 CPU / 4.75GiB, max 6GiB) the runner requests
-500m / 2.5Gi with a 2 CPU / 7Gi limit; see the comment on the runner container
+750m / 2.5Gi with a 2 CPU / 7Gi limit; see the comment on the runner container
 in infra/k8s/production/arc/runner-blue/rendered.yaml.
 
 These tests keep the places that carry the runner template in agreement (the

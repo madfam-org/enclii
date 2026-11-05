@@ -14,7 +14,7 @@ runnerScaleSetName: "madfam-runners-blue"
 # 12 runners fit on the 8 vCPU builder. That over-packing is what took the
 # node down on 2026-10-24 (15 runners, memory thrash, NotReady twice). From
 # 2026-10-26 the request was 1 CPU / 4Gi, a p90 peak reserved for every job.
-# Since 2026-11-04 it is 500m / 2.5Gi with a 2 CPU / 7Gi limit
+# Since 2026-11-04 it is 750m / 2.5Gi with a 2 CPU / 7Gi limit (500m saturated the builders' CPU)
 # (values-runner-set.yaml), sized to the measured median job, and maxRunners
 # is 30 (owner decision, 2026-11-04). How many runners run at once is still
 # set by what the builder nodes hold by request; the node layout lives in the
