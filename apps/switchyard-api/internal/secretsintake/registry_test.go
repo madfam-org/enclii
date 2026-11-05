@@ -2,6 +2,7 @@ package secretsintake
 
 import (
 	"encoding/base64"
+	"sort"
 	"strings"
 	"testing"
 
@@ -12,7 +13,7 @@ import (
 func TestLoadRegistry(t *testing.T) {
 	reg, err := LoadRegistry()
 	require.NoError(t, err)
-	assert.Len(t, reg, 119)
+	assert.Len(t, reg, 120)
 	assert.Contains(t, reg, "ceq/vast-api-key")
 	assert.Contains(t, reg, "karafiel/web-oidc-janua")
 	adminSession := reg["karafiel/admin-session"]
@@ -1118,5 +1119,54 @@ func TestSymbiosisHCMDhanamWriterClientTarget(t *testing.T) {
 		"each edge has its own ExternalSecret")
 	for _, k := range tgt.Keys {
 		assert.NotContains(t, karafiel.Keys, k)
+	}
+}
+
+// Karafiel → Dhanam cost events (2026-11-05, RFC 0050 Phase 1). Its own
+// ExternalSecret, so the unprovisioned pair never holds another Karafiel Secret.
+func TestKarafielDhanamCostEventsClientTarget(t *testing.T) {
+	tgt, err := GetTarget("karafiel/dhanam-cost-events-client")
+	require.NoError(t, err)
+	assert.Equal(t, "secret/karafiel", tgt.VaultPath)
+	assert.Equal(t, "karafiel", tgt.Namespace)
+	assert.Equal(t, "karafiel-dhanam-cost-events", tgt.ExternalSecret)
+	assert.Equal(t, []string{"dhanam_cost_events_client_id", "dhanam_cost_events_client_secret"}, tgt.Keys)
+	require.NotNil(t, tgt.Generate)
+	assert.True(t, tgt.Generate.Disabled, "a Janua credential is minted by Janua, never generated")
+	assert.Contains(t, tgt.Description, "--platform karafiel-dhanam-cost-events")
+
+	// Every target on secret/karafiel, sorted: a new one must be added here, and
+	// no two share an ExternalSecret or a key.
+	reg, err := LoadRegistry()
+	require.NoError(t, err)
+	var onKarafiel []string
+	seenKeys := map[string]string{}
+	for name, other := range reg {
+		if other.VaultPath != "secret/karafiel" {
+			continue
+		}
+		onKarafiel = append(onKarafiel, name)
+		for _, k := range other.Keys {
+			prev, dup := seenKeys[k]
+			assert.False(t, dup, "key %s on both %s and %s", k, prev, name)
+			seenKeys[k] = name
+		}
+	}
+	sort.Strings(onKarafiel)
+	assert.Equal(t, []string{
+		"karafiel/admin-oidc-janua",
+		"karafiel/admin-session",
+		"karafiel/dhanam-cost-events-client",
+		"karafiel/dhanam-webhook-secret",
+		"karafiel/hcm-signing-bindings",
+		"karafiel/web-oidc-janua",
+	}, onKarafiel)
+	for _, name := range onKarafiel {
+		if name == "karafiel/dhanam-cost-events-client" {
+			continue
+		}
+		other, err := GetTarget(name)
+		require.NoError(t, err)
+		assert.NotEqual(t, other.ExternalSecret, tgt.ExternalSecret, "%s shares the ExternalSecret", name)
 	}
 }

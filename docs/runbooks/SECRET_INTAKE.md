@@ -106,6 +106,7 @@ ESO sources: `enclii-secrets`, `janua-secrets`, `madfam-site-secrets`, `phynd-cr
 | `symbiosis-hcm/<portal>-absence-feed` | `secret/symbiosis-hcm` | `<portal>_absence_feed_url`, `<portal>_absence_feed_key` |
 | `symbiosis-hcm/karafiel-client` | `secret/symbiosis-hcm` | `karafiel_service_client_id`, `karafiel_service_client_secret`: **provisioned, never submitted** (`enclii secrets provision oidc --platform symbiosis-hcm-karafiel`) |
 | `symbiosis-hcm/dhanam-writer-client` | `secret/symbiosis-hcm` | `dhanam_writer_client_id`, `dhanam_writer_client_secret`: **provisioned, never submitted** (`enclii secrets provision oidc --platform symbiosis-hcm-dhanam-writer`) |
+| `karafiel/dhanam-cost-events-client` | `secret/karafiel` | `dhanam_cost_events_client_id`, `dhanam_cost_events_client_secret`: **provisioned, never submitted** (`enclii secrets provision oidc --platform karafiel-dhanam-cost-events`) |
 | `nauta/kalya-feed-tokens` | `secret/nauta` | `kalya_feed_tokens` |
 | `nauta/symbiosis-hcm-token` | `secret/nauta` | `symbiosis_hcm_token` |
 | `angelia/courier-producer-keys` | `secret/angelia` | `courier_producer_key_alarms`, `courier_producer_key_enclii_ops`, `courier_producer_key_tulana`, `courier_producer_key_madfam_site` |
@@ -420,6 +421,28 @@ use this exact string before the client is provisioned.
 
 ```bash
 enclii --profile admin secrets provision oidc --platform symbiosis-hcm-dhanam-writer --intake-profile default --json --reason "symbiosis-hcm to dhanam scheduled-payments writer"
+```
+
+Then pin the printed `jnc_…` id in both registry copies and use it as the
+grant's `clientId`.
+
+### Karafiel → Dhanam cost events (2026-11-05)
+
+`karafiel-dhanam-cost-events` (audience `dhanam-api`, scope
+`dhanam-cost-events:write`, org-bound to `madfam-ecosystem` because Dhanam's
+cost-events strategy refuses a token without `org_id`), filed at
+`karafiel/dhanam-cost-events-client` → `secret/karafiel` and delivered by
+Karafiel's dedicated `karafiel-dhanam-cost-events` ExternalSecret as
+`DHANAM_COST_EVENTS_CLIENT_ID` / `DHANAM_COST_EVENTS_CLIENT_SECRET`. The token
+alone authorizes nothing: Dhanam's `CostEventWriterGrant` (Dhanam
+`apps/api/scripts/provision-cost-event-writer-grant.ts`) binds this client id
+and organization to one business space and the source `karafiel`.
+
+Provision after the Janua image that reserves `dhanam-cost-events:write` is
+promoted:
+
+```bash
+enclii --profile admin secrets provision oidc --platform karafiel-dhanam-cost-events --intake-profile default --json --reason "karafiel to dhanam cost events (RFC 0050 phase 1)"
 ```
 
 Then pin the printed `jnc_…` id in both registry copies and use it as the

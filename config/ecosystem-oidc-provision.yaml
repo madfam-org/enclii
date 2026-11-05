@@ -1196,6 +1196,50 @@ platforms:
         - client_credentials
 
   # ---------------------------------------------------------------------------
+  # Karafiel → Dhanam cost events (2026-11-05, RFC 0050 Phase 1). Karafiel's
+  # worker turns received CFDI into `cost.event.v1` purchase events (one per
+  # concepto) and issued CFDI into accrual revenue events, and pushes them as a
+  # MACHINE to POST /v1/cost-events. One edge, one client, one scope,
+  # client_credentials only, no browser leg.
+  #
+  # audience `dhanam-api` is what Dhanam's cost-events writer strategy checks
+  # `aud` against. ORG-BOUND to madfam-ecosystem: the strategy refuses a token
+  # without `org_id`, and Janua sets org_id only on an org-bound client. The
+  # token alone authorizes nothing: Dhanam's operator-reviewed CostEventWriterGrant
+  # binds THIS client id and THIS organization to one business space and the
+  # source `karafiel` (apps/api/scripts/provision-cost-event-writer-grant.ts).
+  #
+  # SCOPE: `dhanam-cost-events:write`, ONE colon (Janua registers only
+  # `namespace:action`). Provision only after the Janua image that reserves
+  # the scope is promoted.
+  #
+  # The pair lands at secret/karafiel through karafiel/dhanam-cost-events-client
+  # (LOWERCASE keys), read by Karafiel's DEDICATED karafiel-dhanam-cost-events
+  # ExternalSecret, which maps them to DHANAM_COST_EVENTS_CLIENT_ID /
+  # DHANAM_COST_EVENTS_CLIENT_SECRET. Karafiel ignores the pair until
+  # COST_EVENTS_EMIT_ENABLED=true.
+  #
+  # NOT pinned yet: the first provision run CREATES the client and prints its
+  # jnc_… id; pin it here (both copies) and use the same id in the Dhanam grant.
+  # ---------------------------------------------------------------------------
+  karafiel-dhanam-cost-events:
+    intake_target: karafiel/dhanam-cost-events-client
+    intake_key_map:
+      dhanam_cost_events_client_id: client_id
+      dhanam_cost_events_client_secret: client_secret  # pragma: allowlist secret
+    janua_client:
+      name: karafiel-dhanam-cost-events
+      client_key: karafiel-dhanam-cost-events  # pragma: allowlist secret
+      audience: dhanam-api
+      description: Machine edge (client_credentials) from Karafiel's worker to Dhanam's cost-events ingest route (cost.event.v1 from received and issued CFDI). Org-bound to madfam-ecosystem, scope dhanam-cost-events:write only; Dhanam's writer grant binds it to one space and the source karafiel.
+      is_confidential: true
+      organization_id: 1a6233ef-185f-43ee-9181-e2591fbb2643
+      allowed_scopes:
+        - dhanam-cost-events:write
+      grant_types:
+        - client_credentials
+
+  # ---------------------------------------------------------------------------
   # converge-dash → Selva convergence feed (2026-11-04, RFC 0049). converge-dash's
   # worker reads GET /api/v1/convergence/ai-tasks on Selva's nexus-api, which
   # only accepts a Janua JWT whose `aud` contains `selva-office` (the audience

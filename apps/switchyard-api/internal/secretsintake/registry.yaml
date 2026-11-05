@@ -1746,6 +1746,26 @@ targets:
     keys:
       - dhanam_karafiel_signing_secret
 
+  # Karafiel → Dhanam cost events (2026-11-05, RFC 0050 Phase 1). The pair of
+  # ecosystem-oidc platform karafiel-dhanam-cost-events (audience dhanam-api,
+  # scope dhanam-cost-events:write, org-bound to madfam-ecosystem), written
+  # ONLY by `enclii secrets provision oidc --platform
+  # karafiel-dhanam-cost-events`. Its OWN ExternalSecret,
+  # karafiel-dhanam-cost-events: ESO is all-or-nothing per ExternalSecret, so
+  # an unprovisioned pair never holds another Karafiel Secret. LOWERCASE keys,
+  # mapped to DHANAM_COST_EVENTS_CLIENT_ID / DHANAM_COST_EVENTS_CLIENT_SECRET.
+  karafiel/dhanam-cost-events-client:
+    label: Karafiel → Dhanam cost-events writer client
+    description: Janua client_credentials pair (karafiel-dhanam-cost-events, scope dhanam-cost-events:write, org-bound) Karafiel's worker uses to push cost.event.v1 events from CFDI into Dhanam. Filed by `enclii secrets provision oidc --platform karafiel-dhanam-cost-events`.
+    vault_path: secret/karafiel
+    namespace: karafiel
+    external_secret: karafiel-dhanam-cost-events  # pragma: allowlist secret
+    keys:
+      - dhanam_cost_events_client_id
+      - dhanam_cost_events_client_secret
+    generate:
+      disabled: true
+
   dhanam/karafiel-callback-secret:
     label: Dhanam callback key for Karafiel
     description: HMAC key Karafiel's worker signs its cfdi-issued callback to Dhanam with (X-Dhanam-Timestamp + X-Dhanam-Signature-V2) and Dhanam's api verifies, projected by dhanam-secrets-karafiel-callback. Karafiel holds a read-only copy through its own ExternalSecret karafiel-dhanam-callback-signing (namespace karafiel). Mint server-side with --generate karafiel_dhanam_signing_secret.
