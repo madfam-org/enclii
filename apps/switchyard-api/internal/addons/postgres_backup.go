@@ -477,7 +477,7 @@ func managedForAddon(cluster *unstructured.Unstructured, addon *types.DatabaseAd
 // walArchivingFailing Backup. Called by the addon reconciler's backup sweep for
 // every live cluster.
 func (s *AddonService) ConvergeAddonBackups(ctx context.Context, addon *types.DatabaseAddon) (BackupConvergence, error) {
-	if isKarafielStagingAddon(addon) || !networkConvergible(addon) {
+	if isClosedStagingAddon(addon) || !networkConvergible(addon) {
 		return BackupConvergence{}, ErrBackupConvergenceNotApplicable
 	}
 	pg, ok := s.provisioners[types.DatabaseAddonTypePostgres].(*PostgresProvisioner)

@@ -34,6 +34,14 @@ func (r *TenantScopeRepository) IsPlatformAdmin(ctx context.Context, userID uuid
 	return isPlatformAdmin, nil
 }
 
+// IsActivePlatformAdmin is the live authority probe for closed staging effects;
+// it does not fetch a user's email, password hash or other profile material.
+func (r *TenantScopeRepository) IsActivePlatformAdmin(ctx context.Context, userID uuid.UUID) (bool, error) {
+	var allowed bool
+	err := r.db.QueryRowContext(ctx, `SELECT active AND is_platform_admin FROM users WHERE id=$1`, userID).Scan(&allowed)
+	return allowed, err
+}
+
 // TeamIDsForUser returns the tenants a principal belongs to. A principal with
 // no rows here has no tenant, so a tenant_admin rank buys them nothing: the
 // guard has no tenant to compare the resource's owner against and falls back

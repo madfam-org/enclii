@@ -56,7 +56,7 @@ func (h *Handler) readJanuaStageNamespace(ctx context.Context, name string, proj
 		}
 		result.BaselineUID, result.BaselineResourceVersion = string(policy.UID), policy.ResourceVersion
 		result.DNSOnlyBaseline = "DRIFTED"
-		if reflect.DeepEqual(policy.Spec, januaStageDNSOnlyBaseline()) {
+		if reflect.DeepEqual(policy.Spec, januaStageDNSOnlyBaseline()) || reflect.DeepEqual(policy.Spec, k8s.JanuaStagingDNSOnlyBaseline()) {
 			result.DNSOnlyBaseline = "EXACT_OWNED"
 		}
 	}

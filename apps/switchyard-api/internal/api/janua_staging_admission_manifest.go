@@ -63,8 +63,6 @@ func januaStageAdmissionManifests(project uuid.UUID, service *types.Service, pla
 					`REVOKE TEMPORARY ON DATABASE "janua_staging" FROM PUBLIC`,
 					`GRANT CONNECT ON DATABASE "janua_staging" TO "janua_staging_runtime"`,
 					`GRANT USAGE ON SCHEMA public TO "janua_staging_runtime"`,
-					`ALTER DEFAULT PRIVILEGES FOR ROLE "enclii_migrator" IN SCHEMA public GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO "janua_staging_runtime"`,
-					`ALTER DEFAULT PRIVILEGES FOR ROLE "enclii_migrator" IN SCHEMA public GRANT USAGE, SELECT ON SEQUENCES TO "janua_staging_runtime"`,
 				},
 			}},
 			"managed": map[string]any{"roles": []any{map[string]any{
