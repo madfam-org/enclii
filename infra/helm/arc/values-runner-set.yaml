@@ -86,7 +86,7 @@ template:
             # infra/k8s/production/arc/runner-{blue,deploy}/rendered.yaml, which
             # also carry the dind requests and the full evidence;
             # tests/scripts/test_arc_runner_requests.py checks the three agree.
-            cpu: 500m
+            cpu: 750m
             memory: 2560Mi  # 2.5Gi
           limits:
             # Above the p95 peak (1.37), so a heavy job is not throttled.

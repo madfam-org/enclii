@@ -49,6 +49,14 @@ Since 2026-11-04 (owner decision) the runner requests `500m` / `2.5Gi`
 matches a typical job and the limit covers the measured max. Blue's
 `maxRunners` went from 20 to 30 at the same time.
 
+Later on 2026-11-04 (owner decision) the CPU request went to `750m`. At `500m`
+a full pool saturated the builders' CPU, a builder went NotReady for a few
+seconds, and the slowest jobs ran longer, even though queue times had dropped
+sharply. `750m` keeps most of the queue gain and leaves the kubelet room. The
+node-side half (kubelet `system-reserved` / `kube-reserved` and a memory
+eviction threshold on the builders) is applied on the nodes, outside this
+repo; see ROADMAP.md.
+
 How many runners run at once is still set by what the builder nodes hold by
 request, not by `maxRunners`; the node layout and its per-node runner counts
 are kept in the private ops repo (`internal-devops`). Runners beyond that wait

@@ -285,7 +285,12 @@ spec:
             # ROADMAP.md), which turns memory pressure into a pod eviction
             # instead of a NotReady node. infra/k8s/production/arc/README.md
             # has the trade-off.
-            cpu: 500m
+            #
+            # 2026-11-04 later (owner decision): CPU 500m -> 750m. At 500m the
+            # builders saturated their CPU under a full pool and a builder
+            # briefly went NotReady; slow jobs ran longer. 750m keeps most of
+            # the queue-time gain and leaves the kubelet room.
+            cpu: 750m
             memory: 2560Mi  # 2.5Gi
             # LOAD-BEARING. Without an ephemeral-storage REQUEST the scheduler
             # scores this pod's disk usage as zero, packs runners onto a node
