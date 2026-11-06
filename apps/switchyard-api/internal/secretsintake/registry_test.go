@@ -38,7 +38,7 @@ func TestGetTarget(t *testing.T) {
 func TestListTargetsSorted(t *testing.T) {
 	list, err := ListTargets()
 	require.NoError(t, err)
-	require.Len(t, list, 119)
+	require.Len(t, list, 120)
 	for i := 1; i < len(list); i++ {
 		assert.Less(t, list[i-1].ID, list[i].ID, "targets should be sorted by id")
 	}
@@ -103,6 +103,7 @@ func TestListTargetsSorted(t *testing.T) {
 		"karafiel-staging/web-oidc",
 		"karafiel/admin-oidc-janua",
 		"karafiel/admin-session",
+		"karafiel/dhanam-cost-events-client",
 		"karafiel/dhanam-webhook-secret",
 		"karafiel/hcm-signing-bindings",
 		"karafiel/web-oidc-janua",
