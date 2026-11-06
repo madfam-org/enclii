@@ -2,6 +2,7 @@ package ecosystemoidc
 
 import (
 	"os"
+	"sort"
 	"strings"
 	"testing"
 
@@ -833,6 +834,64 @@ func TestLoadRegistry_symbiosisHCMDhanamWriterMachineEdge(t *testing.T) {
 	}, buildIntakeValues(reg.Issuer, "jnc_fixture", "fixture-secret", p))
 }
 
+// karafiel-dhanam-cost-events: Karafiel pushing cost.event.v1 events (received
+// and issued CFDI) into Dhanam's ledger (RFC 0050 Phase 1). Same shape as the
+// HCM writer: org-bound, one scope with one colon, client_credentials only.
+func TestLoadRegistry_karafielDhanamCostEventsMachineEdge(t *testing.T) {
+	reg, err := LoadRegistry("")
+	require.NoError(t, err)
+
+	p, ok := reg.Platforms["karafiel-dhanam-cost-events"]
+	require.True(t, ok, "platform karafiel-dhanam-cost-events missing")
+	assert.Equal(t, "karafiel/dhanam-cost-events-client", p.IntakeTarget)
+	assert.Empty(t, p.SessionIntakeTarget, "a machine edge has no session secret")
+	require.Equal(t, map[string]string{
+		"dhanam_cost_events_client_id":     "client_id",
+		"dhanam_cost_events_client_secret": "client_secret",
+	}, p.IntakeKeyMap)
+
+	jc := p.JanuaClient
+	assert.Equal(t, "karafiel-dhanam-cost-events", jc.Name)
+	assert.Equal(t, "karafiel-dhanam-cost-events", jc.ClientKey)
+	assert.Equal(t, "dhanam-api", jc.Audience)
+	assert.Equal(t, "1a6233ef-185f-43ee-9181-e2591fbb2643", jc.OrganizationID,
+		"Dhanam's cost-events strategy requires org_id; Janua sets it only for org-bound clients")
+	assert.Equal(t, []string{"dhanam-cost-events:write"}, jc.AllowedScopes)
+	assert.Regexp(t, `^[a-z][a-z0-9._-]*:[a-z][a-z0-9_-]*$`, jc.AllowedScopes[0],
+		"Janua registers only namespace:action scopes")
+	assert.Equal(t, []string{"client_credentials"}, jc.GrantTypes)
+	assert.Empty(t, jc.RedirectURIs)
+	require.NotNil(t, jc.IsConfidential)
+	assert.True(t, jc.confidential())
+	require.NoError(t, validatePlatform(p))
+
+	assert.Equal(t, map[string]string{
+		"dhanam_cost_events_client_id":     "jnc_fixture",
+		"dhanam_cost_events_client_secret": "fixture-secret",
+	}, buildIntakeValues(reg.Issuer, "jnc_fixture", "fixture-secret", p))
+}
+
+// Every machine client whose tokens Dhanam accepts (audience dhanam-api), as a
+// sorted list: adding or removing a Dhanam machine edge must change this test.
+func TestLoadRegistry_dhanamMachineEdgesSorted(t *testing.T) {
+	reg, err := LoadRegistry("")
+	require.NoError(t, err)
+	var names []string
+	for name, p := range reg.Platforms {
+		kind, err := p.JanuaClient.kind()
+		require.NoError(t, err)
+		if kind == machineClient && p.JanuaClient.Audience == "dhanam-api" {
+			names = append(names, name)
+		}
+	}
+	sort.Strings(names)
+	assert.Equal(t, []string{
+		"karafiel-dhanam-cost-events",
+		"routecraft-billing-relay",
+		"symbiosis-hcm-dhanam-writer",
+	}, names)
+}
+
 func TestReviewedRegistryGrantKindsDoNotDependOnTenant(t *testing.T) {
 	reg, err := LoadRegistry("")
 	require.NoError(t, err)
@@ -849,7 +908,7 @@ func TestReviewedRegistryGrantKindsDoNotDependOnTenant(t *testing.T) {
 		}
 	}
 	require.Equal(t, 25, humans) // Includes the two isolated Karafiel staging login clients and the eight SSO wave 1 clients.
-	require.Equal(t, 18, machines)
+	require.Equal(t, 19, machines)
 	p := reg.Platforms["selva-yantra4d"]
 	require.Empty(t, p.JanuaClient.OrganizationID)
 	kind, err := p.JanuaClient.kind()
