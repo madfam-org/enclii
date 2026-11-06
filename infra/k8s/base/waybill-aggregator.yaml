@@ -21,6 +21,12 @@
 # - Dhanam budget alerts stay off until WAYBILL_ALERT_ENDPOINT and
 #   WAYBILL_ALERT_SIGNING_KEY are delivered; without both the evaluator still
 #   runs and records its heartbeat, and dispatches nothing.
+# - Daily resource ledger (RFC 0049 Phase 2): hourly at :35 and at startup it
+#   captures every complete CDMX civil day Prometheus still holds that
+#   resource_daily lacks (apps/waybill/README.md#resource-usage-ledger). It
+#   reads the in-cluster Prometheus over HTTP (egress in network-policies.yaml,
+#   ingress in production/monitoring/network-policies.yaml). No credentials:
+#   Prometheus has none, and it is not published.
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -70,6 +76,14 @@ spec:
             # this the exporter retries a default endpoint forever.
             - name: ENCLII_OTEL_DISABLED
               value: "1"
+            # Resource usage capture. Unset URL = capture off. The cluster
+            # name is stated because Prometheus' external labels are not
+            # applied to query results; it matches prometheus.yml's
+            # external_labels.cluster.
+            - name: WAYBILL_RESOURCE_PROMETHEUS_URL
+              value: http://prometheus.monitoring.svc.cluster.local:9090
+            - name: WAYBILL_RESOURCE_CLUSTER
+              value: enclii-production
           resources:
             requests:
               memory: "64Mi"

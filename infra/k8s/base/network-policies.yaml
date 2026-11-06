@@ -466,6 +466,12 @@ spec:
 # object: the aggregator is not labelled app=waybill (that label routes the
 # API's Service traffic), so waybill-egress does not select it. No ingress
 # rule: it serves nothing, and the namespace default-deny applies.
+#
+# Plus Prometheus' HTTP API (monitoring, 9090) for the daily resource ledger
+# (RFC 0049 Phase 2). A bare namespaceSelector on one port: k3s's netpol
+# controller renders a peer that combines namespaceSelector and podSelector
+# as deny-everything (monitoring/weighbridge.yaml). The monitoring side admits
+# this namespace on 9090 in prometheus-ingress-enclii-readers.
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
@@ -495,6 +501,13 @@ spec:
     ports:
     - protocol: TCP
       port: 5432
+  - to:
+    - namespaceSelector:
+        matchLabels:
+          kubernetes.io/metadata.name: monitoring
+    ports:
+    - protocol: TCP
+      port: 9090
 ---
 # Allow ingress to dispatch only from Cloudflare tunnel
 apiVersion: networking.k8s.io/v1

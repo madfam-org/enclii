@@ -67,6 +67,41 @@ spec:
     - protocol: TCP
       port: 9090
 ---
+# Prometheus ingress — query readers in the `enclii` namespace, on 9090 only.
+# Today that is waybill-aggregator's daily resource ledger (RFC 0049 Phase 2,
+# apps/waybill/README.md#resource-usage-ledger), which reads range queries
+# over the HTTP API. A separate object so the in-cluster list above stays
+# as it was.
+#
+# A bare namespaceSelector: this cluster's policy controller renders a peer
+# that combines namespaceSelector and podSelector as deny-all
+# (weighbridge.yaml). Which pods in `enclii` may open 9090 is decided by their
+# own egress policy; only waybill-aggregator-egress (base/network-policies.yaml)
+# names it. Still in-cluster only: no tunnel rule, nothing public (FDY-01).
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: prometheus-ingress-enclii-readers
+  namespace: monitoring
+  labels:
+    app.kubernetes.io/name: prometheus
+    app.kubernetes.io/component: monitoring
+    app.kubernetes.io/part-of: enclii
+spec:
+  podSelector:
+    matchLabels:
+      app: prometheus
+  policyTypes:
+  - Ingress
+  ingress:
+  - from:
+    - namespaceSelector:
+        matchLabels:
+          kubernetes.io/metadata.name: enclii
+    ports:
+    - protocol: TCP
+      port: 9090
+---
 # Node-exporter ingress — from both Prometheus instances only.
 # The DaemonSet's pods carry app.kubernetes.io/name (node-exporter.yaml), not
 # `app`. This policy used to select `app: node-exporter`, matched no pod, and
