@@ -1766,6 +1766,158 @@ targets:
     generate:
       disabled: true
 
+  # COGS MCP consumers (2026-11-06, RFC 0051 ruling M3). The pairs of the
+  # twelve ecosystem-oidc platforms selva-<platform>-cogs and
+  # ops-agents-<platform>-cogs (scope <platform>-cogs:read, org-bound to
+  # madfam-ecosystem), written ONLY by `enclii secrets provision oidc
+  # --platform <id>`; no human types either value and nothing is generated
+  # here. LOWERCASE keys <platform>_cogs_client_id / _client_secret.
+  #
+  # Selva: secret/selva (the path selva/yantra4d-client already writes), one
+  # DEDICATED planned ExternalSecret per pair in namespace selva,
+  # selva-<platform>-cogs-client, so an unprovisioned platform never holds
+  # another pair's Secret (ESO is all-or-nothing per ExternalSecret). selva-office
+  # does not declare these ExternalSecrets yet; until it does, intake reports
+  # external_secret_refreshed=false, which is expected.
+  #
+  # Ops agents: the NEW path secret/ops-agents (proposed 2026-11-06; the owner
+  # decides), with no namespace and no ExternalSecret, because no ops-agent
+  # runtime reads Vault today. The pair is held in Vault until the owner decides
+  # how the ops agents receive it. Re-apply the Vault policy (ASSERT_PATH=ops-agents
+  # scripts/apply-switchyard-vault-policy-remote.sh) before the first ops-agents
+  # run, or the run rotates the Janua secret and then 403s on the Vault merge.
+  selva/dhanam-cogs-client:
+    label: Selva → Dhanam COGS MCP read client
+    description: Janua client_credentials pair (selva-dhanam-cogs, scope dhanam-cogs:read, org-bound to madfam-ecosystem) Selva's agent fleet uses to read Dhanam's native COGS MCP (POST /mcp, RFC 0051). Filed by `enclii secrets provision oidc --platform selva-dhanam-cogs`.
+    vault_path: secret/selva
+    namespace: selva
+    external_secret: selva-dhanam-cogs-client  # pragma: allowlist secret
+    keys:
+      - dhanam_cogs_client_id
+      - dhanam_cogs_client_secret
+    generate:
+      disabled: true
+
+  selva/karafiel-cogs-client:
+    label: Selva → Karafiel COGS MCP read client
+    description: Janua client_credentials pair (selva-karafiel-cogs, scope karafiel-cogs:read, org-bound to madfam-ecosystem) Selva's agent fleet uses to read Karafiel's native COGS MCP (POST /mcp, RFC 0051). Filed by `enclii secrets provision oidc --platform selva-karafiel-cogs`.
+    vault_path: secret/selva
+    namespace: selva
+    external_secret: selva-karafiel-cogs-client  # pragma: allowlist secret
+    keys:
+      - karafiel_cogs_client_id
+      - karafiel_cogs_client_secret
+    generate:
+      disabled: true
+
+  selva/converge-dash-cogs-client:
+    label: Selva → converge-dash COGS MCP read client
+    description: Janua client_credentials pair (selva-converge-dash-cogs, scope converge-dash-cogs:read, org-bound to madfam-ecosystem) Selva's agent fleet uses to read converge-dash's native COGS MCP (POST /mcp, RFC 0051). Filed by `enclii secrets provision oidc --platform selva-converge-dash-cogs`.
+    vault_path: secret/selva
+    namespace: selva
+    external_secret: selva-converge-dash-cogs-client  # pragma: allowlist secret
+    keys:
+      - converge_dash_cogs_client_id
+      - converge_dash_cogs_client_secret
+    generate:
+      disabled: true
+
+  selva/pravara-cogs-client:
+    label: Selva → Pravara MES COGS MCP read client
+    description: Janua client_credentials pair (selva-pravara-cogs, scope pravara-cogs:read, org-bound to madfam-ecosystem) Selva's agent fleet uses to read Pravara MES's native COGS MCP (POST /mcp, RFC 0051). Filed by `enclii secrets provision oidc --platform selva-pravara-cogs`.
+    vault_path: secret/selva
+    namespace: selva
+    external_secret: selva-pravara-cogs-client  # pragma: allowlist secret
+    keys:
+      - pravara_cogs_client_id
+      - pravara_cogs_client_secret
+    generate:
+      disabled: true
+
+  selva/nauta-cogs-client:
+    label: Selva → Nauta COGS MCP read client
+    description: Janua client_credentials pair (selva-nauta-cogs, scope nauta-cogs:read, org-bound to madfam-ecosystem) Selva's agent fleet uses to read Nauta's native COGS MCP (POST /mcp, RFC 0051). Filed by `enclii secrets provision oidc --platform selva-nauta-cogs`.
+    vault_path: secret/selva
+    namespace: selva
+    external_secret: selva-nauta-cogs-client  # pragma: allowlist secret
+    keys:
+      - nauta_cogs_client_id
+      - nauta_cogs_client_secret
+    generate:
+      disabled: true
+
+  selva/enclii-cogs-client:
+    label: Selva → Enclii COGS MCP read client
+    description: Janua client_credentials pair (selva-enclii-cogs, scope enclii-cogs:read, org-bound to madfam-ecosystem) Selva's agent fleet uses to read Enclii's native COGS MCP (POST /mcp, RFC 0051). Filed by `enclii secrets provision oidc --platform selva-enclii-cogs`.
+    vault_path: secret/selva
+    namespace: selva
+    external_secret: selva-enclii-cogs-client  # pragma: allowlist secret
+    keys:
+      - enclii_cogs_client_id
+      - enclii_cogs_client_secret
+    generate:
+      disabled: true
+
+  ops-agents/dhanam-cogs-client:
+    label: Ops agents → Dhanam COGS MCP read client
+    description: Janua client_credentials pair (ops-agents-dhanam-cogs, scope dhanam-cogs:read, org-bound to madfam-ecosystem) the MADFAM ops agents use to read Dhanam's native COGS MCP (POST /mcp, RFC 0051). Filed by `enclii secrets provision oidc --platform ops-agents-dhanam-cogs`.
+    vault_path: secret/ops-agents
+    keys:
+      - dhanam_cogs_client_id
+      - dhanam_cogs_client_secret
+    generate:
+      disabled: true
+
+  ops-agents/karafiel-cogs-client:
+    label: Ops agents → Karafiel COGS MCP read client
+    description: Janua client_credentials pair (ops-agents-karafiel-cogs, scope karafiel-cogs:read, org-bound to madfam-ecosystem) the MADFAM ops agents use to read Karafiel's native COGS MCP (POST /mcp, RFC 0051). Filed by `enclii secrets provision oidc --platform ops-agents-karafiel-cogs`.
+    vault_path: secret/ops-agents
+    keys:
+      - karafiel_cogs_client_id
+      - karafiel_cogs_client_secret
+    generate:
+      disabled: true
+
+  ops-agents/converge-dash-cogs-client:
+    label: Ops agents → converge-dash COGS MCP read client
+    description: Janua client_credentials pair (ops-agents-converge-dash-cogs, scope converge-dash-cogs:read, org-bound to madfam-ecosystem) the MADFAM ops agents use to read converge-dash's native COGS MCP (POST /mcp, RFC 0051). Filed by `enclii secrets provision oidc --platform ops-agents-converge-dash-cogs`.
+    vault_path: secret/ops-agents
+    keys:
+      - converge_dash_cogs_client_id
+      - converge_dash_cogs_client_secret
+    generate:
+      disabled: true
+
+  ops-agents/pravara-cogs-client:
+    label: Ops agents → Pravara MES COGS MCP read client
+    description: Janua client_credentials pair (ops-agents-pravara-cogs, scope pravara-cogs:read, org-bound to madfam-ecosystem) the MADFAM ops agents use to read Pravara MES's native COGS MCP (POST /mcp, RFC 0051). Filed by `enclii secrets provision oidc --platform ops-agents-pravara-cogs`.
+    vault_path: secret/ops-agents
+    keys:
+      - pravara_cogs_client_id
+      - pravara_cogs_client_secret
+    generate:
+      disabled: true
+
+  ops-agents/nauta-cogs-client:
+    label: Ops agents → Nauta COGS MCP read client
+    description: Janua client_credentials pair (ops-agents-nauta-cogs, scope nauta-cogs:read, org-bound to madfam-ecosystem) the MADFAM ops agents use to read Nauta's native COGS MCP (POST /mcp, RFC 0051). Filed by `enclii secrets provision oidc --platform ops-agents-nauta-cogs`.
+    vault_path: secret/ops-agents
+    keys:
+      - nauta_cogs_client_id
+      - nauta_cogs_client_secret
+    generate:
+      disabled: true
+
+  ops-agents/enclii-cogs-client:
+    label: Ops agents → Enclii COGS MCP read client
+    description: Janua client_credentials pair (ops-agents-enclii-cogs, scope enclii-cogs:read, org-bound to madfam-ecosystem) the MADFAM ops agents use to read Enclii's native COGS MCP (POST /mcp, RFC 0051). Filed by `enclii secrets provision oidc --platform ops-agents-enclii-cogs`.
+    vault_path: secret/ops-agents
+    keys:
+      - enclii_cogs_client_id
+      - enclii_cogs_client_secret
+    generate:
+      disabled: true
+
   dhanam/karafiel-callback-secret:
     label: Dhanam callback key for Karafiel
     description: HMAC key Karafiel's worker signs its cfdi-issued callback to Dhanam with (X-Dhanam-Timestamp + X-Dhanam-Signature-V2) and Dhanam's api verifies, projected by dhanam-secrets-karafiel-callback. Karafiel holds a read-only copy through its own ExternalSecret karafiel-dhanam-callback-signing (namespace karafiel). Mint server-side with --generate karafiel_dhanam_signing_secret.

@@ -617,6 +617,19 @@ path "secret/data/avala" {
 path "secret/metadata/avala" {
   capabilities = ["read", "list"]
 }
+# ops-agents — added 2026-11-06 with the six ops-agents/<platform>-cogs-client
+# intake targets (RFC 0051 M3: the ops agents' COGS MCP read clients), written
+# only by `enclii secrets provision oidc --platform ops-agents-<platform>-cogs`.
+# Exact path only. Merged in git is not applied in Vault: re-apply this policy
+# (ASSERT_PATH=ops-agents scripts/apply-switchyard-vault-policy-remote.sh)
+# before the first run, or the run rotates the Janua secret and then 403s on
+# the Vault merge.
+path "secret/data/ops-agents" {
+  capabilities = ["create", "update", "patch", "read"]
+}
+path "secret/metadata/ops-agents" {
+  capabilities = ["read", "list"]
+}
 
 # Isolated training/staging intake: exact registry paths only. No child
 # wildcard, owner database credentials or permission to write Vault policy.
