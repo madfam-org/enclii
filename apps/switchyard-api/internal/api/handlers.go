@@ -428,6 +428,7 @@ func SetupRoutes(router *gin.Engine, h *Handler) {
 	// status page). See health_handlers.go:PublicHealth and ST-1 in
 	// claudedocs/cross-app-public-audit-2026-05-02.md.
 	router.GET("/health/public", h.PublicHealth)
+	registerMCPRoutes(router, h) // Native MCP (RFC 0051): POST /mcp, off unless ENCLII_MCP_ENABLED (mcp_routes.go)
 
 	// CSRF token issuance (no auth required — SPA fetches pre-auth so a
 	// token is ready by the time a write is attempted). See csrf_handler.go.

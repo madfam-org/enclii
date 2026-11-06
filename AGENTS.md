@@ -116,6 +116,22 @@ redirect and should not become the source of truth again.
 - `CLAUDE.md` redirects here for Claude compatibility.
 - `docs/PUBLIC_REPO_BOUNDARY.md` defines this repo's public documentation scope.
 
+## Native MCP (cost ledger, RFC 0051)
+
+- `POST /mcp` on switchyard-api (`api.enclii.dev`) serves agents Waybill's
+  daily resource ledger: tools `usage_resource_daily` and `usage_node_daily`
+  (titles `usage.resource_daily`, `usage.node_daily`), usage and requests
+  only, no money, no write tools.
+- Off unless `ENCLII_MCP_ENABLED=true`, which only the owner sets (404 when
+  off). Callers: Janua machine tokens (`client_credentials`) with the API's
+  audience, bound to an organization in `ENCLII_MCP_ORG_IDS`, holding exactly
+  `enclii-cogs:read`.
+- A new Waybill route (`apps/waybill/http-routes.json`) or a new switchyard
+  usage/billing/cost route fails CI until `internal/waybillmcp/coverage.go`
+  marks it COVERED or EXEMPTED. Tool names allow no dots.
+- Contract, gates, owner enablement and follow-ups:
+  [`docs/operations/NATIVE_MCP.md`](docs/operations/NATIVE_MCP.md).
+
 ## Repo-boundary contract
 
 - **No node identity in this repo, in any file type.** Hostnames, IP addresses
