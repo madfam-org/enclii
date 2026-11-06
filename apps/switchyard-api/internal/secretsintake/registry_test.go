@@ -13,7 +13,7 @@ import (
 func TestLoadRegistry(t *testing.T) {
 	reg, err := LoadRegistry()
 	require.NoError(t, err)
-	assert.Len(t, reg, 120)
+	assert.Len(t, reg, 132)
 	assert.Contains(t, reg, "ceq/vast-api-key")
 	assert.Contains(t, reg, "karafiel/web-oidc-janua")
 	adminSession := reg["karafiel/admin-session"]
@@ -38,7 +38,7 @@ func TestGetTarget(t *testing.T) {
 func TestListTargetsSorted(t *testing.T) {
 	list, err := ListTargets()
 	require.NoError(t, err)
-	require.Len(t, list, 120)
+	require.Len(t, list, 132)
 	for i := 1; i < len(list); i++ {
 		assert.Less(t, list[i-1].ID, list[i].ID, "targets should be sorted by id")
 	}
@@ -117,6 +117,12 @@ func TestListTargetsSorted(t *testing.T) {
 		"nauta/oidc-janua-portal",
 		"nauta/symbiosis-hcm-oauth",
 		"nauta/symbiosis-hcm-token",
+		"ops-agents/converge-dash-cogs-client",
+		"ops-agents/dhanam-cogs-client",
+		"ops-agents/enclii-cogs-client",
+		"ops-agents/karafiel-cogs-client",
+		"ops-agents/nauta-cogs-client",
+		"ops-agents/pravara-cogs-client",
 		"phynd-crm/convergence",
 		"phynd-crm/oidc-janua",
 		"platform/comms-resend-api-key",
@@ -124,6 +130,12 @@ func TestListTargetsSorted(t *testing.T) {
 		"pravara-mes/fabrication-prep-client",
 		"pravara-mes/yantra4d-step-reader",
 		"routecraft/billing-relay",
+		"selva/converge-dash-cogs-client",
+		"selva/dhanam-cogs-client",
+		"selva/enclii-cogs-client",
+		"selva/karafiel-cogs-client",
+		"selva/nauta-cogs-client",
+		"selva/pravara-cogs-client",
 		"selva/pravara-mes-client",
 		"selva/yantra4d-client",
 		"symbiosis-hcm/dhanam-writer-client",
@@ -1169,5 +1181,96 @@ func TestKarafielDhanamCostEventsClientTarget(t *testing.T) {
 		other, err := GetTarget(name)
 		require.NoError(t, err)
 		assert.NotEqual(t, other.ExternalSecret, tgt.ExternalSecret, "%s shares the ExternalSecret", name)
+	}
+}
+
+// COGS MCP consumers (2026-11-06, RFC 0051 ruling M3): one Janua machine client
+// per platform for Selva's agent fleet and one for the ops agents. Pinned end
+// to end because each link fails silently: a wrong Vault path is a write
+// nothing reads, a wrong key is an ExternalSecret that syncs nothing, and a
+// shared ExternalSecret would hold every platform's Secret until the last pair
+// is provisioned.
+func TestCogsMCPConsumerClientTargets(t *testing.T) {
+	platforms := []string{"converge-dash", "dhanam", "enclii", "karafiel", "nauta", "pravara"}
+	for _, platform := range platforms {
+		key := strings.ReplaceAll(platform, "-", "_")
+		keys := []string{key + "_cogs_client_id", key + "_cogs_client_secret"}
+
+		selva, err := GetTarget("selva/" + platform + "-cogs-client")
+		require.NoError(t, err, platform)
+		assert.Equal(t, "secret/selva", selva.VaultPath, platform)
+		assert.Equal(t, "selva", selva.Namespace, platform)
+		assert.Equal(t, "selva-"+platform+"-cogs-client", selva.ExternalSecret, platform)
+		assert.Equal(t, keys, selva.Keys, platform)
+		assert.Contains(t, selva.Description, "--platform selva-"+platform+"-cogs`", platform)
+
+		ops, err := GetTarget("ops-agents/" + platform + "-cogs-client")
+		require.NoError(t, err, platform)
+		assert.Equal(t, "secret/ops-agents", ops.VaultPath, platform)
+		assert.Empty(t, ops.Namespace, "%s: no ops-agent runtime reads Vault yet; the owner decides the consumer", platform)
+		assert.Empty(t, ops.ExternalSecret, "%s: no ops-agent ExternalSecret exists to refresh", platform)
+		assert.Equal(t, keys, ops.Keys, platform)
+		assert.Contains(t, ops.Description, "--platform ops-agents-"+platform+"-cogs`", platform)
+
+		for _, tgt := range []Target{selva, ops} {
+			assert.NotEmpty(t, tgt.Label, tgt.ID)
+			assert.Contains(t, tgt.Description, platform+"-cogs:read", tgt.ID)
+			require.NotNil(t, tgt.Generate, tgt.ID)
+			assert.True(t, tgt.Generate.Disabled, "%s: a Janua credential is minted by Janua, never generated", tgt.ID)
+			for _, k := range tgt.Keys {
+				assert.Equal(t, strings.ToLower(k), k, "Vault stores lowercase; an ExternalSecret maps these properties verbatim")
+			}
+		}
+	}
+
+	// Every target on secret/selva and on secret/ops-agents, sorted: a new one
+	// must be added here, and on one path no two share an ExternalSecret or a key.
+	reg, err := LoadRegistry()
+	require.NoError(t, err)
+	onPath := map[string][]string{}
+	seenKeys := map[string]string{}
+	externalSecrets := map[string]string{}
+	for name, tgt := range reg {
+		if tgt.VaultPath != "secret/selva" && tgt.VaultPath != "secret/ops-agents" {
+			continue
+		}
+		onPath[tgt.VaultPath] = append(onPath[tgt.VaultPath], name)
+		for _, k := range tgt.Keys {
+			prev, dup := seenKeys[tgt.VaultPath+":"+k]
+			assert.False(t, dup, "key %s on both %s and %s", k, prev, name)
+			seenKeys[tgt.VaultPath+":"+k] = name
+		}
+		if strings.HasSuffix(name, "-cogs-client") && tgt.ExternalSecret != "" {
+			prev, dup := externalSecrets[tgt.ExternalSecret]
+			assert.False(t, dup, "ExternalSecret %s on both %s and %s", tgt.ExternalSecret, prev, name)
+			externalSecrets[tgt.ExternalSecret] = name
+		}
+	}
+	for path := range onPath {
+		sort.Strings(onPath[path])
+	}
+	assert.Equal(t, []string{
+		"selva/converge-dash-cogs-client",
+		"selva/dhanam-cogs-client",
+		"selva/enclii-cogs-client",
+		"selva/karafiel-cogs-client",
+		"selva/nauta-cogs-client",
+		"selva/pravara-cogs-client",
+		"selva/pravara-mes-client",
+		"selva/yantra4d-client",
+	}, onPath["secret/selva"])
+	assert.Equal(t, []string{
+		"ops-agents/converge-dash-cogs-client",
+		"ops-agents/dhanam-cogs-client",
+		"ops-agents/enclii-cogs-client",
+		"ops-agents/karafiel-cogs-client",
+		"ops-agents/nauta-cogs-client",
+		"ops-agents/pravara-cogs-client",
+	}, onPath["secret/ops-agents"])
+	for _, name := range onPath["secret/selva"] {
+		if strings.HasSuffix(name, "-cogs-client") {
+			assert.NotEqual(t, "selva-service-clients", reg[name].ExternalSecret,
+				"%s: a COGS pair must not join the phygital tools' ExternalSecret", name)
+		}
 	}
 }
