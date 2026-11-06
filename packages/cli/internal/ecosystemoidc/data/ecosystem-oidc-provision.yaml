@@ -1219,8 +1219,8 @@ platforms:
   # DHANAM_COST_EVENTS_CLIENT_SECRET. Karafiel ignores the pair until
   # COST_EVENTS_EMIT_ENABLED=true.
   #
-  # NOT pinned yet: the first provision run CREATES the client and prints its
-  # jnc_… id; pin it here (both copies) and use the same id in the Dhanam grant.
+  # Pinned 2026-11-05 from the first provision run (intake int_1793932145427244504);
+  # the Dhanam writer grant binds the same id.
   # ---------------------------------------------------------------------------
   karafiel-dhanam-cost-events:
     intake_target: karafiel/dhanam-cost-events-client
@@ -1229,6 +1229,7 @@ platforms:
       dhanam_cost_events_client_secret: client_secret  # pragma: allowlist secret
     janua_client:
       name: karafiel-dhanam-cost-events
+      client_id: jnc_-vYgZlpygAhe8b4vRjlo1YG7DSmWVsJB  # pragma: allowlist secret -- public OAuth client id
       client_key: karafiel-dhanam-cost-events  # pragma: allowlist secret
       audience: dhanam-api
       description: Machine edge (client_credentials) from Karafiel's worker to Dhanam's cost-events ingest route (cost.event.v1 from received and issued CFDI). Org-bound to madfam-ecosystem, scope dhanam-cost-events:write only; Dhanam's writer grant binds it to one space and the source karafiel.
