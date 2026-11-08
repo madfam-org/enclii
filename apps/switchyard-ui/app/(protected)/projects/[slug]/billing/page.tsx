@@ -4,105 +4,94 @@
  * Project billing page (P2.2).
  *
  * Renders:
- *   - Hero spend bar vs. the active budget, with threshold markers
- *   - Per-service cost breakdown (top drivers)
- *   - Daily spend time-series (14-day default)
+ *   - Month-to-date spend vs. the active budget, with threshold markers
+ *   - Daily spend time-series and top cost drivers for the selected window
  *   - Budget card with create / edit modals
  *   - Alert history table
  *   - Throttle banner when deploys are blocked in non-production
  *
  * Data comes from the Switchyard /billing/* proxy endpoints, which forward
- * to Waybill. Projects without a budget see a CTA to create one.
+ * to Waybill. Spend that metering did not measure reads as unknown, never as
+ * $0.00 (see lib/billing-spend.ts). Each read fails on its own: one failed
+ * endpoint shows a notice in its section, not a blank page.
  */
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useParams } from 'next/navigation';
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "@enclii/ui-components/dialog";
-import { apiDelete, apiGet, apiPatch, apiPost } from '@/lib/api';
-import { spendState, spendUnknownLabel } from '@/lib/billing-spend';
-import { cn } from '@/lib/utils';
+import { apiGet } from '@/lib/api';
+import { compareToBudget } from '@/lib/billing-spend';
 import type {
   BudgetAlertEvent,
-  BudgetPeriod,
   BudgetThrottle,
   ProjectBudget,
   ProjectCostResponse,
 } from '@/types/billing';
+import { BudgetModal } from './budget-modal';
+import {
+  AlertHistory,
+  DailySpendChart,
+  SectionNotice,
+  SpendHero,
+  TopDrivers,
+} from './spend-panels';
 
-type Period = BudgetPeriod;
-type Budget = ProjectBudget;
-type CostResponse = ProjectCostResponse;
-type AlertEvent = BudgetAlertEvent;
-type Throttle = BudgetThrottle;
+type Range = '14d' | '30d' | '90d' | '1y';
 
-// ---- Helpers ----
+const RANGE_LABEL: Record<Range, string> = {
+  '14d': 'Last 14 days',
+  '30d': 'Last 30 days',
+  '90d': 'Last 90 days',
+  '1y': 'Last year',
+};
 
-function formatCurrencyCents(cents: number, currency = 'USD'): string {
-  return new Intl.NumberFormat(undefined, {
-    style: 'currency',
-    currency,
-  }).format(cents / 100);
+type Read<T> = { data: T; error: null } | { data: null; error: string };
+
+function settle<T>(r: PromiseSettledResult<T>): Read<T> {
+  if (r.status === 'fulfilled') return { data: r.value, error: null };
+  return { data: null, error: r.reason instanceof Error ? r.reason.message : 'Request failed' };
 }
 
-function percentConsumed(actualCents: number, budgetCents: number): number {
-  if (budgetCents <= 0) return 0;
-  return Math.min(Math.round((actualCents * 100) / budgetCents), 300);
+interface BillingData {
+  monthToDate: Read<ProjectCostResponse>;
+  drivers: Read<ProjectCostResponse>;
+  series: Read<ProjectCostResponse>;
+  budgets: Read<ProjectBudget[]>;
+  alerts: Read<BudgetAlertEvent[]>;
+  throttles: Read<BudgetThrottle[]>;
 }
-
-function barColor(pct: number): string {
-  if (pct >= 100) return 'bg-status-error';
-  if (pct >= 80) return 'bg-status-warning';
-  return 'bg-status-success';
-}
-
-// ---- Page ----
 
 export default function ProjectBillingPage() {
   const params = useParams();
   const slug = (params?.slug as string) ?? '';
 
-  const [period, setPeriod] = useState<'14d' | '30d' | '90d' | '1y'>('30d');
-  const [cost, setCost] = useState<CostResponse | null>(null);
-  const [series, setSeries] = useState<CostResponse | null>(null);
-  const [budgets, setBudgets] = useState<Budget[]>([]);
-  const [alerts, setAlerts] = useState<AlertEvent[]>([]);
-  const [throttles, setThrottles] = useState<Throttle[]>([]);
+  const [range, setRange] = useState<Range>('30d');
+  const [data, setData] = useState<BillingData | null>(null);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
 
   const [showBudgetModal, setShowBudgetModal] = useState(false);
-  const [editBudget, setEditBudget] = useState<Budget | null>(null);
 
   const refresh = useCallback(async () => {
-    try {
-      setLoading(true);
-      setError(null);
-      const [costRes, seriesRes, budgetsRes, alertsRes, throttleRes] = await Promise.all([
-        apiGet<CostResponse>(`/v1/projects/${slug}/billing/cost?period=${period}&group_by=service`),
-        apiGet<CostResponse>(`/v1/projects/${slug}/billing/cost?period=${period}&group_by=day`),
-        apiGet<{ budgets: Budget[] }>(`/v1/projects/${slug}/billing/budgets`),
-        apiGet<{ alerts: AlertEvent[] }>(`/v1/projects/${slug}/billing/budgets/alerts`),
-        apiGet<{ throttles: Throttle[] }>(`/v1/projects/${slug}/billing/throttles`),
-      ]);
-      setCost(costRes);
-      setSeries(seriesRes);
-      setBudgets(budgetsRes.budgets ?? []);
-      setAlerts(alertsRes.alerts ?? []);
-      setThrottles(throttleRes.throttles ?? []);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to load billing data');
-    } finally {
-      setLoading(false);
-    }
-  }, [slug, period]);
+    setLoading(true);
+    const base = `/v1/projects/${slug}/billing`;
+    const [mtd, drivers, series, budgets, alerts, throttles] = await Promise.allSettled([
+      apiGet<ProjectCostResponse>(`${base}/cost?period=mtd`),
+      apiGet<ProjectCostResponse>(`${base}/cost?period=${range}&group_by=service`),
+      apiGet<ProjectCostResponse>(`${base}/cost?period=${range}&group_by=day`),
+      apiGet<{ budgets: ProjectBudget[] }>(`${base}/budgets`).then((r) => r.budgets ?? []),
+      apiGet<{ alerts: BudgetAlertEvent[] }>(`${base}/budgets/alerts`).then((r) => r.alerts ?? []),
+      apiGet<{ throttles: BudgetThrottle[] }>(`${base}/throttles`).then((r) => r.throttles ?? []),
+    ]);
+    setData({
+      monthToDate: settle(mtd),
+      drivers: settle(drivers),
+      series: settle(series),
+      budgets: settle(budgets),
+      alerts: settle(alerts),
+      throttles: settle(throttles),
+    });
+    setLoading(false);
+  }, [slug, range]);
 
   useEffect(() => {
     if (slug) {
@@ -110,55 +99,63 @@ export default function ProjectBillingPage() {
     }
   }, [slug, refresh]);
 
-  const primaryBudget = budgets[0] ?? null;
-  const spend = spendState(cost);
-  const spendUnknown = spendUnknownLabel(spend);
-  const pct = primaryBudget
-    ? percentConsumed(cost?.total_cents ?? 0, primaryBudget.amount_cents)
-    : 0;
-
-  const activeThrottle = throttles.find((t) => !t.cleared_at) ?? null;
-
-  const maxSeries = useMemo(() => {
-    const points = series?.series ?? [];
-    return points.reduce((m, p) => Math.max(m, p.cost_cents), 1);
-  }, [series]);
-
-  if (loading && !cost) {
+  if (loading && !data) {
     return (
-      <div className="max-w-7xl mx-auto py-6 sm:px-6 lg:px-8">
-        <div className="animate-pulse space-y-4">
-          <div className="h-8 bg-muted rounded w-1/3"></div>
-          <div className="h-40 bg-muted rounded"></div>
-          <div className="h-64 bg-muted rounded"></div>
+      <div className="mx-auto max-w-7xl px-4 py-6 sm:px-6 lg:px-8" aria-busy="true">
+        <p className="sr-only" role="status">
+          Loading billing data…
+        </p>
+        <div className="animate-pulse space-y-4 motion-reduce:animate-none">
+          <div className="bg-muted h-8 w-1/3 rounded"></div>
+          <div className="bg-muted h-40 rounded"></div>
+          <div className="bg-muted h-64 rounded"></div>
         </div>
       </div>
     );
   }
 
-  if (error) {
+  const allFailed = data && Object.values(data).every((r) => r.error);
+  if (data && allFailed) {
     return (
-      <div className="max-w-7xl mx-auto py-6 sm:px-6 lg:px-8">
-        <div className="bg-status-error-muted border border-status-error/30 rounded-md p-4">
-          <h3 className="text-sm font-medium text-status-error-foreground">
+      <div className="mx-auto max-w-7xl px-4 py-6 sm:px-6 lg:px-8">
+        <div
+          role="alert"
+          className="bg-status-error-muted border-status-error/30 rounded-md border p-4"
+        >
+          <h3 className="text-status-error-muted-foreground text-sm font-medium">
             Error loading billing data
           </h3>
-          <p className="mt-2 text-sm text-status-error-foreground">{error}</p>
+          <p className="text-status-error-muted-foreground mt-2 text-sm">{data.monthToDate.error}</p>
+          <button
+            type="button"
+            onClick={() => void refresh()}
+            className="text-status-error-muted-foreground mt-3 text-sm font-medium underline underline-offset-2"
+          >
+            Retry
+          </button>
         </div>
       </div>
     );
   }
 
+  const budgets = data?.budgets.data ?? [];
+  const primaryBudget = budgets[0] ?? null;
+  const monthToDate = data?.monthToDate.data ?? null;
+  const comparison = primaryBudget ? compareToBudget(primaryBudget, monthToDate) : null;
+  const activeThrottle = (data?.throttles.data ?? []).find((t) => !t.cleared_at) ?? null;
+  const rangeLabel = RANGE_LABEL[range];
+  const retry = () => void refresh();
+
   return (
-    <div className="max-w-7xl mx-auto py-6 sm:px-6 lg:px-8">
-      <nav className="flex mb-4" aria-label="Breadcrumb">
-        <ol className="flex items-center space-x-4">
+    <div className="mx-auto max-w-7xl px-4 py-6 sm:px-6 lg:px-8" aria-busy={loading}>
+      <nav className="mb-4 flex text-sm" aria-label="Breadcrumb">
+        <ol className="flex flex-wrap items-center gap-x-4 gap-y-1">
           <li>
             <Link href="/projects" className="text-muted-foreground hover:text-foreground">
               Projects
             </Link>
           </li>
-          <li>
+          <li aria-hidden="true">
             <span className="text-muted-foreground/70">/</span>
           </li>
           <li>
@@ -169,23 +166,28 @@ export default function ProjectBillingPage() {
               {slug}
             </Link>
           </li>
-          <li>
+          <li aria-hidden="true">
             <span className="text-muted-foreground/70">/</span>
           </li>
           <li>
-            <span className="text-sm font-medium">Billing</span>
+            <span className="font-medium" aria-current="page">
+              Billing
+            </span>
           </li>
         </ol>
       </nav>
 
       {activeThrottle && (
-        <div className="mb-6 rounded-md border border-status-error/50 bg-status-error-muted p-4">
-          <div className="flex items-start justify-between">
+        <div
+          role="alert"
+          className="border-status-error/50 bg-status-error-muted mb-6 rounded-md border p-4"
+        >
+          <div className="flex flex-wrap items-start justify-between gap-2">
             <div>
-              <h3 className="text-sm font-semibold text-status-error-foreground">
+              <h3 className="text-status-error-muted-foreground text-sm font-semibold">
                 Deploys blocked in {activeThrottle.env_scope}
               </h3>
-              <p className="mt-1 text-sm text-status-error-foreground">
+              <p className="text-status-error-muted-foreground mt-1 text-sm">
                 This project is over-budget. Reason: <code>{activeThrottle.reason}</code>. Raise
                 the budget or clear the throttle to resume deploys.
               </p>
@@ -194,7 +196,7 @@ export default function ProjectBillingPage() {
               href="https://enclii.dev/docs/billing/throttle"
               target="_blank"
               rel="noopener noreferrer"
-              className="text-sm underline text-status-error-foreground"
+              className="text-status-error-muted-foreground text-sm underline"
             >
               Runbook
             </a>
@@ -202,170 +204,77 @@ export default function ProjectBillingPage() {
         </div>
       )}
 
-      <div className="flex items-center justify-between mb-6">
+      <div className="mb-6 flex flex-wrap items-center justify-between gap-3">
         <h1 className="text-3xl font-bold">Billing &amp; Usage</h1>
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
+          {loading && (
+            <span role="status" className="text-muted-foreground text-xs">
+              Updating…
+            </span>
+          )}
+          <label htmlFor="billing-range" className="sr-only">
+            Time range for daily spend and cost drivers
+          </label>
           <select
-            className="bg-card border border-input rounded-md px-3 py-1.5 text-sm"
-            value={period}
-            onChange={(e) => setPeriod(e.target.value as typeof period)}
+            id="billing-range"
+            className="bg-card border-input rounded-md border px-3 py-1.5 text-sm"
+            value={range}
+            onChange={(e) => setRange(e.target.value as Range)}
           >
-            <option value="14d">Last 14 days</option>
-            <option value="30d">Last 30 days</option>
-            <option value="90d">Last 90 days</option>
-            <option value="1y">Last year</option>
+            {(Object.keys(RANGE_LABEL) as Range[]).map((r) => (
+              <option key={r} value={r}>
+                {RANGE_LABEL[r]}
+              </option>
+            ))}
           </select>
           <button
-            onClick={() => {
-              setEditBudget(null);
-              setShowBudgetModal(true);
-            }}
-            className="inline-flex items-center px-3 py-1.5 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-enclii-blue hover:bg-enclii-blue-dark"
+            type="button"
+            onClick={() => setShowBudgetModal(true)}
+            disabled={!!data?.budgets.error}
+            className="bg-enclii-blue hover:bg-enclii-blue-dark inline-flex items-center rounded-md border border-transparent px-3 py-1.5 text-sm font-medium text-white shadow-sm disabled:opacity-50"
           >
             {primaryBudget ? 'Edit budget' : 'Create budget'}
           </button>
         </div>
       </div>
 
-      {/* Hero: spend vs. budget */}
-      <div className="bg-card shadow rounded-lg p-6 mb-6">
-        <div className="flex items-center justify-between">
-          <div>
-            <p className="text-sm text-muted-foreground">Current-period spend</p>
-            {spendUnknown ? (
-              <>
-                <p className="text-3xl font-bold" data-testid="spend-unknown">
-                  Unknown
-                </p>
-                <p className="text-sm text-status-warning mt-1">
-                  {spendUnknown}
-                  {!spend.known && spend.status === 'stale' && (cost?.total_cents ?? 0) > 0
-                    ? ` (${formatCurrencyCents(cost?.total_cents ?? 0, primaryBudget?.currency ?? 'USD')} so far)`
-                    : ''}
-                </p>
-              </>
-            ) : (
-              <p className="text-3xl font-bold">
-                {formatCurrencyCents(cost?.total_cents ?? 0, primaryBudget?.currency ?? 'USD')}
-              </p>
-            )}
-          </div>
-          {primaryBudget && (
-            <div className="text-right">
-              <p className="text-sm text-muted-foreground">Budget ({primaryBudget.period})</p>
-              <p className="text-xl font-semibold">
-                {formatCurrencyCents(primaryBudget.amount_cents, primaryBudget.currency)}
-              </p>
-              <p className="text-sm text-muted-foreground mt-1">
-                {spendUnknown ? 'Consumption unknown' : `${pct}% consumed`}
-              </p>
-            </div>
-          )}
+      {data?.monthToDate.error || data?.budgets.error ? (
+        <div className="mb-6">
+          <SectionNotice
+            message={
+              data.monthToDate.error
+                ? `Couldn't load this month's spend: ${data.monthToDate.error}`
+                : `Couldn't load budgets: ${data.budgets.error}`
+            }
+            onRetry={retry}
+          />
         </div>
-        {primaryBudget && (
-          <div className="mt-6 relative">
-            <div className="h-3 w-full bg-muted rounded-full overflow-hidden">
-              <div
-                className={cn('h-full transition-all', barColor(pct))}
-                style={{ width: `${Math.min(pct, 100)}%` }}
-              />
-            </div>
-            {/* Threshold markers */}
-            {primaryBudget.alert_thresholds.map((t) => (
-              <div
-                key={t}
-                className="absolute top-0 h-3 w-px bg-foreground/30"
-                style={{ left: `${Math.min(t, 100)}%` }}
-                aria-label={`${t}% threshold marker`}
-                title={`${t}% alert threshold`}
-              />
-            ))}
-          </div>
-        )}
-      </div>
+      ) : null}
+      {!data?.monthToDate.error && (
+        <SpendHero monthToDate={monthToDate} budget={primaryBudget} comparison={comparison} />
+      )}
 
-      {/* Spend time-series */}
-      <div className="bg-card shadow rounded-lg p-6 mb-6">
-        <h2 className="text-sm font-medium text-muted-foreground mb-4">Daily spend</h2>
-        <div className="flex items-end gap-1 h-40">
-          {(series?.series ?? []).map((p) => {
-            const height = Math.max(2, Math.round((p.cost_cents / maxSeries) * 100));
-            return (
-              <div
-                key={p.bucket}
-                className="flex-1 bg-enclii-blue/60 hover:bg-enclii-blue transition-colors rounded-sm"
-                style={{ height: `${height}%` }}
-                title={`${new Date(p.bucket).toLocaleDateString()}: ${formatCurrencyCents(p.cost_cents)}`}
-              />
-            );
-          })}
+      {data?.series.error ? (
+        <div className="mb-6">
+          <SectionNotice message={`Couldn't load daily spend: ${data.series.error}`} onRetry={retry} />
         </div>
-      </div>
+      ) : (
+        <DailySpendChart series={data?.series.data ?? null} rangeLabel={rangeLabel} />
+      )}
 
-      {/* Top drivers */}
-      <div className="bg-card shadow rounded-lg p-6 mb-6">
-        <h2 className="text-sm font-medium text-muted-foreground mb-4">Top cost drivers</h2>
-        {(cost?.breakdown ?? []).length === 0 ? (
-          <p className="text-sm text-muted-foreground">No usage recorded in this period.</p>
-        ) : (
-          <ul className="space-y-2">
-            {(cost?.breakdown ?? []).slice(0, 5).map((entry) => (
-              <li
-                key={entry.key}
-                className="flex items-center justify-between border-b border-border/50 pb-2 last:border-0"
-              >
-                <span className="font-mono text-sm">{entry.key}</span>
-                <span className="font-medium">{formatCurrencyCents(entry.cost_cents)}</span>
-              </li>
-            ))}
-          </ul>
-        )}
-      </div>
+      {data?.drivers.error ? (
+        <div className="mb-6">
+          <SectionNotice message={`Couldn't load cost drivers: ${data.drivers.error}`} onRetry={retry} />
+        </div>
+      ) : (
+        <TopDrivers cost={data?.drivers.data ?? null} rangeLabel={rangeLabel} />
+      )}
 
-      {/* Alert history */}
-      <div className="bg-card shadow rounded-lg p-6">
-        <h2 className="text-sm font-medium text-muted-foreground mb-4">Recent alerts</h2>
-        {alerts.length === 0 ? (
-          <p className="text-sm text-muted-foreground">No threshold crossings recorded.</p>
-        ) : (
-          <div className="overflow-x-auto">
-            <table className="min-w-full divide-y divide-border">
-              <thead className="bg-muted/50">
-                <tr>
-                  <th className="px-3 py-2 text-left text-xs font-medium uppercase">When</th>
-                  <th className="px-3 py-2 text-left text-xs font-medium uppercase">Threshold</th>
-                  <th className="px-3 py-2 text-left text-xs font-medium uppercase">Actual</th>
-                  <th className="px-3 py-2 text-left text-xs font-medium uppercase">Budget</th>
-                  <th className="px-3 py-2 text-left text-xs font-medium uppercase">Status</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-border">
-                {alerts.map((a) => (
-                  <tr key={a.id}>
-                    <td className="px-3 py-2 text-sm text-muted-foreground whitespace-nowrap">
-                      {new Date(a.created_at).toLocaleString()}
-                    </td>
-                    <td className="px-3 py-2 text-sm">{a.threshold}%</td>
-                    <td className="px-3 py-2 text-sm font-mono">
-                      {formatCurrencyCents(a.actual_cents)}
-                    </td>
-                    <td className="px-3 py-2 text-sm font-mono">
-                      {formatCurrencyCents(a.budget_cents)}
-                    </td>
-                    <td className="px-3 py-2 text-sm">
-                      {a.dispatched_at ? (
-                        <span className="text-status-success-foreground">Delivered</span>
-                      ) : (
-                        <span className="text-status-warning-foreground">Pending</span>
-                      )}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
-      </div>
+      {data?.alerts.error ? (
+        <SectionNotice message={`Couldn't load alert history: ${data.alerts.error}`} onRetry={retry} />
+      ) : (
+        <AlertHistory alerts={data?.alerts.data ?? []} budgets={budgets} />
+      )}
 
       <BudgetModal
         open={showBudgetModal}
@@ -378,190 +287,5 @@ export default function ProjectBillingPage() {
         }}
       />
     </div>
-  );
-}
-
-// ---- Budget modal ----
-
-function BudgetModal({
-  open,
-  onClose,
-  slug,
-  existing,
-  onSaved,
-}: {
-  open: boolean;
-  onClose: () => void;
-  slug: string;
-  existing: Budget | null;
-  onSaved: () => void;
-}) {
-  const [amount, setAmount] = useState<string>(
-    existing ? (existing.amount_cents / 100).toString() : ''
-  );
-  const [period, setPeriod] = useState<Period>(existing?.period ?? 'monthly');
-  const [thresholds, setThresholds] = useState<string>(
-    existing?.alert_thresholds.join(',') ?? '50,80,100'
-  );
-  const [hardThrottle, setHardThrottle] = useState<boolean>(existing?.hard_throttle ?? true);
-  const [submitting, setSubmitting] = useState(false);
-  const [err, setErr] = useState<string | null>(null);
-
-  useEffect(() => {
-    if (!open) return;
-    setAmount(existing ? (existing.amount_cents / 100).toString() : '');
-    setPeriod(existing?.period ?? 'monthly');
-    setThresholds(existing?.alert_thresholds.join(',') ?? '50,80,100');
-    setHardThrottle(existing?.hard_throttle ?? true);
-    setErr(null);
-  }, [open, existing]);
-
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setSubmitting(true);
-    setErr(null);
-    try {
-      const parsedAmount = parseFloat(amount);
-      if (!Number.isFinite(parsedAmount) || parsedAmount <= 0) {
-        throw new Error('Amount must be a positive number');
-      }
-      const parsedThresholds = thresholds
-        .split(',')
-        .map((t) => Number.parseInt(t.trim(), 10))
-        .filter((n) => Number.isFinite(n) && n > 0);
-
-      if (existing) {
-        await apiPatch(`/v1/projects/${slug}/billing/budgets/${existing.id}`, {
-          amount_cents: Math.round(parsedAmount * 100),
-          alert_thresholds: parsedThresholds,
-          hard_throttle: hardThrottle,
-        });
-      } else {
-        await apiPost(`/v1/projects/${slug}/billing/budgets`, {
-          amount_cents: Math.round(parsedAmount * 100),
-          period,
-          alert_thresholds: parsedThresholds,
-          hard_throttle: hardThrottle,
-        });
-      }
-      onSaved();
-    } catch (error) {
-      setErr(error instanceof Error ? error.message : 'Failed to save budget');
-    } finally {
-      setSubmitting(false);
-    }
-  };
-
-  const handleDelete = async () => {
-    if (!existing) return;
-    if (!confirm('Delete this budget? Alerts and throttle will stop firing.')) return;
-    setSubmitting(true);
-    try {
-      await apiDelete(`/v1/projects/${slug}/billing/budgets/${existing.id}`);
-      onSaved();
-    } catch (error) {
-      setErr(error instanceof Error ? error.message : 'Failed to delete budget');
-    } finally {
-      setSubmitting(false);
-    }
-  };
-
-  return (
-    <Dialog open={open} onOpenChange={(v) => !v && onClose()}>
-      <DialogContent className="sm:max-w-md">
-        <DialogHeader>
-          <DialogTitle>{existing ? 'Edit budget' : 'Create budget'}</DialogTitle>
-          <DialogDescription>
-            Alerts fire at each threshold percentage. 100% auto-throttles deploys in non-production
-            environments (operator can clear the throttle).
-          </DialogDescription>
-        </DialogHeader>
-        <form onSubmit={handleSubmit} className="space-y-4">
-          <div>
-            <label className="block text-sm font-medium mb-1">Amount (USD)</label>
-            <input
-              type="number"
-              step="0.01"
-              required
-              value={amount}
-              onChange={(e) => setAmount(e.target.value)}
-              className="w-full px-3 py-2 border border-input rounded-md"
-            />
-          </div>
-
-          {!existing && (
-            <div>
-              <label className="block text-sm font-medium mb-1">Period</label>
-              <select
-                value={period}
-                onChange={(e) => setPeriod(e.target.value as Period)}
-                className="w-full px-3 py-2 border border-input rounded-md"
-              >
-                <option value="monthly">Monthly</option>
-                <option value="weekly">Weekly</option>
-                <option value="quarterly">Quarterly</option>
-              </select>
-            </div>
-          )}
-
-          <div>
-            <label className="block text-sm font-medium mb-1">Alert thresholds (%)</label>
-            <input
-              type="text"
-              value={thresholds}
-              onChange={(e) => setThresholds(e.target.value)}
-              placeholder="50,80,100"
-              className="w-full px-3 py-2 border border-input rounded-md"
-            />
-          </div>
-
-          <label className="flex items-center gap-2 text-sm">
-            <input
-              type="checkbox"
-              checked={hardThrottle}
-              onChange={(e) => setHardThrottle(e.target.checked)}
-            />
-            Auto-throttle non-production deploys at 100%
-          </label>
-
-          {err && (
-            <p className="text-sm text-status-error-foreground bg-status-error-muted p-2 rounded">
-              {err}
-            </p>
-          )}
-
-          <DialogFooter className="flex items-center justify-between">
-            {existing ? (
-              <button
-                type="button"
-                onClick={handleDelete}
-                disabled={submitting}
-                className="text-sm text-status-error-foreground hover:underline"
-              >
-                Delete budget
-              </button>
-            ) : (
-              <span />
-            )}
-            <div className="flex gap-2">
-              <button
-                type="button"
-                onClick={onClose}
-                className="px-3 py-1.5 text-sm bg-secondary text-secondary-foreground rounded-md"
-              >
-                Cancel
-              </button>
-              <button
-                type="submit"
-                disabled={submitting}
-                className="px-3 py-1.5 text-sm text-white bg-enclii-blue rounded-md disabled:opacity-50"
-              >
-                {submitting ? 'Saving…' : 'Save'}
-              </button>
-            </div>
-          </DialogFooter>
-        </form>
-      </DialogContent>
-    </Dialog>
   );
 }
