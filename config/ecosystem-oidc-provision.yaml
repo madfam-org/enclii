@@ -1245,7 +1245,9 @@ platforms:
   # native COGS MCP at POST /mcp on its own API host, read only in Phase A and
   # off until the owner flips its switch (M6). The first consumers are Selva's
   # agent fleet and the ops agents, ONE Janua machine client each per platform:
-  # twelve clients, client_credentials only, confidential, no browser leg,
+  # thirteen clients (twelve for six platforms, plus ops-agents-selva-cogs for
+  # Selva's own MCP, added 2026-11-08), client_credentials only, confidential,
+  # no browser leg,
   # exactly one scope each (the platform's `<platform>-cogs:read`, ONE colon,
   # because Janua registers only `namespace:action`).
   #
@@ -1254,22 +1256,23 @@ platforms:
   # are not Phase B's RFC 8707 `https://<api-host>/mcp` resources.
   #
   # ORG-BOUND to madfam-ecosystem (like karafiel-dhanam-cost-events): Pravara
-  # reads the tenant from tenant_id, Dhanam and Enclii refuse a token without
-  # org_id, Nauta admits only MADFAM's org, and Janua stamps those claims only
-  # on an org-bound client.
+  # reads the tenant from tenant_id, Dhanam, Enclii and Selva refuse a token
+  # without org_id, Nauta admits only MADFAM's org, and Janua stamps those
+  # claims only on an org-bound client.
   #
-  # The token alone is not enough on four of the six. After the first provision
-  # the owner binds the printed client id on the platform, then flips its
-  # switch (docs/runbooks/SECRET_INTAKE.md has the twelve commands, the pins,
-  # the bindings and the switches):
+  # The token alone is not enough on four of the seven. After the first
+  # provision the owner binds the printed client id on the platform, then flips
+  # its switch (docs/runbooks/SECRET_INTAKE.md has the thirteen commands, the
+  # pins, the bindings and the switches):
   #   dhanam         DHANAM_MCP_READ_CLIENTS += <client_id>@<organization_id>
   #   karafiel       SERVICE_CLIENT_RFC_BINDINGS += {"<client_id>": "<RFC>"}
   #   converge-dash  nothing more
   #   pravara        nothing more (tenant = the token's organization)
   #   nauta          NAUTA_MADFAM_JANUA_ORG_ID = <organization_id>
   #   enclii         ENCLII_MCP_ORG_IDS += <organization_id>
+  #   selva          nothing more (org = the token's org_id)
   #
-  # Provision only after the Janua image that RESERVES the six scopes is
+  # Provision only after the Janua image that RESERVES the seven scopes is
   # promoted (janua apps/api/app/core/reserved_oauth_boundaries.py): until
   # then any organization admin may register a client carrying them.
   #
@@ -1512,6 +1515,31 @@ platforms:
       organization_id: 1a6233ef-185f-43ee-9181-e2591fbb2643
       allowed_scopes:
         - enclii-cogs:read
+      grant_types:
+        - client_credentials
+
+  # Selva (selva-office#362). Audience selva-office, what nexus-api's
+  # verify_jwt checks (JANUA_CLIENT_ID; converge-dash-selva holds the same).
+  # The MCP admits a machine token only with selva-cogs:read AND an org_id
+  # claim, and reads the token's own org (any other `org` argument is
+  # refused), so org-bound to madfam-ecosystem reads MADFAM's inference usage.
+  # Ops agents ONLY: whether Selva's own fleet should read its own ledger
+  # (a selva-selva-cogs client) is an open owner question, so it is not
+  # declared here.
+  ops-agents-selva-cogs:
+    intake_target: ops-agents/selva-cogs-client
+    intake_key_map:
+      selva_cogs_client_id: client_id
+      selva_cogs_client_secret: client_secret  # pragma: allowlist secret
+    janua_client:
+      name: ops-agents-selva-cogs
+      client_key: ops-agents-selva-cogs  # pragma: allowlist secret
+      audience: selva-office
+      description: Machine client (client_credentials) for the MADFAM ops agents to read Selva's native COGS MCP (POST /mcp on Selva's nexus-api, selva-office#362), tool inference_usage (per-org monthly inference usage with a list-price estimate, never cost). Scope selva-cogs:read only. Org-bound to madfam-ecosystem; Selva requires an org_id claim and reads only that org.
+      is_confidential: true
+      organization_id: 1a6233ef-185f-43ee-9181-e2591fbb2643
+      allowed_scopes:
+        - selva-cogs:read
       grant_types:
         - client_credentials
 

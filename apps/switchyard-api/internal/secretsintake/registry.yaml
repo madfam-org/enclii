@@ -1767,8 +1767,9 @@ targets:
       disabled: true
 
   # COGS MCP consumers (2026-11-06, RFC 0051 ruling M3). The pairs of the
-  # twelve ecosystem-oidc platforms selva-<platform>-cogs and
-  # ops-agents-<platform>-cogs (scope <platform>-cogs:read, org-bound to
+  # thirteen ecosystem-oidc platforms selva-<platform>-cogs and
+  # ops-agents-<platform>-cogs (ops-agents-selva-cogs added 2026-11-08, with no
+  # selva-selva-cogs; scope <platform>-cogs:read, org-bound to
   # madfam-ecosystem), written ONLY by `enclii secrets provision oidc
   # --platform <id>`; no human types either value and nothing is generated
   # here. LOWERCASE keys <platform>_cogs_client_id / _client_secret.
@@ -1915,6 +1916,18 @@ targets:
     keys:
       - enclii_cogs_client_id
       - enclii_cogs_client_secret
+    generate:
+      disabled: true
+
+  # Ops agents → Selva (selva-office#362). Ops agents only: no selva/selva-cogs
+  # target until the owner rules whether Selva's own fleet reads its ledger.
+  ops-agents/selva-cogs-client:
+    label: Ops agents → Selva COGS MCP read client
+    description: Janua client_credentials pair (ops-agents-selva-cogs, scope selva-cogs:read, org-bound to madfam-ecosystem) the MADFAM ops agents use to read Selva's native COGS MCP (POST /mcp, RFC 0051). Filed by `enclii secrets provision oidc --platform ops-agents-selva-cogs`.
+    vault_path: secret/ops-agents
+    keys:
+      - selva_cogs_client_id
+      - selva_cogs_client_secret
     generate:
       disabled: true
 

@@ -948,6 +948,37 @@ func TestLoadRegistry_cogsMCPConsumerClients(t *testing.T) {
 		}
 	}
 
+	// Selva's own MCP (selva-office#362, audience selva-office): the ops agents
+	// only. A selva-selva-cogs client awaits an owner ruling.
+	p, ok := reg.Platforms["ops-agents-selva-cogs"]
+	require.True(t, ok, "platform ops-agents-selva-cogs missing")
+	assert.Equal(t, "ops-agents/selva-cogs-client", p.IntakeTarget)
+	assert.Empty(t, p.SessionIntakeTarget)
+	require.Equal(t, map[string]string{
+		"selva_cogs_client_id":     "client_id",
+		"selva_cogs_client_secret": "client_secret",
+	}, p.IntakeKeyMap)
+	jc := p.JanuaClient
+	assert.Equal(t, "ops-agents-selva-cogs", jc.Name)
+	assert.Equal(t, "ops-agents-selva-cogs", jc.ClientKey)
+	assert.Empty(t, jc.ClientID, "not pinned until the first provision prints it")
+	assert.Equal(t, "selva-office", jc.Audience, "nexus-api verify_jwt checks aud = JANUA_CLIENT_ID = selva-office")
+	assert.Equal(t, "1a6233ef-185f-43ee-9181-e2591fbb2643", jc.OrganizationID,
+		"Selva's MCP refuses a machine token without org_id")
+	assert.Equal(t, []string{"selva-cogs:read"}, jc.AllowedScopes)
+	assert.Equal(t, []string{"client_credentials"}, jc.GrantTypes)
+	assert.Empty(t, jc.RedirectURIs)
+	require.NotNil(t, jc.IsConfidential)
+	assert.True(t, jc.confidential())
+	assert.Contains(t, jc.Description, "selva-cogs:read only")
+	require.NoError(t, validatePlatform(p))
+	assert.Equal(t, map[string]string{
+		"selva_cogs_client_id":     "jnc_fixture",
+		"selva_cogs_client_secret": "fixture-secret",
+	}, buildIntakeValues(reg.Issuer, "jnc_fixture", "fixture-secret", p))
+	_, ok = reg.Platforms["selva-selva-cogs"]
+	assert.False(t, ok, "selva-selva-cogs awaits an owner ruling")
+
 	// Every client holding a COGS MCP read scope, as a sorted list: adding or
 	// removing a consumer must change this test.
 	var names []string
@@ -967,6 +998,7 @@ func TestLoadRegistry_cogsMCPConsumerClients(t *testing.T) {
 		"ops-agents-karafiel-cogs",
 		"ops-agents-nauta-cogs",
 		"ops-agents-pravara-cogs",
+		"ops-agents-selva-cogs",
 		"selva-converge-dash-cogs",
 		"selva-dhanam-cogs",
 		"selva-enclii-cogs",
@@ -992,7 +1024,7 @@ func TestReviewedRegistryGrantKindsDoNotDependOnTenant(t *testing.T) {
 		}
 	}
 	require.Equal(t, 25, humans)   // Includes the two isolated Karafiel staging login clients and the eight SSO wave 1 clients.
-	require.Equal(t, 31, machines) // Includes the twelve RFC 0051 COGS MCP consumer clients.
+	require.Equal(t, 32, machines) // Includes the thirteen RFC 0051 COGS MCP consumer clients.
 	p := reg.Platforms["selva-yantra4d"]
 	require.Empty(t, p.JanuaClient.OrganizationID)
 	kind, err := p.JanuaClient.kind()

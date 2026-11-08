@@ -617,7 +617,7 @@ path "secret/data/avala" {
 path "secret/metadata/avala" {
   capabilities = ["read", "list"]
 }
-# ops-agents — added 2026-11-06 with the six ops-agents/<platform>-cogs-client
+# ops-agents — added 2026-11-06 with the ops-agents/<platform>-cogs-client
 # intake targets (RFC 0051 M3: the ops agents' COGS MCP read clients), written
 # only by `enclii secrets provision oidc --platform ops-agents-<platform>-cogs`.
 # Exact path only. Merged in git is not applied in Vault: re-apply this policy

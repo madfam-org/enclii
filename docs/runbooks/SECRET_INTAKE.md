@@ -1,6 +1,6 @@
 # Secret Intake (chat-safe credential handoff)
 
-**Last Updated:** 2026-11-06
+**Last Updated:** 2026-11-08
 
 Isolated training and API-only Janua staging targets are documented in
 [Isolated training custody](ISOLATED_TRAINING_CUSTODY.md). These declarations
@@ -108,7 +108,7 @@ ESO sources: `enclii-secrets`, `janua-secrets`, `madfam-site-secrets`, `phynd-cr
 | `symbiosis-hcm/dhanam-writer-client` | `secret/symbiosis-hcm` | `dhanam_writer_client_id`, `dhanam_writer_client_secret`: **provisioned, never submitted** (`enclii secrets provision oidc --platform symbiosis-hcm-dhanam-writer`) |
 | `karafiel/dhanam-cost-events-client` | `secret/karafiel` | `dhanam_cost_events_client_id`, `dhanam_cost_events_client_secret`: **provisioned, never submitted** (`enclii secrets provision oidc --platform karafiel-dhanam-cost-events`) |
 | `selva/<platform>-cogs-client` (six: `converge-dash`, `dhanam`, `enclii`, `karafiel`, `nauta`, `pravara`) | `secret/selva` | `<platform>_cogs_client_id`, `<platform>_cogs_client_secret` (`converge-dash` → `converge_dash_…`): **provisioned, never submitted** (`enclii secrets provision oidc --platform selva-<platform>-cogs`; see [COGS MCP consumer clients](#cogs-mcp-consumer-clients-2026-11-06)) |
-| `ops-agents/<platform>-cogs-client` (the same six) | `secret/ops-agents` | the same keys: **provisioned, never submitted** (`enclii secrets provision oidc --platform ops-agents-<platform>-cogs`; same section) |
+| `ops-agents/<platform>-cogs-client` (the same six, plus `selva`) | `secret/ops-agents` | the same keys (`selva` → `selva_cogs_client_id`, `selva_cogs_client_secret`): **provisioned, never submitted** (`enclii secrets provision oidc --platform ops-agents-<platform>-cogs`; same section) |
 | `nauta/kalya-feed-tokens` | `secret/nauta` | `kalya_feed_tokens` |
 | `nauta/symbiosis-hcm-token` | `secret/nauta` | `symbiosis_hcm_token` |
 | `angelia/courier-producer-keys` | `secret/angelia` | `courier_producer_key_alarms`, `courier_producer_key_enclii_ops`, `courier_producer_key_tulana`, `courier_producer_key_madfam_site` |
@@ -455,7 +455,9 @@ grant's `clientId`.
 RFC 0051 ruling M3: the first consumers of each platform's native COGS MCP
 (`POST /mcp` on the platform's API host, read only, off until the owner flips
 its switch) are Selva's agent fleet and the ops agents, one Janua machine
-client each per platform. All twelve are confidential, `client_credentials`
+client each per platform, plus an ops-agents client for Selva's own MCP
+(selva-office#362; a `selva-selva-cogs` client for Selva's fleet awaits an
+owner ruling). All thirteen are confidential, `client_credentials`
 only, org-bound to `madfam-ecosystem`
 (`1a6233ef-185f-43ee-9181-e2591fbb2643`), and hold exactly one scope on the
 platform's existing API audience (Janua refuses `client_credentials` for a
@@ -475,6 +477,7 @@ protected resource, `invalid_target`).
 | `ops-agents-nauta-cogs` | `nauta-api` | `nauta-cogs:read` | `ops-agents/nauta-cogs-client` → `secret/ops-agents` | none (owner decision) |
 | `selva-enclii-cogs` | `janua.dev` | `enclii-cogs:read` | `selva/enclii-cogs-client` → `secret/selva` | `selva-enclii-cogs-client` (planned, selva-office) |
 | `ops-agents-enclii-cogs` | `janua.dev` | `enclii-cogs:read` | `ops-agents/enclii-cogs-client` → `secret/ops-agents` | none (owner decision) |
+| `ops-agents-selva-cogs` | `selva-office` | `selva-cogs:read` | `ops-agents/selva-cogs-client` → `secret/ops-agents` | none (owner decision) |
 
 `janua.dev` is switchyard-api's production `ENCLII_JANUA_AUDIENCE`, Janua's
 global default audience, so for Enclii the org allow-list and the exact scope
@@ -484,13 +487,13 @@ isolate the MCP, not the audience (enclii#945, «Audience caveat»).
 
 1. This registry is deployed: merging it redeploys switchyard-api with the
    new intake targets.
-2. The Janua image that reserves the six scopes (`dhanam-cogs:read`,
+2. The Janua image that reserves the seven scopes (`dhanam-cogs:read`,
    `karafiel-cogs:read`, `converge-dash-cogs:read`, `pravara-cogs:read`,
-   `nauta-cogs:read`, `enclii-cogs:read`) in
-   `apps/api/app/core/reserved_oauth_boundaries.py`, and lists these twelve
+   `nauta-cogs:read`, `enclii-cogs:read`, `selva-cogs:read`) in
+   `apps/api/app/core/reserved_oauth_boundaries.py`, and lists these thirteen
    edges in `tests/unit/core/test_ecosystem_machine_edges_reserved.py`, is
    promoted. Until then any organization admin may register a client
-   carrying them. On 2026-11-06 Janua's main reserves none of the six.
+   carrying them. On 2026-11-08 Janua's main reserves none of the seven.
 3. The platform's MCP is deployed with its switch off.
 4. For the `ops-agents-*` clients: the Vault policy is re-applied so
    Switchyard may write `secret/ops-agents`
@@ -516,6 +519,7 @@ enclii --profile admin secrets provision oidc --platform selva-nauta-cogs --regi
 enclii --profile admin secrets provision oidc --platform ops-agents-nauta-cogs --registry "$REG" --intake-profile default --json --reason "ops agents to nauta cogs mcp (RFC 0051 M3)"
 enclii --profile admin secrets provision oidc --platform selva-enclii-cogs --registry "$REG" --intake-profile default --json --reason "selva agent fleet to enclii cogs mcp (RFC 0051 M3)"
 enclii --profile admin secrets provision oidc --platform ops-agents-enclii-cogs --registry "$REG" --intake-profile default --json --reason "ops agents to enclii cogs mcp (RFC 0051 M3)"
+enclii --profile admin secrets provision oidc --platform ops-agents-selva-cogs --registry "$REG" --intake-profile default --json --reason "ops agents to selva cogs mcp (RFC 0051 M3)"
 ```
 
 Each run prints `client_id=jnc_… created=true intake=int_…`. **Pin** each
@@ -536,6 +540,7 @@ switch, M6):
 | Pravara MES (pravara-mes#69) | none: the tenant is the token's `tenant_id` (madfam-ecosystem), under RLS | `PRAVARA_MCP_ENABLED=true` |
 | Nauta (nauta#360) | `NAUTA_MADFAM_JANUA_ORG_ID=1a6233ef-185f-43ee-9181-e2591fbb2643` (once, for both clients). Not set in production today, and nauta's cockpit staff check (`grantsStaffAccess`, `apps/web/src/lib/env.ts`) reads the same variable, so setting it also admits people whose token carries that `org_id` | `NAUTA_MCP_ENABLED=true` |
 | Enclii (enclii#945) | `ENCLII_MCP_ORG_IDS` on switchyard-api includes `1a6233ef-185f-43ee-9181-e2591fbb2643` (once, for both clients) | `ENCLII_MCP_ENABLED=true` |
+| Selva (selva-office#362) | none: the MCP requires `selva-cogs:read` and an `org_id` claim, and reads only the token's org (madfam-ecosystem) | `SELVA_MCP_ENABLED=true` |
 
 **Delivery.** Selva's pairs are read by one dedicated ExternalSecret per pair
 (`selva-<platform>-cogs-client`, namespace `selva`), because ESO syncs each

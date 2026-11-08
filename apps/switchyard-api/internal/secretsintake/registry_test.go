@@ -13,7 +13,7 @@ import (
 func TestLoadRegistry(t *testing.T) {
 	reg, err := LoadRegistry()
 	require.NoError(t, err)
-	assert.Len(t, reg, 132)
+	assert.Len(t, reg, 133)
 	assert.Contains(t, reg, "ceq/vast-api-key")
 	assert.Contains(t, reg, "karafiel/web-oidc-janua")
 	adminSession := reg["karafiel/admin-session"]
@@ -38,7 +38,7 @@ func TestGetTarget(t *testing.T) {
 func TestListTargetsSorted(t *testing.T) {
 	list, err := ListTargets()
 	require.NoError(t, err)
-	require.Len(t, list, 132)
+	require.Len(t, list, 133)
 	for i := 1; i < len(list); i++ {
 		assert.Less(t, list[i-1].ID, list[i].ID, "targets should be sorted by id")
 	}
@@ -123,6 +123,7 @@ func TestListTargetsSorted(t *testing.T) {
 		"ops-agents/karafiel-cogs-client",
 		"ops-agents/nauta-cogs-client",
 		"ops-agents/pravara-cogs-client",
+		"ops-agents/selva-cogs-client",
 		"phynd-crm/convergence",
 		"phynd-crm/oidc-janua",
 		"platform/comms-resend-api-key",
@@ -1223,6 +1224,23 @@ func TestCogsMCPConsumerClientTargets(t *testing.T) {
 		}
 	}
 
+	// Selva's own MCP (selva-office#362): the ops agents only. Selva's fleet
+	// reading its own ledger (selva/selva-cogs-client) is an open owner
+	// question, so that target must not exist.
+	selvaOps, err := GetTarget("ops-agents/selva-cogs-client")
+	require.NoError(t, err)
+	assert.Equal(t, "secret/ops-agents", selvaOps.VaultPath)
+	assert.Empty(t, selvaOps.Namespace)
+	assert.Empty(t, selvaOps.ExternalSecret)
+	assert.Equal(t, []string{"selva_cogs_client_id", "selva_cogs_client_secret"}, selvaOps.Keys)
+	assert.Contains(t, selvaOps.Description, "selva-cogs:read")
+	assert.Contains(t, selvaOps.Description, "--platform ops-agents-selva-cogs`")
+	assert.NotEmpty(t, selvaOps.Label)
+	require.NotNil(t, selvaOps.Generate)
+	assert.True(t, selvaOps.Generate.Disabled, "a Janua credential is minted by Janua, never generated")
+	_, err = GetTarget("selva/selva-cogs-client")
+	assert.Error(t, err, "selva-selva-cogs awaits an owner ruling")
+
 	// Every target on secret/selva and on secret/ops-agents, sorted: a new one
 	// must be added here, and on one path no two share an ExternalSecret or a key.
 	reg, err := LoadRegistry()
@@ -1266,6 +1284,7 @@ func TestCogsMCPConsumerClientTargets(t *testing.T) {
 		"ops-agents/karafiel-cogs-client",
 		"ops-agents/nauta-cogs-client",
 		"ops-agents/pravara-cogs-client",
+		"ops-agents/selva-cogs-client",
 	}, onPath["secret/ops-agents"])
 	for _, name := range onPath["secret/selva"] {
 		if strings.HasSuffix(name, "-cogs-client") {
