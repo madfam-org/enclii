@@ -13,7 +13,7 @@ import (
 func TestLoadRegistry(t *testing.T) {
 	reg, err := LoadRegistry()
 	require.NoError(t, err)
-	assert.Len(t, reg, 120)
+	assert.Len(t, reg, 128)
 	assert.Contains(t, reg, "ceq/vast-api-key")
 	assert.Contains(t, reg, "karafiel/web-oidc-janua")
 	adminSession := reg["karafiel/admin-session"]
@@ -38,7 +38,7 @@ func TestGetTarget(t *testing.T) {
 func TestListTargetsSorted(t *testing.T) {
 	list, err := ListTargets()
 	require.NoError(t, err)
-	require.Len(t, list, 120)
+	require.Len(t, list, 128)
 	for i := 1; i < len(list); i++ {
 		assert.Less(t, list[i-1].ID, list[i].ID, "targets should be sorted by id")
 	}
@@ -80,6 +80,7 @@ func TestListTargetsSorted(t *testing.T) {
 		"data/pgbouncer-auth",
 		"dhanam/app-infra",
 		"dhanam/banxico",
+		"dhanam/billing-webhook-secret",
 		"dhanam/convergence",
 		"dhanam/karafiel-callback-secret",
 		"dhanam/oidc-janua",
@@ -109,12 +110,19 @@ func TestListTargetsSorted(t *testing.T) {
 		"karafiel/web-oidc-janua",
 		"lexidrop/oidc-janua",
 		"lexidrop/selva-inference",
+		"madfam-crawler/api-key-avala",
+		"madfam-crawler/api-key-forgesight",
+		"madfam-crawler/api-key-fortuna",
+		"madfam-crawler/api-key-rondelio",
+		"madfam-crawler/api-key-tezca",
+		"madfam-crawler/api-key-tulana",
 		"monitoring/alertmanager-smtp",
 		"monitoring/grafana-admin",
 		"nauta/internal-probe-key",
 		"nauta/kalya-feed-tokens",
 		"nauta/oidc-janua",
 		"nauta/oidc-janua-portal",
+		"nauta/phynd-crm-oauth",
 		"nauta/symbiosis-hcm-oauth",
 		"nauta/symbiosis-hcm-token",
 		"phynd-crm/convergence",
