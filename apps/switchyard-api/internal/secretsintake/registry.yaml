@@ -549,6 +549,24 @@ targets:
       - symbiosis_hcm_oauth_client_id
       - symbiosis_hcm_oauth_client_secret
 
+  # nauta → phynd-crm CRM reads (2026-11-09): the client_credentials pair for
+  # the nauta-phynd-crm edge (config/ecosystem-oidc-provision.yaml), written
+  # ONLY by `enclii secrets provision oidc --platform nauta-phynd-crm`. Its own
+  # ExternalSecret nauta-phynd-crm-oauth (nauta repo, spec only until this pair
+  # exists), so the unprovisioned pair never blocks another nauta Secret.
+  # Generation stays off: a random value here would not be a Janua credential.
+  nauta/phynd-crm-oauth:
+    label: Nauta cliente OAuth de phynd-crm (client_credentials)
+    description: Par id+secreto del cliente máquina org-bound (audience phynd-crm, scope phynd-crm-engagements:read) con el que nauta acuña tokens de lectura del CRM; lo escribe `enclii secrets provision oidc --platform nauta-phynd-crm`
+    vault_path: secret/nauta
+    namespace: nauta
+    external_secret: nauta-phynd-crm-oauth  # pragma: allowlist secret -- Kubernetes ExternalSecret object name; not a credential
+    keys:
+      - phynd_crm_oauth_client_id
+      - phynd_crm_oauth_client_secret
+    generate:
+      disabled: true
+
   janua/internal-api-key:
     label: Janua internal API key
     description: Shared internal key for service-to-service calls into janua-api (peer of enclii/internal-api-key)
@@ -1774,6 +1792,81 @@ targets:
     external_secret: dhanam-secrets-karafiel-callback  # pragma: allowlist secret
     keys:
       - karafiel_dhanam_signing_secret
+
+  # Dhanam credit-metering key (DHC-07, 2026-11-09). Dhanam verifies it, so it
+  # owns the one canonical copy at secret/dhanam; signers read it cross-path.
+  # Generation stays ON (default entropy): no person ever handles the value.
+  dhanam/billing-webhook-secret:
+    label: Dhanam credit-metering key
+    description: HMAC key for POST /v1/billing/credits/usage (X-Billing-Signature, hex HMAC-SHA256 of the raw body). Dhanam's api verifies it, first as BILLING_WEBHOOK_SECRET_NEXT and after promotion as BILLING_WEBHOOK_SECRET, projected by dhanam-billing-webhook. Signers read it cross-path through their own ExternalSecret (Karafiel through karafiel-dhanam-credit-signing, namespace karafiel). Mint server-side with --generate billing_webhook_secret, ONCE; a re-run rotates it.
+    vault_path: secret/dhanam
+    namespace: dhanam
+    external_secret: dhanam-billing-webhook  # pragma: allowlist secret
+    keys:
+      - billing_webhook_secret
+
+  # madfam-crawler per-caller API keys (2026-11-09, verifier-owns, cross-path
+  # read). madfam-crawler verifies these keys, so it owns the one canonical
+  # copy per caller at secret/madfam-crawler; each caller reads ITS OWN
+  # property cross-path through its own ExternalSecret. One key per target so
+  # `--generate api_key_<caller>` runs with no prompt. One ExternalSecret per
+  # caller on the madfam-crawler side (madfam-crawler-caller-key-<caller>,
+  # spec only until its key is minted) so a missing key for one caller never
+  # blocks another. LOWERCASE properties, to match the ExternalSecrets'
+  # `property:` fields. Generation stays ON (default entropy).
+  madfam-crawler/api-key-forgesight:
+    label: madfam-crawler API key for forgesight
+    description: Per-caller key crawler-api verifies for forgesight (CALLER_KEY_FORGESIGHT, attributed caller=forgesight). forgesight reads it cross-path via forgesight-crawler-credentials (namespace forgesight), so that copy changes in the same window. Mint server-side with --generate api_key_forgesight.
+    vault_path: secret/madfam-crawler
+    namespace: madfam-crawler
+    external_secret: madfam-crawler-caller-key-forgesight # pragma: allowlist secret -- Kubernetes ExternalSecret object name; not a credential
+    keys:
+      - api_key_forgesight
+
+  madfam-crawler/api-key-fortuna:
+    label: madfam-crawler API key for fortuna
+    description: Per-caller key crawler-api verifies for fortuna (CALLER_KEY_FORTUNA, attributed caller=fortuna). fortuna reads it cross-path via fortuna-secrets (namespace fortuna) once it moves off secret/fortuna:madfam_crawler_token. Mint server-side with --generate api_key_fortuna.
+    vault_path: secret/madfam-crawler
+    namespace: madfam-crawler
+    external_secret: madfam-crawler-caller-key-fortuna # pragma: allowlist secret -- Kubernetes ExternalSecret object name; not a credential
+    keys:
+      - api_key_fortuna
+
+  madfam-crawler/api-key-tulana:
+    label: madfam-crawler API key for tulana
+    description: Per-caller key crawler-api verifies for tulana (CALLER_KEY_TULANA, attributed caller=tulana). tulana reads it cross-path via tulana-secrets (namespace tulana) once it moves off secret/tulana:crawler_api_token / crawler_api_key. Mint server-side with --generate api_key_tulana.
+    vault_path: secret/madfam-crawler
+    namespace: madfam-crawler
+    external_secret: madfam-crawler-caller-key-tulana # pragma: allowlist secret -- Kubernetes ExternalSecret object name; not a credential
+    keys:
+      - api_key_tulana
+
+  madfam-crawler/api-key-rondelio:
+    label: madfam-crawler API key for rondelio
+    description: Per-caller key crawler-api verifies for rondelio (CALLER_KEY_RONDELIO, attributed caller=rondelio). rondelio reads it cross-path via rondelio-secrets (namespace rondelio, MADFAM_CRAWLER_TOKEN) once it moves off secret/rondelio:madfam_crawler_token. Mint server-side with --generate api_key_rondelio.
+    vault_path: secret/madfam-crawler
+    namespace: madfam-crawler
+    external_secret: madfam-crawler-caller-key-rondelio # pragma: allowlist secret -- Kubernetes ExternalSecret object name; not a credential
+    keys:
+      - api_key_rondelio
+
+  madfam-crawler/api-key-avala:
+    label: madfam-crawler API key for avala
+    description: Per-caller key crawler-api verifies for avala (CALLER_KEY_AVALA, attributed caller=avala). avala reads it cross-path through an ExternalSecret of its own (namespace avala, MADFAM_CRAWLER_TOKEN in avala-secrets today, no ExternalSecret yet). Mint server-side with --generate api_key_avala.
+    vault_path: secret/madfam-crawler
+    namespace: madfam-crawler
+    external_secret: madfam-crawler-caller-key-avala # pragma: allowlist secret -- Kubernetes ExternalSecret object name; not a credential
+    keys:
+      - api_key_avala
+
+  madfam-crawler/api-key-tezca:
+    label: madfam-crawler API key for tezca
+    description: Per-caller key crawler-api verifies for tezca (CALLER_KEY_TEZCA, attributed caller=tezca). tezca's worker reads it cross-path through an ExternalSecret of its own (namespace tezca, MADFAM_CRAWLER_TOKEN in tezca-secrets today, no ExternalSecret yet). Mint server-side with --generate api_key_tezca.
+    vault_path: secret/madfam-crawler
+    namespace: madfam-crawler
+    external_secret: madfam-crawler-caller-key-tezca # pragma: allowlist secret -- Kubernetes ExternalSecret object name; not a credential
+    keys:
+      - api_key_tezca
 
   # zavlo on Enclii (2026-10-21). zavlo-api (namespace zavlo) projects one
   # ExternalSecret per target below (zavlo repo, infra/k8s/production/
