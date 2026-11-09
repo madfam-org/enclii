@@ -72,9 +72,15 @@ ENV COSIGN_VERSION=v3.1.3
 # go get + go mod tidy + go build of cosign v3.1.3 succeed, and `go version -m`
 # shows x/net v0.62.0, x/text v0.43.0, x/mod v0.41.0, grpc v1.83.2,
 # compress v1.18.7, go-jose/v4 v4.1.6.
+# 2026-11-09: klauspost/compress floor raised v1.18.7 -> v1.20.2 for
+# GO-2026-6865 (fixed 1.20.2). enclii#942 raised the API module to 1.20.2,
+# but this independent cosign build still carried v1.18.7. compress v1.20.2
+# needs Go >= 1.25 and raises no other floor. apps/roundhouse/Dockerfile
+# carries the same floor set; tests/scripts/test_bundled_cosign_floors.py
+# fails CI when the two drift or a floor drops below its fixed version.
 RUN git clone --depth 1 -b "${COSIGN_VERSION}" https://github.com/sigstore/cosign /tmp/cosign-src && \
     cd /tmp/cosign-src && \
-    go get golang.org/x/text@v0.43.0 google.golang.org/grpc@v1.83.2 golang.org/x/mod@v0.41.0 golang.org/x/net@v0.62.0 github.com/klauspost/compress@v1.18.7 github.com/go-jose/go-jose/v4@v4.1.6 && \
+    go get golang.org/x/text@v0.43.0 google.golang.org/grpc@v1.83.2 golang.org/x/mod@v0.41.0 golang.org/x/net@v0.62.0 github.com/klauspost/compress@v1.20.2 github.com/go-jose/go-jose/v4@v4.1.6 && \
     go mod tidy && \
     CGO_ENABLED=0 go build -o /usr/local/bin/cosign ./cmd/cosign && \
     rm -rf /tmp/cosign-src

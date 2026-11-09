@@ -64,9 +64,16 @@ ENV COSIGN_VERSION=v3.1.3
 # repo's own modules to 1.83.2 — the bundled cosign carries its own copy.
 # cosign v3.1.3 (2026-08-06) is still the latest release and still pins
 # grpc v1.82.0, so the clone-and-`go get` pattern stays.
+# 2026-11-09: re-synced to apps/switchyard-api/Dockerfile, which had moved on
+# without this copy: x/text v0.41.0 -> v0.43.0 and x/mod v0.40.0 -> v0.41.0
+# (required by x/net v0.62.0), plus the floors this stage never had:
+# golang.org/x/net v0.62.0 (CVE-2026-78661), github.com/klauspost/compress
+# v1.20.2 (GO-2026-6865) and github.com/go-jose/go-jose/v4 v4.1.6
+# (CVE-2026-116587). tests/scripts/test_bundled_cosign_floors.py now fails
+# CI when the two Dockerfiles drift, so this comment is no longer the guard.
 RUN git clone --depth 1 -b "${COSIGN_VERSION}" https://github.com/sigstore/cosign /tmp/cosign-src && \
     cd /tmp/cosign-src && \
-    go get golang.org/x/text@v0.41.0 google.golang.org/grpc@v1.83.2 golang.org/x/mod@v0.40.0 && \
+    go get golang.org/x/text@v0.43.0 google.golang.org/grpc@v1.83.2 golang.org/x/mod@v0.41.0 golang.org/x/net@v0.62.0 github.com/klauspost/compress@v1.20.2 github.com/go-jose/go-jose/v4@v4.1.6 && \
     go mod tidy && \
     CGO_ENABLED=0 go build -o /usr/local/bin/cosign ./cmd/cosign && \
     rm -rf /tmp/cosign-src
