@@ -512,7 +512,7 @@ func TestRunJobsRunOnce_SendsImageWhenSet(t *testing.T) {
 		APIToken:    "test-token",
 	}
 
-	err := runJobsRunOnce(cfg, "my-api", "schema-check", "migrate status", "550e8400-e29b-41d4-a716-446655440001", "migrate/migrate:v4", 300)
+	err := runJobsRunOnce(cfg, "my-api", "schema-check", "migrate status", "550e8400-e29b-41d4-a716-446655440001", "migrate/migrate:v4", 300, "")
 	require.NoError(t, err)
 }
 
@@ -534,6 +534,6 @@ func TestRunJobsRunOnce_OmitsImageWhenEmpty(t *testing.T) {
 		APIToken:    "test-token",
 	}
 
-	err := runJobsRunOnce(cfg, "my-api", "db-migrate", "rails db:migrate", "550e8400-e29b-41d4-a716-446655440001", "", 300)
+	err := runJobsRunOnce(cfg, "my-api", "db-migrate", "rails db:migrate", "550e8400-e29b-41d4-a716-446655440001", "", 300, "")
 	require.NoError(t, err)
 }

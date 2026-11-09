@@ -96,7 +96,7 @@ var cronJobRunSelectColumns = []string{
 var oneOffJobSelectColumns = []string{
 	"id", "project_id", "service_id", "name", "command", "image",
 	"timeout", "run_at", "status", "exit_code", "failure_reason",
-	"created_at", "started_at", "ended_at",
+	"created_at", "started_at", "ended_at", "network_identity",
 }
 
 // --- CreateCronJob ---
@@ -728,8 +728,8 @@ func TestListOneOffJobs_Success(t *testing.T) {
 
 	// Mock: OneOffJobs.ListByProject (bounded at 50, newest first)
 	rows := sqlmock.NewRows(oneOffJobSelectColumns).
-		AddRow(uuid.New(), projectID, serviceID, "db-migrate", "rails db:migrate", sql.NullString{Valid: false}, 300, nil, "completed", int64(0), "", now, now, now).
-		AddRow(uuid.New(), projectID, serviceID, "seed-data", "./seed.sh", sql.NullString{String: "node:20", Valid: true}, 600, nil, "pending", nil, "", now, nil, nil)
+		AddRow(uuid.New(), projectID, serviceID, "db-migrate", "rails db:migrate", sql.NullString{Valid: false}, 300, nil, "completed", int64(0), "", now, now, now, "").
+		AddRow(uuid.New(), projectID, serviceID, "seed-data", "./seed.sh", sql.NullString{String: "node:20", Valid: true}, 600, nil, "pending", nil, "", now, nil, nil, "")
 
 	mock.ExpectQuery(`SELECT id, project_id, service_id, name, command, image`).
 		WithArgs(projectID, 50, 0).
@@ -826,7 +826,7 @@ func TestGetOneOffJob_Success(t *testing.T) {
 	mock.ExpectQuery(`SELECT id, project_id, service_id, name, command, image`).
 		WithArgs(jobID).
 		WillReturnRows(sqlmock.NewRows(oneOffJobSelectColumns).
-			AddRow(jobID, projectID, serviceID, "db-migrate", "rails db:migrate", sql.NullString{Valid: false}, 300, nil, "completed", exitCode, "", now, now, now))
+			AddRow(jobID, projectID, serviceID, "db-migrate", "rails db:migrate", sql.NullString{Valid: false}, 300, nil, "completed", exitCode, "", now, now, now, ""))
 
 	// Mock: Projects.GetByID (namespace == project slug)
 	mock.ExpectQuery(`SELECT id, name, slug, ci_runner_mode, created_at, updated_at FROM projects WHERE id`).
@@ -910,7 +910,7 @@ func expectOneOffJobLookup(mock sqlmock.Sqlmock, jobID, projectID, serviceID uui
 	mock.ExpectQuery(`SELECT id, project_id, service_id, name, command, image`).
 		WithArgs(jobID).
 		WillReturnRows(sqlmock.NewRows(oneOffJobSelectColumns).
-			AddRow(jobID, projectID, serviceID, "db-migrate", "rails db:migrate", sql.NullString{Valid: false}, 300, nil, status, exitCode, "", now, nil, nil))
+			AddRow(jobID, projectID, serviceID, "db-migrate", "rails db:migrate", sql.NullString{Valid: false}, 300, nil, status, exitCode, "", now, nil, nil, ""))
 
 	mock.ExpectQuery(`SELECT id, name, slug, ci_runner_mode, created_at, updated_at FROM projects WHERE id`).
 		WithArgs(projectID).
@@ -974,7 +974,7 @@ func TestGetOneOffJobLogs_AdmissionFailureReasonSurfaced(t *testing.T) {
 		WithArgs(jobID).
 		WillReturnRows(sqlmock.NewRows(oneOffJobSelectColumns).
 			AddRow(jobID, projectID, uuid.New(), "db-migrate", "rails db:migrate",
-				sql.NullString{Valid: false}, 300, nil, "failed", nil, reason, now, nil, now))
+				sql.NullString{Valid: false}, 300, nil, "failed", nil, reason, now, nil, now, ""))
 
 	mock.ExpectQuery(`SELECT id, name, slug, ci_runner_mode, created_at, updated_at FROM projects WHERE id`).
 		WithArgs(projectID).
