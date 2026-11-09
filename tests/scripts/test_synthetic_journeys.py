@@ -389,9 +389,12 @@ def test_the_d6_gate_is_recorded_not_paged():
     assert 'synthetic_journey_success{job="journeys", env="staging"}' in fresh
     assert "< bool 2700" in fresh, "a runner silent for 45 minutes is not green"
     gate_expr = records["synthetic_journey:gate_green_7d"]["expr"]
-    assert "min_over_time(synthetic_journey:green_and_fresh[7d])" in gate_expr
-    # 99 % of 7 days at the group's 30 s interval: 0.99 * 7 * 24 * 120.
-    assert f">= bool {int(0.99 * 7 * 24 * 120)}" in gate_expr
+    # A 5-minute subquery: a red run reads 0 for its whole 15-minute slot, so
+    # it is always seen, and the window stays at 2016 points.
+    assert "min_over_time(synthetic_journey:green_and_fresh[7d:5m])" in gate_expr
+    assert "count_over_time(synthetic_journey:green_and_fresh[7d:5m])" in gate_expr
+    # 99 % of 7 days of 5-minute points: 0.99 * 7 * 24 * 12.
+    assert f">= bool {int(0.99 * 7 * 24 * 12)}" in gate_expr
 
 
 def test_prometheus_keeps_more_than_the_gate_window():
