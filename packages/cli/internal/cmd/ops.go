@@ -27,6 +27,7 @@ once the server-side adapter supports the operation.`,
 	cmd.AddCommand(newOpsPodsCommand(cfg))
 	cmd.AddCommand(newOpsJobsCommand(cfg))
 	cmd.AddCommand(newOpsStorageCommand(cfg))
+	cmd.AddCommand(newOpsAddonsCommand(cfg))
 	cmd.AddCommand(newOpsSecretsCommand(cfg))
 	cmd.AddCommand(newOpsPolicyCommand(cfg))
 	cmd.AddCommand(newOpsRunnersCommand(cfg))
@@ -115,6 +116,7 @@ func newOpsAppsCommand(cfg *config.Config) *cobra.Command {
 	cmd.AddCommand(newOpsActionCommand(cfg, "apps", "retire", "Retire an Argo application without routine kubectl access"))
 	cmd.AddCommand(newOpsActionCommand(cfg, "apps", "rollback", "Rollback an application to a known revision"))
 	cmd.AddCommand(newOpsAppsTrackingCommand(cfg))
+	cmd.AddCommand(newJanuaStagingIntentCommand(cfg))
 	return cmd
 }
 
@@ -164,6 +166,7 @@ func newOpsJobsCommand(cfg *config.Config) *cobra.Command {
 	cmd := &cobra.Command{Use: "jobs", Short: "CronJob inspection and audited triggers"}
 	cmd.AddCommand(newOpsReadCommand(cfg, "jobs", "list", "List Kubernetes CronJobs through Enclii"))
 	cmd.AddCommand(newOpsJobsSuspendCommand(cfg))
+	cmd.AddCommand(newOpsGenerationReadCommand(cfg))
 	cmd.AddCommand(newOpsActionCommand(cfg, "jobs", "trigger", "Trigger an existing CronJob once from its live template"))
 	return cmd
 }
@@ -176,7 +179,7 @@ func newOpsStorageCommand(cfg *config.Config) *cobra.Command {
 	cmd.AddCommand(newOpsReadCommand(cfg, "storage", "r2-audit", "Audit R2 credentials: incomplete, shared, or mismatched buckets"))
 	cmd.AddCommand(newOpsActionCommand(cfg, "storage", "repair-plan", "Generate or apply a storage repair plan"))
 	cmd.AddCommand(newOpsActionCommand(cfg, "storage", "settings-apply", "Apply Longhorn CPU settings from helm values (GA O-5)"))
-	cmd.AddCommand(newOpsActionCommand(cfg, "storage", "prune-detached", "Delete detached Longhorn orphan volumes (GA O-4)"))
+	cmd.AddCommand(newOpsStoragePruneDetachedCommand(cfg))
 	cmd.AddCommand(newOpsActionCommand(cfg, "storage", "storageclass-apply", "Create missing Longhorn StorageClasses (GA storage reconcile)"))
 	return cmd
 }

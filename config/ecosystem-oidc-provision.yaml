@@ -1,6 +1,6 @@
 # MADFAM ecosystem OIDC auto-provision registry
 # Consumed by: enclii secrets provision oidc
-# Last Updated: 2026-10-13
+# Last Updated: 2026-11-02
 #
 # TWO COPIES, ONE CONTENT. The CLI embeds
 # packages/cli/internal/ecosystemoidc/data/ecosystem-oidc-provision.yaml (go:embed
@@ -19,20 +19,61 @@
 # intake_target: the provisioner registers or reconciles the client and prints
 # the client_id, which the consumer pins in its own janua.client.yaml. It never
 # resolves, rotates or intakes a secret for them.
+#
+# CANONICAL SOURCE (owner decision D5, 2026-10-27). This registry is the one
+# declaration of every MADFAM product client. Janua's own seed scripts keep
+# only Janua's core clients and must not create or overwrite the clients
+# below; a seed that re-syncs allowed_scopes on a product client drops every
+# grant that is not in the seed.
+#
+# FIRST-PARTY SILENT SSO (owner decision D2, 2026-10-27). Every CONFIDENTIAL
+# first-party browser login client lists `madfam:silent_auth`. Janua treats a
+# client as first-party when it is active, confidential and either carries
+# that scope or has a `selva-office*` / `madfam-*` name; a first-party client
+# may use `prompt=none` against the shared Janua session and skips the consent
+# screen. Janua ignores the scope on a PUBLIC client (no secret, so no silent
+# issuance), so public clients do not list it. Machine clients, the isolated
+# staging clients and crea-sim-mcp do not list it either.
+#
+# APPLYING IT. `madfam:silent_auth` is a reserved Janua scope: adding it, and
+# every later edit or secret rotation of a client that holds it, needs a Janua
+# platform-admin session. The provisioner's admin path PATCHes redirect_uris,
+# allowed_scopes, grant_types and audience WHOLESALE to this declaration, so
+# read the live row first with `enclii secrets provision oidc inspect
+# --platform <id> --json`; a scope granted in Janua but missing here is removed
+# by the next run. There is no post-logout field: Janua's RP-Initiated Logout
+# accepts an exact registered redirect URI or the origin root of one.
 
 issuer: https://auth.madfam.io
 
 platforms:
+  # ---------------------------------------------------------------------------
+  # Dhanam web (app.dhan.am, admin.dhan.am). Reconciled 2026-10-27 with what the
+  # app does and with the client id the app ships: the web signs in through
+  # @janua/react-sdk, which runs authorization_code + PKCE in the BROWSER and
+  # exchanges the code without a client secret (dhanam apps/web
+  # src/lib/providers.tsx, apps/web/.env.production). Janua's token endpoint
+  # refuses a confidential client that sends no secret, so the working row is a
+  # PUBLIC client. This entry used to say confidential `Dhanam`; Janua's legacy
+  # seeds call the same pinned id `dhanam-web`, non-confidential.
+  #
+  # Public means Dhanam cannot use silent SSO until its exchange moves to a
+  # server-side (confidential) callback. The pin makes a wrong name or
+  # confidentiality fail closed: the provisioner refuses before any PATCH.
+  # Inspect the live row first. Do NOT run a provision for this platform
+  # without review: session_intake_target re-mints SESSION_SECRET and
+  # NEXTAUTH_SECRET on every run.
+  # ---------------------------------------------------------------------------
   dhanam:
     intake_target: dhanam/oidc-janua
     session_intake_target: dhanam/session-auth
     janua_client:
-      name: Dhanam
+      name: dhanam-web
       client_key: dhanam
       audience: dhanam-api
       client_id: jnc_uE2zp9ume_Fd6jMl1elL6wqjiECM711t
-      description: Dhanam wealth platform — production OIDC confidential client
-      is_confidential: true
+      description: Dhanam web and admin — public browser PKCE login client, no secret
+      is_confidential: false
       website_url: https://app.dhan.am
       redirect_uris:
         - https://app.dhan.am/auth/callback
@@ -69,9 +110,46 @@ platforms:
         - profile
         - email
         - offline_access
+        - madfam:silent_auth
       grant_types:
         - authorization_code
         - refresh_token
+
+  karafiel-staging-web:
+    intake_target: karafiel-staging/web-oidc
+    intake_key_map:
+      web_oidc_client_id: client_id
+      web_janua_secret_key: client_secret
+      web_oidc_issuer: issuer
+    janua_client:
+      name: Karafiel Staging Web
+      client_key: karafiel-staging-web # pragma: allowlist secret -- public OAuth client-key alias; not a client credential
+      audience: karafiel-staging-api
+      description: Isolated staging web client; no production callbacks or audience aliases
+      is_confidential: true
+      website_url: https://staging-app.karafiel.mx
+      redirect_uris:
+        - https://staging-app.karafiel.mx/api/auth/callback
+      allowed_scopes: [openid, profile, email, offline_access]
+      grant_types: [authorization_code, refresh_token]
+
+  karafiel-staging-admin:
+    intake_target: karafiel-staging/admin-oidc
+    intake_key_map:
+      admin_oidc_client_id: client_id
+      admin_janua_secret_key: client_secret
+      admin_oidc_issuer: issuer
+    janua_client:
+      name: Karafiel Staging Admin
+      client_key: karafiel-staging-admin # pragma: allowlist secret -- public OAuth client-key alias; not a client credential
+      audience: karafiel-staging-api
+      description: Isolated staging admin client; no production callbacks or audience aliases
+      is_confidential: true
+      website_url: https://staging-admin.karafiel.mx
+      redirect_uris:
+        - https://staging-admin.karafiel.mx/api/auth/callback
+      allowed_scopes: [openid, profile, email, offline_access]
+      grant_types: [authorization_code, refresh_token]
 
   phynd-crm:
     intake_target: phynd-crm/oidc-janua
@@ -90,6 +168,7 @@ platforms:
         - profile
         - email
         - offline_access
+        - madfam:silent_auth
       grant_types:
         - authorization_code
         - refresh_token
@@ -113,6 +192,7 @@ platforms:
         - profile
         - email
         - offline_access
+        - madfam:silent_auth
       grant_types:
         - authorization_code
         - refresh_token
@@ -169,6 +249,7 @@ platforms:
         - profile
         - email
         - offline_access
+        - madfam:silent_auth
       grant_types:
         - authorization_code
         - refresh_token
@@ -198,6 +279,7 @@ platforms:
         - profile
         - email
         - offline_access
+        - madfam:silent_auth
       grant_types:
         - authorization_code
         - refresh_token
@@ -228,6 +310,7 @@ platforms:
         - profile
         - email
         - offline_access
+        - madfam:silent_auth
       grant_types:
         - authorization_code
         - refresh_token
@@ -274,6 +357,45 @@ platforms:
       organization_id: e6cbd51d-8329-4c4e-8c74-aba643ab4575
       allowed_scopes:
         - hcm:hr
+      grant_types:
+        - client_credentials
+
+  # ---------------------------------------------------------------------------
+  # nauta → phynd-crm CRM reads (2026-11-09, machine edge). Replaces phynd's
+  # static FEDERATION_API_TOKEN for nauta: that bearer carries write scopes for
+  # any tenant, and nauta only reads. One edge, one client, one scope.
+  #
+  # phynd-crm (apps/web/src/lib/trpc/machine-auth.ts) accepts an RS256 token
+  # with aud `phynd-crm` (PHYND_CRM_MACHINE_AUDIENCE), token_use
+  # client_credentials and scope `phynd-crm-engagements:read`, which it maps to
+  # engagements:read + contacts:read only (MACHINE_SCOPE_GRANTS). It pins the
+  # token's org_id to PHYND_CRM_MACHINE_JANUA_ORG_ID and the tenant to
+  # PHYND_CRM_MACHINE_TENANT_ID, so this client MUST be org-bound to that same
+  # organization (madfam-ecosystem). Off in phynd until both are set.
+  #
+  # Janua reserves the audience and the scope (janua
+  # reserved_oauth_boundaries.py, PHYND_CRM_SCOPES). Provision only after the
+  # Janua image that reserves them is promoted.
+  #
+  # The pair lands at secret/nauta through nauta/phynd-crm-oauth (LOWERCASE
+  # keys), read by nauta's DEDICATED nauta-phynd-crm-oauth ExternalSecret.
+  # NOT pinned yet: the first provision run CREATES the client and prints its
+  # jnc_… id; pin it here (both copies).
+  # ---------------------------------------------------------------------------
+  nauta-phynd-crm:
+    intake_target: nauta/phynd-crm-oauth
+    intake_key_map:
+      phynd_crm_oauth_client_id: client_id
+      phynd_crm_oauth_client_secret: client_secret  # pragma: allowlist secret
+    janua_client:
+      name: Nauta → Phynd CRM (service)
+      client_key: nauta-phynd-crm  # pragma: allowlist secret
+      audience: phynd-crm
+      description: Machine edge (client_credentials) from nauta's cockpit CRM reads to phynd-crm tRPC. Org-bound to madfam-ecosystem, scope phynd-crm-engagements:read only (engagements + contacts read). Replaces the static federation bearer for nauta. Never a browser login.
+      is_confidential: true
+      organization_id: 1a6233ef-185f-43ee-9181-e2591fbb2643
+      allowed_scopes:
+        - phynd-crm-engagements:read
       grant_types:
         - client_credentials
 
@@ -353,6 +475,7 @@ platforms:
         - profile
         - email
         - offline_access
+        - madfam:silent_auth
       grant_types:
         - authorization_code
         - refresh_token
@@ -446,6 +569,7 @@ platforms:
         - email
         - profile
         - offline_access
+        - madfam:silent_auth
       grant_types:
         - authorization_code
         - refresh_token
@@ -474,13 +598,16 @@ platforms:
   # access and refresh tokens (falling back to the global audience only when it
   # is unset), so the session the web holds is directly usable at the API.
   #
-  # allowed_scopes is EXACTLY the web's request, `openid profile email fh:read
-  # fh:write`: the API enforces fh:read on GET/HEAD/OPTIONS and fh:write on every
-  # other method. fh:admin and fh:export are deliberately absent. allowed_scopes
-  # is a client-level grant, so anything listed here any user of this client
-  # could request. offline_access is absent too: Janua issues a refresh token on
-  # every authorization-code exchange without it, and the refresh_token grant is
-  # gated by grant_types alone.
+  # allowed_scopes is exactly `openid profile email fh:read fh:write`: the API
+  # enforces fh:read on GET/HEAD/OPTIONS and fh:write on every other method.
+  # fh:admin and fh:export are deliberately absent. allowed_scopes is a
+  # client-level grant, so anything listed here any user of this client could
+  # request. The web's request is `openid profile email offline_access fh:read
+  # fh:write`; offline_access is still not listed: Janua issues a refresh token
+  # on every authorization-code exchange without it, the refresh_token grant is
+  # gated by grant_types alone, and when allowed_scopes is enforced on the
+  # authorization-code flow the OIDC identity scopes (openid, profile, email,
+  # offline_access) stay grantable to every end-user sign-in.
   #
   # BOTH the id and the secret go to Vault (target family-history/web-oidc,
   # lowercase to match what Vault stores), nauta-style: the family-history
@@ -517,6 +644,7 @@ platforms:
         - email
         - fh:read
         - fh:write
+        - madfam:silent_auth
       grant_types:
         - authorization_code
         - refresh_token
@@ -583,6 +711,79 @@ platforms:
         - profile
         - email
         - offline_access
+        - madfam:silent_auth
+      grant_types:
+        - authorization_code
+        - refresh_token
+
+  # ---------------------------------------------------------------------------
+  # cv-app — the cv web at cv-app.madfam.io (landing cv.madfam.io, API
+  # cv-api.madfam.io; one Enclii project and service `cv`, namespace cv; repo
+  # madfam-org/ai-portfolio-builder). A CONFIDENTIAL login client: Auth.js
+  # (provider id `janua`) runs authorization_code + PKCE (S256) server-side
+  # and holds the secret, so browsers never see it. PKCE is a per-request
+  # property of the flow, not a client field, so nothing here declares it.
+  # Auth.js, not @madfam/janua-next: the repository is public and must install
+  # from public npm without credentials (the voxa precedent; R45 names the
+  # Auth.js provider as the documented alternative), and janua-next ships no
+  # authorization-code callback.
+  #
+  # ONE redirect URI, exact byte for byte (Janua compares scheme, host, port
+  # and path): Auth.js's callback for provider id `janua` on the app host.
+  # Deliberately NO localhost callback (the family-history-web rule): local
+  # development registers its own client.
+  #
+  # Post-logout https://cv-app.madfam.io/ needs no field: Janua's RP-Initiated
+  # Logout (validate_post_logout_redirect_uri) accepts an exact registered
+  # redirect URI OR the origin root of one, so the callback below admits
+  # https://cv-app.madfam.io/ and nothing on any other host. No allowed-origins
+  # field either: the code exchange is server-to-server, so the browser never
+  # calls Janua cross-origin.
+  #
+  # audience `cv-api` is what cv-api.madfam.io validates bearers against
+  # (RS256 via Janua's JWKS): Janua stamps the client's `audience` as `aud` on
+  # the authorization-code access and refresh tokens, so the session the web
+  # holds is directly usable at the API. This registry has no separate
+  # resource-server record; the audience on this client IS the API's
+  # registration. Scopes are the identity set the other Auth.js login clients
+  # carry (nauta, telesia, lexidrop, cotiza-web); the API authorizes by
+  # audience plus row ownership (Janua `sub`), so no cv:* scope exists yet.
+  #
+  # BOTH the id and the secret go to Vault (target cv/web-oidc, lowercase, as
+  # Vault stores them), family-history-style: the planned cv-web-auth
+  # ExternalSecret maps `property: auth_janua_client_id` -> AUTH_JANUA_CLIENT_ID
+  # and `property: auth_janua_client_secret` -> AUTH_JANUA_CLIENT_SECRET, so the
+  # id stays out of the public repo. AUTH_SECRET is NOT minted here: it has its
+  # own target, cv/web-session (`--generate auth_secret`, ruling R42).
+  # session_intake_target is deliberately unset — it would re-mint the session
+  # secret on every provision re-run and sign every user out.
+  #
+  # NOT pinned with a client_id: the client does not exist yet, so the first
+  # run CREATES it, as a Janua admin (`--profile admin`). Pin the printed jnc_…
+  # id here (both copies) after that run so later runs reconcile instead of
+  # creating a duplicate.
+  # ---------------------------------------------------------------------------
+  cv-app:
+    intake_target: cv/web-oidc
+    intake_key_map:
+      auth_janua_client_id: client_id
+      auth_janua_client_secret: client_secret  # pragma: allowlist secret
+    janua_client:
+      client_id: jnc_M08TqJZOCUeW5M03YXjMtXxFrogxmI6X
+      name: MADFAM CV
+      client_key: cv-app  # pragma: allowlist secret
+      audience: cv-api
+      description: cv web (cv-app.madfam.io) — confidential OIDC authorization-code + PKCE client for Auth.js
+      is_confidential: true
+      website_url: https://cv.madfam.io
+      redirect_uris:
+        - https://cv-app.madfam.io/api/auth/callback/janua
+      allowed_scopes:
+        - openid
+        - profile
+        - email
+        - offline_access
+        - madfam:silent_auth
       grant_types:
         - authorization_code
         - refresh_token
@@ -889,6 +1090,222 @@ platforms:
       grant_types:
         - client_credentials
 
+  # ---------------------------------------------------------------------------
+  # cv → Symbiosis-HCM market benchmarks (2026-10-22). MADFAM CV's server asks
+  # HCM's GET /api/v1/market-benchmarks/ for the public ENOE (INEGI) income
+  # range of a saved job's occupation and state. One edge, one client, one
+  # scope: client_credentials only, scope hcm-benchmarks:read, no browser leg.
+  #
+  # audience `symbiosis-hcm` is HCM's own JANUA_AUDIENCE (the audience the
+  # nauta-symbiosis-hcm edge already holds). PLATFORM-ADMIN, no
+  # organization_id: the benchmark is public official data and reads no
+  # tenant, and an org binding would put an org_id (and, per Janua #595, the
+  # scope as an app role) on a token that must carry no tenant at all. HCM
+  # authorizes it by token_use=client_credentials + the `scope` claim + an
+  # allowlist of client ids (MARKET_BENCHMARK_CLIENT_IDS in its
+  # api-deployment.yaml), never by a role, so the scope grants nothing else.
+  # The scope has ONE colon because Janua registers only `namespace:action`.
+  # Registering a client_credentials client without an organization needs a
+  # Janua platform-admin session.
+  #
+  # The pair lands at secret/cv through cv/hcm-client (LOWERCASE keys), read
+  # by cv's dedicated cv-hcm-client ExternalSecret (ai-portfolio-builder
+  # infra/k8s/production/externalsecret-hcm-client.yaml).
+  #
+  # Pinned 2026-10-22 from the first provision run (intake
+  # int_1792708658731498229); the same id is in HCM's
+  # MARKET_BENCHMARK_CLIENT_IDS.
+  # ---------------------------------------------------------------------------
+  cv-hcm-benchmarks:
+    intake_target: cv/hcm-client
+    intake_key_map:
+      hcm_client_id: client_id
+      hcm_client_secret: client_secret  # pragma: allowlist secret
+    janua_client:
+      client_id: jnc_xlE-loLVhdptMh6wl2fJ1gtAMmduRlo3
+      name: cv-hcm-benchmarks
+      client_key: cv-hcm-benchmarks  # pragma: allowlist secret
+      audience: symbiosis-hcm
+      description: Machine edge (client_credentials) from MADFAM CV's server to Symbiosis-HCM's public ENOE market benchmarks. Platform-admin, scope hcm-benchmarks:read only; sends a job title and a state, never a person.
+      is_confidential: true
+      allowed_scopes:
+        - hcm-benchmarks:read
+      grant_types:
+        - client_credentials
+
+  # ---------------------------------------------------------------------------
+  # symbiosis-hcm → Karafiel (2026-11-02). HCM's API and Celery worker ask
+  # Karafiel for contract drafts as a MACHINE: contractor retainer agreements
+  # (symbiosis-hcm #193, scope legal:contractor-draft, Karafiel #328) and
+  # employment contracts (symbiosis-hcm #194, scope legal:employment-draft,
+  # Karafiel #323), and later the payroll CFDI, recibidos/validar and
+  # retenciones calls that still use the static KARAFIEL_API_TOKEN today
+  # (scope fiscal:invoice, which Karafiel maps to /api/v1/cfdi/ only). One
+  # client for the whole HCM → Karafiel edge, three scopes; HCM requests ONE
+  # scope per token (core/janua_service_token.py caches per client and scope),
+  # so a drafts token never carries fiscal:invoice and vice versa.
+  #
+  # audience `karafiel-api` is Karafiel's JANUA_AUDIENCE (core/janua_audience.py),
+  # the audience zavlo-cfdi-emitter already holds. HCM's token
+  # request names no audience: Janua stamps the client's. Karafiel admits the
+  # token on `sub` = service-account:<client_id> plus the scope, and pins the
+  # tenant to its own LEGAL_SERVICE_RFC, so it reads no org from the token:
+  # PLATFORM-ADMIN, no organization_id, like zavlo-cfdi-emitter. Registering
+  # it needs a Janua platform-admin session (`--profile admin`).
+  #
+  # The pair lands at secret/symbiosis-hcm through symbiosis-hcm/karafiel-client
+  # (LOWERCASE keys), read by HCM's DEDICATED hcm-service-clients
+  # ExternalSecret (symbiosis-hcm infra/k8s/production/
+  # externalsecret-service-clients.yaml), never by the hand-made hcm-secrets.
+  # That ExternalSecret maps the one pair to every env name HCM reads it under:
+  # KARAFIEL_SERVICE_CLIENT_ID/_SECRET, KARAFIEL_CONTRACTOR_DRAFT_CLIENT_ID/
+  # _SECRET and KARAFIEL_EMPLOYMENT_CLIENT_ID/_SECRET.
+  #
+  # Public client id pinned after the owner-authorized first provision.
+  # Reconcile reuses this identity; credentials remain in Enclii intake/Vault.
+  # ---------------------------------------------------------------------------
+  symbiosis-hcm-karafiel:
+    intake_target: symbiosis-hcm/karafiel-client
+    intake_key_map:
+      karafiel_service_client_id: client_id
+      karafiel_service_client_secret: client_secret  # pragma: allowlist secret
+    janua_client:
+      name: symbiosis-hcm-karafiel
+      client_id: jnc_gWbJCFfVZsv6J7cJXcieW7VJrCsNmvPp  # pragma: allowlist secret -- public OAuth client id
+      client_key: symbiosis-hcm-karafiel  # pragma: allowlist secret
+      audience: karafiel-api
+      description: Machine edge (client_credentials) from Symbiosis-HCM's API and worker to Karafiel. Platform-admin, scopes legal:contractor-draft and legal:employment-draft (contract drafts) and fiscal:invoice (CFDI); HCM requests one scope per token.
+      is_confidential: true
+      allowed_scopes:
+        - legal:contractor-draft
+        - legal:employment-draft
+        - fiscal:invoice
+      grant_types:
+        - client_credentials
+
+  # ---------------------------------------------------------------------------
+  # symbiosis-hcm → Dhanam scheduled payments (2026-11-02). HCM's API and
+  # Celery worker push a contractor's retainer plan into Dhanam as a MACHINE
+  # (symbiosis-hcm #192 prestadores/dhanam_plan.py, Dhanam #924): PUT/GET
+  # /v1/scheduled-payments/external/symbiosis-hcm/<id>. One edge, one client,
+  # one scope, client_credentials only, no browser leg.
+  #
+  # audience `dhanam-api` is what Dhanam's janua-scheduled-payments-writer
+  # strategy checks `aud` against, the audience routecraft-billing-relay holds.
+  # ORG-BOUND to madfam-ecosystem: the strategy refuses a token without an
+  # `org_id`, and Janua sets org_id only on an org-bound client. The token alone
+  # authorizes nothing: Dhanam's operator-reviewed ScheduledPaymentWriterGrant
+  # binds THIS client id and THIS organization to one business space and the
+  # source system `symbiosis-hcm` (apps/api/scripts/
+  # provision-scheduled-payment-writer-grant.ts), so the grant's organizationId
+  # must be the organization_id below.
+  #
+  # SCOPE: `dhanam-scheduled-payments:write`, ONE colon, because Janua (and
+  # this registry's contract) register only `namespace:action`. Janua #758
+  # reserves this spelling and Dhanam #926 consumes it; HCM #197 updates its
+  # caller. Provision only AFTER the Janua image is promoted and its runtime
+  # reservation verified; keep HCM sync off until all callers, the reviewed
+  # Dhanam grant and adoption of any existing schedule are ready.
+  #
+  # The pair lands at secret/symbiosis-hcm through
+  # symbiosis-hcm/dhanam-writer-client (LOWERCASE keys), read by HCM's
+  # DEDICATED hcm-dhanam-writer ExternalSecret, which maps them to
+  # DHANAM_WRITER_CLIENT_ID / DHANAM_WRITER_CLIENT_SECRET. HCM ignores the pair
+  # until DHANAM_SCHEDULED_PAYMENTS_SYNC=true.
+  #
+  # NOT pinned yet: the first provision run CREATES the client and prints its
+  # jnc_… id; pin it here (both copies) and use the same id in the Dhanam
+  # writer grant.
+  # ---------------------------------------------------------------------------
+  symbiosis-hcm-dhanam-writer:
+    intake_target: symbiosis-hcm/dhanam-writer-client
+    intake_key_map:
+      dhanam_writer_client_id: client_id
+      dhanam_writer_client_secret: client_secret  # pragma: allowlist secret
+    janua_client:
+      name: symbiosis-hcm-dhanam-writer
+      client_key: symbiosis-hcm-dhanam-writer  # pragma: allowlist secret
+      audience: dhanam-api
+      description: Machine edge (client_credentials) from Symbiosis-HCM to Dhanam's scheduled-payments machine writer route. Org-bound to madfam-ecosystem, scope dhanam-scheduled-payments:write only; Dhanam's writer grant binds it to one space.
+      is_confidential: true
+      organization_id: 1a6233ef-185f-43ee-9181-e2591fbb2643
+      allowed_scopes:
+        - dhanam-scheduled-payments:write
+      grant_types:
+        - client_credentials
+
+  # ---------------------------------------------------------------------------
+  # Karafiel → Dhanam cost events (2026-11-05, RFC 0050 Phase 1). Karafiel's
+  # worker turns received CFDI into `cost.event.v1` purchase events (one per
+  # concepto) and issued CFDI into accrual revenue events, and pushes them as a
+  # MACHINE to POST /v1/cost-events. One edge, one client, one scope,
+  # client_credentials only, no browser leg.
+  #
+  # audience `dhanam-api` is what Dhanam's cost-events writer strategy checks
+  # `aud` against. ORG-BOUND to madfam-ecosystem: the strategy refuses a token
+  # without `org_id`, and Janua sets org_id only on an org-bound client. The
+  # token alone authorizes nothing: Dhanam's operator-reviewed CostEventWriterGrant
+  # binds THIS client id and THIS organization to one business space and the
+  # source `karafiel` (apps/api/scripts/provision-cost-event-writer-grant.ts).
+  #
+  # SCOPE: `dhanam-cost-events:write`, ONE colon (Janua registers only
+  # `namespace:action`). Provision only after the Janua image that reserves
+  # the scope is promoted.
+  #
+  # The pair lands at secret/karafiel through karafiel/dhanam-cost-events-client
+  # (LOWERCASE keys), read by Karafiel's DEDICATED karafiel-dhanam-cost-events
+  # ExternalSecret, which maps them to DHANAM_COST_EVENTS_CLIENT_ID /
+  # DHANAM_COST_EVENTS_CLIENT_SECRET. Karafiel ignores the pair until
+  # COST_EVENTS_EMIT_ENABLED=true.
+  #
+  # Pinned 2026-11-05 from the first provision run (intake int_1793932145427244504);
+  # the Dhanam writer grant binds the same id.
+  # ---------------------------------------------------------------------------
+  karafiel-dhanam-cost-events:
+    intake_target: karafiel/dhanam-cost-events-client
+    intake_key_map:
+      dhanam_cost_events_client_id: client_id
+      dhanam_cost_events_client_secret: client_secret  # pragma: allowlist secret
+    janua_client:
+      name: karafiel-dhanam-cost-events
+      client_id: jnc_-vYgZlpygAhe8b4vRjlo1YG7DSmWVsJB  # pragma: allowlist secret -- public OAuth client id
+      client_key: karafiel-dhanam-cost-events  # pragma: allowlist secret
+      audience: dhanam-api
+      description: Machine edge (client_credentials) from Karafiel's worker to Dhanam's cost-events ingest route (cost.event.v1 from received and issued CFDI). Org-bound to madfam-ecosystem, scope dhanam-cost-events:write only; Dhanam's writer grant binds it to one space and the source karafiel.
+      is_confidential: true
+      organization_id: 1a6233ef-185f-43ee-9181-e2591fbb2643
+      allowed_scopes:
+        - dhanam-cost-events:write
+      grant_types:
+        - client_credentials
+
+  # ---------------------------------------------------------------------------
+  # converge-dash → Selva convergence feed (2026-11-04, RFC 0049). converge-dash's
+  # worker reads GET /api/v1/convergence/ai-tasks on Selva's nexus-api, which
+  # only accepts a Janua JWT whose `aud` contains `selva-office` (the audience
+  # voxa-selva's machine tokens carry). Org-bound to madfam-ecosystem so the
+  # token carries the org Selva scopes its tasks by. Read only, client_credentials
+  # only, no browser leg. converge-dash fetches a token per sync from the pair
+  # intake writes to secret/converge-dash.
+  # ---------------------------------------------------------------------------
+  converge-dash-selva:
+    intake_target: converge-dash/selva-client
+    intake_key_map:
+      selva_service_client_id: client_id
+      selva_service_client_secret: client_secret  # pragma: allowlist secret
+    janua_client:
+      name: converge-dash-selva
+      client_id: jnc_z_4adG2yCUMVWL8UwmMiVgrI4lAr3zpm  # pragma: allowlist secret -- public OAuth client id
+      client_key: converge-dash-selva  # pragma: allowlist secret
+      audience: selva-office
+      description: Machine edge (client_credentials) from converge-dash's worker to Selva's read-only convergence feed (AI tasks and usage). Org-bound to madfam-ecosystem, scope selva:read only.
+      is_confidential: true
+      organization_id: 1a6233ef-185f-43ee-9181-e2591fbb2643
+      allowed_scopes:
+        - selva:read
+      grant_types:
+        - client_credentials
+
   crea-sim:
     intake_target: crea-sim/ui-oidc
     intake_key_map:
@@ -908,6 +1325,8 @@ platforms:
         - profile
         - email
         - offline_access
+        # UI-only first-party SSO consent opt-in; MCP remains independent.
+        - madfam:silent_auth
       grant_types:
         - authorization_code
         - refresh_token
@@ -933,6 +1352,297 @@ platforms:
         - profile
         - email
         - offline_access
+      grant_types:
+        - authorization_code
+        - refresh_token
+
+  # ===========================================================================
+  # First-party browser login clients added 2026-10-27 (SSO wave 1, owner
+  # decisions D2 and D5). Each entry copies its consumer's own declaration;
+  # the source file is named in the entry. Pins are only the ids the consumer
+  # already ships. An unpinned entry is matched by NAME on the next run, and a
+  # name that does not exist yet is CREATED.
+  # ===========================================================================
+
+  # ---------------------------------------------------------------------------
+  # Forgesight app (app.forgesight.app) and admin (admin.forgesight.app).
+  # Both are PUBLIC browser PKCE clients: the app signs in through the embedded
+  # @janua/nextjs provider, the admin runs a hosted authorize + PKCE flow whose
+  # redirect URI is the page origin (forgesight apps/admin/src/lib/
+  # janua-oauth.ts). Both ids are the ones forgesight's production manifests
+  # pin (k8s/production/app-deployment.yaml, admin-deployment.yaml). Names,
+  # audience and callbacks are copied from Janua's legacy core-client seed,
+  # which owned them until now. Public: no intake target, no silent SSO.
+  # ---------------------------------------------------------------------------
+  forgesight-app:
+    janua_client:
+      name: forgesight-app
+      client_key: forgesight-app  # pragma: allowlist secret
+      audience: forgesight-api
+      client_id: jnc_hMmsXcCeWGFTn95l9I1iLzibSugXCgDC
+      description: Forgesight customer app (app.forgesight.app) — public browser PKCE login client, no secret
+      is_confidential: false
+      website_url: https://app.forgesight.app
+      redirect_uris:
+        - https://app.forgesight.app
+        - https://app.forgesight.app/auth/callback
+        - https://app.forgesight.app/api/auth/callback
+        - http://localhost:3000
+        - http://localhost:3000/auth/callback
+        - http://localhost:3000/api/auth/callback
+      allowed_scopes:
+        - openid
+        - profile
+        - email
+      grant_types:
+        - authorization_code
+        - refresh_token
+
+  forgesight-admin:
+    janua_client:
+      name: forgesight-admin
+      client_key: forgesight-admin  # pragma: allowlist secret
+      audience: forgesight-api
+      client_id: jnc_71GgDdnFqsb_ha9_Z45tAMRZCbLX9Rz5
+      description: Forgesight admin panel (admin.forgesight.app) — public browser PKCE login client, no secret
+      is_confidential: false
+      website_url: https://admin.forgesight.app
+      redirect_uris:
+        - https://admin.forgesight.app
+        - https://admin.forgesight.app/auth/callback
+        - http://localhost:3001
+        - http://localhost:3001/auth/callback
+      allowed_scopes:
+        - openid
+        - profile
+        - email
+      grant_types:
+        - authorization_code
+        - refresh_token
+
+  # ---------------------------------------------------------------------------
+  # converge-dash web (dash.madfam.io). CONFIDENTIAL: the Next.js server runs
+  # the code exchange with the client secret (converge-dash apps/web/src/lib/
+  # auth/oidc.ts). The callback is the DASH_WEB_OIDC_REDIRECT_URI its
+  # production web Deployment sets; no localhost twin on the production client.
+  # audience `converge-dash` is the API's JANUA_AUDIENCE. The pair lands in
+  # secret/converge-dash as the two properties converge-dash-secrets already
+  # maps (dash_web_janua_client_id / dash_web_janua_client_secret).
+  #
+  # NOT pinned: converge-dash records that this client is not registered yet,
+  # so the first run CREATES it (Janua platform admin, reserved scope). Pin the
+  # printed jnc_… id here (both copies) after that run.
+  # ---------------------------------------------------------------------------
+  converge-dash-web:
+    intake_target: converge-dash/web-oidc
+    intake_key_map:
+      dash_web_janua_client_id: client_id
+      dash_web_janua_client_secret: client_secret  # pragma: allowlist secret
+    janua_client:
+      name: converge-dash-web
+      client_key: converge-dash-web  # pragma: allowlist secret
+      audience: converge-dash
+      description: converge-dash staff dashboard (dash.madfam.io) — confidential OIDC authorization-code client for the Next.js server
+      is_confidential: true
+      website_url: https://dash.madfam.io
+      redirect_uris:
+        - https://dash.madfam.io/auth/callback
+      allowed_scopes:
+        - openid
+        - profile
+        - email
+        - madfam:silent_auth
+      grant_types:
+        - authorization_code
+        - refresh_token
+
+  # ---------------------------------------------------------------------------
+  # Avala (admin.avala.studio, app.avala.studio). CONFIDENTIAL: avala-api runs
+  # the code exchange with JANUA_CLIENT_SECRET. The callback is per origin,
+  # `<origin>/api/auth/sso/callback`, for each origin in avala's
+  # OAUTH_REDIRECT_ALLOWED_ORIGINS (avala apps/api/src/modules/auth/
+  # oauth-state.service.ts and AGENTS.md). Avala's own probe record: the admin
+  # callback is registered, the app callback is not (learner SSO waits on it),
+  # the landing callback on avala.studio is stale (no sign-in there since the
+  # landing cutover), and the older /api/v1/... shapes are not registered.
+  # A run therefore ADDS the app callback and REMOVES the landing one.
+  #
+  # Pinned to the id avala documents. The Janua NAME of that row is not in
+  # any repository: if it is not `avala`, the provisioner refuses before any
+  # change (pin + name check). Read it from the Janua admin console and fix
+  # the name here before the first run.
+  #
+  # CUSTODY GAP: avala reads its Janua pair from a hand-made `avala-secrets`
+  # Secret, not from Vault. The intake target below writes secret/avala for a
+  # planned `avala-janua-oidc` ExternalSecret. Until avala projects it into
+  # the API pod, a `--rotate-secret` run would retire the secret avala is
+  # using. Do not rotate before that.
+  # ---------------------------------------------------------------------------
+  avala:
+    intake_target: avala/oidc-janua
+    intake_key_map:
+      janua_client_id: client_id
+      janua_client_secret: client_secret  # pragma: allowlist secret
+    janua_client:
+      name: avala
+      client_key: avala  # pragma: allowlist secret
+      audience: avala-api
+      client_id: jnc_t6ruGZaATrpZ34ofKRhPi1Rv2WO0S3HW
+      description: Avala admin and learner apps (avala.studio) — confidential OIDC authorization-code client for avala-api
+      is_confidential: true
+      website_url: https://avala.studio
+      redirect_uris:
+        - https://admin.avala.studio/api/auth/sso/callback
+        - https://app.avala.studio/api/auth/sso/callback
+      allowed_scopes:
+        - openid
+        - profile
+        - email
+        - madfam:silent_auth
+      grant_types:
+        - authorization_code
+        - refresh_token
+
+  # ---------------------------------------------------------------------------
+  # Selva office (app.selva.town, admin.selva.town). PUBLIC, as selva-office
+  # declares it (infra/janua/selva-office.oauth-client.yaml): both apps run
+  # authorization_code + PKCE from a server route without a client secret.
+  # Callbacks and grant are copied from that file. Its extra `roles` scope is
+  # not an OAuth scope this registry or Janua's scope shape accepts, so it is
+  # left out; Janua emits roles as a claim.
+  #
+  # Selva's production config sets JANUA_CLIENT_ID to the NAME `selva-office`,
+  # which Janua answers with `invalid_client`: sign-in needs the jnc_… id this
+  # entry's first run prints (or finds by name). NOT pinned: no id is
+  # recorded. `selva-office` is a reserved first-party name, so the run needs a
+  # Janua platform admin. Silent SSO needs the client to become confidential
+  # (both routes already exchange server-side, so this is a secret, not a
+  # redesign).
+  #
+  # audience `selva-office` is the audience voxa-selva's machine tokens carry
+  # and Selva's verify_jwt checks today.
+  # ---------------------------------------------------------------------------
+  selva-office:
+    janua_client:
+      name: selva-office
+      client_key: selva-office  # pragma: allowlist secret
+      audience: selva-office
+      description: Selva office and admin (selva.town) — public PKCE login client, no secret
+      is_confidential: false
+      website_url: https://app.selva.town
+      redirect_uris:
+        - https://app.selva.town/api/auth/callback/janua
+        - https://selva.town/api/auth/callback/janua
+        - https://admin.selva.town/api/auth/callback
+        - http://localhost:4301/api/auth/callback/janua
+      allowed_scopes:
+        - openid
+        - profile
+        - email
+      grant_types:
+        - authorization_code
+
+  # ---------------------------------------------------------------------------
+  # crea-map web (map.creatumundo.mx, the retained alias crea-map.madfam.io and
+  # the ensayo QA twin, which shares this client). CONFIDENTIAL: the MAP server
+  # exchanges the code with JANUA_CLIENT_SECRET. Name, audience, scopes and
+  # callbacks are copied from crea-map infra/oauth-redirect-uris.json and
+  # scripts/bootstrap-ecosystem.sh, which registered the row as `crea-map`.
+  # Pinned to the id crea-map's production Deployment sets.
+  #
+  # Only the SECRET goes to Vault: crea-map-secrets maps
+  # `property: janua_client_secret`; the client id is plain Deployment config.
+  # ---------------------------------------------------------------------------
+  crea-map:
+    intake_target: crea-map/web-oidc
+    intake_key_map:
+      janua_client_secret: client_secret  # pragma: allowlist secret
+    janua_client:
+      name: crea-map
+      client_key: crea-map  # pragma: allowlist secret
+      audience: crea-map
+      client_id: jnc_Ed3t6r_RRxBq0aa2IeUnrxKQ0_UFaHLO
+      description: MAP · Crea Tu Mundo (map.creatumundo.mx) — confidential OIDC authorization-code client for the MAP server
+      is_confidential: true
+      website_url: https://map.creatumundo.mx
+      redirect_uris:
+        - https://crea-map.madfam.io/api/auth/callback
+        - https://map.creatumundo.mx/api/auth/callback
+        - https://ensayo-map.madfam.io/api/auth/callback
+        - http://localhost:3000/api/auth/callback
+      allowed_scopes:
+        - openid
+        - profile
+        - email
+        - madfam:silent_auth
+      grant_types:
+        - authorization_code
+        - refresh_token
+
+  # ---------------------------------------------------------------------------
+  # Symbiosis-HCM browser consoles (hcm-admin.madfam.io, hcm-app.madfam.io).
+  # PUBLIC browser PKCE login, copied byte for byte from symbiosis-hcm's
+  # janua.client.yaml, which pins this id. No intake target, no silent SSO.
+  # ---------------------------------------------------------------------------
+  symbiosis-hcm-browser:
+    janua_client:
+      name: symbiosis-hcm-browser
+      client_key: symbiosis-hcm  # pragma: allowlist secret
+      audience: symbiosis-hcm
+      client_id: jnc_bFCbNwR7iYdy19S_BldXuKYvgDii9mlT
+      description: HCM RH and employee consoles — public browser PKCE login
+      is_confidential: false
+      website_url: https://hcm-admin.madfam.io
+      redirect_uris:
+        - https://hcm-admin.madfam.io/auth/callback
+        - https://hcm-app.madfam.io/auth/callback
+      allowed_scopes:
+        - openid
+        - profile
+        - email
+        - offline_access
+      grant_types:
+        - authorization_code
+        - refresh_token
+
+  # ---------------------------------------------------------------------------
+  # Karafiel Admin (admin.karafiel.mx, alias kf-admin.madfam.io). The MADFAM
+  # operator console, separate from the tenant `karafiel` client above.
+  # CONFIDENTIAL: the admin server exchanges the code with JANUA_SECRET_KEY.
+  # Name, audience and callbacks are copied from karafiel
+  # infra/oauth-redirect-uris.json; scopes follow the tenant client. Pinned to
+  # the id karafiel's scripts verify (scripts/verify-admin-sso-ready.sh).
+  #
+  # The row has so far been maintained by hand in Janua, so it may hold grants
+  # this declaration does not list: inspect it first, because a run replaces
+  # allowed_scopes wholesale. The pair lands in secret/karafiel as the two
+  # properties karafiel maps: oidc_client_id (ExternalSecret
+  # karafiel-admin-oidc) and janua_secret_key (karafiel-admin-auth).
+  # ---------------------------------------------------------------------------
+  karafiel-admin:
+    intake_target: karafiel/admin-oidc-janua
+    intake_key_map:
+      oidc_client_id: client_id
+      janua_secret_key: client_secret  # pragma: allowlist secret
+    janua_client:
+      name: Karafiel Admin
+      client_key: karafiel-admin  # pragma: allowlist secret
+      audience: karafiel-api
+      client_id: jnc_karafiel_admin_prod
+      description: MADFAM operator console (admin.karafiel.mx) — confidential OIDC authorization-code client
+      is_confidential: true
+      website_url: https://admin.karafiel.mx
+      redirect_uris:
+        - https://admin.karafiel.mx/api/auth/callback
+        - https://kf-admin.madfam.io/api/auth/callback
+        - http://localhost:3051/api/auth/callback
+        - http://localhost:3000/api/auth/callback
+      allowed_scopes:
+        - openid
+        - profile
+        - email
+        - offline_access
+        - madfam:silent_auth
       grant_types:
         - authorization_code
         - refresh_token

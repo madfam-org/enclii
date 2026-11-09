@@ -322,9 +322,9 @@ func (r *ServiceRepository) ListByProject(projectID uuid.UUID) ([]*types.Service
 		(SELECT MAX(d.created_at) FROM deployments d JOIN releases r ON d.release_id = r.id WHERE r.service_id = s.id) as last_deployment,
 		(SELECT r2.commit_message FROM releases r2 JOIN deployments d2 ON d2.release_id = r2.id WHERE r2.service_id = s.id ORDER BY d2.created_at DESC LIMIT 1) as last_commit_message,
 		(SELECT r3.git_branch FROM releases r3 JOIN deployments d3 ON d3.release_id = r3.id WHERE r3.service_id = s.id ORDER BY d3.created_at DESC LIMIT 1) as last_commit_branch,
-		(SELECT r4.image_uri FROM releases r4 WHERE r4.service_id = s.id AND r4.status = 'succeeded' ORDER BY r4.created_at DESC LIMIT 1) as current_image_uri,
-		(SELECT r5.id FROM releases r5 WHERE r5.service_id = s.id AND r5.status = 'succeeded' ORDER BY r5.created_at DESC LIMIT 1) as current_release_id,
-		(SELECT r6.created_at FROM releases r6 WHERE r6.service_id = s.id AND r6.status = 'succeeded' ORDER BY r6.created_at DESC LIMIT 1) as current_release_created_at,
+		(SELECT r4.image_uri FROM releases r4 WHERE r4.service_id = s.id AND r4.status = 'ready' ORDER BY r4.created_at DESC LIMIT 1) as current_image_uri,
+		(SELECT r5.id FROM releases r5 WHERE r5.service_id = s.id AND r5.status = 'ready' ORDER BY r5.created_at DESC LIMIT 1) as current_release_id,
+		(SELECT r6.created_at FROM releases r6 WHERE r6.service_id = s.id AND r6.status = 'ready' ORDER BY r6.created_at DESC LIMIT 1) as current_release_created_at,
 		(SELECT r7.framework_slug FROM releases r7 WHERE r7.service_id = s.id AND COALESCE(r7.framework_slug, '') <> '' ORDER BY r7.created_at DESC LIMIT 1) as framework,
 		(SELECT COALESCE(json_agg(rr ORDER BY rr.created_at DESC), '[]'::json)
 			FROM (
@@ -465,7 +465,7 @@ func (r *ServiceRepository) GetByGitRepo(gitRepoURL string) (*types.Service, err
 // detection) can opt in to image-age fields without paying for the rest.
 //
 // Performance: each service triggers two indexed lookups against
-// releases(service_id) — one for the latest succeeded release, one for the
+// releases(service_id) — one for the latest ready release, one for the
 // last 5 releases — using idx_releases_service_id. Total cost is
 // O(N services * 2 indexed lookups). For the small N typical of
 // ListByGitRepo callers (1-5 services per repo), this is well under a
@@ -473,7 +473,7 @@ func (r *ServiceRepository) GetByGitRepo(gitRepoURL string) (*types.Service, err
 // folding the subqueries into the parent query as ListByProject already does.
 func (r *ServiceRepository) EnrichWithLatestRelease(services []*types.Service) error {
 	currentQuery := `SELECT image_uri, created_at FROM releases
-		WHERE service_id = $1 AND status = 'succeeded'
+		WHERE service_id = $1 AND status = 'ready'
 		ORDER BY created_at DESC LIMIT 1`
 
 	recentQuery := `SELECT id, version, image_uri, git_sha, status, created_at FROM releases
@@ -481,7 +481,7 @@ func (r *ServiceRepository) EnrichWithLatestRelease(services []*types.Service) e
 		ORDER BY created_at DESC LIMIT 5`
 
 	for _, svc := range services {
-		// Latest succeeded release: drives current_image_uri + current_release_created_at.
+		// Latest ready release: drives current_image_uri + current_release_created_at.
 		var imageURI sql.NullString
 		var createdAt sql.NullTime
 		err := r.db.QueryRow(currentQuery, svc.ID).Scan(&imageURI, &createdAt)

@@ -56,6 +56,11 @@ rules:
 - apiGroups: [""]
   resources: ["services"]
   verbs: ["create", "get", "list", "watch", "update", "patch", "delete"]
+# Read-only Service backend observations for the platform-rank inventory API.
+# No endpoint writes, pod exec or network-policy changes are granted.
+- apiGroups: ["discovery.k8s.io"]
+  resources: ["endpointslices"]
+  verbs: ["list"]
 # ConfigMaps: hostname inventory reads for domain truth reconciliation
 # create: the fixed initial-bootstrap Job retains its immutable intent and
 # result receipts as ConfigMaps in the project addon namespace
@@ -70,6 +75,15 @@ rules:
 - apiGroups: [""]
   resources: ["pods/log"]
   verbs: ["get"]
+# Resource metrics (metrics-server): read-only pod and node usage for
+# /v1/usage, /v1/usage/realtime and /v1/services/:id/metrics. Without this
+# rule every metrics.k8s.io read answers 403, GetClusterMetrics reports
+# metrics as disabled, and the usage page falls back to "unavailable" even
+# though metrics-server is installed and serving. Read-only; nothing else in
+# the group exists to grant.
+- apiGroups: ["metrics.k8s.io"]
+  resources: ["pods", "nodes"]
+  verbs: ["get", "list"]
 # Pods: `enclii ops pods restart pod/<name>` deletes ONE pod owned by a
 # ReplicaSet, StatefulSet or DaemonSet, with a UID precondition and the pod's
 # own grace period, so its controller recreates it (the StatefulSet
@@ -113,6 +127,22 @@ rules:
 - apiGroups: ["postgresql.cnpg.io"]
   resources: ["clusters"]
   verbs: ["create", "get", "list", "watch", "update", "patch", "delete"]
+# CloudNativePG backups (2026-10-26). The provisioner and the reconciler's
+# backup sweep create each addon's daily ScheduledBackup, and Deprovision
+# deletes it; before this rule every one of those calls was refused, so no
+# addon could have had a schedule even with the store configured. patch: the
+# sweep suspends the schedule of a hibernated cluster and resumes it on wake.
+# CNPG creates Backup objects from the schedule. delete (2026-11-01): the sweep
+# deletes a Backup of an Enclii schedule stuck in walArchivingFailing once WAL
+# archiving is healthy again, because CNPG never ends that phase and the
+# schedule takes no other backup until it goes. Audited, UID-preconditioned
+# (internal/addons/postgres_backup_wedged.go).
+- apiGroups: ["postgresql.cnpg.io"]
+  resources: ["scheduledbackups"]
+  verbs: ["create", "get", "list", "watch", "patch", "delete"]
+- apiGroups: ["postgresql.cnpg.io"]
+  resources: ["backups"]
+  verbs: ["get", "list", "watch", "delete"]
 # Longhorn: read diagnostics plus audited orphan prune and CPU settings apply
 - apiGroups: ["longhorn.io"]
   resources: ["volumes"]

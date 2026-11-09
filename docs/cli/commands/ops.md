@@ -27,11 +27,14 @@ encouraging direct `kubectl`.
 | `enclii ops capabilities` | List server-supported operator capabilities |
 | `enclii ops apps status|sync|sync-sweep|diff|retire|rollback` | Argo app inspection and remediation |
 | `enclii ops apps tracking` | Declare Argo CD's annotation tracking default once in `argocd-cm` ([below](#argo-tracking-declaration)) |
+| `enclii ops apps staging-intent [read OPERATION_UUID]` | Plan, retain or read an inert Janua staging intent; never creates a service or activation authority ([below](#held-janua-staging-intent)) |
 | `enclii ops pods diagnose|logs` | Pod diagnosis and logs |
-| `enclii ops pods restart` | Audited rollout restart of a Deployment, StatefulSet or DaemonSet, or recreation of one controller-owned pod ([below](#ops-pods-restart)) |
-| `enclii ops jobs list|trigger|suspend` | CronJob inspection, audited triggers and durable service-job holds |
+| `enclii ops pods restart` | Audited rollout restart of a Deployment, StatefulSet or DaemonSet, or recreation of one controller-owned pod; in project namespaces, of one CloudNativePG instance pod ([below](#ops-pods-restart)) |
+| `enclii ops jobs list|trigger|suspend` | CronJob inspection, audited triggers and durable service-job holds; independent verified-target Jobs use the [closed API request](../../runbooks/ENCLII_VERIFIED_TARGET_JOBS.md) |
 | `enclii ops storage volumes|pvc|longhorn|repair-plan|settings-apply|prune-detached|storageclass-apply|r2-audit` | PVC/PV/Longhorn inspection, repair planning, CPU settings (O-5), orphan prune (O-4), StorageClass reconcile, R2 credential audit (incomplete, shared, or mismatched buckets) |
 | `enclii ops secrets external|vault|refresh|sync|sync-sweep|rotate|vault-backfill` | ExternalSecrets and Vault readiness workflows |
+| `enclii ops addons backup-credential` | Server-side provisioning of the addon backup bucket and its bucket-scoped R2 credential into Vault; no human holds it ([below](#ops-addons-backup-credential)) |
+| `enclii ops addons cpu-request` | Lower one existing managed-Postgres addon's CPU request to the 100m default, keeping its plan CPU as the limit; CNPG restarts the instance ([below](#ops-addons-cpu-request)) |
 | `enclii ops secrets provision-kalya-feed` | Server-side kalya standing-feed credential provisioning ([below](#ops-secrets-provision-kalya-feed)) |
 | `enclii ops domains reconcile` | Declared-vs-live hostname reconcile for a service ([below](#ops-domains-reconcile)) |
 | `enclii secrets intake` | Chat-safe operator credential handoff into Vault ([secrets.md](./secrets.md#enclii-secrets-intake)) |
@@ -50,7 +53,7 @@ enclii ops jobs trigger forgesight-mexico-wave-seed -n forgesight --apply --reas
 enclii ops storage settings-apply
 enclii ops storage settings-apply --apply --reason "GA O-5 Longhorn CPU"
 enclii ops storage prune-detached
-enclii ops storage prune-detached --apply --reason "GA O-4 orphan cleanup"
+enclii ops storage prune-detached --expect-plan <plan_hash> --apply --reason "GA O-4 orphan cleanup"
 enclii ops storage storageclass-apply
 enclii ops storage storageclass-apply --apply --reason "GA Longhorn StorageClass reconcile"
 enclii ops policy cosign-enable
@@ -102,9 +105,46 @@ The apply writes one data key with the reviewed resourceVersion as an
 optimistic-concurrency precondition; labels, annotations and other data are
 unchanged. A concurrent change returns `refused` with nothing written. Any
 other write error returns `unknown`: run the plan again before another attempt.
+The platform intentionally grants the apply path no RBAC write on
+`argocd-cm`, so it returns `refused` with nothing written: the plan is the
+supported read-only check, and any declaration change is a reviewed
+platform-bootstrap action.
 An exact repeat after success returns `already-declared` without writing.
 The `infra/argocd/resource-customizations.yaml` bootstrap patch predates this
 command and does not carry the key; do not re-apply it as a substitute.
+
+## Held Janua staging intent
+
+`ops apps staging-intent` requires an existing actual platform-operator login and
+the fixed `--project janua`. After the reviewed API/CLI and migration `045` pass
+their native qualification, plan with a caller-chosen canonical operation UUID:
+
+```bash
+enclii ops apps staging-intent --project janua --operation-id <operation-uuid> --json
+```
+
+Review the exact fingerprint and all unresolved gates. To retain only that
+immutable metadata intent, use the same UUID and reviewed fingerprint:
+
+```bash
+enclii ops apps staging-intent --project janua --operation-id <operation-uuid> \
+  --record --expect-plan <reviewed-sha256> --reason "retain reviewed held intent" --json
+```
+
+This command uses `--record`, not the generic `--apply` switch. The default plan
+and the `read` subcommand never write. After an uncertain POST outcome, inspect
+the same UUID instead of automatically repeating the write:
+
+```bash
+enclii ops apps staging-intent read <operation-uuid> --project janua --json
+```
+
+The receipt always retains `REPOSITORY_OWNERSHIP_ONLY`, activation held and
+`SOURCE_STAGE_REGISTRATION_NOT_PROVEN`. It creates no service, build, workload,
+source registration, native binding, secret, DNS or authority grant. Private
+actor/reason and upstream response bodies are not printed. See the
+[held preregistration contract](../../runbooks/JANUA_STAGING_PREREGISTRATION_DESIGN.md)
+for immutable replay, custody and remaining dependency gates.
 
 ## Service-job suspension
 
@@ -188,7 +228,9 @@ Guards, all enforced by the API:
   `switchyard-api` Deployment in `infra/k8s/base/switchyard-api.yaml`). An
   empty list refuses every namespace. `kube-*` namespaces are refused even
   when listed. A refused namespace is answered with HTTP 409 `refused` before
-  anything is read from the cluster. Add a namespace by PR.
+  anything is read from the cluster. Add a namespace by PR. The one
+  exception is a CloudNativePG instance pod in an Enclii project namespace
+  ([below](#cnpg-instance-pods-in-project-namespaces)).
 - **Controller-owned pods only.** `pod/<name>` refuses a pod without a
   ReplicaSet, StatefulSet or DaemonSet controller (bare pods, Job pods,
   operator-managed pods), a pod already terminating, and a paused Deployment.
@@ -225,6 +267,173 @@ accepted, not that the new pods are Ready. Follow it with
 are not live yet. For a registered Enclii service the service restart API
 (`POST /v1/services/{id}/restart`) remains available and is target-bound to
 the service's verified Deployment.
+
+### CNPG instance pods in project namespaces
+
+Project namespaces (`project-<first 8 of the project id>`) are created per
+project and are never in `ENCLII_OPS_RESTART_NAMESPACES`. In them,
+`pod/<name>` may still recreate **one CloudNativePG instance pod** of an
+Enclii managed-Postgres addon. It replaces the break-glass `kubectl delete pod`
+used on 2026-10-24, when an instance kept a broken volume mount after a node
+fault (`global/pg_filenode.map: Input/output error`) and only a new pod
+mounted the volume again. Everything else in a project namespace stays
+refused: workload rollouts (refused before anything is read), application
+pods, poolers and Job pods.
+
+The API checks, in order, and refuses (HTTP 409, nothing changed) unless:
+
+- the namespace is named `project-<8>`, carries `managed-by=enclii` and an
+  `enclii.dev/project` UUID whose first 8 characters are that suffix;
+- the pod's controller is a `postgresql.cnpg.io` `Cluster`, and its labels say
+  the same thing: `cnpg.io/cluster` = that Cluster, `cnpg.io/podRole=instance`
+  and `cnpg.io/instanceName` = the pod;
+- that Cluster is the pod's live owner (same UID), is not being deleted, is an
+  Enclii addon of the same project (`managed-by=enclii`,
+  `enclii.dev/project-id`), and is not hibernating (`cnpg.io/hibernation=on`;
+  use [`ops.addons.hibernate`](#opsaddonshibernate-api-only) for those);
+- the pod is not already terminating.
+
+The dry run reports mode `cnpg-instance-recreate`, the Cluster's phase,
+`instances`, `readyInstances`, the pod's `instanceRole` and `pvcsKept` (the
+PVCs CNPG mounts in the replacement; the delete never touches them). It warns
+when the pod is still Ready (a database that answers would be interrupted),
+when the Cluster runs one instance (the database is down until the new pod is
+Ready) and when the pod is the primary of a multi-instance cluster (CNPG fails
+over). **The apply requires `--expect-uid`** from the dry run, as well as
+`--reason`; the delete carries that UID as a precondition and uses the pod's
+own grace period. The audit rows add the Cluster UID, phase, instance role and
+project.
+
+```bash
+enclii ops pods restart pod/<cluster>-1 -n project-<id>
+enclii ops pods restart pod/<cluster>-1 -n project-<id> --expect-uid <reviewed-uid> \
+  --apply --reason "remount the data volume after the node fault"
+```
+
+Do not use it for «Instance Status Extraction Error»: there the operator cannot
+reach the instance's status port, and CNPG recreates the pod into the same
+state. That case is the `<cluster>-operator-ingress` NetworkPolicy (see
+`ops.addons.hibernate` below). The alerts that point here are in
+[`ADDON_CNPG_HEALTH.md`](../../runbooks/ADDON_CNPG_HEALTH.md).
+
+## `ops.addons.hibernate` (API only)
+
+Stops a retired managed-Postgres addon's compute and keeps its data. It replaces
+the break-glass `kubectl annotate clusters.postgresql.cnpg.io … cnpg.io/hibernation=on`.
+There is no CLI verb yet; call the API.
+
+```
+POST /v1/ops/addons/hibernate
+{"dry_run":true,"scope":{"project":"<slug>"},"args":{"target":"<addon uuid>"}}
+→ status ready_to_apply, data.plan_hash
+  (or succeeded: CNPG already confirms it; or 409 blocked: see data.blocked)
+
+{"dry_run":false,"reason":"…","idempotency_key":"…","scope":{"project":"<slug>"},
+ "args":{"target":"<addon uuid>","expected_plan":"<plan_hash>"}}
+```
+
+- **Who:** platform rank only.
+- **Refused** unless the addon is managed Postgres, `ready`, belongs to the
+  project, and every binding is `deleted`. An addon a service still reads is
+  never stopped.
+- **Blocked** (HTTP 409, `status: blocked`, nothing changed) while the Cluster's
+  phase is not `Cluster in healthy state` and CNPG has not hibernated it. The
+  common cause is «Instance Status Extraction Error»: the operator cannot reach
+  the instance's status port 8000, so it would never act on the annotation
+  (deleting the pod does not help; CNPG recreates it). The
+  `<cluster>-operator-ingress` NetworkPolicy fixes that; the addon reconciler
+  converges it for every live cluster on start and every 10 minutes.
+- **Apply:** annotates the Cluster (an Update guarded by the reviewed
+  resourceVersion), then waits up to 75 s for CNPG's `cnpg.io/hibernation`
+  condition to be True with no instance pod left, and only then scales
+  `<cluster>-exporter` to 0. `succeeded` means CNPG confirmed. If it has not
+  confirmed in time the answer is HTTP 202 `submitted` with the annotation on
+  and the exporter still running; take a new dry-run and apply again to finish.
+  A live state that no longer hashes to `expected_plan` is a 409.
+- **Plan fields:** `phase`, `blocked`, `already_hibernated` (annotation on) and
+  `hibernated` (CNPG's condition True); the result adds
+  `hibernation_confirmed`.
+- **Audit:** a row before any mutation (no row, no mutation) and a result row.
+- **Never deletes** a Cluster, PVC, Secret or pod, and never changes the
+  addon's status.
+- **Reverse:** remove the annotation; CNPG recreates the instance from its PVC.
+
+## `ops addons cpu-request`
+
+Since 2026-11-04 a new managed-Postgres addon's CloudNativePG Cluster requests
+`100m` CPU and keeps its plan CPU as the **limit**, so it still bursts to
+what its plan sells; memory keeps request = limit. Before that the plan CPU
+was both, so a `standard-1` addon reserved 500m on its node while idle. This
+moves one addon created earlier to the new shape (owner decision,
+2026-11-04).
+
+```bash
+enclii ops addons cpu-request <addon-uuid> --project <slug>
+enclii ops addons cpu-request <addon-uuid> --project <slug> --apply \
+  --expect-plan <plan_hash> --idempotency-key <key> \
+  --reason "addon CPU request default (2026-11-04)"
+```
+
+- **Restart:** CNPG restarts the instance when its resources change. A
+  single-instance addon is **unavailable until the new pod is Ready**; with
+  replicas CNPG rolls them and switches over; with
+  `primaryUpdateStrategy: supervised` it waits for an operator; a hibernated
+  cluster changes nothing until it is woken. The dry run's `restart` field
+  says which. Run it per addon, at a quiet time for that project.
+- **Who:** platform rank only.
+- **Refused** unless the addon is managed Postgres, `ready` and in the project.
+  Bound addons are allowed; a live database is the point.
+- **Blocked** (HTTP 409, nothing changed) when the Cluster lacks Enclii's labels
+  for this addon, sets no CPU request, or is not in `Cluster in healthy state`
+  while it still needs a change.
+- **Apply:** sets `spec.resources.requests.cpu` to the default (or keeps a
+  smaller one) and `spec.resources.limits.cpu` to the current limit, or to
+  the old request when there was no limit. It is an Update carrying the
+  reviewed resourceVersion, so a Cluster changed since the plan is a 409.
+  Nothing else changes: not memory, not the addon row (its `config.cpu` is the
+  plan CPU, now the limit, so usage metering is unchanged).
+- **Done:** a Cluster already at the default reports `succeeded` and an apply
+  writes nothing. Take the dry run again to follow CNPG's `phase` back to
+  healthy.
+- **Audit:** a row before the mutation (no row, no mutation) and a result row
+  with the CPU before and after.
+- **Reverse:** set the request back on the Cluster (break-glass); new addons
+  keep the default.
+
+## `ops addons backup-credential`
+
+Provisions the object-store credential every managed-Postgres addon backs up
+with, so no human ever holds it (`POST /v1/ops/addons/backup-credential`,
+platform rank). Switchyard ensures the bucket named by
+`ENCLII_ADDON_BACKUP_DESTINATION_BASE`, mints a Cloudflare token scoped to that
+bucket only ("Workers R2 Storage Bucket Item Write"), merges the S3 pair into
+the Vault path and keys of the intake target `enclii/addon-db-backups`, and
+force-syncs the `enclii-db-backup-credentials` ExternalSecret. The value is
+never returned or logged.
+
+```bash
+enclii ops addons backup-credential                       # dry run: plan + plan_hash
+enclii ops addons backup-credential --apply --expect-plan <plan_hash> \
+  --idempotency-key <key> --reason "..."
+enclii ops addons backup-credential --rotate              # plan a rotation
+```
+
+- A plan of `keep` (Vault already holds both keys) writes nothing on apply; a
+  new token is minted only with `--rotate` on both the dry run and the apply.
+- Apply requires `--expect-plan`, `--idempotency-key` and `--reason`; it writes
+  an audit row before any mutation and a result row after.
+- A Cloudflare refusal is `blocked` (HTTP 424) and names the permission the
+  switchyard-api token lacks; nothing is written to Vault.
+- A failed Vault write revokes the newly minted token.
+- Running instances pick up the new credential within one backup sweep
+  (about 10 minutes): the sweep replaces each addon namespace's copy and
+  annotates the Cluster `enclii.dev/backup-credential-version`, because CNPG
+  reloads the credential only when its Cluster changes.
+- A Backup the old credential left in `walArchivingFailing` blocks its
+  schedule. The sweep deletes it, with an audit row, once the Cluster
+  reports `ContinuousArchiving=True`, and the schedule catches up.
+
+Runbook: [ADDON_BACKUPS.md](../../runbooks/ADDON_BACKUPS.md#provisioning-the-credential-one-time-no-human-holds-it).
 
 ## Required Mutation Flags
 
@@ -370,10 +579,33 @@ restart.
   a generic `planned` response (`adapter execution is not wired in this build`)
   and `--apply` with HTTP 501 `adapter_required`. A wired build answers with
   the live object, its UID and the patch.
-- `apps retire` deletes only the Argo Application by default and uses orphan
-  propagation so live resources are not pruned during routine legacy-app
-  retirement. Destructive cascade retirement must be explicitly requested by
-  API callers.
+- `apps retire` deletes only the Argo Application by default; the resources it
+  deployed keep running, unmanaged. Argo CD decides cascade from the
+  Application's own finalizers, not from the Kubernetes propagation policy:
+  while `metadata.finalizers` holds `resources-finalizer.argocd.argoproj.io`
+  (or its `/foreground` or `/background` variant), deleting the Application
+  deletes every resource it manages, and orphan propagation protects none of
+  them because they carry no ownerReference to it. So the default first
+  removes those finalizers with a JSON patch that tests the resourceVersion
+  and finalizers it read, keeps every other finalizer (such as
+  `post-delete-finalizer.argocd.argoproj.io`), and then deletes the
+  Application with orphan propagation and a UID and resourceVersion
+  precondition. This is what `argocd app delete --cascade=false` does. If the
+  Application changed in between, nothing is deleted (`conflict`, HTTP 409);
+  rerun. The response lists `finalizersRemoved`.
+- Destructive cascade retirement keeps those finalizers, so Argo CD deletes
+  every managed resource. API callers must request it explicitly with
+  `args.cascade=true`; the CLI does not send it.
+- `apps retire` refuses (`refused`, HTTP 409), in either mode, an Application
+  generated by an ApplicationSet: the ApplicationSet recreates it within
+  minutes with its template's finalizer. Retire a project from
+  `infra/argocd/projects/<name>/config.json` with
+  `"lifecycle": "retired"` in that file instead ([`infra/argocd/README.md`,
+  "Retiring a project"](../../../infra/argocd/README.md#retiring-a-project)).
+  It also refuses an Application that is already being deleted
+  (`already_deleting`), and warns when another Argo Application tracks the
+  target (app-of-apps): while that parent still renders it and auto-syncs, it
+  recreates it with the finalizers its manifest declares.
 - `jobs trigger` creates a Kubernetes Job from the existing CronJob
   `jobTemplate`; it does not edit the CronJob schedule, image, command, env, or
   secret references.

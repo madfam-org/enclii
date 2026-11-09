@@ -58,5 +58,16 @@ configMapGenerator:
       labels:
         grafana_dashboard: "true"
 
+  # Money engine (money-engine wave 2, 2026-10-18): the money paths and every
+  # revenue probe. scripts/money-engine-status.py is the same view for an
+  # agent without a Grafana sign-in.
+  - name: grafana-dashboard-money-engine
+    namespace: monitoring
+    files:
+      - money-engine.json
+    options:
+      labels:
+        grafana_dashboard: "true"
+
 generatorOptions:
   disableNameSuffixHash: true

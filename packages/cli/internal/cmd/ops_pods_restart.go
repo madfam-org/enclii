@@ -36,6 +36,9 @@ func newOpsPodsRestartCommand(cfg *config.Config) *cobra.Command {
 
 Requires the platform_admin rank. The namespace must be in the API's
 ENCLII_OPS_RESTART_NAMESPACES allowlist; kube-* namespaces are always refused.
+One exception: in an Enclii project namespace (project-<id>), pod/<name> may
+recreate a CloudNativePG instance pod of an Enclii addon, and nothing else.
+CNPG recreates it on the same PVCs. That apply requires --expect-uid.
 Without --apply the command only prints the plan, including the object's UID.
 Pass that UID back with --expect-uid so the apply acts only on the object you
 reviewed. --apply needs --reason, which is written to the audit log together
@@ -50,7 +53,12 @@ Examples:
   # Recreate a crash-looping StatefulSet pod that OrderedReady will not replace
   enclii ops pods restart pod/loki-0 -n logging
   enclii ops pods restart pod/loki-0 -n logging --expect-uid <uid> \
-    --apply --reason "recreate loki-0 on the fixed revision"`,
+    --apply --reason "recreate loki-0 on the fixed revision"
+
+  # Recreate a managed-Postgres instance whose volume mount broke
+  enclii ops pods restart pod/<cluster>-1 -n project-<id>
+  enclii ops pods restart pod/<cluster>-1 -n project-<id> --expect-uid <uid> \
+    --apply --reason "remount after the node fault (I/O error in the postgres log)"`,
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			kind, name, found := strings.Cut(strings.TrimSpace(args[0]), "/")

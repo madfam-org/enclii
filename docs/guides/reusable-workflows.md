@@ -73,6 +73,40 @@ jobs:
       id-token: write
 ```
 
+### Opt-in scan before digest pinning
+
+Set `with.require_image_scan: true` to require the fixed Trivy 0.76.1 policy in
+this publisher's pin job. The default is `false` for existing callers. Pin a
+reviewed immutable reusable-workflow commit that contains this input; do not
+add a downstream scan after the publisher has already written production pins.
+
+The gate verifies each registry-derived digest with the existing signer rules,
+then scans all installed OS and language packages and package relationships for
+HIGH/CRITICAL findings, including unfixed vulnerabilities. All services must pass
+before any manifest edit. Private GHCR credentials are passed only through the
+scanner environment.
+The fixed checksum, private empty configuration/ignore file and sanitized child
+environment prevent caller suppression. Missing images, scanner/auth/database
+errors, unrecognized or incomplete reports and stale evidence fail closed.
+
+A source/run-bound private ledger binds each exact digest and scan receipt.
+Initial writes and push retries revalidate it; retries retain those digests and
+never rederive an unchecked tag. Before the first manifest edit, closed JSON
+receipts bind each accepted digest, zero HIGH/CRITICAL counts, inventory counts,
+validated database metadata and report hashes to the sealed cohort ledger.
+Raw reports, image configuration and scanner logs are ephemeral, private,
+bounded and never uploaded. Output contains bounded vulnerability coordinates
+and sanitized acceptance receipts. Normal CI checks the actual fixed scanner's
+image command arguments without accessing an image or database.
+
+Strict callers normally use `ghcr.io/<owner>/<repository>/<service>`. The
+existing flat Money Moves package is limited to repository
+`madfam-org/money-moves`, prefix `ghcr.io/madfam-org` and sole service
+`money-moves`; other flat mappings are refused.
+
+This gate does not provide staging, soak,
+runtime acceptance or authority for financial or fiscal actions.
+
 ### Required repo setup
 
 1. **Dockerfiles**: use `FROM public.ecr.aws/docker/library/<image>`
@@ -133,6 +167,18 @@ unreviewed hand-off of those secrets. Two forms work:
   (see below).
 - **Tag**: `@vX.Y.Z`. Still accepted. A tag can be moved by anyone with
   write access to enclii, which a SHA cannot.
+
+**Callers that require SHA-pinned actions.** GitHub's policy "Require actions
+to be pinned to a full-length commit SHA" also applies inside called reusable
+workflows. If a caller repo (or its org) enables it, GitHub refuses the run
+before any job starts unless every `uses:` in `build-publish.yml` at the pinned
+ref is itself SHA-pinned. That holds from madfam-org/enclii#671
+(`c8b4647e8300733bc0a3d70a067173378aac633a`) onward; `v1.0.0-alpha.14` and
+earlier still pin actions by tag. Until a release tag contains #671, such a
+caller pins a `main` commit at or after it, with a comment saying so. The pin
+job accepts it because the SHA is reachable from `main` (see below). When
+bumping, diff `build-publish.yml` between the two SHAs and confirm every
+`uses:` is still SHA-pinned.
 
 Find a release's commit SHA. The `^{}` suffix peels an annotated tag to the
 commit it points at, and that commit is the SHA to pin:

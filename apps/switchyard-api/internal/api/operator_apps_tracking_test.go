@@ -85,6 +85,11 @@ func TestOpsAppsTrackingPlanAndApply(t *testing.T) {
 				return true, nil, k8serrors.NewConflict(schema.GroupResource{Resource: "configmaps"}, "argocd-cm", errors.New("rv"))
 			})
 		}, want: expectation{http.StatusConflict, "refused", 1, ""}},
+		"update-forbidden": {images: []string{v3}, reactor: func(c *fake.Clientset) {
+			c.PrependReactor("update", "configmaps", func(ktesting.Action) (bool, runtime.Object, error) {
+				return true, nil, k8serrors.NewForbidden(schema.GroupResource{Resource: "configmaps"}, "argocd-cm", errors.New("no RBAC write"))
+			})
+		}, want: expectation{http.StatusConflict, "refused", 1, ""}},
 		"update-unknown": {images: []string{v3}, reactor: func(c *fake.Clientset) {
 			c.PrependReactor("update", "configmaps", func(ktesting.Action) (bool, runtime.Object, error) { return true, nil, errors.New("timeout") })
 		}, want: expectation{http.StatusBadGateway, "unknown", 1, ""}},

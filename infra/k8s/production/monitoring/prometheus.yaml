@@ -145,6 +145,15 @@ data:
           - source_labels: [__meta_kubernetes_namespace, __meta_kubernetes_service_name, __meta_kubernetes_endpoint_port_name]
             action: keep
             regex: default;kubernetes;https
+        # Two of the heaviest bucket families, read by nothing here.
+        # apiserver_request_sli_duration_seconds is the same request latency
+        # as apiserver_request_duration_seconds minus webhook time, so the
+        # latency signal stays in the latter; request body size is a capacity
+        # curiosity. _sum and _count stay. RFC 0049 Phase 1.
+        metric_relabel_configs:
+          - source_labels: [__name__]
+            regex: apiserver_(request_sli_duration_seconds|request_body_size_bytes)_bucket
+            action: drop
 
       # Kubernetes nodes
       # Kubelet and cadvisor go through the API server's node proxy. Direct
@@ -171,6 +180,19 @@ data:
             replacement: /api/v1/nodes/$1/proxy/metrics
           - source_labels: [__meta_kubernetes_node_name]
             target_label: instance
+        # k3s runs the API server, scheduler, controllers and datastore client
+        # in the same process as the kubelet, and the kubelet endpoint of a
+        # control-plane node serves that whole process's registry. So every
+        # apiserver_*/etcd_*/scheduler_* series arrived twice: once here and
+        # once from the `kubernetes-apiservers` job. Measured 2026-11-04, the
+        # copy was about a sixth of all samples and every dropped name is also
+        # served by `kubernetes-apiservers`, which stays the one source. Worker
+        # nodes do not match (no control-plane role label), so their kubelet
+        # series are untouched. RFC 0049 Phase 1.
+        metric_relabel_configs:
+          - source_labels: [node_role_kubernetes_io_control_plane, __name__]
+            regex: 'true;(apiserver|etcd|scheduler|apiextensions|aggregator|authentication|authorization|field_validation|watch_cache)_.+'
+            action: drop
 
       # Kubernetes node cadvisor metrics
       - job_name: 'kubernetes-cadvisor'
@@ -200,6 +222,14 @@ data:
           - source_labels: [__meta_kubernetes_pod_annotation_prometheus_io_scrape]
             action: keep
             regex: true
+          # Scrape every exporter ONCE. node-exporter has its own
+          # `node-exporter` job; its pods also carry the scrape annotation, so
+          # without this every node_* series was stored three times (this job,
+          # `kubernetes-services` and `node-exporter`) and every
+          # `sum by (instance)` of a node_* metric read 3x. RFC 0049 Phase 1.
+          - source_labels: [__meta_kubernetes_namespace, __meta_kubernetes_pod_label_app_kubernetes_io_name]
+            action: drop
+            regex: monitoring;node-exporter
           - source_labels: [__meta_kubernetes_pod_annotation_prometheus_io_path]
             action: replace
             target_label: __metrics_path__
@@ -226,6 +256,15 @@ data:
           - source_labels: [__meta_kubernetes_service_annotation_prometheus_io_scrape]
             action: keep
             regex: true
+          # Scrape every exporter ONCE. Each of these Services is annotated
+          # AND has a dedicated job, so it was stored twice (node-exporter
+          # three times, with the pod job): `node-exporter`, `prometheus`
+          # (self, via localhost), `redis` and `postgres`. Rules and
+          # dashboards select those dedicated jobs (or no job at all, where a
+          # duplicate doubles every sum). RFC 0049 Phase 1.
+          - source_labels: [__meta_kubernetes_namespace, __meta_kubernetes_service_name]
+            action: drop
+            regex: monitoring;(node-exporter|prometheus)|data;(redis-exporter|postgres-exporter)
           - source_labels: [__meta_kubernetes_service_annotation_prometheus_io_path]
             action: replace
             target_label: __metrics_path__
@@ -420,6 +459,18 @@ data:
             action: keep
             regex: metrics-port
         metrics_path: /metrics
+        # The two heaviest histogram bucket families in this Prometheus
+        # (measured 2026-11-04: together about a fifth of every sample
+        # ingested). Labelled per policy, rule, resource kind and operation,
+        # so the bucket count multiplies. Nothing reads them: no rule, no
+        # dashboard. _sum and _count stay, so mean latency per policy is still
+        # rate(_sum) / rate(_count); kyverno_policy_results_total and
+        # kyverno_admission_requests_total (the alert inputs) are untouched.
+        # RFC 0049 Phase 1.
+        metric_relabel_configs:
+          - source_labels: [__name__]
+            regex: kyverno_(policy_execution|admission_review)_duration_seconds_bucket
+            action: drop
 
       # External Secrets metrics
       - job_name: 'external-secrets'
@@ -432,6 +483,83 @@ data:
           - source_labels: [__meta_kubernetes_service_annotation_prometheus_io_scrape]
             action: keep
             regex: true
+
+      # Longhorn (RFC 0049 Phase 1). Every longhorn-manager pod serves
+      # /metrics on 9500 for the volumes, replicas, disks and node it owns;
+      # longhorn-backend's endpoints are those pods, so each is scraped once.
+      # Nothing scraped it before 2026-11-04: volume actual size, disk
+      # capacity and robustness existed only in the Longhorn UI. Egress to
+      # longhorn-system is already open in network-policies.yaml, and the
+      # namespace has no ingress policy. The manager's own client-go and
+      # workqueue histograms are most of its series and are dropped.
+      - job_name: 'longhorn'
+        kubernetes_sd_configs:
+          - role: endpoints
+            namespaces:
+              names:
+                - longhorn-system
+        relabel_configs:
+          - source_labels: [__meta_kubernetes_service_name, __meta_kubernetes_endpoint_port_name]
+            action: keep
+            regex: longhorn-backend;manager
+          - source_labels: [__meta_kubernetes_pod_node_name]
+            target_label: node
+        metric_relabel_configs:
+          - source_labels: [__name__]
+            regex: longhorn_(rest_client|workqueue)_.+
+            action: drop
+
+      # ARC controller (RFC 0049 Phase 1): per-scale-set pending, running and
+      # failed ephemeral runners and running listeners. The controller already
+      # serves :8080/metrics and arc-controller-metrics-ingress already admits
+      # this namespace on 8080 (infra/k8s/policies/arc-default-deny.yaml), but
+      # no job read it: arc/monitoring.yaml's ServiceMonitor has no Service to
+      # select and is not deployed. Pod discovery, so no Service is needed.
+      # Only the gha_* gauges and the reconcile counters are kept. The
+      # LISTENER metrics (queue time, assigned jobs) stay off until the
+      # controller's --listener-metrics-addr is set; see arc/monitoring.yaml.
+      - job_name: 'arc-controller'
+        kubernetes_sd_configs:
+          - role: pod
+            namespaces:
+              names:
+                - arc-system
+        relabel_configs:
+          - source_labels: [__meta_kubernetes_pod_label_app_kubernetes_io_name, __meta_kubernetes_pod_container_port_name]
+            action: keep
+            regex: gha-rs-controller;metrics
+          - source_labels: [__meta_kubernetes_pod_name]
+            target_label: pod
+        metric_relabel_configs:
+          - source_labels: [__name__]
+            regex: gha_.+|controller_runtime_reconcile_(total|errors_total)
+            action: keep
+
+      # Selva provider credit grants (RFC 0049 Phase 1): remaining and spent
+      # USD and seconds to expiry per grant, from nexus-api's /metrics
+      # (selva-office docs/PROVIDER_CREDIT_GRANTS.md). Selva's ServiceMonitor
+      # feeds only the 24h rules-eval instance; this keeps the grant history
+      # where the capacity plane reads it. The amount series disappear (not
+      # zero) while Selva's meter is unreadable, so absence means "unknown".
+      # selva is labelled enclii.dev/data-access=true (egress open) and has no
+      # ingress policy. Only selva_* series are kept; the HTTP instrumentation
+      # stays with rules-eval.
+      - job_name: 'selva-nexus-api'
+        kubernetes_sd_configs:
+          - role: endpoints
+            namespaces:
+              names:
+                - selva
+        relabel_configs:
+          - source_labels: [__meta_kubernetes_service_name, __meta_kubernetes_endpoint_port_name]
+            action: keep
+            regex: nexus-api;http
+          - source_labels: [__meta_kubernetes_pod_name]
+            target_label: pod
+        metric_relabel_configs:
+          - source_labels: [__name__]
+            regex: selva_.+
+            action: keep
 
       # Synthetic HTTP probes of the revenue flows (money-machine audit
       # 2026-10-11, M2 F1/F2/F5), through blackbox-exporter.yaml. Each target
@@ -496,9 +624,9 @@ data:
           # the FX rail. The FX probe fails on `"source":"emergency_fallback"`
           # (the hardcoded table, never authoritative), F2.
           - targets: ['https://api.dhan.am/health']
-            labels: {product: dhanam, flow: api, target_namespace: dhanam, check: availability, module: http_2xx_json}
+            labels: {product: dhanam, flow: api, target_namespace: dhanam, check: availability, module: http_2xx_json, money_path: ',dhanam-self-serve,'}
           - targets: ['https://api.dhan.am/v1/billing/catalog']
-            labels: {product: dhanam, flow: billing-catalog, target_namespace: dhanam, check: availability, module: http_dhanam_catalog}
+            labels: {product: dhanam, flow: billing-catalog, target_namespace: dhanam, check: availability, module: http_dhanam_catalog, money_path: ',dhanam-self-serve,'}
           - targets: ['https://api.dhan.am/v1/fx-rates/health']
             labels: {product: dhanam, flow: fx, target_namespace: dhanam, check: fx-source, module: http_dhanam_fx}
           # The other revenue products' health endpoints. Where a product's
@@ -507,9 +635,9 @@ data:
           - targets: ['https://api.yantra4d.com/api/health']
             labels: {product: yantra4d, flow: api, target_namespace: yantra4d, check: availability, module: http_2xx_json}
           - targets: ['https://kalya.app/api/health']
-            labels: {product: kalya, flow: web, target_namespace: kalya, check: availability, module: http_2xx_json}
+            labels: {product: kalya, flow: web, target_namespace: kalya, check: availability, module: http_2xx_json, money_path: ',sales-booking,'}
           - targets: ['https://madfam.io/api/health']
-            labels: {product: madfam-site, flow: web, target_namespace: madfam-site, check: availability, module: http_2xx_json}
+            labels: {product: madfam-site, flow: web, target_namespace: madfam-site, check: availability, module: http_2xx_json, money_path: ',sales-booking,'}
           - targets: ['https://api.avala.studio/v1/health']
             labels: {product: avala, flow: api, target_namespace: avala, check: availability, module: http_2xx_json}
           - targets: ['https://app.avala.studio/api/health']
@@ -523,16 +651,16 @@ data:
           # does not gate), so http_janua_ready judges the body. /health has
           # no Redis or database field and read green through both outages.
           - targets: ['https://auth.madfam.io/api/v1/health/ready']
-            labels: {product: janua, flow: api, target_namespace: janua, check: availability, module: http_janua_ready}
+            labels: {product: janua, flow: api, target_namespace: janua, check: availability, module: http_janua_ready, money_path: ',retainer,dhanam-self-serve,'}
           # Trailing slash required: /api/v1/health answers 301.
           - targets: ['https://api.karafiel.mx/api/v1/health/']
-            labels: {product: karafiel, flow: api, target_namespace: karafiel, check: availability, module: http_2xx_json}
+            labels: {product: karafiel, flow: api, target_namespace: karafiel, check: availability, module: http_2xx_json, money_path: ',retainer,'}
           - targets: ['https://api.selva.town/health']
             labels: {product: selva, flow: api, target_namespace: selva, check: availability, module: http_2xx_json}
           - targets: ['https://api.tezca.mx/health']
             labels: {product: tezca, flow: api, target_namespace: tezca, check: availability, module: http_2xx_json}
           - targets: ['https://app.nauta.quest/health']
-            labels: {product: nauta, flow: web, target_namespace: nauta, check: availability, module: http_2xx_json}
+            labels: {product: nauta, flow: web, target_namespace: nauta, check: availability, module: http_2xx_json, money_path: ',retainer,'}
           - targets: ['https://api.forgesight.app/health']
             labels: {product: forgesight, flow: api, target_namespace: forgesight, check: availability, module: http_2xx_json}
           # Crea Tu Mundo, the vCTO client (tenant `crea` in tenants.json).
@@ -546,6 +674,165 @@ data:
           # Its MAP (crea-map-web).
           - targets: ['https://map.creatumundo.mx/api/health']
             labels: {product: ctm-map, flow: web, target_namespace: crea-map, check: availability, module: http_2xx_json}
+
+          # ---- Money paths (money-engine wave 2, 2026-10-18) -------------
+          # Two more labels, read by the `money-paths` rule group below:
+          #
+          #   money_path  the money paths a target is a STEP of, comma-wrapped
+          #               (`,retainer,dhanam-self-serve,`) so one target can
+          #               belong to several. A target on a money path pages as
+          #               MoneyPathDown (one page per broken PATH, critical);
+          #               its own failure is the MoneyPathStepFailing warning
+          #               (the digest names the step). The paths are the ones
+          #               that take money TODAY:
+          #                 retainer           the vCTO retainer: the Nauta
+          #                                    cockpit, Karafiel (the CFDI),
+          #                                    Janua (staff sign-in, email)
+          #                 dhanam-self-serve  Dhanam Essentials: dhan.am
+          #                                    pricing, app.dhan.am sign-up,
+          #                                    Janua sign-in, the catalog, the
+          #                                    API (then Stripe, not probed)
+          #                 sales-booking      every other product's buy link
+          #                                    ends at the Kalya booking page
+          #                                    (HOSTED_CHECKOUT_ENABLED is off
+          #                                    in production): madfam.io and
+          #                                    kalya.app
+          #   paging      `warning` for a target whose failure must NOT page
+          #               (RevenueEndpointDegraded, the digest). Absent means
+          #               the target pages as before.
+          #
+          # SEVERITY follows the journeys plan's decision 6 RECOMMENDATION
+          # (UNRULED at the time of writing): Telegram pages only for a broken
+          # money path on SKUs that work today; everything else warns. Only
+          # NEW targets are placed by it here. The existing targets of products
+          # that cannot be bought self-serve today keep paging critical until
+          # the owner rules decision 6.
+          #
+          # Dhanam Essentials, the one self-serve SKU that works end to end.
+          # Both pages render their prices and form in the browser, so the
+          # server HTML only proves the page is served without a redirect.
+          - targets: ['https://dhan.am/pricing']
+            labels: {product: dhanam, flow: pricing-page, target_namespace: dhanam, check: availability, module: http_page_2xx, money_path: ',dhanam-self-serve,'}
+          - targets: ['https://app.dhan.am/register']
+            labels: {product: dhanam, flow: signup-page, target_namespace: dhanam, check: availability, module: http_page_2xx, money_path: ',dhanam-self-serve,'}
+          # Janua, the sign-in rail of both money paths: discovery, signing
+          # keys, and the browser's own call from Dhanam's origin (CORS).
+          - targets: ['https://auth.madfam.io/.well-known/openid-configuration']
+            labels: {product: janua, flow: oidc-discovery, target_namespace: janua, check: availability, module: http_oidc_discovery, money_path: ',retainer,dhanam-self-serve,'}
+          - targets: ['https://auth.madfam.io/.well-known/jwks.json']
+            labels: {product: janua, flow: jwks, target_namespace: janua, check: availability, module: http_jwks, money_path: ',retainer,dhanam-self-serve,'}
+          - targets: ['https://auth.madfam.io/api/v1/auth/me']
+            labels: {product: janua, flow: cors-dhanam, target_namespace: janua, check: availability, module: http_janua_cors_dhanam, money_path: ',dhanam-self-serve,'}
+          # The booking page every product's buy link lands on today.
+          - targets: ['https://kalya.app/madfam']
+            labels: {product: kalya, flow: booking-page, target_namespace: kalya, check: availability, module: http_page_2xx, money_path: ',sales-booking,'}
+
+          # Warning only (decision 6 recommendation): these SKUs cannot be
+          # bought self-serve today (their buy links end at the Kalya booking
+          # page), so a broken page loses a lead, not a sale. It goes to the
+          # digest; it does not page.
+          - targets: ['https://selva.town/pricing']
+            labels: {product: selva, flow: pricing-page, target_namespace: selva, check: availability, module: http_pricing_page, paging: warning}
+          - targets: ['https://karafiel.mx/precios']
+            labels: {product: karafiel, flow: pricing-page, target_namespace: karafiel, check: availability, module: http_pricing_page, paging: warning}
+          - targets: ['https://avala.studio/precios']
+            labels: {product: avala, flow: pricing-page, target_namespace: avala, check: availability, module: http_pricing_page, paging: warning}
+          - targets: ['https://tezca.mx/precios']
+            labels: {product: tezca, flow: pricing-page, target_namespace: tezca, check: availability, module: http_page_2xx, paging: warning}
+          - targets: ['https://routecraft.app/pricing']
+            labels: {product: routecraft, flow: pricing-page, target_namespace: routecraft, check: availability, module: http_page_2xx, paging: warning}
+          - targets: ['https://janua.dev/pricing']
+            labels: {product: janua, flow: pricing-page, target_namespace: janua, check: availability, module: http_page_2xx, paging: warning}
+          # Enclii's prices are on its landing; enclii.dev/pricing is not a
+          # route (the landing answers 200 for any path).
+          - targets: ['https://enclii.dev/']
+            labels: {product: enclii, flow: pricing-landing, target_namespace: enclii, check: availability, module: http_pricing_page, paging: warning}
+          # Dhanam FX degraded (a real but non-provider rate). The query string
+          # only makes the URL distinct from the fx-source probe's (one
+          # instance per target); the endpoint ignores it.
+          - targets: ['https://api.dhan.am/v1/fx-rates/health?probe=fx-degraded']
+            labels: {product: dhanam, flow: fx-degraded, target_namespace: dhanam, check: availability, module: http_dhanam_fx_degraded, paging: warning}
+          # Karafiel's task broker (Redis), which /api/v1/health/ does not
+          # gate on. Warning until it is known whether the retainer's CFDI
+          # stamping is synchronous (API) or queued (worker); the stamping
+          # itself is watched by the retainer-cycle rules, not by a probe.
+          - targets: ['https://api.karafiel.mx/api/v1/health/?probe=cfdi-broker']
+            labels: {product: karafiel, flow: cfdi-broker, target_namespace: karafiel, check: availability, module: http_karafiel_broker, paging: warning}
+        relabel_configs:
+          - source_labels: [__address__]
+            target_label: __param_target
+          - source_labels: [module]
+            target_label: __param_module
+          - source_labels: [__param_target]
+            target_label: instance
+          - target_label: __address__
+            replacement: blackbox-exporter.monitoring.svc:9115
+
+      # Geometry-factory hosts (geometry stability pass 2026-10-18, lane O1).
+      # Every public host of Yantra4D, Fashion Cabinet, Pliego, Cotiza and
+      # Blueprint.Tube, probed on its health path through Cloudflare and the
+      # tunnel, as blackbox-revenue does. Until this job most of them were
+      # watched by replica counts only: a host answering 5xx or timing out
+      # behind Ready pods paged nobody. The `geometry-probes` rule group
+      # (geometry-probe-rules.yml below) pages on the results:
+      # GeometryHostDown (a probe failing for 3 minutes),
+      # GeometryTLSCertExpiring (the served certificate expires within 14
+      # days) and GeometryProbesNotRunning (this job is not being scraped).
+      #
+      # A job of its own, not more blackbox-revenue targets: its alerts carry
+      # no `category: revenue-probe`, so they take the generic critical route
+      # (critical-receiver: Courier + email, one group per alertname) and
+      # leave the revenue route's email budget as it is. Two hosts are also
+      # revenue targets (api.yantra4d.com/api/health; the Cotiza API, there
+      # on /health/ready). When one fails both alerts fire: the revenue one
+      # names the flow, this one names the factory.
+      #
+      # Labels on every target: product (what pages; Courier keys the page
+      # on it, so each product pages once per episode), flow, target_namespace
+      # (where to look first) and module. Adding a host: the same rules as
+      # blackbox-revenue (a URL that answers 200 with no redirect, the module
+      # chosen by its body), and add it to GEOMETRY_TARGETS in
+      # tests/scripts/test_geometry_probe_rules.py.
+      - job_name: 'blackbox-geometry'
+        metrics_path: /probe
+        scrape_interval: 60s
+        scrape_timeout: 15s
+        static_configs:
+          # Yantra4D. The apex is a static SPA: every path, /api/health
+          # included, answers 200 with index.html, so its front page is
+          # judged as HTML. The studio and admin hosts answer /api/health
+          # with the API's JSON report.
+          - targets: ['https://yantra4d.com/']
+            labels: {product: yantra4d, flow: landing, target_namespace: yantra4d, module: http_200_html}
+          - targets: ['https://app.yantra4d.com/api/health']
+            labels: {product: yantra4d, flow: studio, target_namespace: yantra4d, module: http_2xx_json}
+          - targets: ['https://admin.yantra4d.com/api/health']
+            labels: {product: yantra4d, flow: admin, target_namespace: yantra4d, module: http_2xx_json}
+          - targets: ['https://api.yantra4d.com/api/health']
+            labels: {product: yantra4d, flow: api, target_namespace: yantra4d, module: http_2xx_json}
+          # Fashion Cabinet: one app behind two hostnames.
+          - targets: ['https://fc.madfam.io/health']
+            labels: {product: fashion-cabinet, flow: app, target_namespace: fashion-cabinet, module: http_2xx_json}
+          - targets: ['https://fashioncabi.net/health']
+            labels: {product: fashion-cabinet, flow: brand-domain, target_namespace: fashion-cabinet, module: http_2xx_json}
+          # Pliego: one service behind three hostnames. The app host's root
+          # redirects to /studio/; /health answers 200 on all three.
+          - targets: ['https://pliego.madfam.io/health']
+            labels: {product: pliego, flow: landing, target_namespace: pliego, module: http_2xx_json}
+          - targets: ['https://pliego-app.madfam.io/health']
+            labels: {product: pliego, flow: app, target_namespace: pliego, module: http_2xx_json}
+          - targets: ['https://pliego-api.madfam.io/health']
+            labels: {product: pliego, flow: api, target_namespace: pliego, module: http_2xx_json}
+          # Cotiza: the web app's /api/health crosses its proxy to the API.
+          - targets: ['https://cotiza.studio/api/health']
+            labels: {product: cotiza, flow: web, target_namespace: digifab-quoting, module: http_2xx_json}
+          - targets: ['https://api.cotiza.studio/health']
+            labels: {product: cotiza, flow: api, target_namespace: digifab-quoting, module: http_2xx_json}
+          # Blueprint.Tube: the landing and the API gateway.
+          - targets: ['https://blueprint.tube/health']
+            labels: {product: blueprint, flow: landing, target_namespace: blueprint-harvester, module: http_2xx_json}
+          - targets: ['https://api.blueprint.tube/health']
+            labels: {product: blueprint, flow: api, target_namespace: blueprint-harvester, module: http_2xx_json}
         relabel_configs:
           - source_labels: [__address__]
             target_label: __param_target
@@ -566,6 +853,26 @@ metadata:
     app.kubernetes.io/name: prometheus
     app.kubernetes.io/component: monitoring
     app.kubernetes.io/part-of: enclii
+  # REPLACE, NOT SERVER-SIDE APPLY, FOR THIS ONE OBJECT (2026-10-21).
+  #
+  # Prometheus loads every key of this ConfigMap (`rule_files:
+  # /etc/prometheus/rules/*.yml`), so a key that is live but not in git is
+  # a live rule nobody can see in review. Under the app's ServerSideApply,
+  # Argo only removes data keys that argocd-controller itself owns. Two keys
+  # written by `kubectl patch` on 2026-04-14 (ecosystem-alerts.yml,
+  # secrets-alerts.yml) were owned by that field manager, so six months of
+  # syncs left them in place and Argo still reported Synced. One of them
+  # carried a second, unfiltered PodNotReady (no Succeeded/Failed exclusion,
+  # for: 10m), which is why finished Job pods in crea-map and crea-sim
+  # kept firing although the rule below excludes them.
+  #
+  # Replace=true makes each sync of this object a full PUT: the live data is
+  # exactly git's, and any key added by hand is gone on the next change to
+  # this file. PrometheusRuleFileNotInGit (alert-delivery-rules.yml) makes a
+  # hand-added key visible in the meantime. Never `kubectl patch` a rule in:
+  # add the key here, and to the rule_group regex in that rule.
+  annotations:
+    argocd.argoproj.io/sync-options: Replace=true
 data:
   enclii-alerts.yml: |
     groups:
@@ -631,6 +938,11 @@ data:
           # checker dead — (a) alone can lie if the checker dies with
           # missing_users frozen at 0. Full rationale + synthetic-test recipe:
           # docs/monitoring/pgbouncer-drift-alerts.md.
+          # Since 2026-10-21 (auth_query) "missing" means a login role the
+          # pooler cannot authenticate by EITHER path (no userlist line and
+          # auth_query cannot return it, or auth_query itself is broken);
+          # roles declared in pgbouncer-config `direct-connect-roles` are not
+          # counted.
           - alert: PgbouncerUserlistDrift
             expr: enclii_pgbouncer_userlist_missing_users > 0
             for: 10m
@@ -639,7 +951,7 @@ data:
               service: pgbouncer
             annotations:
               summary: "pgbouncer userlist drift — pooler auth diverged from DB truth (the 2026-08-24 outage class)"
-              description: "{{ $value }} Postgres login role(s) exist that pgbouncer's userlist does not have a line for. Every pooled connection as those roles is failing auth right now — this is the exact drift class that took fortuna/bloom-scroll/ceq hard-down for days on 2026-08-24. Check GET /v1/admin/provision/pgbouncer/reconcile on switchyard-api for the current missing-role list; repair requires the role's password from the consuming service's own secret (see internal-devops/scripts/restore-pgbouncer-users.py) — this alert does NOT self-heal."
+              description: "{{ $value }} Postgres login role(s) that pgbouncer cannot authenticate: no userlist line, and auth_query cannot return them (a superuser, no usable password) or auth_query itself is broken. Every pooled connection as those roles is failing auth right now — the drift class that took fortuna/bloom-scroll/ceq hard-down for days on 2026-08-24. GET /v1/admin/provision/pgbouncer/reconcile on switchyard-api lists them and, when the auth_query path is broken, says why (auth_query_problem: Secret data/pgbouncer-auth, role pgbouncer_auth, or pgbouncer.get_auth; fix with scripts/pgbouncer-auth-query.sh). A role that connects to Postgres directly belongs in pgbouncer-config direct-connect-roles. Otherwise repair needs the role's password from the consuming service's own secret (internal-devops/scripts/restore-pgbouncer-users.py). This alert does NOT self-heal."
 
           - alert: PgbouncerUserlistCheckErrors
             expr: increase(enclii_pgbouncer_userlist_check_errors_total[15m]) > 0
@@ -1110,15 +1422,38 @@ data:
       - name: cronjob-health
         interval: 60s
         rules:
-          # CronJob Failures
+          # CronJob Failures: the LATEST run of a CronJob finished without
+          # succeeding (or the CronJob has never succeeded), and no run is in
+          # progress. This used to be `kube_job_status_failed > 0`, the same
+          # never-resolving pattern BackupVerifyFailed had: it matched every
+          # failed Job object kept by failedJobsHistoryLimit, so a failure
+          # weeks ago (already followed by hundreds of good runs) kept it
+          # firing permanently and hid any new failure behind it.
           - alert: CronJobFailed
-            expr: kube_job_status_failed{namespace=~"enclii|monitoring|data"} > 0
-            for: 5m
+            expr: |
+              (
+                (
+                  kube_cronjob_status_last_schedule_time{namespace=~"enclii|monitoring|data"}
+                  > on (namespace, cronjob)
+                  kube_cronjob_status_last_successful_time{namespace=~"enclii|monitoring|data"}
+                )
+                or on (namespace, cronjob)
+                (
+                  kube_cronjob_status_last_schedule_time{namespace=~"enclii|monitoring|data"}
+                  unless on (namespace, cronjob)
+                  kube_cronjob_status_last_successful_time{namespace=~"enclii|monitoring|data"}
+                )
+              )
+              and on (namespace, cronjob)
+              (kube_cronjob_status_active{namespace=~"enclii|monitoring|data"} == 0)
+              unless on (namespace, cronjob)
+              (kube_cronjob_spec_suspend{namespace=~"enclii|monitoring|data"} == 1)
+            for: 15m
             labels:
               severity: warning
             annotations:
-              summary: "CronJob failed"
-              description: "Job {{ $labels.namespace }}/{{ $labels.job_name }} has failed."
+              summary: "CronJob's latest run did not succeed"
+              description: "The latest run of {{ $labels.namespace }}/{{ $labels.cronjob }} finished without succeeding (or it has never succeeded). Find it with: kubectl -n {{ $labels.namespace }} get jobs --sort-by=.metadata.creationTimestamp | grep {{ $labels.cronjob }}"
 
           # The LATEST scheduled run has not succeeded: scheduled more than 2h
           # ago (the Job's own deadline is 30m) with no success since. This
@@ -2328,9 +2663,12 @@ data:
           # (e.g. 200 where 401 is expected) or a body that fails its check.
           # The FX source probe's REGEX failure is excluded here because it
           # has its own alert below; that probe's HTTP failure still counts.
+          # Steps of a money path (`money_path` set) page as MoneyPathDown in
+          # the `money-paths` group instead, once per broken path, and
+          # `paging: warning` targets go to RevenueEndpointDegraded.
           - alert: RevenueEndpointDown
             expr: |
-              probe_success{job="blackbox-revenue"} == 0
+              probe_success{job="blackbox-revenue", paging!="warning", money_path=""} == 0
               unless on (instance)
               (probe_failed_due_to_regex{job="blackbox-revenue", check="fx-source"} == 1)
             for: 3m
@@ -2355,6 +2693,39 @@ data:
                   3. If many products fail at once, check CloudflaredTunnelDown
                      first: the probes share the public edge path.
                 In Grafana: probe_http_status_code{instance="{{ $labels.instance }}"}.
+
+          # A `paging: warning` target failing for 10 minutes. These are the
+          # pages and checks of SKUs that cannot be bought self-serve today
+          # (their buy links end at the Kalya booking page), plus Dhanam FX
+          # degraded and Karafiel's broker. Warning, so it reaches the
+          # digest and not Telegram: the journeys plan's decision 6
+          # recommendation (UNRULED at the time of writing) pages only for
+          # money paths that work today.
+          - alert: RevenueEndpointDegraded
+            expr: |
+              probe_success{job="blackbox-revenue", paging="warning"} == 0
+            for: 10m
+            labels:
+              severity: warning
+              category: revenue-probe
+            annotations:
+              summary: "{{ $labels.product }} {{ $labels.flow }} is failing (warning only): {{ $labels.instance }}"
+              description: |
+                The synthetic probe of {{ $labels.instance }} (product
+                {{ $labels.product }}, flow {{ $labels.flow }}, blackbox module
+                {{ $labels.module }}) has failed for 10 minutes.
+
+                WHY THIS IS A WARNING AND NOT A PAGE: this target is not a step
+                of a money path that takes money today. Its SKU's buy link ends
+                at the Kalya booking page, so a broken page here loses a lead,
+                not a sale (decision 6 of the money-engine journeys plan, as
+                recommended; promote the target to a money path when its
+                checkout works).
+
+                Triage:
+                  1. curl -sS -o /dev/null -w '%{http_code}\n' '{{ $labels.instance }}'
+                     (the module's pass condition is in blackbox-exporter.yaml).
+                  2. enclii ops pods diagnose -n {{ $labels.target_namespace }}
 
           # Dhanam is pricing off its hardcoded emergency FX table. The
           # endpoint is up (HTTP 2xx), so nothing else pages, but every
@@ -2406,6 +2777,186 @@ data:
                      job is not loaded (prometheus-config ConfigMap, reload);
                      0 means Prometheus cannot reach blackbox-exporter:9115
                      (blackbox-exporter-ingress NetworkPolicy, Service).
+
+      # One page per broken MONEY PATH (money-engine wave 2, 2026-10-18).
+      # A money path is the chain of public steps a payment goes through
+      # today; its steps are the blackbox-revenue targets whose `money_path`
+      # label names it (prometheus-config, scrape job blackbox-revenue).
+      # Any step failing for 3 minutes breaks the path. The page carries
+      # `money_path` and, as `product`, the same name: Alertmanager's revenue
+      # route groups by [alertname, product] and Courier keys its
+      # once-per-episode page on `product`, so two broken paths are two
+      # pages and one broken path is one page however many steps fail.
+      # Which steps: the MoneyPathStepFailing warnings, or
+      # `python3 scripts/money-engine-status.py`.
+      - name: money-paths
+        interval: 30s
+        rules:
+          - alert: MoneyPathDown
+            expr: |
+              label_replace(label_replace(
+                count(probe_success{job="blackbox-revenue", money_path=~".*,retainer,.*"} == 0),
+                "money_path", "retainer", "", ""), "product", "retainer", "", "")
+              or
+              label_replace(label_replace(
+                count(probe_success{job="blackbox-revenue", money_path=~".*,dhanam-self-serve,.*"} == 0),
+                "money_path", "dhanam-self-serve", "", ""), "product", "dhanam-self-serve", "", "")
+              or
+              label_replace(label_replace(
+                count(probe_success{job="blackbox-revenue", money_path=~".*,sales-booking,.*"} == 0),
+                "money_path", "sales-booking", "", ""), "product", "sales-booking", "", "")
+            for: 3m
+            labels:
+              severity: critical
+              category: revenue-probe
+            annotations:
+              summary: "Money path {{ $labels.money_path }} is broken: {{ $value }} step(s) failing"
+              description: |
+                {{ $value }} step(s) of the {{ $labels.money_path }} money path
+                have failed their synthetic probe for 3 minutes. A customer or
+                the retainer cycle cannot complete this path right now.
+
+                  retainer           Nauta cockpit, Karafiel API (CFDI), Janua
+                  dhanam-self-serve  dhan.am/pricing, app.dhan.am/register,
+                                     Janua sign-in (discovery, keys, CORS),
+                                     the Dhanam catalog and API
+                  sales-booking      madfam.io, kalya.app and its booking page
+
+                Triage:
+                  1. Which step: python3 scripts/money-engine-status.py (from an
+                     enclii checkout; public GETs, the same pass conditions), or
+                     the MoneyPathStepFailing warnings in Alertmanager.
+                  2. If several paths break at once, check CloudflaredTunnelDown
+                     and Janua first: they are shared by every path.
+                In Grafana: the "Money engine" dashboard.
+
+          # Each failing step of a money path, for the digest and the status
+          # read: it names the step that MoneyPathDown counts. Warning, so the
+          # path pages once (MoneyPathDown) and the steps do not page again.
+          - alert: MoneyPathStepFailing
+            expr: |
+              probe_success{job="blackbox-revenue", money_path!=""} == 0
+            for: 3m
+            labels:
+              severity: warning
+              category: revenue-probe
+            annotations:
+              summary: "Money path step failing ({{ $labels.money_path }}): {{ $labels.product }} {{ $labels.flow }} {{ $labels.instance }}"
+              description: |
+                {{ $labels.instance }} (product {{ $labels.product }}, flow
+                {{ $labels.flow }}, module {{ $labels.module }}) is a step of the
+                money paths {{ $labels.money_path }} and has failed its probe for
+                3 minutes. MoneyPathDown pages for the path; this names the step.
+
+                Triage:
+                  1. curl -sS -o /dev/null -w '%{http_code}\n' '{{ $labels.instance }}'
+                  2. enclii ops pods diagnose -n {{ $labels.target_namespace }}
+
+  # =========================================================================
+  # Geometry-factory probes (geometry stability pass 2026-10-18, lane O1).
+  # Reads the `blackbox-geometry` scrape job above (targets) and
+  # blackbox-exporter.yaml (modules). The geometry offering is up only if
+  # someone is told when it is down, so all three page.
+  #
+  # Paging shape. No `category: revenue-probe`: these take the generic
+  # critical route in alertmanager.yaml (critical-receiver, Courier + email,
+  # grouped by alertname, email re-sent every 4h). Each target carries a
+  # `product` label and no rule here sets one, so Courier keys each page
+  # `alarm:<alertname>:<product>:<hour>`: one page per failing product per
+  # episode, a reminder every 24h, one resolved notice. A second product
+  # failing while the first is paging joins the alertname's email group at
+  # its next 15m tick and still pages on its own in chat. The `product`
+  # label also keeps these out of the staging routes.
+  #
+  # Annotations use $labels and $value only: no `query` template functions.
+  # =========================================================================
+  geometry-probe-rules.yml: |
+    groups:
+      - name: geometry-probes
+        interval: 30s
+        rules:
+          # Any geometry host failing for 3 minutes (three 60s probes in a
+          # row): a 5xx, a timeout, a TLS failure (an expired certificate
+          # fails the handshake and lands here), a redirect, a wrong status
+          # or a body that fails its module's check.
+          - alert: GeometryHostDown
+            expr: |
+              probe_success{job="blackbox-geometry"} == 0
+            for: 3m
+            labels:
+              severity: critical
+              category: geometry-probe
+            annotations:
+              summary: "{{ $labels.product }} {{ $labels.flow }} is down: {{ $labels.instance }}"
+              description: |
+                The synthetic probe of {{ $labels.instance }} (product
+                {{ $labels.product }}, flow {{ $labels.flow }}, blackbox module
+                {{ $labels.module }}) has failed for 3 minutes. It probes the
+                public URL, through Cloudflare and the tunnel, as a visitor
+                would; Argo and the replica alerts can read healthy while this
+                fires.
+
+                Triage:
+                  1. Reproduce: curl -sS -o /dev/null -w '%{http_code}\n' '{{ $labels.instance }}'
+                     (the module's pass condition is in
+                     infra/k8s/production/monitoring/blackbox-exporter.yaml).
+                  2. Pods and logs: enclii ops pods diagnose -n {{ $labels.target_namespace }}
+                  3. If many products fail at once, check CloudflaredTunnelDown
+                     and RevenueEndpointDown first: the probes share the public
+                     edge path.
+                In Grafana: probe_http_status_code{instance="{{ $labels.instance }}"}.
+
+          # The certificate a geometry host serves expires within 14 days.
+          # Cloudflare renews its edge certificates weeks ahead of expiry (on
+          # 2026-10-18 the shortest of these 13 had 32 days left), so under
+          # 14 days means renewal has failed, and the host goes down on a
+          # known date. One hour so a certificate swap mid-probe does not
+          # page. probe_ssl_earliest_cert_expiry is the earliest expiry in
+          # the verified chain, as a Unix time.
+          - alert: GeometryTLSCertExpiring
+            expr: |
+              probe_ssl_earliest_cert_expiry{job="blackbox-geometry"} - time() < 14 * 86400
+            for: 1h
+            labels:
+              severity: critical
+              category: geometry-probe
+            annotations:
+              summary: "{{ $labels.product }} {{ $labels.flow }}: TLS certificate expires within 14 days ({{ $labels.instance }})"
+              description: |
+                The certificate served for {{ $labels.instance }} expires in
+                {{ $value }} seconds. Cloudflare renews edge certificates weeks
+                ahead of expiry, so renewal has likely failed for this hostname.
+
+                Triage:
+                  1. echo | openssl s_client -connect <host>:443 -servername <host> 2>/dev/null | openssl x509 -noout -enddate -issuer
+                  2. Cloudflare dashboard → SSL/TLS → Edge Certificates for the
+                     zone: the certificate's status and validation records.
+
+          # The geometry probes are not running: the scrape job is not loaded
+          # (a merged prometheus-config that never reloaded), or Prometheus
+          # cannot reach blackbox-exporter. Every probe series disappears and
+          # GeometryHostDown can no longer fire, so this pages.
+          - alert: GeometryProbesNotRunning
+            expr: |
+              absent(up{job="blackbox-geometry"} == 1)
+            for: 10m
+            labels:
+              severity: critical
+              category: geometry-probe
+            annotations:
+              summary: "Geometry probes are not running: the geometry hosts are unwatched"
+              description: |
+                No target of the blackbox-geometry scrape job has been scraped
+                successfully for 10 minutes, so GeometryHostDown and
+                GeometryTLSCertExpiring cannot fire.
+
+                Triage:
+                  1. If RevenueProbesNotRunning fires too, the exporter is down:
+                     enclii ops pods diagnose -n monitoring (blackbox-exporter pod).
+                  2. Otherwise the job is not loaded: Grafana up{job="blackbox-geometry"}
+                     is absent. Check the prometheus-config ConfigMap and that
+                     Prometheus reloaded it (/api/v1/status/runtimeinfo
+                     lastConfigTime, reloadConfigSuccess).
 
   # =========================================================================
   # Synthetic journeys (S-Gate 1, 2026-10-14). The Playwright journey runner
@@ -2950,6 +3501,35 @@ data:
                 StatefulSet itself is gone: check the Prometheus CR
                 `rules-eval` and the prometheus-operator log.
 
+          # A rule file this Prometheus evaluates that is not a key of the
+          # prometheus-rules ConfigMap in git. The list is the ConfigMap's
+          # keys (tests/scripts/test_alert_noise_rules.py fails when they
+          # differ), so adding a key in a PR means adding it here too.
+          - alert: PrometheusRuleFileNotInGit
+            expr: |
+              count by (rule_group) (
+                prometheus_rule_group_rules{job="prometheus", rule_group!~"/etc/prometheus/rules/(alert-delivery-rules|arc-pool-health-rules|chronic-restart-rules|client-slo-rules|cloudflared-tunnel-rules|courier-page-budget-rules|courier-receiver-rules|critical-coverage-rules|cv-rules|deploy-parity-alerts|deploy-pipeline-freshness-rules|enclii-alerts|geometry-probe-rules|longhorn-filesystem-health|maintenance-alerts|pager-path-drill-rules|pgbackrest-health-rules|postgres-wal-archive-rules|retainer-cycle-rules|revenue-probe-rules|secret-integrity-rules|synthetic-flow-probe-rules)\\.yml;.*"}
+              ) > 0
+            for: 15m
+            labels:
+              severity: warning
+              service: prometheus
+              category: alerting-pipeline
+            annotations:
+              summary: "Prometheus evaluates a rule file that is not in git: {{ $labels.rule_group }}"
+              description: |
+                The main Prometheus loads every key of ConfigMap
+                monitoring/prometheus-rules. This group comes from a key that
+                is not in infra/k8s/production/monitoring/prometheus.yaml, so
+                its rules fire without ever having been reviewed. On
+                2026-10-21 two such keys, written by `kubectl patch` six
+                months earlier, were found: one held an unfiltered
+                PodNotReady that fired for every finished Job pod.
+
+                The ConfigMap syncs with Replace=true, so the next merged
+                change to prometheus.yaml removes the key. If the rules are
+                wanted, move them into git in that change.
+
   # THE PAGE BUDGET (infra-stability audit 2026-10-17, pager noise plan
   # step 5). A pager that sends more than a handful of critical pages a day
   # is being trained to be ignored: in the 14 days to 10-17 it sent 772,
@@ -3081,6 +3661,690 @@ data:
                 either never arrives, that last mile is broken: check
                 AlertmanagerEmailDeliveryFailing and CourierReceiverDown,
                 then the Alertmanager log.
+  # =========================================================================
+  # The vCTO retainer billing cycle (money-engine wave 2, 2026-10-18).
+  #
+  # WAITING ON nauta#351. These rules read the `nauta_retainer_cycle_*` and
+  # `nauta_retainer_status_*` gauges that nauta#351 publishes on the nauta
+  # worker's /metrics (port 3001, scraped by the annotation-based
+  # `kubernetes-pods` job; Prometheus reaches the `nauta` namespace through
+  # its `enclii.dev/data-access` egress rule). Land this AFTER nauta#351 is
+  # deployed and its first scrape is in: before that, RetainerMetricsMissing
+  # fires (a warning, the digest) and nothing else can.
+  #
+  # The gauges (unix seconds, 0 = not yet; labels workspace_id, cycle):
+  #   ..._corte_timestamp_seconds, ..._cfdi_deadline_timestamp_seconds (the
+  #   end of the 3rd business day from the corte, computed by nauta),
+  #   ..._cfdi_stamped_timestamp_seconds, ..._cfdi_sent_timestamp_seconds,
+  #   ..._cfdi_delivery_failed (0/1), ..._payment_due_timestamp_seconds,
+  #   ..._payment_recorded_timestamp_seconds, ..._paid_in_full (0/1).
+  # Status (no labels): nauta_retainer_status_last_success_timestamp_seconds,
+  #   nauta_retainer_status_read_ok, nauta_retainer_status_workspaces.
+  #
+  # WHY CRITICAL: the retainer is the money path that pays the bills today,
+  # and its CFDI is a promise to the client with a date on it (3 business
+  # days from the corte). The other retainer rules are warnings: a late
+  # payment or a stuck mail needs a person this week, not at 03:00.
+  #
+  # Every cycle rule is a join on (workspace_id, cycle), so it is empty, and
+  # cannot fire, while the gauges are absent. Absence is its own warning.
+  # `product` is written as retainer-<workspace_id>-<cycle> so Courier pages
+  # once per cycle and episode, and two cycles are two pages. `keep_firing_for`
+  # bridges a worker restart (the gauges return at the next hourly read)
+  # without a resolve and a second page.
+  # =========================================================================
+  retainer-cycle-rules.yml: |
+    groups:
+      - name: retainer-cycle
+        interval: 1m
+        rules:
+          - alert: RetainerCfdiOverdue
+            expr: |
+              label_replace(label_join(
+                (
+                  max by (workspace_id, cycle) (nauta_retainer_cycle_cfdi_deadline_timestamp_seconds) > 0
+                  and max by (workspace_id, cycle) (nauta_retainer_cycle_cfdi_deadline_timestamp_seconds) < time()
+                )
+                and on (workspace_id, cycle)
+                (max by (workspace_id, cycle) (nauta_retainer_cycle_cfdi_stamped_timestamp_seconds) == 0),
+                "retainer_key", "-", "workspace_id", "cycle"),
+                "product", "retainer-$1", "retainer_key", "(.+)")
+            for: 30m
+            keep_firing_for: 90m
+            labels:
+              severity: critical
+              category: retainer
+            annotations:
+              summary: "Retainer CFDI overdue: cycle {{ $labels.cycle }} is past its deadline with no stamp"
+              description: |
+                Retainer cycle {{ $labels.cycle }} of workspace
+                {{ $labels.workspace_id }} passed its CFDI deadline (3 business
+                days from the corte) and nauta has no stamped CFDI for it. The
+                client was promised the comprobante by that date.
+
+                Next:
+                  1. Read the cycle: python3 scripts/money-engine-status.py --cluster
+                     (enclii checkout), or the nauta worker's
+                     `retainer-cycle-status` log line (nauta OPERATOR_CHECKLIST E3d).
+                  2. Stamp from the Nauta cockpit (Timbrar), per the cycle's
+                     billing runbook in internal-devops. A late client payment
+                     can delay the stamp by ruling; if so, this page is the
+                     reminder to record it.
+                  3. If the cockpit cannot stamp: Karafiel
+                     (enclii ops pods diagnose -n karafiel) and the PAC.
+
+          - alert: RetainerCfdiStampedNotSent
+            expr: |
+              label_replace(label_join(
+                (max by (workspace_id, cycle) (nauta_retainer_cycle_cfdi_stamped_timestamp_seconds) > 0)
+                and on (workspace_id, cycle)
+                (max by (workspace_id, cycle) (nauta_retainer_cycle_cfdi_sent_timestamp_seconds) == 0)
+                and on (workspace_id, cycle)
+                (time() - max by (workspace_id, cycle) (nauta_retainer_cycle_cfdi_stamped_timestamp_seconds) > 3600),
+                "retainer_key", "-", "workspace_id", "cycle"),
+                "product", "retainer-$1", "retainer_key", "(.+)")
+            for: 15m
+            keep_firing_for: 90m
+            labels:
+              severity: warning
+              category: retainer
+            annotations:
+              summary: "Retainer CFDI stamped but not sent: cycle {{ $labels.cycle }}"
+              description: |
+                Cycle {{ $labels.cycle }} of workspace {{ $labels.workspace_id }}
+                has a stamped CFDI and, an hour later, no record of the mail
+                that delivers it. Check the cycle's delivery in the Nauta
+                cockpit and Janua's transactional mail.
+
+          - alert: RetainerCfdiDeliveryFailed
+            expr: |
+              label_replace(label_join(
+                max by (workspace_id, cycle) (nauta_retainer_cycle_cfdi_delivery_failed) == 1,
+                "retainer_key", "-", "workspace_id", "cycle"),
+                "product", "retainer-$1", "retainer_key", "(.+)")
+            for: 5m
+            keep_firing_for: 90m
+            labels:
+              severity: warning
+              category: retainer
+            annotations:
+              summary: "Retainer CFDI delivery failed: cycle {{ $labels.cycle }}"
+              description: |
+                nauta recorded a FAILED delivery of cycle {{ $labels.cycle }}'s
+                CFDI (workspace {{ $labels.workspace_id }}). Resend it from the
+                Nauta cockpit after fixing the cause (Janua mail).
+
+          - alert: RetainerPaymentOverdue
+            expr: |
+              label_replace(label_join(
+                (
+                  max by (workspace_id, cycle) (nauta_retainer_cycle_payment_due_timestamp_seconds) > 0
+                  and max by (workspace_id, cycle) (nauta_retainer_cycle_payment_due_timestamp_seconds) + 86400 < time()
+                )
+                and on (workspace_id, cycle)
+                (max by (workspace_id, cycle) (nauta_retainer_cycle_payment_recorded_timestamp_seconds) == 0),
+                "retainer_key", "-", "workspace_id", "cycle"),
+                "product", "retainer-$1", "retainer_key", "(.+)")
+            for: 30m
+            keep_firing_for: 90m
+            labels:
+              severity: warning
+              category: retainer
+            annotations:
+              summary: "Retainer payment overdue: cycle {{ $labels.cycle }} is a day past due with no payment recorded"
+              description: |
+                Cycle {{ $labels.cycle }} of workspace {{ $labels.workspace_id }}
+                was due a day ago and nauta has no payment record for it. Either
+                the client has not paid (follow up) or the payment arrived and
+                was not captured in the cockpit («pago recibido»).
+
+          - alert: RetainerMetricsMissing
+            expr: |
+              absent(nauta_retainer_status_last_success_timestamp_seconds)
+            for: 2h
+            labels:
+              severity: warning
+              category: retainer
+            annotations:
+              summary: "Retainer cycle metrics are missing: the retainer rules cannot fire"
+              description: |
+                Prometheus has no nauta_retainer_status_* series for 2 hours.
+                Until they return, RetainerCfdiOverdue and the other retainer
+                rules cannot fire, so an overdue CFDI would go unnoticed.
+
+                Triage:
+                  1. enclii ops pods diagnose -n nauta (is nauta-worker running,
+                     on an image with nauta#351?).
+                  2. Its prometheus.io scrape annotations and the
+                     allow-monitoring-ingress-worker NetworkPolicy (nauta repo).
+
+          - alert: RetainerStatusNotRead
+            expr: |
+              (
+                time() - max(nauta_retainer_status_last_success_timestamp_seconds) > 7200
+              )
+              or (max(nauta_retainer_status_read_ok) == 0)
+              or (max(nauta_retainer_status_workspaces) == 0)
+            for: 75m
+            labels:
+              severity: warning
+              category: retainer
+            annotations:
+              summary: "The nauta worker is not reading the retainer cycles (gauges are stale or empty)"
+              description: |
+                The nauta worker's hourly retainer read has not succeeded for
+                two hours, reports a failure, or found no retainer workspace.
+                The cycle gauges are stale or empty, so the retainer rules see
+                nothing. Read the worker's log (retainer-cycle-status job).
+
+  # =========================================================================
+  # cv (cv.madfam.io, cv-app.madfam.io, cv-api.madfam.io) availability and
+  # delivery (added 2026-10-22). Reviewed source: internal-devops
+  # grafana/alerts/cv.yaml (madfam-org/internal-devops#886), runbook
+  # runbooks/cv-alerts.md there. Scrape: the existing `kubernetes-pods`
+  # annotation job reads the pods' internal 9090 listener
+  # (ai-portfolio-builder#16); no job was added and no selector widened.
+  # Verified before landing (2026-10-22, about 19:06Z, main Prometheus):
+  # count(up{job="kubernetes-pods",namespace="cv",app="cv"}) = 2,
+  # min(cv_ready) = 1, kube_namespace_status_phase{namespace="cv"} present,
+  # no kube_job_failed{namespace="cv",condition="true"}, so nothing fires on
+  # load. Main Prometheus only: rules-eval scrapes the same pods, and a
+  # second copy there would page twice through its other external labels.
+  # 503 never pages (dormant sign-in answers 503 by design).
+  # =========================================================================
+  cv-rules.yml: |
+    groups:
+      - name: cv.availability
+        interval: 30s
+        rules:
+          - alert: CVTargetDown
+            # No cv pod can be scraped for 2 minutes: every pod is down, or none exists, or the scrape path
+            # (NetworkPolicy, annotations, the listener) is broken. The metrics listener runs in the app process, so a
+            # dead process is a dead target; a scrape-path break is blindness, which also deserves a person.
+            expr: |
+              absent(up{job="kubernetes-pods", namespace="cv", app="cv"})
+              or max(up{job="kubernetes-pods", namespace="cv", app="cv"}) == 0
+            for: 2m
+            labels:
+              severity: critical
+              product: cv
+              service: cv
+            annotations:
+              summary: "cv is down or unobservable: no cv pod answers a scrape on 9090 (2m)"
+              description: |
+                No pod of Deployment cv/cv has answered GET /metrics on its internal port 9090 for 2 minutes.
+                Either no pod runs (crash loop, failed pull, scaled to 0) and cv.madfam.io, cv-app.madfam.io and
+                cv-api.madfam.io are down, or the scrape path broke (NetworkPolicy allow-monitoring-ingress, the
+                prometheus.io annotations, the namespace's data-access label). Check `enclii ops pods diagnose -n cv`
+                and the public /health first, then the target list (lastError) on the main Prometheus.
+              runbook_url: https://github.com/madfam-org/internal-devops/blob/main/runbooks/cv-alerts.md#cvtargetdown
+
+          - alert: CVReadinessFailing
+            # Every scraped pod reports its last /ready as failed for 3 minutes, so Service cv has no ready endpoint and
+            # the edge answers 502/503 on every host. /ready fails when the configuration is invalid or when the
+            # configured database does not answer `select 1` within 2 s.
+            expr: |
+              max(cv_ready{job="kubernetes-pods", namespace="cv", app="cv"}) == 0
+            for: 3m
+            labels:
+              severity: critical
+              product: cv
+              service: cv
+            annotations:
+              summary: "cv has no ready pod: /ready fails on every pod (3m)"
+              description: |
+                cv_ready is 0 on every scraped cv pod for 3 minutes, so the Service has no ready endpoint. The
+                readiness body names the failing check (config or database). If cv_db_readiness_checks_total
+                {outcome="error"} is rising, PgBouncer/Postgres in `data` is unreachable from cv (NetworkPolicy
+                allow-pgbouncer-egress, the cv_app role, the shared connection budget).
+              runbook_url: https://github.com/madfam-org/internal-devops/blob/main/runbooks/cv-alerts.md#cvreadinessfailing
+
+          - alert: CVHigh5xxRate
+            # More than 5% of a host role's requests end in a 5xx other than 503, with at least 5 such errors in the
+            # last 5 minutes, for 5 minutes. Per host role, so a broken API is not diluted by landing traffic.
+            expr: |
+              (
+                sum by (host_role) (rate(cv_http_requests_total{job="kubernetes-pods", namespace="cv", host_role!="none", status=~"5..", status!="503"}[5m]))
+                /
+                sum by (host_role) (rate(cv_http_requests_total{job="kubernetes-pods", namespace="cv", host_role!="none"}[5m]))
+              ) > 0.05
+              and
+              sum by (host_role) (increase(cv_http_requests_total{job="kubernetes-pods", namespace="cv", host_role!="none", status=~"5..", status!="503"}[5m])) >= 5
+            for: 5m
+            labels:
+              severity: critical
+              product: cv
+              service: cv
+            annotations:
+              summary: "cv {{ $labels.host_role }}: {{ $value | humanizePercentage }} of requests fail with a 5xx (5m)"
+              description: |
+                Requests to the {{ $labels.host_role }} host (landing = cv.madfam.io, app = cv-app.madfam.io,
+                api = cv-api.madfam.io, pages = the user-pages host) are failing with 500/502/504 above 5% for
+                5 minutes. 503 is excluded on purpose (dormant features and the readiness path). The JSON request
+                log names the failing route template: `"level":"error"` lines with this host_role.
+              runbook_url: https://github.com/madfam-org/internal-devops/blob/main/runbooks/cv-alerts.md#cvhigh5xxrate
+
+      - name: cv.delivery
+        interval: 60s
+        rules:
+          - alert: CVPreSyncMigrateFailing
+            # The Argo PreSync migrate Job (cv-migrate) failed terminally (backoffLimit exhausted or its 300 s deadline
+            # passed), so the sync is blocked and no new image rolls, including a fix. kube_job_failed{condition="true"}
+            # is the Job's Failed CONDITION, not kube_job_status_failed (failed pod count), which is already 1 when a
+            # first attempt fails and a retry succeeds. The hook policy BeforeHookCreation replaces the Job on the next
+            # sync, and the Job's TTL is 24 h, so the alert clears on a successful sync or after a day.
+            expr: |
+              max by (namespace, job_name) (kube_job_failed{namespace="cv", job_name="cv-migrate", condition="true"}) == 1
+            for: 1m
+            labels:
+              severity: critical
+              product: cv
+              service: cv
+            annotations:
+              summary: "cv deploys are blocked: the PreSync migrate Job failed"
+              description: |
+                Job cv/cv-migrate failed terminally, so the Argo sync of cv-services stopped before the Deployment.
+                The running pods keep serving the previous image. Its log ends with "cv migrate: failed: <reason>"
+                (no URL or value is printed). Verify applied migrations in drizzle.__drizzle_migrations, never only
+                the Job status.
+              runbook_url: https://github.com/madfam-org/internal-devops/blob/main/runbooks/cv-alerts.md#cvpresyncmigratefailing
+
+          - alert: CVMigrateJobUnobservable
+            # Read-proof for the rule above: kube-state-metrics exports Job series only while a Job object exists, so
+            # absence is normal between syncs. What must exist is the namespace itself; if kube_namespace_status_phase
+            # has no `cv` series, every kube_* rule for cv is blind.
+            expr: |
+              absent(kube_namespace_status_phase{namespace="cv", phase="Active"})
+            for: 15m
+            labels:
+              severity: warning
+              product: cv
+              service: cv
+            annotations:
+              summary: "cv kube-state rules are blind (no kube-state-metrics series for namespace cv)"
+              description: |
+                kube-state-metrics exports nothing for namespace cv, so CVPreSyncMigrateFailing cannot fire. Either
+                kube-state-metrics is not scraped, or the namespace was renamed or deleted.
+              runbook_url: https://github.com/madfam-org/internal-devops/blob/main/runbooks/cv-alerts.md#cvmigratejobunobservable
+
+
+  # =========================================================================
+  # critical-coverage-rules.yml: the failure modes an operator expects to be
+  # paged for that had no live rule on 2026-11-04 (read-only check of both
+  # Prometheus instances and Alertmanager that day):
+  #   node down ............. no rule at all          -> NodeNotReady
+  #   node-exporter gone .... disk/CPU/memory rules silently blind -> NodeExporterMissing
+  #   kube-state-metrics down every kube_* rule blind -> KubeStateMetricsDown
+  #   volume full ........... only the pgBackRest spool was watched -> PersistentVolumeFillingUp
+  #   platform crash loop ... warning only (PodCrashLooping) -> PlatformPodCrashLooping
+  #   backup CronJob failed . only data/ and karafiel by name -> BackupCronJobFailed
+  #   certificate expiry .... only blackbox-geometry -> ProbedTLSCertificateExpiring,
+  #                           KubeClientCertificateExpiration (k3s client certs)
+  #   retention below 7 d ... none; the size cap held ~56 h for weeks -> PrometheusRetentionBelow7Days
+  #   ARC queue saturation .. arc-alerts reads listener metrics that do not exist -> ARCPoolSaturated,
+  #                           ARCRunnersCannotSchedule (arc-pool-health heartbeat gauges)
+  # Already covered and left alone: NodeDiskSpaceWarning/Critical (85%/90%),
+  # PodCrashLooping, BackupJobFailed, BackupVerifyFailed, the pgBackRest rules.
+  # Every metric read here had a live series when the rules were written; each
+  # rule was evaluated against the live Prometheus first. Paired warning and
+  # critical rules share an alertname so Alertmanager's critical->warning
+  # inhibition (equal: alertname, service) keeps one notification per state.
+  # Fixture tests: tests/scripts/test_critical_coverage_rules.py.
+  # =========================================================================
+  critical-coverage-rules.yml: |
+    groups:
+      - name: node-availability
+        interval: 30s
+        rules:
+          - alert: NodeNotReady
+            expr: |
+              max by (node) (kube_node_status_condition{condition="Ready", status="true"}) == 0
+            for: 5m
+            labels:
+              severity: critical
+              service: kubernetes
+              category: node-health
+            annotations:
+              summary: "Node {{ $labels.node }} is not Ready"
+              description: |
+                The kubelet on {{ $labels.node }} has not reported Ready for 5
+                minutes (NotReady or Unknown). Its pods are not running or not
+                reachable, and once the eviction timeout passes they are
+                rescheduled onto the remaining nodes, which may not have room.
+                Check `kubectl describe node {{ $labels.node }}` (Conditions,
+                Events) and whether the host answers at all.
+              runbook_url: "https://github.com/madfam-org/enclii/blob/main/docs/runbooks/INCIDENT_RESPONSE.md"
+
+          - alert: NodeExporterMissing
+            expr: |
+              (count(kube_node_info) - (count(up{job="node-exporter"} == 1) or vector(0))) > 0
+            for: 15m
+            labels:
+              severity: warning
+              service: monitoring
+              category: node-health
+            annotations:
+              summary: "{{ $value }} node(s) have no reachable node-exporter"
+              description: |
+                Fewer node-exporter targets are up than there are nodes. On those
+                nodes NodeDiskSpaceWarning/Critical, NodeHighMemory and
+                NodeHighCPU evaluate an empty vector and cannot fire. Check the
+                node-exporter DaemonSet (a new node with a taint it does not
+                tolerate, a crash loop) and `up{job="node-exporter"}`.
+              runbook_url: "https://github.com/madfam-org/enclii/blob/main/docs/runbooks/INCIDENT_RESPONSE.md"
+
+          - alert: KubeStateMetricsDown
+            expr: |
+              absent(up{job="kube-state-metrics"} == 1)
+            for: 10m
+            labels:
+              severity: critical
+              service: monitoring
+              category: alerting-pipeline
+            annotations:
+              summary: "kube-state-metrics is down: object-state alerts are blind"
+              description: |
+                No kube-state-metrics target has been up for 10 minutes. Every
+                rule that reads kube_* series evaluates an empty vector while
+                this lasts and cannot fire: NodeNotReady, PodCrashLooping,
+                BackupJobFailed, BackupCronJobFailed, the pgBackRest freshness
+                rules and the Prometheus cross-watch among them. This is the
+                2026-08 failure mode (exporter never deployed, 19 rules dead).
+              runbook_url: "https://github.com/madfam-org/enclii/blob/main/docs/runbooks/INCIDENT_RESPONSE.md"
+
+      - name: storage-capacity
+        interval: 1m
+        rules:
+          # Node root/data filesystems are covered by NodeDiskSpaceWarning (85%)
+          # and NodeDiskSpaceCritical (90%) in enclii-alerts.yml. This covers the
+          # volumes inside them: a full Longhorn volume stops its database or TSDB
+          # (Prometheus died with SIGBUS on a full volume on 2026-09-26).
+          - alert: PersistentVolumeFillingUp
+            expr: |
+              max by (namespace, persistentvolumeclaim) (kubelet_volume_stats_used_bytes)
+                / max by (namespace, persistentvolumeclaim) (kubelet_volume_stats_capacity_bytes) > 0.85
+            for: 15m
+            labels:
+              severity: warning
+              service: storage
+              category: disk-capacity
+            annotations:
+              summary: "PVC {{ $labels.namespace }}/{{ $labels.persistentvolumeclaim }} is {{ $value | humanizePercentage }} full"
+              description: |
+                The volume is above 85% used. Expand it (Longhorn expands online)
+                or reduce what writes to it before it reaches 95%, which pages.
+              runbook_url: "https://github.com/madfam-org/enclii/blob/main/docs/runbooks/LONGHORN_VOLUME_RECOVERY.md"
+
+          - alert: PersistentVolumeFillingUp
+            expr: |
+              max by (namespace, persistentvolumeclaim) (kubelet_volume_stats_used_bytes)
+                / max by (namespace, persistentvolumeclaim) (kubelet_volume_stats_capacity_bytes) > 0.95
+            for: 5m
+            labels:
+              severity: critical
+              service: storage
+              category: disk-capacity
+            annotations:
+              summary: "PVC {{ $labels.namespace }}/{{ $labels.persistentvolumeclaim }} is {{ $value | humanizePercentage }} full"
+              description: |
+                The volume is above 95% used. Databases stop accepting writes and
+                Prometheus crashes when their volume fills. Expand the PVC now
+                (Longhorn expands online) and find what grew.
+              runbook_url: "https://github.com/madfam-org/enclii/blob/main/docs/runbooks/LONGHORN_VOLUME_RECOVERY.md"
+
+      - name: platform-pods
+        interval: 30s
+        rules:
+          # PodCrashLooping (warning, enclii-alerts.yml) covers every namespace.
+          # A crash loop in the platform itself (ingress, GitOps, policy, storage,
+          # secrets, monitoring, shared data) takes products down with it, so it
+          # pages. Job pods are excluded: a failing CronJob has its own alerts.
+          - alert: PlatformPodCrashLooping
+            expr: |
+              max by (namespace, pod, container) (
+                kube_pod_container_status_waiting_reason{
+                  reason="CrashLoopBackOff",
+                  namespace=~"argocd|arc-system|cloudflare-tunnel|cnpg-system|data|enclii|external-secrets|keda|kube-system|kyverno|logging|longhorn-system|monitoring|reloader|vault"
+                }
+              ) == 1
+              unless on (namespace, pod) kube_pod_owner{owner_kind="Job"}
+            for: 15m
+            labels:
+              severity: critical
+              service: kubernetes
+              category: platform-health
+            annotations:
+              summary: "Platform pod {{ $labels.namespace }}/{{ $labels.pod }} ({{ $labels.container }}) is crash-looping"
+              description: |
+                The container has been in CrashLoopBackOff for 15 minutes in a
+                platform namespace. Read its previous log
+                (`kubectl -n {{ $labels.namespace }} logs {{ $labels.pod }} -c {{ $labels.container }} --previous`)
+                and recent events before restarting anything.
+              runbook_url: "https://github.com/madfam-org/enclii/blob/main/docs/runbooks/INCIDENT_RESPONSE.md"
+
+      - name: backup-cronjobs
+        interval: 1m
+        rules:
+          # Every CronJob whose name contains "backup", in every namespace, except
+          # the ones that already page by name: data's four in BackupJobFailed,
+          # backup-verify (BackupVerifyFailed), the pgbackrest-* jobs
+          # (pgbackrest-health-rules.yml) and karafiel's document backups
+          # (KarafielDocumentBackupUnproven, a PrometheusRule on rules-eval).
+          # Fires when the last scheduled run did not succeed: the newest schedule
+          # is newer than the newest success (or there has never been a success),
+          # nothing is running, and the schedule is over an hour old.
+          - alert: BackupCronJobFailed
+            expr: |
+              (
+                (
+                  kube_cronjob_status_last_schedule_time{cronjob=~".*backup.*"}
+                    > on (namespace, cronjob) kube_cronjob_status_last_successful_time{cronjob=~".*backup.*"}
+                )
+                or
+                (
+                  kube_cronjob_status_last_schedule_time{cronjob=~".*backup.*"}
+                    unless on (namespace, cronjob) kube_cronjob_status_last_successful_time{cronjob=~".*backup.*"}
+                )
+              )
+              and on (namespace, cronjob) (time() - kube_cronjob_status_last_schedule_time{cronjob=~".*backup.*"}) > 3600
+              unless on (namespace, cronjob) (kube_cronjob_status_active{cronjob=~".*backup.*"} > 0)
+              unless on (namespace, cronjob) (kube_cronjob_spec_suspend{cronjob=~".*backup.*"} == 1)
+              unless on (namespace, cronjob) kube_cronjob_info{namespace="data", cronjob=~"(k3s-datastore|github-repos|cloudflare-config|argocd-secrets)-backup|backup-verify|pgbackrest-.*"}
+              unless on (namespace, cronjob) kube_cronjob_info{namespace="karafiel", cronjob=~"karafiel-(legalgen|supplier-invoices|documents)-backup"}
+            for: 15m
+            labels:
+              severity: critical
+              service: backups
+              category: data-safety
+            annotations:
+              summary: "Backup CronJob {{ $labels.namespace }}/{{ $labels.cronjob }}: last run did not succeed"
+              description: |
+                The newest scheduled run of {{ $labels.namespace }}/{{ $labels.cronjob }}
+                started over an hour ago, nothing is running, and it has not
+                succeeded since (or never has). Until the next success the
+                newest restorable copy is the previous one. Read the failed Job's
+                log (`kubectl -n {{ $labels.namespace }} get jobs` then `logs job/<name>`).
+              runbook_url: "https://github.com/madfam-org/enclii/blob/main/docs/runbooks/BACKUP_COVERAGE.md"
+
+      - name: certificate-expiry
+        interval: 5m
+        rules:
+          # Every blackbox probe target's served chain. blackbox-geometry has its
+          # own 14-day rule (GeometryTLSCertExpiring). Edge certificates renew
+          # about 30 days before expiry, so under 21 days means a renewal failed.
+          - alert: ProbedTLSCertificateExpiring
+            expr: |
+              min by (job, instance) (probe_ssl_earliest_cert_expiry{job=~"blackbox-.+", job!="blackbox-geometry"}) - time() < 21 * 86400
+            for: 1h
+            labels:
+              severity: warning
+              service: tls
+              category: certificate-expiry
+            annotations:
+              summary: "TLS certificate for {{ $labels.instance }} expires in {{ $value | humanizeDuration }}"
+              description: |
+                The earliest-expiring certificate in the chain served for
+                {{ $labels.instance }} expires in under 21 days. Automatic
+                renewal normally happens about 30 days out, so it has failed or
+                the hostname is outside the managed zone.
+              runbook_url: "https://github.com/madfam-org/enclii/blob/main/docs/runbooks/DOMAIN_AND_EMAIL_DNS_ONBOARDING.md"
+
+          - alert: ProbedTLSCertificateExpiring
+            expr: |
+              min by (job, instance) (probe_ssl_earliest_cert_expiry{job=~"blackbox-.+", job!="blackbox-geometry"}) - time() < 7 * 86400
+            for: 30m
+            labels:
+              severity: critical
+              service: tls
+              category: certificate-expiry
+            annotations:
+              summary: "TLS certificate for {{ $labels.instance }} expires in {{ $value | humanizeDuration }}"
+              description: |
+                Under 7 days left on a certificate a probed public endpoint
+                serves. Browsers and API clients will refuse it at expiry.
+              runbook_url: "https://github.com/madfam-org/enclii/blob/main/docs/runbooks/DOMAIN_AND_EMAIL_DNS_ONBOARDING.md"
+
+          # k3s issues its component client certificates for one year and renews
+          # them only when k3s restarts within 90 days of expiry. If no restart
+          # happens, the kubelets and controllers lose the API server at expiry.
+          - alert: KubeClientCertificateExpiration
+            expr: |
+              apiserver_client_certificate_expiration_seconds_count{job="kubernetes-apiservers"} > 0
+              and on (job)
+              histogram_quantile(0.01, sum by (job, le) (rate(apiserver_client_certificate_expiration_seconds_bucket{job="kubernetes-apiservers"}[5m]))) < 30 * 86400
+            for: 1h
+            labels:
+              severity: warning
+              service: kubernetes
+              category: certificate-expiry
+            annotations:
+              summary: "A client certificate used against the API server expires within 30 days"
+              description: |
+                At least 1% of requests to the API server present a client
+                certificate that expires in under 30 days. On k3s, restarting the
+                k3s service on each node renews certificates that are within 90
+                days of expiry; do it in a maintenance window before this pages.
+              runbook_url: "https://github.com/madfam-org/enclii/blob/main/docs/runbooks/K3S_UPGRADE.md"
+
+          - alert: KubeClientCertificateExpiration
+            expr: |
+              apiserver_client_certificate_expiration_seconds_count{job="kubernetes-apiservers"} > 0
+              and on (job)
+              histogram_quantile(0.01, sum by (job, le) (rate(apiserver_client_certificate_expiration_seconds_bucket{job="kubernetes-apiservers"}[5m]))) < 7 * 86400
+            for: 1h
+            labels:
+              severity: critical
+              service: kubernetes
+              category: certificate-expiry
+            annotations:
+              summary: "A client certificate used against the API server expires within 7 days"
+              description: |
+                Under 7 days before kubelets or control-plane components lose the
+                API server. Restart k3s on the affected nodes (it renews
+                certificates within 90 days of expiry) or rotate them with
+                `k3s certificate rotate`.
+              runbook_url: "https://github.com/madfam-org/enclii/blob/main/docs/runbooks/K3S_UPGRADE.md"
+
+      - name: prometheus-retention
+        interval: 5m
+        rules:
+          # The 7-day panels and every [7d]/[1w] lookback assume 7 days of history.
+          # Until 2026-11-04 the size cap silently held this Prometheus to about
+          # 56 hours. Fires only while the TSDB is deleting data (size or time
+          # retention ran in the last 6 h) and holds less than 7 days, so a fresh
+          # or recently grown TSDB that is still filling up does not fire.
+          - alert: PrometheusRetentionBelow7Days
+            expr: |
+              (time() - prometheus_tsdb_lowest_timestamp_seconds{job="prometheus"}) < 7 * 86400
+              and on (instance)
+              (
+                increase(prometheus_tsdb_size_retentions_total{job="prometheus"}[6h]) > 0
+                or
+                increase(prometheus_tsdb_time_retentions_total{job="prometheus"}[6h]) > 0
+              )
+            for: 1h
+            labels:
+              severity: warning
+              service: prometheus
+              category: alerting-pipeline
+            annotations:
+              summary: "Prometheus is deleting data while it holds only {{ $value | humanizeDuration }}"
+              description: |
+                Retention removed blocks in the last 6 hours, and the oldest
+                sample is less than 7 days old, so every 7-day panel and [7d]
+                lookback reads less than it claims. Usually the size cap
+                (--storage.tsdb.retention.size) is too small for the ingest:
+                compare prometheus_tsdb_storage_blocks_bytes with
+                prometheus_tsdb_retention_limit_bytes, then grow the cap and the
+                volume or drop series.
+              runbook_url: "https://github.com/madfam-org/enclii/blob/main/docs/runbooks/CONFIG_RELOAD_RUNBOOK.md"
+
+      - name: arc-saturation
+        interval: 1m
+        rules:
+          # Read from the arc-pool-health heartbeat gauges (pushgateway). The
+          # arc-alerts PrometheusRule reads listener metrics the controller does
+          # not export (--listener-metrics-addr is empty), so it cannot see a
+          # queue. Each rule also requires a fresh heartbeat: the pushgateway
+          # keeps the last value forever, and a dead detector is
+          # ARCPoolHealthDetectorStale's job, not a saturation.
+          - alert: ARCPoolSaturated
+            expr: |
+              max by (scale_set) (arc_pool_current_runners) >= max by (scale_set) (arc_pool_max_runners)
+              and on (scale_set) max by (scale_set) (arc_pool_max_runners) > 0
+              and on (scale_set) (time() - max by (scale_set) (arc_pool_health_last_run_timestamp_seconds)) < 900
+            for: 30m
+            labels:
+              severity: warning
+              service: arc
+              category: ci-capacity
+            annotations:
+              summary: "ARC scale set {{ $labels.scale_set }} has been at maxRunners for 30 minutes"
+              description: |
+                Every runner slot is in use, so new jobs queue on GitHub. Short
+                bursts are normal; sustained saturation delays every private
+                repo's CI and every deploy behind it. Check
+                arc_pool_pending_runners (runners that cannot be scheduled point
+                at node capacity, not at the slot count).
+              runbook_url: "https://github.com/madfam-org/internal-devops/blob/main/runbooks/arc-runner-image-rebuild.md"
+
+          - alert: ARCPoolSaturated
+            expr: |
+              max by (scale_set) (arc_pool_current_runners) >= max by (scale_set) (arc_pool_max_runners)
+              and on (scale_set) max by (scale_set) (arc_pool_max_runners) > 0
+              and on (scale_set) (time() - max by (scale_set) (arc_pool_health_last_run_timestamp_seconds)) < 900
+            for: 2h
+            labels:
+              severity: critical
+              service: arc
+              category: ci-capacity
+            annotations:
+              summary: "ARC scale set {{ $labels.scale_set }} has been at maxRunners for 2 hours"
+              description: |
+                The runner pool has been full for two hours: queued CI and
+                deploy jobs are waiting behind it. Find what holds the slots
+                (long or stuck jobs, the stuck-runner watchdog's log) or raise
+                maxRunners if the builder nodes have room.
+              runbook_url: "https://github.com/madfam-org/internal-devops/blob/main/runbooks/arc-runner-image-rebuild.md"
+
+          - alert: ARCRunnersCannotSchedule
+            expr: |
+              max by (scale_set) (arc_pool_pending_runners) > 0
+              and on (scale_set) (time() - max by (scale_set) (arc_pool_health_last_run_timestamp_seconds)) < 900
+            for: 20m
+            labels:
+              severity: warning
+              service: arc
+              category: ci-capacity
+            annotations:
+              summary: "{{ $value }} ARC runner(s) on {{ $labels.scale_set }} have been pending for 20 minutes"
+              description: |
+                Runner pods exist but have not started for 20 minutes: usually no
+                builder node has the requested CPU or memory free, or the runner
+                image cannot be pulled. `kubectl -n arc-runners get pods` and the
+                Pending pods' events say which.
+              runbook_url: "https://github.com/madfam-org/internal-devops/blob/main/runbooks/arc-runner-image-rebuild.md"
+
 ---
 # Prometheus PVC
 apiVersion: v1
@@ -3097,7 +4361,12 @@ spec:
     - ReadWriteOnce
   resources:
     requests:
-      storage: 20Gi
+      # 2026-11-04 (RFC 0049 Phase 1, D6): 20Gi -> 24Gi to hold the 16GB size
+      # cap below with room for WAL replay, compaction (which writes the new
+      # block before deleting its sources) and the filesystem's reserved
+      # blocks, which the non-root Prometheus user cannot use. Longhorn
+      # expands the volume online; a PVC can only grow.
+      storage: 24Gi
   storageClassName: longhorn
 ---
 # Prometheus Deployment
@@ -3143,8 +4412,18 @@ spec:
           args:
             - "--config.file=/etc/prometheus/prometheus.yml"
             - "--storage.tsdb.path=/prometheus"
-            - "--storage.tsdb.retention.time=7d"
-            - "--storage.tsdb.retention.size=8GB"
+            # History target 7-9 days (RFC 0049 D6). Until 2026-11-04 this was
+            # 7d / 8GB and the size cap always fired first: the oldest sample
+            # was about 56 hours old, so every [7d] rule and 7-day panel really
+            # saw ~2.3 days. The scrape dedupe and bucket drops above cut the
+            # ingest roughly in half, so 9d now fits under 16GB; the size cap
+            # stays as the guard and, if ingest grows, it trims history to
+            # what fits rather than filling the volume. Check with
+            # `time() - prometheus_tsdb_lowest_timestamp_seconds` (>= 7d).
+            # The 16GB counts blocks, WAL and head chunks (Prometheus GB are
+            # powers of two).
+            - "--storage.tsdb.retention.time=9d"
+            - "--storage.tsdb.retention.size=16GB"
             - "--web.console.libraries=/usr/share/prometheus/console_libraries"
             - "--web.console.templates=/usr/share/prometheus/consoles"
             - "--web.enable-lifecycle"

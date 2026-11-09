@@ -1,0 +1,94 @@
+---
+# Default TTL for finished Jobs (2026-10-21).
+#
+# WHY. On 2026-10-21 the cluster held 160 failed pods and 97 failed Jobs at
+# least 7 days old (the oldest 135 days): finished one-off Jobs and CronJob
+# leftovers that nothing ever deletes. They keep PodNotReady and the
+# Argo "Degraded by stale failed Jobs" rules busy. The repo's own Jobs already
+# set ttlSecondsAfterFinished (backups and restore drills use 604800); product
+# repos mostly do not. This sets the same 7 days on every new Job that does not
+# choose its own value.
+#
+# WHAT IT TOUCHES.
+#   - Only batch/v1 Jobs, only on CREATE. Existing Jobs are not mutated (the
+#     policy is not background and has no mutateExistingOnPolicyUpdate), so
+#     the Jobs already sitting failed need a one-time delete by the owner.
+#   - A Job that sets ttlSecondsAfterFinished keeps its value: the `+( )`
+#     anchor adds the field only when it is absent.
+#   - Jobs created by a CronJob are new Jobs too, so they get the TTL. The
+#     CronJob's own history limits still apply; whichever is shorter wins.
+#   - Argo CD hook Jobs (argocd.argoproj.io/hook or helm.sh/hook) get the TTL.
+#     Their usual BeforeHookCreation policy deletes the previous hook Job before
+#     the next sync creates one, so a hook Job removed earlier by its TTL is
+#     simply not there to delete.
+#
+# WHAT IT SKIPS.
+#   - kube-system and kyverno, and every namespace labelled
+#     enclii.dev/type=infrastructure (the exclusion every policy in this
+#     directory uses).
+#   - A Job Argo CD tracks as an ordinary resource (tracking-id annotation, no
+#     hook annotation). If its TTL deleted it, Argo CD would see the resource
+#     missing and self-heal would create it again, re-running a migration or a
+#     seed Job every 7 days. Such a Job should become a hook in its own repo.
+#
+# failurePolicy Ignore: this is housekeeping. If the Kyverno admission
+# controller is down, Jobs (backups among them) must still be created, just
+# without the default TTL. The Enforce validate policies keep their own
+# failure policy.
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata:
+  name: job-ttl-default
+  annotations:
+    policies.kyverno.io/title: Default TTL for finished Jobs
+    policies.kyverno.io/category: Best Practices
+    policies.kyverno.io/severity: low
+    policies.kyverno.io/subject: Job
+    policies.kyverno.io/description: >-
+      Sets spec.ttlSecondsAfterFinished to 604800 (7 days) on Jobs created
+      without one, so finished and failed Jobs and their pods are cleaned up
+      instead of accumulating. Jobs that set their own TTL, Argo CD-tracked
+      non-hook Jobs and infrastructure namespaces are left alone.
+spec:
+  background: false
+  failurePolicy: Ignore
+  rules:
+    - name: add-ttl-seconds-after-finished
+      match:
+        any:
+          - resources:
+              kinds:
+                - Job
+      exclude:
+        any:
+          - resources:
+              namespaces:
+                - kube-system
+                - kyverno
+          - resources:
+              namespaceSelector:
+                matchLabels:
+                  enclii.dev/type: infrastructure
+      preconditions:
+        all:
+          # Mutate on create only, so an UPDATE of an old Job (a label, a
+          # finalizer) never gives it a TTL that deletes it on the spot.
+          - key: "{{ request.operation || 'BACKGROUND' }}"
+            operator: Equals
+            value: CREATE
+        any:
+          # Not tracked by Argo CD as an ordinary resource ...
+          - key: "{{ request.object.metadata.annotations.\"argocd.argoproj.io/tracking-id\" || '' }}"
+            operator: Equals
+            value: ""
+          # ... or an Argo CD / Helm hook, which Argo CD does not recreate.
+          - key: "{{ request.object.metadata.annotations.\"argocd.argoproj.io/hook\" || '' }}"
+            operator: NotEquals
+            value: ""
+          - key: "{{ request.object.metadata.annotations.\"helm.sh/hook\" || '' }}"
+            operator: NotEquals
+            value: ""
+      mutate:
+        patchStrategicMerge:
+          spec:
+            +(ttlSecondsAfterFinished): 604800

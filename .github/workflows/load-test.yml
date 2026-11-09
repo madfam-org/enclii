@@ -1,6 +1,10 @@
 name: Load Tests
 
 on:
+  pull_request:
+    paths:
+      - '.github/workflows/load-test.yml'
+      - 'tests/load/**'
   schedule:
     # Weekly: Sunday 11 PM UTC
     - cron: '0 23 * * 0'
@@ -15,13 +19,36 @@ on:
           - smoke
           - load
           - stress
+          - deep-health
+      allow_deep_health_diagnostic:
+        description: 'Explicit approval for 16-minute /health dependency load, up to 100 VUs'
+        required: false
+        default: false
+        type: boolean
+
+permissions:
+  contents: read
 
 env:
   K6_VERSION: 'v0.55.0'
 
 jobs:
+  harness-contract:
+    name: Offline load-harness contracts
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '22'
+      - name: Exercise scripts with synthetic k6 adapters and no network
+        run: node --experimental-vm-modules --test tests/load/harness.test.cjs
+
   smoke-test:
-    name: Smoke Test (Health Endpoint)
+    name: Smoke Test (Public Liveness)
+    needs: harness-contract
+    if: github.event_name != 'pull_request'
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v7
@@ -38,6 +65,7 @@ jobs:
       - name: Run smoke test
         env:
           ENCLII_BASE_URL: https://api.enclii.dev
+          HEALTH_PROFILE: smoke
         run: |
           k6 run \
             --out json=results/smoke.json \
@@ -54,7 +82,7 @@ jobs:
   load-test:
     name: Load Test (Authenticated API)
     needs: smoke-test
-    if: github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && inputs.test_level != 'smoke')
+    if: github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && (inputs.test_level == 'load' || inputs.test_level == 'stress'))
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v7
@@ -82,6 +110,39 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: load-test-results
+          path: results/
+          retention-days: 30
+
+  deep-health-diagnostic:
+    name: Deep Health Diagnostic (Explicit Opt-in)
+    needs: smoke-test
+    if: github.event_name == 'workflow_dispatch' && inputs.test_level == 'deep-health'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7
+      - name: Require operator acknowledgement
+        env:
+          ALLOW_DEEP_HEALTH: ${{ inputs.allow_deep_health_diagnostic }}
+        run: test "$ALLOW_DEEP_HEALTH" = 'true'
+      - name: Install k6
+        run: |
+          curl -L https://github.com/grafana/k6/releases/download/${{ env.K6_VERSION }}/k6-${{ env.K6_VERSION }}-linux-amd64.tar.gz | tar xz
+          sudo mv k6-*/k6 /usr/local/bin/
+          k6 version
+      - name: Create results directory
+        run: mkdir -p results
+      - name: Run explicit deep dependency diagnostic
+        env:
+          ENCLII_BASE_URL: https://api.enclii.dev
+          HEALTH_PROFILE: deep-diagnostic
+          ENCLII_ALLOW_DEEP_HEALTH_DIAGNOSTIC: ${{ inputs.allow_deep_health_diagnostic }}
+        run: k6 run --out json=results/deep-health.json tests/load/health.js
+      - name: Upload results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: deep-health-diagnostic-results
           path: results/
           retention-days: 30
 

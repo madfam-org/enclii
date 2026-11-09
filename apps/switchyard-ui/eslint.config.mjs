@@ -57,6 +57,11 @@ const eslintConfig = defineConfig([
       // React rules - relax for existing patterns
       'react-hooks/set-state-in-effect': 'warn',
       'react-hooks/rules-of-hooks': 'warn',
+      // eslint-plugin-react-hooks 7.1 (pulled by eslint-config-next 16.4)
+      // reports existing call-before-declare and memoization patterns as
+      // errors (10 sites). Kept at warn like the rules above until fixed.
+      'react-hooks/immutability': 'warn',
+      'react-hooks/preserve-manual-memoization': 'warn',
 
       // General rules
       'prefer-const': 'warn',

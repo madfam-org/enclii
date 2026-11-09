@@ -13,7 +13,7 @@ func TestTrainingHumanClientsHaveSeparateClosedCallbacks(t *testing.T) {
 		id, callback, target string
 		scopes               []string
 	}{
-		{"crea-sim", "https://sim.creatumundo.mx/auth/callback", "crea-sim/ui-oidc", []string{"openid", "profile", "email", "offline_access"}},
+		{"crea-sim", "https://sim.creatumundo.mx/auth/callback", "crea-sim/ui-oidc", []string{"openid", "profile", "email", "offline_access", "madfam:silent_auth"}},
 		{"crea-sim-mcp", "https://sim.creatumundo.mx/auth/mcp/callback", "crea-sim/mcp-oidc", []string{"openid", "profile", "email", "offline_access"}},
 	} {
 		t.Run(tc.id, func(t *testing.T) {
@@ -28,6 +28,9 @@ func TestTrainingHumanClientsHaveSeparateClosedCallbacks(t *testing.T) {
 			require.True(t, client.confidential())
 			require.Equal(t, []string{tc.callback}, client.RedirectURIs)
 			require.Equal(t, tc.scopes, client.AllowedScopes)
+			if tc.id == "crea-sim-mcp" {
+				require.NotContains(t, client.AllowedScopes, "madfam:silent_auth")
+			}
 			require.Equal(t, []string{"authorization_code", "refresh_token"}, client.GrantTypes)
 			require.NotContains(t, client.AllowedScopes, "map.ops:read")
 			require.NotContains(t, client.AllowedScopes, "map.cobro:read")

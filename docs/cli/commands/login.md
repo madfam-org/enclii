@@ -76,9 +76,14 @@ enclii --profile admin whoami   # admin@madfam.io
 enclii whoami                   # your everyday account, unchanged
 
 # Act as admin only where you need it:
-enclii --profile admin secrets provision oidc --platform nauta --reason "..."
+enclii --profile admin secrets provision oidc --platform nauta --intake-profile default --reason "..."
 ENCLII_PROFILE=admin enclii ops apps status --json
 ```
+
+`--intake-profile default` is there because, since ADR-003, Vault intake accepts
+only the `platform_admin` operator (the everyday login here), while Janua client
+administration stays with `admin@madfam.io`. See
+[`secrets provision oidc`](secrets.md#enclii-secrets-provision-oidc).
 
 To open login URLs in a private window automatically, set `ENCLII_BROWSER` to
 a command; the CLI appends the URL as its last argument:

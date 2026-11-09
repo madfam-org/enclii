@@ -11,7 +11,7 @@
 # Policy-only (add paths without rotating writer token):
 #   POLICY_ONLY=1 VAULT_TOKEN_FILE=... ./scripts/provision-switchyard-vault-writer.sh
 #
-# Last Updated: 2026-10-14 (fabrication-prep: R2 credential mirror from `enclii buckets create`)
+# Last Updated: 2026-11-09 (exact madfam-crawler path for the per-caller API keys)
 set -euo pipefail
 
 VAULT_NS="${VAULT_NS:-vault}"
@@ -82,6 +82,14 @@ path "secret/data/karafiel" {
   capabilities = ["create", "update", "patch", "read"]
 }
 path "secret/data/karafiel/*" {
+  capabilities = ["create", "update", "patch", "read"]
+}
+# The isolated Karafiel staging intake groups share this exact KV-v2 path.
+# Core/session initialization and supplied OIDC groups require read/merge/write;
+# no staging descendants or production permissions are added here. Reviewed
+# policy application/readback must precede first intake; source parity is not
+# proof that the live writer token already has this permission.
+path "secret/data/karafiel-staging" {
   capabilities = ["create", "update", "patch", "read"]
 }
 path "secret/data/lexidrop" {
@@ -581,6 +589,45 @@ path "secret/metadata/fabrication-prep" {
   capabilities = ["read", "list"]
 }
 path "secret/metadata/fabrication-prep/*" {
+  capabilities = ["read", "list"]
+}
+
+# cv — added 2026-10-22 with the intake targets cv/web-oidc (written by
+# `enclii secrets provision oidc --platform cv-app`) and cv/web-session
+# (`--generate auth_secret`). Exact path only: both targets write secret/cv
+# and nothing below it. Merged in git is not applied in Vault: re-apply this
+# policy (ASSERT_PATH=cv scripts/apply-switchyard-vault-policy-remote.sh)
+# before the first run, or the run reconciles the Janua client and then 403s
+# on the Vault merge.
+path "secret/data/cv" {
+  capabilities = ["create", "update", "patch", "read"]
+}
+path "secret/metadata/cv" {
+  capabilities = ["read", "list"]
+}
+# madfam-crawler — added 2026-11-09 with the six per-caller key intake targets
+# madfam-crawler/api-key-<caller> (`--generate api_key_<caller>`). The
+# verifier owns the keys, so secret/madfam-crawler is their one home and each
+# caller reads its own property cross-path. Exact path only. Merged in git is
+# not applied in Vault: re-apply this policy (ASSERT_PATH=madfam-crawler
+# scripts/apply-switchyard-vault-policy-remote.sh) before the first intake, or
+# it 403s on the Vault merge.
+path "secret/data/madfam-crawler" {
+  capabilities = ["create", "update", "patch", "read"]
+}
+path "secret/metadata/madfam-crawler" {
+  capabilities = ["read", "list"]
+}
+# avala — added 2026-10-27 with the intake target avala/oidc-janua (written by
+# `enclii secrets provision oidc --platform avala`). Exact path only. Merged in
+# git is not applied in Vault: re-apply this policy
+# (ASSERT_PATH=avala scripts/apply-switchyard-vault-policy-remote.sh) before
+# the first run, or the run reconciles the Janua client and then 403s on the
+# Vault merge.
+path "secret/data/avala" {
+  capabilities = ["create", "update", "patch", "read"]
+}
+path "secret/metadata/avala" {
   capabilities = ["read", "list"]
 }
 

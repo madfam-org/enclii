@@ -1,0 +1,58 @@
+# Least privilege for the descheduler CronJob (v0.33.0, policy.yaml).
+#
+# Upstream's base RBAC also grants pods `delete`, leases (leader election) and
+# metrics.k8s.io. None is needed here: v0.33.0 evicts only through the
+# Eviction API (pods/eviction create), which applies PodDisruptionBudgets; a
+# CronJob runs once per Job, without leader election; and no metrics provider
+# is configured (LowNodeUtilization works on requests).
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: descheduler
+  namespace: descheduler
+  labels:
+    app.kubernetes.io/name: descheduler
+    app.kubernetes.io/part-of: enclii
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: descheduler
+  labels:
+    app.kubernetes.io/name: descheduler
+    app.kubernetes.io/part-of: enclii
+rules:
+  - apiGroups: ["events.k8s.io"]
+    resources: ["events"]
+    verbs: ["create", "update"]
+  - apiGroups: [""]
+    resources: ["nodes", "namespaces"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: [""]
+    resources: ["pods"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: [""]
+    resources: ["pods/eviction"]
+    verbs: ["create"]
+  - apiGroups: ["scheduling.k8s.io"]
+    resources: ["priorityclasses"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: ["policy"]
+    resources: ["poddisruptionbudgets"]
+    verbs: ["get", "list", "watch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: descheduler
+  labels:
+    app.kubernetes.io/name: descheduler
+    app.kubernetes.io/part-of: enclii
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: descheduler
+subjects:
+  - kind: ServiceAccount
+    name: descheduler
+    namespace: descheduler

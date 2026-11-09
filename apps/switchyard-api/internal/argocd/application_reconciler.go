@@ -145,6 +145,11 @@ func BuildApplication(desired DesiredApplication, namespace string) (*unstructur
 				"enclii.dev/registration-mode": RegistrationModeRuntime,
 			},
 			"annotations": map[string]any{
+				// Match the ApplicationSet's tracking subscriptions. Runtime-onboarded
+				// projects must emit the same authenticated release/deployment events
+				// without needing the CI callback credential in every product repo.
+				"notifications.argoproj.io/subscribe.on-sync-succeeded.enclii": "",
+				"notifications.argoproj.io/subscribe.on-sync-failed.enclii":    "",
 				// Client-side diff ONLY -- ServerSideDiff is deliberately absent.
 				//
 				// ServerSideDiff=true makes the controller compute the diff from a
@@ -249,7 +254,7 @@ func mergeStringMap(existing map[string]string, desired map[string]string, set f
 	}
 	changed := false
 	for key, value := range desired {
-		if existing[key] != value {
+		if current, exists := existing[key]; !exists || current != value {
 			existing[key] = value
 			changed = true
 		}

@@ -170,7 +170,7 @@ func newIntakeVaultRecorder(t *testing.T, captured *map[string]interface{}) *Han
 			_ = json.NewDecoder(r.Body).Decode(&body)
 			*captured = body.Data
 			w.Header().Set("Content-Type", "application/json")
-			_, _ = w.Write([]byte(`{"data":{"version":7}}`))
+			_, _ = w.Write([]byte(`{"data":{"version":1}}`))
 			return
 		}
 		w.WriteHeader(http.StatusNotFound)
@@ -310,6 +310,16 @@ func TestSubmitSecretIntake_GenerateRejections(t *testing.T) {
 		{
 			"neither values nor generate",
 			`{"target":"crea-map/internal-api-key","reason":"r"}`,
+			http.StatusBadRequest,
+		},
+		{
+			"Karafiel signing authority cannot be generated",
+			`{"target":"karafiel/hcm-signing-bindings","generate":["hcm_signing_bindings"],"reason":"r"}`,
+			http.StatusBadRequest,
+		},
+		{
+			"HCM company signer cannot be generated",
+			`{"target":"symbiosis-hcm/signing-bindings","generate":["company_signers"],"reason":"r"}`,
 			http.StatusBadRequest,
 		},
 	}

@@ -38,6 +38,14 @@ podDisruptionBudget:
 
 # Affinity for spreading across nodes (future multi-node)
 affinity:
+  # Control pods must not consume builder slots reserved for job execution.
+  nodeAffinity:
+    requiredDuringSchedulingIgnoredDuringExecution:
+      nodeSelectorTerms:
+        - matchExpressions:
+            - key: role
+              operator: NotIn
+              values: [builder]
   podAntiAffinity:
     preferredDuringSchedulingIgnoredDuringExecution:
       - weight: 100
@@ -57,6 +65,9 @@ serviceAccount:
 
 # Controller-specific settings
 flags:
+  # Drain existing jobs naturally before runner-template updates. The default
+  # immediate strategy can stop active runners during a configuration rollout.
+  updateStrategy: eventual
   # Argo owns the declared resources; ARC owns their dynamic children. Do not
   # copy Argo's tracking label onto listener RBAC, runner sets, or runner pods.
   excludeLabelPropagationPrefixes:

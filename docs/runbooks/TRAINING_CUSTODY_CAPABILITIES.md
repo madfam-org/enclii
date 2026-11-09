@@ -1,6 +1,6 @@
 # Training custody capability proof
 
-Last Updated: 2026-10-14
+Last Updated: 2026-10-20
 
 > **Boundary checkpoint (2026-10-14, platform engineering):** Public-safe
 > mechanism and capability contracts only. Private custody identities, values
@@ -13,6 +13,22 @@ rollback flag is false. It accepts no query or body. The optional Vault probe
 uses the existing scoped writer identity once, with a ten-second maximum and
 no redirect or automatic retry. Existing KV writer implementations remain
 compatible; an implementation without the probe returns unavailable.
+
+The official CLI exposes this existing read-only endpoint through the active
+managed configuration and login:
+
+```sh
+enclii secrets intake training-capabilities --json
+```
+
+There are no selector or apply arguments. An explicit configured API token takes
+precedence over managed credentials; a failed explicit token is not retried with
+another identity. The CLI makes one GET, refuses redirects, and validates a
+bounded closed receipt: version, derived status, all ten fixed paths, capability
+enums, required/unknown booleans and canonical UTC timestamp. It re-encodes only
+validated metadata and never prints raw upstream errors. Only the verified
+required-capability status exits zero. Valid negative evidence remains
+inspectable with a nonzero exit; it is not authority to initialize custody.
 
 All seventeen reviewed intake IDs must retain their exact path and namespace;
 missing IDs, new training-prefix IDs and reroutes within the same destination

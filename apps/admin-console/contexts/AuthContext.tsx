@@ -3,6 +3,7 @@
 import { createContext, useContext, useEffect, useState, useCallback, ReactNode } from 'react'
 import { useRouter } from 'next/navigation'
 import { adoptSidFromLocation, withTabSessionHeader } from '@/lib/tab-session'
+import { generateOAuthState, storeOAuthState } from '@/lib/oauth-state'
 
 /**
  * AuthContext for Dispatch
@@ -145,11 +146,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const isAuthorized =
     user !== null && isAllowedDomain(user.email) && hasAllowedRole(user.roles)
 
-  // Check authentication status on mount
-  useEffect(() => {
-    checkAuth()
-  }, [])
-
   const checkAuth = useCallback(async () => {
     try {
       // Two-tab focus: if we arrived carrying `#janua_sid=<sid>` (from Janua's
@@ -227,13 +223,23 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   }, [])
 
+  // Check authentication status on mount after the stable callback is declared.
+  useEffect(() => {
+    checkAuth()
+  }, [checkAuth])
+
   const login = useCallback(async (options?: LoginOptions) => {
     // Generate PKCE parameters for secure OAuth 2.0 flow
     const codeVerifier = generateCodeVerifier()
     const codeChallenge = await generateCodeChallenge(codeVerifier)
 
-    // Store code_verifier for the callback (will be used in token exchange)
+    // Bind this attempt to the tab: a fresh `state` stored next to the
+    // verifier; the callback exchanges the code only when they match.
+    const state = generateOAuthState()
+
+    // Store code_verifier and state for the callback (per-tab, single-use)
     sessionStorage.setItem('dispatch_code_verifier', codeVerifier)
+    storeOAuthState(state)
 
     // Redirect to Janua OAuth authorize endpoint with PKCE
     const params = new URLSearchParams({
@@ -243,6 +249,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       scope: 'openid profile email',
       code_challenge: codeChallenge,
       code_challenge_method: 'S256',
+      state,
     })
 
     // Optional OIDC `prompt`. Appended only when a value is supplied, so the

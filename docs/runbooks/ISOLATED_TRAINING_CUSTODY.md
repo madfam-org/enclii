@@ -1,5 +1,7 @@
 # Isolated training and staging custody
 
+Last Updated: 2026-10-28
+
 > Boundary checkpoint (2026-10-14, platform preparation): public-safe logical
 > target names, namespaces, key names and callbacks only. Actual credentials,
 > human/organization identifiers and operational receipts stay in the private
@@ -94,7 +96,69 @@ control, mail and session keys are distinct by purpose; only the intended two
 ends receive each shared key. Registration, invitation and message delivery
 are separate operations; this runbook does not send invitations or mail.
 
+### Typed Janua staging initialization
+
+The two fixed profiles below initialize only the existing isolated staging
+targets. Their identity, Vault path, namespace, ExternalSecret and complete key
+set are validated when the registry loads. The endpoint retains the existing
+platform operator checks; no new role or Vault path is added.
+
+| Target | Server-side format |
+| --- | --- |
+| `janua-staging/runtime-crypto` | One matched 2048-bit RSA pair (PKCS8 private / PKIX public PEM), independent 32-byte JWT and application secrets, and a 32-byte padded URL-safe Fernet key |
+| `janua-staging/redis` | One 32-byte password and a matching `redis://` URI for the fixed same-namespace `janua-staging-redis` service, port 6379, database 0 |
+
+Submit the complete declared key group with `--generate`; partial generation or
+supplied values for either profile refuse before Vault writes. The database URI
+and public CA targets are supplied-only: random bytes cannot establish database
+authority or trust.
+
+After the reviewed Switchyard release is deployed, an authorized operator may
+initialize each group separately and collect only its metadata receipt:
+
+The updated CLI requires the server's typed/supplied-only `generation` metadata
+for all four Janua staging targets. An older server without that metadata is
+refused before input or submission; a new CLI alone cannot make its generic
+generator safe. Verify the deployed API release and live target policy first.
+
+```bash
+enclii secrets intake submit janua-staging/runtime-crypto \
+  --generate jwt_private_key,jwt_public_key,jwt_secret_key,secret_key,field_encryption_key \
+  --reason "initialize fresh isolated staging crypto"
+```
+
+Review the receipt before the next separate operation:
+
+```bash
+enclii secrets intake submit janua-staging/redis \
+  --generate redis_password,redis_url \
+  --reason "initialize fresh isolated staging Redis authentication"
+```
+
+Unlike generic generated-key intake, these profiles **do not rotate** existing
+custody. Initialization reads the KV v2 version, refuses if any group key exists
+(including an empty or partial group), preserves unrelated properties, and uses
+an atomic compare-and-set write. Concurrent changes refuse with HTTP 409 and no
+retry. File other targets sharing this Vault path serially: legacy generic
+merges are still read/write operations without a compare-and-set guarantee.
+If the response is lost or the write receipt cannot be verified, inspect the
+existing custody state through an authorized operator flow before proceeding;
+never mint again to guess the result. A writer without atomic initialization
+support refuses with 503 instead of falling back to an overwriting merge.
+
+Values remain inside the existing write-only intake/Vault flow. Responses and
+cached status carry only generated key names, version and audit metadata. An
+accepted intake or `external_secret_refreshed` does not establish projected
+Secret readiness, a running Redis, a database migration, a healthy application,
+staging soak, production promotion or SSO activation. This implementation does
+not execute any of those operations or introduce an owner/migrator credential.
+
 ## Bounded staging namespace bootstrap
+
+The separate [read-only Janua addon plan](JANUA_STAGING_ADDON_PLAN.md) verifies
+persisted staging ownership, namespace metadata and catalog allocation without
+creating rows/resources or reading credentials. A plan response cannot activate
+the namespace or replace the still-missing typed staging provisioning adapter.
 
 `POST /v1/admin/projects/:slug/environments/staging/bootstrap` defaults to
 `dry_run: true`. It uses the existing platform-rank and project/acting-tenant
@@ -133,9 +197,10 @@ capabilities to a tenant administrator; unset retains the existing enforcement
 default. Other legacy route policies and the global rollout flag are unchanged.
 The active bound addon must be the exact Ready isolated PostgreSQL profile;
 the owned application stays at zero replicas throughout initial preparation.
-The fixed step `portal-sim-turno-vigente` is the one exception: it runs
-against the live portal database, so the gateway may serve, but its rollout
-must have converged on its pinned image.
+The fixed steps `portal-sim-turno-vigente` and
+`portal-sim-cierre-reconstruccion-paso` are the exception: they run against
+the live portal database, so the gateway may serve, but its rollout must have
+converged on its pinned image.
 
 | Profile | Workload | Fixed operation |
 | --- | --- | --- |
@@ -144,6 +209,7 @@ must have converged on its pinned image.
 | `map03-sim-initial` | `crea-sim-map03` | Same fixed MAP operation, on kernel 03's own database and runtime role |
 | `portal-sim-initial` | `crea-sim-gateway` | Bundled `001-portal.sql` through the fixed owner-only initial migrator |
 | `portal-sim-turno-vigente` | `crea-sim-gateway` | Fixed step 003 (`003-turno-vigente-por-persona.sql`) on the database `portal-sim-initial` prepared; re-runnable under a new key; answers `APLICADO` or `YA_APLICADO` |
+| `portal-sim-cierre-reconstruccion-paso` | `crea-sim-gateway` | Fixed step 004 (`004-cierre-por-reconstruccion.sql`) after an accredited 003; adds the close-by-rebuild catalogue and closes no reservation; re-runnable under a new key; answers `APLICADO` or `YA_APLICADO` |
 
 The three MAP profiles share one definition. The profile name alone selects
 the kernel's service, database and runtime role from a closed list. Each
@@ -200,6 +266,71 @@ foreign/existing conflicts and rotation refuse activation without adoption.
 Dry run only submits server-side dry-run copies; ordinary credentials remain
 separate from application/migrator custody.
 
+The bounded generation reader, fence reader and reconstruction close may finish
+retaining an intent after a suspended create was interrupted. Before creating
+these Jobs, the server retains the complete original pre-UID plan in a separate
+immutable namespace-owned preparation; the Job references its UID and hash.
+Repeat the exact original apply body and reviewed plan under the same key. The
+server requires that exact original preparation, generation one, the exact
+fixed Job and fingerprint, no execution evidence,
+a complete empty owned-Pod read, and absent intent, receipt, transient credentials
+and network policy. It rechecks the UID/resourceVersion and current reviewed
+authority, retains the immutable intent, then uses the normal single activation
+CAS. A legacy Job without an original preparation stays held; the server never
+creates one retroactively. A previously activated, changed or uncertain Job
+stays held; initial
+migration/seed profiles cannot use this recovery. Reader and close refusals
+return a safe `hold_stage` code without raw admission or credential values.
+
+### Retire an unexecuted provenance reader
+
+A legacy reader without its original preparation cannot be adopted. A separate
+platform-operator action may retire only a positively unexecuted provenance
+reader; it cannot retire migration, seed or reconstruction-close Jobs.
+
+POST `/v1/admin/projects/<slug>/addons/<addon-id>/retained-provenance-read/<read-job>/retire`
+with the closed `action=RETIRE_UNEXECUTED_PROVENANCE_READ`, reader `profile`,
+`service_id`, original UUID `idempotency_key` and `dry_run=true`. The native Job
+must match that exact operation name, owned scope and fixed bounded reader spec,
+remain suspended at generation one, and have no execution status, owned Pod,
+intent, receipt, transient credentials or database network policy. Unknown or
+partial reads refuse. The returned `retirement.plan_sha256` binds its native
+UID, resourceVersion, spec and annotation hashes, not a historical identity or
+database observation.
+
+Review the plan, then repeat with `dry_run=false`, that exact
+`expect_plan_sha256` and a bounded `reason`. The server atomically claims the
+existing immutable intent name as `NON_EXECUTION_RETIREMENT_CLAIM`, permanently
+denying execution under the old key. It makes one metadata-only Job CAS with
+the exact observed UID/resourceVersion, preserving its spec, suspension and
+generation, then retains a separate immutable completion only after positive
+native readback. `NON_EXECUTION_RETIREMENT`, `conclusive=true` and
+`execution_authorized=false` identify completion. The original Job remains.
+
+GET the sibling `.../<read-job>/retirement` route for read-only confirmation.
+The original reader status may also report the retirement class, with no native
+fence receipt. A lost CAS response or incomplete claim stays held and never
+creates an exclusion exception. An explicit same-key collection can retain a
+completion from positive native markers/readback; it never retries the CAS.
+Claim alone, marker alone, foreign records, UID/spec/generation/execution/Pod
+or transient-resource drift remain blockers. The old key stays denied even
+after the Job disappears.
+
+Only a conclusively inert retired reader may be ignored by later operation
+exclusion. Each new read, seed or close still requires its own independent
+current authority; retirement supplies no fence, seed, reset, release, adoption
+or reconstruction-close proof. Missing or stale close evidence still refuses.
+
+A refused retirement dry run may include a `DIAGNOSTIC_ONLY` snapshot after
+rechecking the exact owned native reader scope. It separates expected-builder,
+strict-matcher, spec and whole-annotation comparisons, with bounded fixed-schema
+mismatch field paths and native UID/resourceVersion/generation. Recognized
+annotation names carry value hashes only; unknown names are withheld as key
+hashes. No annotation, command, environment, Secret, CA or credential values are
+returned. Invalid scope or diagnostic bounds return `diagnostic_status=unavailable`.
+These reads create no record and supply no plan, fence, seed, retirement or
+execution authority; apply errors do not invoke them. All guards remain unchanged.
+
 ### Fixed step 003 (`portal-sim-turno-vigente`)
 
 The contract is in
@@ -224,6 +355,40 @@ with an operator login, in three steps, against the portal addon and the
 
 A re-run uses a new key, once the earlier Job has finished. It never reuses
 or rewrites an earlier key's records.
+
+### Runtime reset-fence observation
+
+The separate `portal-sim-reset-fence-read` operation resolves a retained fence
+by one of the three registered kernel IDs. It uses the runtime account only;
+its dry-run admits a plan, and apply runs the fixed read-only reader. See
+[the request and receipt contract](../architecture/PORTAL_RESET_FENCE_READ.md).
+Its historical receipt does not close a reservation or enable fleet reset.
+
+### Fixed step 004 (`portal-sim-cierre-reconstruccion-paso`)
+
+The contract is in
+[Fixed initial custody](../architecture/INITIAL_BOOTSTRAP_CUSTODY.md#fixed-step-portal-sim-cierre-reconstruccion-paso).
+Run it once per portal database, only after the crea-sim gateway image that
+carries step 004 (crea-sim#112) is merged, pinned on main and rolled out, and
+only after step 003 has been applied there; the request refuses otherwise.
+The sequence is step 003's, with the profile `portal-sim-cierre-reconstruccion-paso`:
+
+1. **Dry run.** Expect `job.classification=FIXED_STEP_EXECUTION` and
+   `producer.verified_sources` naming the 004 SQL and
+   `preparar-cierre-reconstruccion.ts`.
+2. **Apply once** with a new `idempotency_key` and a `reason`; poll the GET
+   route until the Job finishes.
+3. **Collect with the same key.** Expect `FIXED_STEP_APPLIED` with
+   `native_receipt.cierre_reconstruccion_paso.estado` `APLICADO` (or
+   `YA_APLICADO`). `FIXED_STEP_HELD` names its `held_reason`.
+
+This prepares the catalogue only. A reservation left `RESTABLECIENDO` stays
+retained until the separate witnessed close profile appends its accredited receipt.
+See [Witnessed portal close](../architecture/PORTAL_RECONSTRUCTION_CLOSE.md):
+collect a new runtime fence observation with its server-owned origin before
+changing the kernel; after reconstruction, review/apply/collect the close with
+that same observation reference. The server enforces platform-operator rank,
+not physical human presence; custody capability checks remain independent.
 
 Inspect the same operation with
 `GET /v1/admin/projects/:slug/addons/:id/initial-bootstrap/:job_name`. It returns

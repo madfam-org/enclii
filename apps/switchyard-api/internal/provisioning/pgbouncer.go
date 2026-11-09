@@ -2,6 +2,7 @@ package provisioning
 
 import (
 	"context"
+	"database/sql"
 	"fmt"
 	"strings"
 
@@ -28,6 +29,9 @@ const (
 type PgBouncerUpdater struct {
 	clientset kubernetes.Interface
 	logger    logging.Logger
+	// openDB opens the admin connection for the drift detector. nil means
+	// sql.Open("postgres", ...); tests replace it with sqlmock.
+	openDB func(dsn string) (*sql.DB, error)
 }
 
 // NewPgBouncerUpdater creates a new PgBouncer updater using an existing K8s clientset.

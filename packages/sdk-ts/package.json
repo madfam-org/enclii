@@ -1,7 +1,7 @@
 {
   "name": "@madfam/enclii-sdk",
   "version": "0.1.0",
-  "description": "TypeScript SDK for the Enclii DevOps platform — projects, deployments, canary rollouts, logs, audit, lifecycle webhooks.",
+  "description": "TypeScript SDK for the Enclii DevOps platform \u2014 projects, deployments, canary rollouts, logs, audit, lifecycle webhooks.",
   "license": "AGPL-3.0",
   "author": "MADFAM Engineering <engineering@madfam.io>",
   "homepage": "https://enclii.dev",
@@ -66,9 +66,11 @@
   "devDependencies": {
     "@types/node": "^20.12.0",
     "@types/ws": "^8.5.10",
+    "@vitest/coverage-v8": "4.1.12",
     "openapi-typescript": "^7.4.4",
     "tsup": "^8.3.5",
     "typescript": "^5.7.2",
-    "vitest": "^2.1.8"
+    "vite": "6.4.4",
+    "vitest": "4.1.12"
   }
 }

@@ -16,14 +16,17 @@ import http from 'k6/http';
 import { check, sleep, group } from 'k6';
 import { Rate, Trend, Counter } from 'k6/metrics';
 import { CONFIG, STAGES } from './config.js';
+import { SUMMARY_TREND_STATS, renderSummary } from './summary.js';
 
 // Custom metrics
 const apiErrors = new Rate('api_errors');
+const apiSloBreaches = new Rate('api_slo_breaches');
 const projectsLatency = new Trend('projects_list_latency');
 const projectsCount = new Counter('projects_requests');
 
 // Test configuration
 export const options = {
+  summaryTrendStats: SUMMARY_TREND_STATS,
   scenarios: {
     api_load: {
       executor: 'ramping-vus',
@@ -35,6 +38,7 @@ export const options = {
     http_req_duration: ['p(95)<500', 'p(99)<1000'],
     http_req_failed: ['rate<0.01'],
     api_errors: ['rate<0.01'],
+    api_slo_breaches: ['rate<0.01'],
     projects_list_latency: ['p(95)<500'],
   },
 };
@@ -78,7 +82,6 @@ export default function (data) {
 
     const listSuccess = check(listRes, {
       'list projects - status 200': (r) => r.status === 200,
-      'list projects - response time < 500ms': (r) => r.timings.duration < 500,
       'list projects - valid JSON': (r) => {
         try {
           JSON.parse(r.body);
@@ -89,7 +92,11 @@ export default function (data) {
       },
     });
 
+    const latencySuccess = check(listRes, { 'list projects - response time < 500ms': (r) => r.timings.duration < 500 });
     apiErrors.add(!listSuccess);
+    // Preserve the original union gate: one breach for any availability or
+    // pointwise latency failure, including disjoint failures across requests.
+    apiSloBreaches.add(!(listSuccess && latencySuccess));
   });
 
   group('Health Endpoints', function () {
@@ -117,53 +124,6 @@ export default function (data) {
 }
 
 export function handleSummary(data) {
-  const metrics = data.metrics;
-  const httpDuration = metrics.http_req_duration;
-  const projectsLat = metrics.projects_list_latency;
-
-  const summary = `
-================================================================================
-                          ENCLII API LOAD TEST RESULTS
-================================================================================
-
-TARGET: ${CONFIG.baseUrl}
-TEST TYPE: Ramping VU Load Test
-
-OVERALL RESULTS
----------------
-Total Requests:       ${metrics.http_reqs.values.count}
-Failed Requests:      ${Math.round(metrics.http_req_failed.values.rate * metrics.http_reqs.values.count)}
-Success Rate:         ${((1 - metrics.http_req_failed.values.rate) * 100).toFixed(2)}%
-Total Data Received:  ${(metrics.data_received.values.count / 1024 / 1024).toFixed(2)} MB
-Total Data Sent:      ${(metrics.data_sent.values.count / 1024 / 1024).toFixed(2)} MB
-
-RESPONSE TIMES - ALL REQUESTS (ms)
-----------------------------------
-  Min:    ${httpDuration.values.min.toFixed(2)}
-  Avg:    ${httpDuration.values.avg.toFixed(2)}
-  Med:    ${httpDuration.values.med.toFixed(2)}
-  P95:    ${httpDuration.values['p(95)'].toFixed(2)}
-  P99:    ${httpDuration.values['p(99)'].toFixed(2)}
-  Max:    ${httpDuration.values.max.toFixed(2)}
-
-RESPONSE TIMES - LIST PROJECTS (ms)
------------------------------------
-  Requests: ${metrics.projects_requests?.values.count || 0}
-  Avg:      ${projectsLat?.values.avg?.toFixed(2) || 'N/A'}
-  P95:      ${projectsLat?.values['p(95)']?.toFixed(2) || 'N/A'}
-  P99:      ${projectsLat?.values['p(99)']?.toFixed(2) || 'N/A'}
-
-SLO COMPLIANCE
---------------
-  API P95 < 500ms:     ${httpDuration.values['p(95)'] < 500 ? 'PASS' : 'FAIL'} (${httpDuration.values['p(95)'].toFixed(0)}ms)
-  API P99 < 1000ms:    ${httpDuration.values['p(99)'] < 1000 ? 'PASS' : 'FAIL'} (${httpDuration.values['p(99)'].toFixed(0)}ms)
-  Error Rate < 1%:     ${metrics.http_req_failed.values.rate < 0.01 ? 'PASS' : 'FAIL'} (${(metrics.http_req_failed.values.rate * 100).toFixed(2)}%)
-
-================================================================================
-`;
-
-  return {
-    stdout: summary,
-    'tests/load/results/api-summary.json': JSON.stringify(data, null, 2),
-  };
+  return renderSummary(data, 'ENCLII AUTHENTICATED API LOAD RESULTS', 'api',
+    'Authenticated API workload observations; public/deep-health requests are separate checks, not full estate readiness.');
 }

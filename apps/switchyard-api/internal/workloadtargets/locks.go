@@ -216,3 +216,21 @@ func (s *Session) OwnsService(id uuid.UUID) bool {
 	return id != uuid.Nil && (s.serviceID == id || s.services[id])
 }
 func (s *Session) ProjectID() uuid.UUID { return s.projectID }
+
+// SelectServiceForBinding selects one verified child in a locked project
+// transaction. It changes no service metadata. New rows and their immutable
+// binding commit together, so no writer observes an unbound new service.
+func (s *Session) SelectServiceForBinding(ctx context.Context, id uuid.UUID) error {
+	if s == nil || s.tx == nil || s.projectID == uuid.Nil || s.serviceID != uuid.Nil || id == uuid.Nil || len(s.services) != 0 {
+		return ErrConflict
+	}
+	if _, err := s.tx.ExecContext(ctx, `SELECT pg_advisory_xact_lock(hashtextextended($1,0))`, "enclii.service-target:"+id.String()); err != nil {
+		return ErrUnavailable
+	}
+	var parent uuid.UUID
+	if s.tx.QueryRowContext(ctx, `SELECT project_id FROM services WHERE id=$1 FOR NO KEY UPDATE`, id).Scan(&parent) != nil || parent != s.projectID {
+		return ErrIntent
+	}
+	s.serviceID = id
+	return nil
+}

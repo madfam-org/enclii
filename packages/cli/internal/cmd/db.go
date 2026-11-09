@@ -4,9 +4,10 @@ package cmd
 //
 // Scope (P1.1 initial release):
 //   `enclii db wal-status` — reports the age of the latest Postgres WAL
-//   archive segment, newest backup info, and R2 repo footprint by parsing
-//   `pgbackrest info --output=json` from the sidecar in the production
-//   Postgres pod.
+//   archive segment (from `pg_stat_archiver`, queried with psql in the
+//   postgres container), newest backup info, and R2 repo footprint (from
+//   `pgbackrest info --output=json` in the sidecar of the production
+//   Postgres pod).
 //
 // Out of scope:
 //   - Writing to the database or its repo.
@@ -44,17 +45,32 @@ import (
 	"github.com/madfam-org/enclii/packages/cli/internal/config"
 )
 
-// Thresholds for the wal-status color output. Matches the Prometheus rule
-// cadence: green < 60s, yellow 60s..5min, red >= 5min.
+// Thresholds for the wal-status color output, applied to the age of the
+// last successfully archived WAL segment (pg_stat_archiver.last_archived_time).
+// They match the postgres-wal-archive Prometheus rules in
+// infra/k8s/production/monitoring/prometheus.yaml: PostgresWALArchiveLag
+// warns above 15min and PostgresWALArchiveStale pages above 1h. A tighter
+// threshold would flap: archive_timeout is 60s and Postgres only switches
+// segments when there was write activity, so a quiet database legitimately
+// goes minutes between archives.
 const (
-	walStatusGreenMaxAgeS  = 60
-	walStatusYellowMaxAgeS = 300
+	walStatusGreenMaxAgeS  = 900
+	walStatusYellowMaxAgeS = 3600
 
 	// Default production Postgres coordinates. Mirrored in dr-drill.sh.
 	defaultPostgresNamespace = "data"
 	defaultPostgresLabel     = "app=postgres"
 	defaultPostgresSidecar   = "pgbackrest"
+	defaultPostgresContainer = "postgres"
 	defaultPostgresStanza    = "main"
+	// Role used for the pg_stat_archiver read over the container's local
+	// socket. Same role the pod's pg_isready probes and the runbook use.
+	defaultPostgresUser = "postgres"
+
+	// walAgeSourceArchiver / walAgeSourceUnavailable label where the WAL age
+	// came from in the --json output.
+	walAgeSourceArchiver    = "pg_stat_archiver"
+	walAgeSourceUnavailable = "unavailable"
 
 	pgbackrestExecTimeout = 15 * time.Second
 )
@@ -99,6 +115,32 @@ type pgbackrestInfo struct {
 			} `json:"repository"`
 		} `json:"info"`
 	} `json:"backup"`
+}
+
+// pgStatArchiverQuery reads the archiver statistics as one JSON row. Ages
+// and the failure ordering are computed server-side with now(), so the
+// operator's clock skew cannot change the answer. NULL timestamps (nothing
+// archived / failed since the last stats reset) come back as JSON null.
+const pgStatArchiverQuery = `SELECT json_build_object(
+  'archived_count', archived_count,
+  'last_archived_wal', last_archived_wal,
+  'last_archived_age_s', floor(extract(epoch FROM now() - last_archived_time))::bigint,
+  'failed_count', failed_count,
+  'last_failed_wal', last_failed_wal,
+  'last_failed_age_s', floor(extract(epoch FROM now() - last_failed_time))::bigint,
+  'failed_after_last_archive', (last_failed_time IS NOT NULL
+    AND (last_archived_time IS NULL OR last_failed_time > last_archived_time))
+) FROM pg_stat_archiver`
+
+// pgStatArchiver is the row produced by pgStatArchiverQuery.
+type pgStatArchiver struct {
+	ArchivedCount          int64  `json:"archived_count"`
+	LastArchivedWAL        string `json:"last_archived_wal"`
+	LastArchivedAgeSeconds *int64 `json:"last_archived_age_s"`
+	FailedCount            int64  `json:"failed_count"`
+	LastFailedWAL          string `json:"last_failed_wal"`
+	LastFailedAgeSeconds   *int64 `json:"last_failed_age_s"`
+	FailedAfterLastArchive bool   `json:"failed_after_last_archive"`
 }
 
 // execRunner is swappable in tests — real implementations shell out to
@@ -199,24 +241,32 @@ Prefer this over break-glass psql when verifying GA migrations (ops task O-2).`,
 // newDBWalStatusCommand implements `enclii db wal-status`.
 func newDBWalStatusCommand(cfg *config.Config) *cobra.Command {
 	var (
-		namespace string
-		label     string
-		sidecar   string
-		stanza    string
-		jsonOut   bool
+		namespace   string
+		label       string
+		sidecar     string
+		pgContainer string
+		stanza      string
+		jsonOut     bool
 	)
 
 	cmd := &cobra.Command{
 		Use:   "wal-status",
 		Short: "Report WAL archive freshness, backup history, and replica lag",
-		Long: `Read-only cluster call: parses 'pgbackrest info --output=json' from
-the sidecar container on the production Postgres pod and prints an
+		Long: `Read-only cluster calls against the production Postgres pod:
+'pgbackrest info --output=json' in the pgBackRest sidecar, and a SELECT on
+pg_stat_archiver with psql in the postgres container. Prints an
 operator-friendly summary:
 
-  - Most recent WAL archive segment age (color-coded to RPO thresholds)
+  - Age of the last successfully archived WAL segment, from
+    pg_stat_archiver (green < 15min, yellow < 1h, red otherwise or when
+    the last archive attempt failed after the last success)
+  - Archiver failure count and the last failed segment
   - Latest full/diff/incremental backup type + age
   - R2 repo footprint (sum of backup delta sizes)
   - Replica lag (stub for P1.1; wires up in P1.2 once replication lands)
+
+If pg_stat_archiver cannot be read, the WAL age is reported as unknown and
+the status is never better than yellow: the backup age is NOT a WAL age.
 
 Exit code 0 on success (including degraded status). Exit code 1 if the
 sidecar cannot be reached or the stanza is not yet created.
@@ -225,13 +275,14 @@ Defaults target the production in-cluster Postgres at data/app=postgres.
 Override via flags for staging clusters or namespace renames.`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return runDBWalStatus(cmd.Context(), cmd.OutOrStdout(), walStatusArgs{
-				Namespace: namespace,
-				Label:     label,
-				Sidecar:   sidecar,
-				Stanza:    stanza,
-				JSONOut:   jsonOut,
-				Runner:    defaultExecRunner,
-				IsTTY:     isTTY(cmd.OutOrStdout()),
+				Namespace:         namespace,
+				Label:             label,
+				Sidecar:           sidecar,
+				PostgresContainer: pgContainer,
+				Stanza:            stanza,
+				JSONOut:           jsonOut,
+				Runner:            defaultExecRunner,
+				IsTTY:             isTTY(cmd.OutOrStdout()),
 			})
 		},
 	}
@@ -239,6 +290,7 @@ Override via flags for staging clusters or namespace renames.`,
 	cmd.Flags().StringVar(&namespace, "namespace", defaultPostgresNamespace, "Postgres namespace")
 	cmd.Flags().StringVar(&label, "label", defaultPostgresLabel, "Pod selector for Postgres primary")
 	cmd.Flags().StringVar(&sidecar, "sidecar", defaultPostgresSidecar, "pgBackRest sidecar container name")
+	cmd.Flags().StringVar(&pgContainer, "postgres-container", defaultPostgresContainer, "Postgres container name (pg_stat_archiver is read here with psql)")
 	cmd.Flags().StringVar(&stanza, "stanza", defaultPostgresStanza, "pgBackRest stanza name")
 	cmd.Flags().BoolVar(&jsonOut, "json", false, "Emit structured JSON instead of human output")
 	_ = cfg
@@ -248,23 +300,40 @@ Override via flags for staging clusters or namespace renames.`,
 // walStatusArgs bundles run-time inputs so tests can invoke runDBWalStatus
 // without reconstructing a full cobra.Command.
 type walStatusArgs struct {
-	Namespace string
-	Label     string
-	Sidecar   string
-	Stanza    string
-	JSONOut   bool
-	Runner    execRunner
-	IsTTY     bool
+	Namespace         string
+	Label             string
+	Sidecar           string
+	PostgresContainer string
+	Stanza            string
+	JSONOut           bool
+	Runner            execRunner
+	IsTTY             bool
 }
 
 // walStatusResult is the parsed, display-ready state.
 // Exported field names map cleanly to the --json output schema.
 type walStatusResult struct {
-	Stanza                 string `json:"stanza"`
-	StanzaStatus           string `json:"stanza_status"`
-	LatestArchiveID        string `json:"latest_archive_id,omitempty"`
-	LatestWALAgeSeconds    int64  `json:"latest_wal_age_s"`
-	LatestWALAgeSpecified  bool   `json:"-"` // whether LatestWALAgeSeconds is meaningful
+	Stanza          string `json:"stanza"`
+	StanzaStatus    string `json:"stanza_status"`
+	LatestArchiveID string `json:"latest_archive_id,omitempty"`
+	// LatestWALAgeSeconds is the age of the last successfully archived WAL
+	// segment per pg_stat_archiver; null when it could not be read or
+	// nothing has been archived since the last stats reset. It is never
+	// derived from the backup age.
+	LatestWALAgeSeconds *int64 `json:"latest_wal_age_s"`
+	// LatestWALAgeSource is walAgeSourceArchiver or walAgeSourceUnavailable.
+	LatestWALAgeSource string `json:"latest_wal_age_source"`
+	// WALFreshnessVerified is true only when pg_stat_archiver was read.
+	WALFreshnessVerified bool   `json:"wal_freshness_verified"`
+	ArchiverError        string `json:"archiver_error,omitempty"`
+	LastArchivedWAL      string `json:"last_archived_wal,omitempty"`
+	ArchivedCount        int64  `json:"archived_count"`
+	FailedCount          int64  `json:"failed_count"`
+	LastFailedWAL        string `json:"last_failed_wal,omitempty"`
+	LastFailedAgeSeconds *int64 `json:"last_failed_age_s"`
+	// FailedAfterLastArchive: the newest archive attempt failed after the
+	// newest success, i.e. archiving is currently failing.
+	FailedAfterLastArchive bool   `json:"failed_after_last_archive"`
 	LatestBackupType       string `json:"latest_backup_type,omitempty"`
 	LatestBackupLabel      string `json:"latest_backup_label,omitempty"`
 	LatestBackupAgeSeconds int64  `json:"latest_backup_age_s"`
@@ -306,7 +375,7 @@ func runDBWalStatus(ctx context.Context, w io.Writer, a walStatusArgs) error {
 		return errWalStatusUnreachable
 	}
 
-	// 3. Parse + classify.
+	// 3. Parse.
 	result, parseErr := parsePgbackrestInfo(out, a.Stanza)
 	if parseErr != nil {
 		fmt.Fprintf(w, "Failed to parse pgbackrest info output: %v\n", parseErr)
@@ -314,7 +383,14 @@ func runDBWalStatus(ctx context.Context, w io.Writer, a walStatusArgs) error {
 		return errWalStatusUnreachable
 	}
 
-	// 4. Render.
+	// 4. WAL freshness from pg_stat_archiver. A failure here does not abort
+	// the command: the backup facts above are still worth printing, and the
+	// result says plainly that WAL freshness is unverified.
+	stats, archErr := queryPgStatArchiver(ctx, a, podName)
+	applyArchiverStats(&result, stats, archErr)
+
+	// 5. Classify + render.
+	finalizeWalStatus(&result)
 	if a.JSONOut {
 		return renderWalStatusJSON(w, result)
 	}
@@ -345,6 +421,76 @@ func findPostgresPod(ctx context.Context, a walStatusArgs) (string, error) {
 	return name, nil
 }
 
+// queryPgStatArchiver runs pgStatArchiverQuery with psql in the postgres
+// container over its local socket (the same access the runbook's
+// `kubectl exec ... -c postgres -- psql -U postgres` uses).
+func queryPgStatArchiver(ctx context.Context, a walStatusArgs, podName string) (*pgStatArchiver, error) {
+	container := a.PostgresContainer
+	if container == "" {
+		container = defaultPostgresContainer
+	}
+	out, err := a.Runner(ctx, "kubectl",
+		"-n", a.Namespace,
+		"exec", podName,
+		"-c", container,
+		"--",
+		"psql", "-U", defaultPostgresUser, "-d", "postgres",
+		"-X", "-A", "-t", "-q", "-v", "ON_ERROR_STOP=1",
+		"-c", pgStatArchiverQuery,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("psql in container %q: %w: %s", container, err, strings.TrimSpace(string(out)))
+	}
+	return parsePgStatArchiver(out)
+}
+
+// parsePgStatArchiver extracts the JSON row from psql output. kubectl
+// returns stdout+stderr combined, so it picks the line that holds the
+// object rather than assuming the output is only that line.
+func parsePgStatArchiver(raw []byte) (*pgStatArchiver, error) {
+	for _, line := range strings.Split(string(raw), "\n") {
+		line = strings.TrimSpace(line)
+		if !strings.HasPrefix(line, "{") {
+			continue
+		}
+		var s pgStatArchiver
+		if err := json.Unmarshal([]byte(line), &s); err != nil {
+			return nil, fmt.Errorf("unmarshal pg_stat_archiver row: %w", err)
+		}
+		return &s, nil
+	}
+	return nil, fmt.Errorf("no pg_stat_archiver row in psql output: %q", strings.TrimSpace(string(raw)))
+}
+
+// applyArchiverStats copies the archiver row into the result, or records
+// why it is missing. It never falls back to the backup age.
+func applyArchiverStats(r *walStatusResult, s *pgStatArchiver, err error) {
+	if err != nil || s == nil {
+		r.LatestWALAgeSource = walAgeSourceUnavailable
+		r.WALFreshnessVerified = false
+		r.LatestWALAgeSeconds = nil
+		if err != nil {
+			r.ArchiverError = err.Error()
+		}
+		return
+	}
+	r.LatestWALAgeSource = walAgeSourceArchiver
+	r.WALFreshnessVerified = true
+	r.LatestWALAgeSeconds = s.LastArchivedAgeSeconds
+	r.LastArchivedWAL = s.LastArchivedWAL
+	r.ArchivedCount = s.ArchivedCount
+	r.FailedCount = s.FailedCount
+	r.LastFailedWAL = s.LastFailedWAL
+	r.LastFailedAgeSeconds = s.LastFailedAgeSeconds
+	r.FailedAfterLastArchive = s.FailedAfterLastArchive
+}
+
+// finalizeWalStatus sets Color and Healthy from the gathered facts.
+func finalizeWalStatus(r *walStatusResult) {
+	r.Color = classifyWalColor(*r)
+	r.Healthy = r.Color != "red" && strings.EqualFold(r.StanzaStatus, "ok")
+}
+
 // parsePgbackrestInfo interprets the JSON output from pgbackrest.
 // pgBackRest emits an array with one element per stanza; we pick the one
 // matching the requested stanza (default "main").
@@ -367,16 +513,16 @@ func parsePgbackrestInfo(raw []byte, stanza string) (walStatusResult, error) {
 
 	now := time.Now().UTC().Unix()
 	result := walStatusResult{
-		Stanza:       chosen.Name,
-		StanzaStatus: chosen.Status.Message,
-		BackupCount:  len(chosen.Backup),
-		ReplicaLag:   "N/A (P1.2 adds replication)",
+		Stanza:             chosen.Name,
+		StanzaStatus:       chosen.Status.Message,
+		BackupCount:        len(chosen.Backup),
+		ReplicaLag:         "N/A (P1.2 adds replication)",
+		LatestWALAgeSource: walAgeSourceUnavailable,
 	}
 
-	// Latest WAL archive: use the Max of the last archive range, convert
-	// to an approximate age via the most recent backup stop time as anchor.
-	// We prefer the backup stop time because archive IDs are WAL LSNs, not
-	// timestamps.
+	// Newest WAL segment in the repo. These are WAL file names, not
+	// timestamps, so they say nothing about age; the age comes from
+	// pg_stat_archiver (applyArchiverStats).
 	if len(chosen.Archive) > 0 {
 		last := chosen.Archive[len(chosen.Archive)-1]
 		result.LatestArchiveID = last.Max
@@ -390,7 +536,6 @@ func parsePgbackrestInfo(raw []byte, stanza string) (walStatusResult, error) {
 		result.LatestBackupLabel = last.Label
 		if last.Timestamp.Stop > 0 {
 			result.LatestBackupAgeSeconds = now - last.Timestamp.Stop
-			result.LatestBackupAgeSpecified()
 		}
 		// R2 repo size: sum of backup delta sizes approximates the
 		// repository footprint. pgBackRest also reports per-backup
@@ -400,46 +545,41 @@ func parsePgbackrestInfo(raw []byte, stanza string) (walStatusResult, error) {
 		}
 	}
 
-	// For WAL freshness, the most reliable proxy we have from pgbackrest
-	// info alone is the most recent backup stop time + a small fudge for
-	// archive_timeout (archives push continuously within 60s).
-	// A truly current WAL age would require pg_stat_archiver; we surface
-	// that only if --json is not used and the user opts in (not in P1.1).
-	// For the CLI color classification we use the backup age floor, which
-	// is a conservative (always-older-than-real) estimate.
-	if result.LatestBackupAgeSeconds > 0 {
-		result.LatestWALAgeSeconds = result.LatestBackupAgeSeconds
-		result.LatestWALAgeSpecified = true
-	}
-
-	result.Color = classifyWalColor(result)
-	result.Healthy = result.Color != "red" && strings.EqualFold(result.StanzaStatus, "ok")
+	// The backup age is deliberately NOT used as a WAL age: it only measures
+	// time since the last nightly backup, so it read "DEGRADED" for most of
+	// the day while archiving was healthy.
 	return result, nil
 }
 
-// LatestBackupAgeSpecified is a helper to set the flag consistently.
-func (r *walStatusResult) LatestBackupAgeSpecified() {
-	// Nothing to do — the flag for WAL specification lives on LatestWALAgeSpecified.
-	// This method exists to keep the parse flow readable.
-}
-
-// classifyWalColor maps the freshness + stanza status into green/yellow/red.
+// classifyWalColor maps stanza status + archiver facts into green/yellow/red.
 //
-//   - red:    stanza not ok, OR latest WAL > 5min old, OR no data at all.
-//   - yellow: stanza ok AND latest WAL 60s..5min old.
-//   - green:  stanza ok AND latest WAL < 60s old.
+// With pg_stat_archiver read (WALFreshnessVerified):
+//   - red:    stanza not ok, OR the last archive attempt failed after the
+//     last success, OR nothing archived since the stats reset, OR the last
+//     archived segment is >= 1h old.
+//   - yellow: last archived segment 15min..1h old.
+//   - green:  last archived segment < 15min old.
+//
+// Without it, freshness is unknown, so the best possible answer is yellow:
+//   - red:    stanza not ok, OR the repo holds no WAL archive at all.
+//   - yellow: stanza ok and the repo holds WAL (freshness unverified).
 func classifyWalColor(r walStatusResult) string {
 	if !strings.EqualFold(r.StanzaStatus, "ok") {
 		return "red"
 	}
-	if !r.LatestWALAgeSpecified {
-		// No WAL data at all — probably a just-created stanza pre-first-backup.
+	if !r.WALFreshnessVerified {
+		if r.LatestArchiveID == "" {
+			return "red"
+		}
+		return "yellow"
+	}
+	if r.FailedAfterLastArchive || r.LatestWALAgeSeconds == nil {
 		return "red"
 	}
-	switch {
-	case r.LatestWALAgeSeconds < walStatusGreenMaxAgeS:
+	switch age := *r.LatestWALAgeSeconds; {
+	case age < walStatusGreenMaxAgeS:
 		return "green"
-	case r.LatestWALAgeSeconds < walStatusYellowMaxAgeS:
+	case age < walStatusYellowMaxAgeS:
 		return "yellow"
 	default:
 		return "red"
@@ -456,10 +596,31 @@ func renderWalStatusHuman(w io.Writer, r walStatusResult, tty bool) error {
 		fmt.Fprintf(w, "Latest archive:   %s\n", colorText(tty, "red", "(none — stanza-create completed, but no archives yet)"))
 	}
 
-	if r.LatestWALAgeSpecified {
-		fmt.Fprintf(w, "Latest WAL age:   %s\n", colorText(tty, r.Color, humanDuration(r.LatestWALAgeSeconds)))
-	} else {
-		fmt.Fprintf(w, "Latest WAL age:   %s\n", colorText(tty, "red", "unknown"))
+	switch {
+	case !r.WALFreshnessVerified:
+		fmt.Fprintf(w, "Latest WAL age:   %s\n", colorText(tty, "yellow",
+			"unknown (pg_stat_archiver unavailable; backup age is not a WAL age)"))
+		if r.ArchiverError != "" {
+			fmt.Fprintf(w, "Archiver read:    %s\n", r.ArchiverError)
+		}
+	case r.LatestWALAgeSeconds == nil:
+		fmt.Fprintf(w, "Latest WAL age:   %s\n", colorText(tty, "red", "none archived since the last stats reset"))
+	default:
+		fmt.Fprintf(w, "Latest WAL age:   %s (%s, pg_stat_archiver)\n",
+			colorText(tty, r.Color, humanDuration(*r.LatestWALAgeSeconds)), r.LastArchivedWAL)
+	}
+	if r.WALFreshnessVerified {
+		switch {
+		case r.FailedCount == 0:
+			fmt.Fprintf(w, "Archive failures: 0\n")
+		case r.FailedAfterLastArchive:
+			fmt.Fprintf(w, "Archive failures: %s\n", colorText(tty, "red", fmt.Sprintf(
+				"%d total; last failure (%s) %s ago is NEWER than the last success",
+				r.FailedCount, r.LastFailedWAL, ageOrUnknown(r.LastFailedAgeSeconds))))
+		default:
+			fmt.Fprintf(w, "Archive failures: %d total; last failure (%s) %s ago, before the last success\n",
+				r.FailedCount, r.LastFailedWAL, ageOrUnknown(r.LastFailedAgeSeconds))
+		}
 	}
 
 	if r.LatestBackupType != "" {
@@ -477,15 +638,25 @@ func renderWalStatusHuman(w io.Writer, r walStatusResult, tty bool) error {
 	fmt.Fprintf(w, "Replica lag:      %s\n", r.ReplicaLag)
 
 	fmt.Fprintln(w)
-	switch r.Color {
-	case "green":
-		fmt.Fprintln(w, colorText(tty, "green", "WAL archiving healthy."))
-	case "yellow":
-		fmt.Fprintln(w, colorText(tty, "yellow", "WAL archive lag is above 60s — investigate if it trends higher."))
-	case "red":
+	switch {
+	case r.Color == "red":
 		fmt.Fprintln(w, colorText(tty, "red", "WAL archiving DEGRADED — see docs/runbooks/POSTGRES_WAL_ARCHIVING.md §4."))
+	case !r.WALFreshnessVerified:
+		fmt.Fprintln(w, colorText(tty, "yellow", "WAL archive present, freshness UNVERIFIED — pg_stat_archiver could not be read."))
+	case r.Color == "green":
+		fmt.Fprintln(w, colorText(tty, "green", "WAL archiving healthy."))
+	case r.Color == "yellow":
+		fmt.Fprintln(w, colorText(tty, "yellow", "Last WAL archive is over 15min old — investigate if it trends higher."))
 	}
 	return nil
+}
+
+// ageOrUnknown renders an optional age in seconds.
+func ageOrUnknown(s *int64) string {
+	if s == nil {
+		return "unknown"
+	}
+	return humanDuration(*s)
 }
 
 // JSON formatter for scripts + dashboards.

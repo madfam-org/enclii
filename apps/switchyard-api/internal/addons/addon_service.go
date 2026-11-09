@@ -74,6 +74,10 @@ type CreateAddonRequest struct {
 // plan row. Every lifecycle transition also writes a row to
 // managed_db_addon_events for audit and (Sprint 3) billing.
 func (s *AddonService) CreateAddon(ctx context.Context, req *CreateAddonRequest) (*types.DatabaseAddon, error) {
+	if req != nil && req.Name == KarafielStagingAddon {
+		return nil, fmt.Errorf("reserved staging profile requires typed platform preparation")
+	}
+
 	if err := ValidatePostgresRuntimeConfig(req.Type, req.Config); err != nil {
 		return nil, err
 	}
@@ -530,17 +534,14 @@ func (s *AddonService) RefreshStatus(ctx context.Context, addonID uuid.UUID) (*t
 		return nil, err
 	}
 
-	// Converge the control-plane egress on every refresh of a live PostgreSQL
-	// addon, so clusters provisioned before the policy existed heal (an
-	// instance rescheduled onto a node with no API-server endpoint otherwise
-	// crash-loops). Best effort: a failure is logged, never returned.
-	if addon.Type == types.DatabaseAddonTypePostgres && addon.K8sNamespace != "" && addon.K8sResourceName != "" &&
-		addon.Status != types.DatabaseAddonStatusDeleted && addon.Status != types.DatabaseAddonStatusFailed &&
-		addon.Status != types.DatabaseAddonStatusDeleting && addon.Status != types.DatabaseAddonStatusPendingDeletion {
-		if pg, ok := s.provisioners[types.DatabaseAddonTypePostgres].(*PostgresProvisioner); ok && pg.k8sClient != nil {
-			if err := pg.ensureControlPlaneEgress(ctx, addon.K8sNamespace, addon.K8sResourceName); err != nil {
-				s.logger.WithError(err).WithField("addon_id", addon.ID.String()).Warn("CNPG control-plane egress not converged")
-			}
+	// Converge the CNPG NetworkPolicies on every refresh of a live PostgreSQL
+	// addon, so clusters provisioned before a policy existed heal (an instance
+	// rescheduled onto a node with no API-server endpoint otherwise
+	// crash-loops; an operator on another node cannot manage the instance).
+	// Best effort: a failure is logged, never returned.
+	if pg, ok := s.provisioners[types.DatabaseAddonTypePostgres].(*PostgresProvisioner); ok && pg.k8sClient != nil && networkConvergible(addon) && !isKarafielStagingAddon(addon) {
+		if err := s.ConvergeCNPGNetworkPolicies(ctx, addon); err != nil {
+			s.logger.WithError(err).WithField("addon_id", addon.ID.String()).Warn("CNPG NetworkPolicies not converged")
 		}
 	}
 

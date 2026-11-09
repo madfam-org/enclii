@@ -14,8 +14,8 @@ spec:
       - name: switchyard-api
         resources:
           requests:
-            memory: "256Mi"
-            cpu: "200m"
+            memory: "144Mi"
+            cpu: "100m"
           limits:
             memory: "1Gi"
             cpu: "1000m"
@@ -87,11 +87,11 @@ spec:
         # Emergency rollback only: re-add the override with value "false" here
         # and in production.env, and record why.
         # Procedure: docs/runbooks/TENANT_SCOPE_ENFORCEMENT_ROLLOUT.md
-        # Stage 2 (2026-10-17), from the dry-run report: the only cross-tenant
-        # platform admin. Other operators keep reach through team membership
-        # (the 55 team-less projects were re-parented first). Read at pod start.
+        # Explicitly authorized platform operators. Reconciled at API startup;
+        # tenant admins remain scoped to their team membership. Keep this list
+        # in step with components/environment/production.env.
         - name: ENCLII_PLATFORM_ADMIN_EMAILS
-          value: "aldo@madfam.io"
+          value: "admin@madfam.io,aldo@madfam.io"
         # Forwarded client-IP headers are believed only from peers in these
         # ranges (#783): the cluster pod network, where cloudflared runs
         # (k3s cluster_cidr, infra/terraform/main.tf). Set 2026-10-18 by the
@@ -264,6 +264,24 @@ spec:
               name: vault-credentials
               key: token
               optional: true
+        # Managed-Postgres addon backups (docs/runbooks/ADDON_BACKUPS.md).
+        # The object store every addon cluster backs up to, one prefix per
+        # cluster: <base>/<namespace>/<cluster>. A bucket of its own, apart
+        # from the platform's enclii-backups, so tenant retention and the
+        # tenant-facing credential stay separate. Same account endpoint as
+        # postgres-ha (infra/k8s/production/postgres-ha/cluster.yaml).
+        #
+        # Setting these is SAFE before the credential exists: the provisioner
+        # and the reconciler's backup sweep refuse to write spec.backup until
+        # enclii/enclii-db-backup-credentials carries both keys
+        # (enclii-db-backup-credentials.externalsecret.yaml, intake target
+        # enclii/addon-db-backups), so no cluster starts archiving WAL it
+        # cannot authenticate. Until then the sweep logs the unprotected count
+        # at ERROR and AddonBackupNeverCompleted keeps paging.
+        - name: ENCLII_ADDON_BACKUP_DESTINATION_BASE
+          value: "s3://enclii-addon-db-backups"
+        - name: ENCLII_ADDON_BACKUP_ENDPOINT_URL
+          value: "https://12f1353f7819865c56161ce00297668e.r2.cloudflarestorage.com"
         # Dhanam billing federation — checkout relay (mirrors janua#453).
         # POST /v1/billing/checkout resolves the caller's Dhanam customer and
         # opens a hosted checkout for enclii_pro, returning the real Dhanam

@@ -2,6 +2,7 @@ package secretsintake
 
 import (
 	"encoding/base64"
+	"sort"
 	"strings"
 	"testing"
 
@@ -12,7 +13,7 @@ import (
 func TestLoadRegistry(t *testing.T) {
 	reg, err := LoadRegistry()
 	require.NoError(t, err)
-	assert.Len(t, reg, 90)
+	assert.Len(t, reg, 128)
 	assert.Contains(t, reg, "ceq/vast-api-key")
 	assert.Contains(t, reg, "karafiel/web-oidc-janua")
 	adminSession := reg["karafiel/admin-session"]
@@ -37,7 +38,7 @@ func TestGetTarget(t *testing.T) {
 func TestListTargetsSorted(t *testing.T) {
 	list, err := ListTargets()
 	require.NoError(t, err)
-	require.Len(t, list, 90)
+	require.Len(t, list, 128)
 	for i := 1; i < len(list); i++ {
 		assert.Less(t, list[i-1].ID, list[i].ID, "targets should be sorted by id")
 	}
@@ -51,10 +52,16 @@ func TestListTargetsSorted(t *testing.T) {
 		"angelia/courier-database-url",
 		"angelia/courier-producer-keys",
 		"angelia/courier-webhook-signing-keys",
+		"avala/oidc-janua",
 		"ceq/janua-client-secret",
 		"ceq/vast-api-key",
+		"converge-dash/dhanam-token",
+		"converge-dash/enclii-token",
 		"converge-dash/internal-read",
+		"converge-dash/phynd-crm-token",
+		"converge-dash/selva-client",
 		"converge-dash/session",
+		"converge-dash/web-oidc",
 		"coupler/janua-service-token",
 		"crea-map/internal-api-key",
 		"crea-map/janua-mail-client",
@@ -62,12 +69,19 @@ func TestListTargetsSorted(t *testing.T) {
 		"crea-map/mcp-pseudonym-key",
 		"crea-map/rls-por-caso",
 		"crea-map/selva-api-key",
+		"crea-map/web-oidc",
 		"crea/porkbun-registrar",
 		"creator-census/web-oidc",
 		"creator-census/web-session",
 		"creator-census/youtube-key",
+		"cv/hcm-client",
+		"cv/web-oidc",
+		"cv/web-session",
+		"data/pgbouncer-auth",
 		"dhanam/app-infra",
 		"dhanam/banxico",
+		"dhanam/billing-webhook-secret",
+		"dhanam/convergence",
 		"dhanam/karafiel-callback-secret",
 		"dhanam/oidc-janua",
 		"dhanam/session-auth",
@@ -75,6 +89,7 @@ func TestListTargetsSorted(t *testing.T) {
 		"digifab-quoting/pravara-intake",
 		"digifab-quoting/web-oidc",
 		"digifab-quoting/web-session",
+		"enclii/addon-db-backups",
 		"enclii/internal-api-key",
 		"family-history/api-access",
 		"family-history/web-oidc",
@@ -83,19 +98,34 @@ func TestListTargetsSorted(t *testing.T) {
 		"forj/pravara-intake",
 		"janua/internal-api-key",
 		"kalya/internal-api-key",
+		"karafiel-staging/admin-oidc",
+		"karafiel-staging/admin-session",
+		"karafiel-staging/core",
+		"karafiel-staging/web-oidc",
+		"karafiel/admin-oidc-janua",
 		"karafiel/admin-session",
+		"karafiel/dhanam-cost-events-client",
 		"karafiel/dhanam-webhook-secret",
+		"karafiel/hcm-signing-bindings",
 		"karafiel/web-oidc-janua",
 		"lexidrop/oidc-janua",
 		"lexidrop/selva-inference",
+		"madfam-crawler/api-key-avala",
+		"madfam-crawler/api-key-forgesight",
+		"madfam-crawler/api-key-fortuna",
+		"madfam-crawler/api-key-rondelio",
+		"madfam-crawler/api-key-tezca",
+		"madfam-crawler/api-key-tulana",
 		"monitoring/alertmanager-smtp",
 		"monitoring/grafana-admin",
 		"nauta/internal-probe-key",
 		"nauta/kalya-feed-tokens",
 		"nauta/oidc-janua",
 		"nauta/oidc-janua-portal",
+		"nauta/phynd-crm-oauth",
 		"nauta/symbiosis-hcm-oauth",
 		"nauta/symbiosis-hcm-token",
+		"phynd-crm/convergence",
 		"phynd-crm/oidc-janua",
 		"platform/comms-resend-api-key",
 		"pravara-mes/asset-shells-publisher-madfam-ecosystem",
@@ -104,10 +134,14 @@ func TestListTargetsSorted(t *testing.T) {
 		"routecraft/billing-relay",
 		"selva/pravara-mes-client",
 		"selva/yantra4d-client",
+		"symbiosis-hcm/dhanam-writer-client",
+		"symbiosis-hcm/karafiel-client",
 		"symbiosis-hcm/map-absence-feed",
+		"symbiosis-hcm/signing-bindings",
 		"synthetics/dhanam-staging-checkout",
 		"telesia/oidc-janua",
 		"telesia/runtime",
+		"telesia/web-session",
 		"tulana/commercial-ga-evidence-token",
 		"tulana/django-secret-key",
 		"tulana/product-offer-ga-evidence-token",
@@ -118,8 +152,47 @@ func TestListTargetsSorted(t *testing.T) {
 		"voxa/selva-client",
 		"voxa/web-session",
 		"yantra4d/asset-shells-publisher",
+		"zavlo/api-runtime",
+		"zavlo/billing",
+		"zavlo/blockchain",
 		"zavlo/cfdi-emitter",
+		"zavlo/email",
+		"zavlo/karafiel-hmac",
 	}, legacyTargetIDs(ids))
+}
+
+// zavlo on Enclii (2026-10-21): zavlo-api projects one ExternalSecret per
+// target, all from secret/zavlo in namespace zavlo. Pin the routing so a
+// rename is a test failure and not a silent write to the wrong Secret.
+func TestZavloEncliiTargets(t *testing.T) {
+	cases := []struct {
+		id             string
+		externalSecret string
+		keys           []string
+	}{
+		{"zavlo/api-runtime", "zavlo-api-runtime", []string{"redis_url"}},
+		{"zavlo/email", "zavlo-api-email", []string{"resend_api_key"}},
+		{"zavlo/blockchain", "zavlo-api-blockchain", []string{"wallet_private_key", "polygon_rpc_url", "contract_address"}},
+		{"zavlo/billing", "zavlo-api-billing", []string{"dhanam_webhook_secret", "federation_api_token"}},
+		{"zavlo/karafiel-hmac", "zavlo-api-karafiel", []string{"zavlo_karafiel_hmac_secret"}},
+		{"zavlo/cfdi-emitter", "zavlo-service-clients", []string{"zavlo_cfdi_emitter_client_id", "zavlo_cfdi_emitter_client_secret"}},
+	}
+	seen := map[string]string{}
+	for _, tc := range cases {
+		t.Run(tc.id, func(t *testing.T) {
+			tgt, err := GetTarget(tc.id)
+			require.NoError(t, err)
+			assert.Equal(t, "secret/zavlo", tgt.VaultPath)
+			assert.Equal(t, "zavlo", tgt.Namespace)
+			assert.Equal(t, tc.externalSecret, tgt.ExternalSecret)
+			assert.Equal(t, tc.keys, tgt.Keys)
+		})
+		for _, k := range tc.keys {
+			prev, dup := seen[k]
+			assert.False(t, dup, "key %s is written by both %s and %s", k, prev, tc.id)
+			seen[k] = tc.id
+		}
+	}
 }
 
 // The 2026-09-03 batch: the operator had to break-glass `vault kv patch` for
@@ -315,7 +388,7 @@ func TestCourierTargets(t *testing.T) {
 	}
 }
 
-// Telesia (2026-09-12). Both targets write to ONE Vault path — the intake write
+// Telesia (2026-09-12; web-session 2026-10-31). All three targets write to ONE Vault path — the intake write
 // is a merge — and every property is lowercase because telesia's ExternalSecrets
 // reference lowercase `property:` fields and ESO is all-or-nothing per
 // ExternalSecret. Pinning the routing here makes a rename a test failure instead
@@ -335,6 +408,9 @@ func TestTelesiaTargets(t *testing.T) {
 			"direct_database_url",
 			"redis_url",
 		}},
+		{"telesia/web-session", "telesia-web-secrets", []string{
+			"auth_secret",
+		}},
 	}
 	for _, tc := range cases {
 		t.Run(tc.id, func(t *testing.T) {
@@ -351,6 +427,16 @@ func TestTelesiaTargets(t *testing.T) {
 			}
 		})
 	}
+}
+
+// telesia/web-session is minted server-side with --generate: 48 bytes, matching
+// telesia's own runbook and above the 32-character floor its env schema enforces.
+func TestTelesiaWebSessionGenerates(t *testing.T) {
+	tgt, err := GetTarget("telesia/web-session")
+	require.NoError(t, err)
+	assert.Equal(t, 48, tgt.GenerateBytes())
+	require.NotNil(t, tgt.Generate)
+	assert.False(t, tgt.Generate.Disabled, "auth_secret must be mintable with --generate")
 }
 
 // Optional scheduling credentials must never share the database/login projection.
@@ -584,6 +670,63 @@ func TestVoxaWebSessionAndAPIRuntimeTargets(t *testing.T) {
 	}
 }
 
+// cv (2026-10-22): the cv web (cv-app.madfam.io) signs in through Janua with
+// Auth.js. Both targets land at secret/cv in namespace cv through ONE planned
+// ExternalSecret, cv-web-auth, never the onboarding Secret cv-secrets (intake
+// cannot reach it). One write route per property: web-oidc only through
+// `enclii secrets provision oidc --platform cv-app`, web-session only through
+// --generate auth_secret (Auth.js AUTH_SECRET, ruling R42: never the Janua
+// client secret). Pinned so a rename is a test failure, not a write to a
+// property cv-web-auth does not map.
+func TestCvWebAuthTargets(t *testing.T) {
+	cases := []struct {
+		id   string
+		keys []string
+	}{
+		{"cv/web-oidc", []string{"auth_janua_client_id", "auth_janua_client_secret"}},
+		{"cv/web-session", []string{"auth_secret"}},
+	}
+	for _, tc := range cases {
+		t.Run(tc.id, func(t *testing.T) {
+			tgt, err := GetTarget(tc.id)
+			require.NoError(t, err)
+			assert.Equal(t, "secret/cv", tgt.VaultPath)
+			assert.Equal(t, "cv", tgt.Namespace)
+			assert.Equal(t, "cv-web-auth", tgt.ExternalSecret)
+			assert.NotEqual(t, "cv-secrets", tgt.ExternalSecret, "cv-secrets is the onboarding Secret; intake cannot reach it")
+			assert.Equal(t, tc.keys, tgt.Keys)
+			for _, k := range tgt.Keys {
+				assert.Equal(t, strings.ToLower(k), k, "Vault stores lowercase; an upper-case key would never match the ExternalSecret property")
+			}
+			assert.NotEmpty(t, tgt.Label)
+			assert.NotEmpty(t, tgt.Description)
+			// AUTH_SECRET must carry at least 32 bytes when minted with --generate.
+			assert.GreaterOrEqual(t, tgt.GenerateBytes(), 32)
+		})
+	}
+}
+
+// cv → Symbiosis-HCM market benchmarks (2026-10-22): the client_credentials
+// pair of ecosystem-oidc platform cv-hcm-benchmarks lands at secret/cv through
+// its OWN ExternalSecret, cv-hcm-client, never cv-web-auth (all-or-nothing, it
+// must not wait on this pair) nor the onboarding Secret cv-secrets. Written only
+// by the OIDC provisioner, so the target generates nothing.
+func TestCvHCMClientTarget(t *testing.T) {
+	tgt, err := GetTarget("cv/hcm-client")
+	require.NoError(t, err)
+	assert.Equal(t, "secret/cv", tgt.VaultPath)
+	assert.Equal(t, "cv", tgt.Namespace)
+	assert.Equal(t, "cv-hcm-client", tgt.ExternalSecret)
+	assert.NotEqual(t, "cv-web-auth", tgt.ExternalSecret)
+	assert.NotEqual(t, "cv-secrets", tgt.ExternalSecret)
+	assert.Equal(t, []string{"hcm_client_id", "hcm_client_secret"}, tgt.Keys)
+	for _, k := range tgt.Keys {
+		assert.Equal(t, strings.ToLower(k), k, "Vault stores lowercase")
+	}
+	assert.NotEmpty(t, tgt.Label)
+	assert.NotEmpty(t, tgt.Description)
+}
+
 // tulana (2026-10-05): four keys tulana generates for itself at secret/tulana,
 // each projected by the ExternalSecret tulana-secrets. One key per target, so
 // `--generate <key>` mints it without prompting for any other key. Pinned so a
@@ -660,6 +803,38 @@ func TestConvergeDashTargets(t *testing.T) {
 	}
 }
 
+// phynd-crm convergence API bearer (2026-11-04, phynd-crm#123): one value held
+// on both sides, phynd-crm verifying and converge-dash presenting it. Pinned end
+// to end because each link fails silently: a wrong Vault path is a write nothing
+// reads, a wrong property is an ExternalSecret that syncs zero keys, and a wrong
+// ExternalSecret name means intake never force-syncs the Secret the pod reads.
+// Both stay supplied-only: a server-minted value would differ on each side.
+func TestPhyndCRMConvergenceTokenTargets(t *testing.T) {
+	cases := []struct {
+		id, vaultPath, namespace, externalSecret, key string
+	}{
+		{"phynd-crm/convergence", "secret/phynd-crm", "phynd-crm", "phynd-crm-convergence-secrets", "convergence_api_token"},
+		{"converge-dash/phynd-crm-token", "secret/converge-dash", "converge-dash", "converge-dash-secrets", "phynd_crm_api_token"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.id, func(t *testing.T) {
+			tgt, err := GetTarget(tc.id)
+			require.NoError(t, err)
+			assert.Equal(t, tc.vaultPath, tgt.VaultPath)
+			assert.Equal(t, tc.namespace, tgt.Namespace)
+			assert.Equal(t, tc.externalSecret, tgt.ExternalSecret)
+			assert.Equal(t, []string{tc.key}, tgt.Keys)
+			assert.Equal(t, strings.ToLower(tc.key), tc.key,
+				"Vault stores lowercase; an upper-case key would never match the ExternalSecret property")
+			require.NotNil(t, tgt.Generate)
+			assert.True(t, tgt.Generate.Disabled,
+				"the value must be identical on both sides; a generated value would differ per target")
+			assert.NotEmpty(t, tgt.Label)
+			assert.NotEmpty(t, tgt.Description)
+		})
+	}
+}
+
 // Alertmanager's SMTP password (2026-10-05, owner decision: route it through
 // intake). Pinned end to end because every link fails silently: a wrong Vault
 // path is a write nothing reads, a wrong property name is an ExternalSecret
@@ -690,6 +865,26 @@ func TestMonitoringAlertmanagerSMTPTarget(t *testing.T) {
 	// never to pass --generate (the API does not refuse it, see SECRET_INTAKE.md).
 	assert.Nil(t, tgt.Generate)
 	assert.Contains(t, tgt.Description, "never generated")
+}
+
+// Addon database backups (2026-10-26). Every link fails silently, so it is
+// pinned end to end: a wrong Vault path is a write nothing reads, a wrong
+// property is an ExternalSecret that syncs zero keys, and a wrong
+// ExternalSecret reads a property nobody writes. The ExternalSecret
+// (enclii-db-backup-credentials) is not force-synced; it refreshes every 15m.
+// tests/scripts/test_addon_backup_wiring.py checks the manifest side.
+func TestEncliiAddonDBBackupsTarget(t *testing.T) {
+	tgt, err := GetTarget("enclii/addon-db-backups")
+	require.NoError(t, err)
+	assert.Equal(t, "secret/enclii", tgt.VaultPath, "an existing writer-policy path; the merge keeps the other enclii properties")
+	assert.Equal(t, "enclii", tgt.Namespace)
+	assert.Empty(t, tgt.ExternalSecret, "no force-sync target: the ExternalSecret picks the write up on its refresh")
+	assert.Equal(t, []string{"addon_backup_access_key_id", "addon_backup_secret_access_key"}, tgt.Keys)
+	require.NotNil(t, tgt.Generate)
+	assert.True(t, tgt.Generate.Disabled, "an R2 token is minted by Cloudflare, never generated")
+	assert.Contains(t, tgt.Description, "never generated")
+	assert.Contains(t, tgt.Description, "bucket only")
+	assert.Contains(t, tgt.Description, "enclii ops addons backup-credential", "the provisioned path, not a human, supplies it")
 }
 
 // S-Gate 1 synthetic buyer (2026-10-14). The journeys CronJob reads exactly
@@ -833,4 +1028,154 @@ func legacyTargetIDs(ids []string) []string {
 		}
 	}
 	return legacy
+}
+
+// SSO wave 1 (2026-10-27): the web Janua clients that joined the ecosystem
+// OIDC registry. Pinned end to end because each link fails silently: a wrong
+// Vault path is a write nothing reads, a wrong property is an ExternalSecret
+// that syncs zero keys, and a wrong ExternalSecret name means intake never
+// force-syncs the Secret the pod reads. Generation stays off: a random value
+// in these keys would not be a Janua credential.
+func TestSSOWave1WebOIDCTargets(t *testing.T) {
+	cases := []struct {
+		id, vaultPath, namespace, externalSecret, platform string
+		keys                                               []string
+	}{
+		{"converge-dash/web-oidc", "secret/converge-dash", "converge-dash", "converge-dash-secrets", "converge-dash-web",
+			[]string{"dash_web_janua_client_id", "dash_web_janua_client_secret"}},
+		{"crea-map/web-oidc", "secret/crea-map", "crea-map", "crea-map-secrets", "crea-map",
+			[]string{"janua_client_secret"}},
+		{"karafiel/admin-oidc-janua", "secret/karafiel", "karafiel", "karafiel-admin-auth", "karafiel-admin",
+			[]string{"oidc_client_id", "janua_secret_key"}},
+		{"avala/oidc-janua", "secret/avala", "avala", "avala-janua-oidc", "avala",
+			[]string{"janua_client_id", "janua_client_secret"}},
+	}
+	for _, tc := range cases {
+		t.Run(tc.id, func(t *testing.T) {
+			tgt, err := GetTarget(tc.id)
+			require.NoError(t, err)
+			assert.Equal(t, tc.vaultPath, tgt.VaultPath)
+			assert.Equal(t, tc.namespace, tgt.Namespace)
+			assert.Equal(t, tc.externalSecret, tgt.ExternalSecret)
+			assert.Equal(t, tc.keys, tgt.Keys)
+			for _, k := range tgt.Keys {
+				assert.Equal(t, strings.ToLower(k), k, "Vault stores lowercase; an upper-case key would never match the ExternalSecret property")
+			}
+			require.NotNil(t, tgt.Generate)
+			assert.True(t, tgt.Generate.Disabled, "a Janua credential is minted by Janua, never generated")
+			assert.NotEmpty(t, tgt.Label)
+			assert.Contains(t, tgt.Description, "--platform "+tc.platform)
+		})
+	}
+	// The tenant and operator Karafiel clients never share a Vault property.
+	web, err := GetTarget("karafiel/web-oidc-janua")
+	require.NoError(t, err)
+	admin, err := GetTarget("karafiel/admin-oidc-janua")
+	require.NoError(t, err)
+	for _, k := range admin.Keys {
+		assert.NotContains(t, web.Keys, k)
+	}
+}
+
+// symbiosis-hcm → Karafiel machine edge (2026-11-02). Pinned end to end
+// because each link fails silently: a wrong Vault path is a write nothing
+// reads, a wrong property is an ExternalSecret that syncs zero keys, and a
+// wrong ExternalSecret name means intake force-syncs a Secret no pod reads.
+// It must NEVER route to hcm-secrets: that Secret carries DATABASE_URL and is
+// mounted optional: false, so a machine-client pair must not share its fate.
+func TestSymbiosisHCMKarafielClientTarget(t *testing.T) {
+	tgt, err := GetTarget("symbiosis-hcm/karafiel-client")
+	require.NoError(t, err)
+	assert.Equal(t, "secret/symbiosis-hcm", tgt.VaultPath)
+	assert.Equal(t, "symbiosis-hcm", tgt.Namespace)
+	assert.Equal(t, "hcm-service-clients", tgt.ExternalSecret,
+		"must be HCM's dedicated service-clients ExternalSecret, never hcm-secrets")
+	assert.Equal(t, []string{"karafiel_service_client_id", "karafiel_service_client_secret"}, tgt.Keys)
+	for _, k := range tgt.Keys {
+		assert.Equal(t, strings.ToLower(k), k,
+			"key %q must be lowercase to match HCM's ExternalSecret property", k)
+	}
+	require.NotNil(t, tgt.Generate)
+	assert.True(t, tgt.Generate.Disabled, "a Janua credential is minted by Janua, never generated")
+	assert.NotEmpty(t, tgt.Label)
+	assert.Contains(t, tgt.Description, "--platform symbiosis-hcm-karafiel")
+
+	// Shares secret/symbiosis-hcm with the absence feed (a merge): no key overlap.
+	feed, err := GetTarget("symbiosis-hcm/map-absence-feed")
+	require.NoError(t, err)
+	for _, k := range tgt.Keys {
+		assert.NotContains(t, feed.Keys, k)
+	}
+}
+
+// symbiosis-hcm → Dhanam scheduled-payments writer (2026-11-02). Its own
+// ExternalSecret, hcm-dhanam-writer, so an unprovisioned Dhanam pair never
+// holds the Karafiel pair's Secret (ESO is all-or-nothing per object).
+func TestSymbiosisHCMDhanamWriterClientTarget(t *testing.T) {
+	tgt, err := GetTarget("symbiosis-hcm/dhanam-writer-client")
+	require.NoError(t, err)
+	assert.Equal(t, "secret/symbiosis-hcm", tgt.VaultPath)
+	assert.Equal(t, "symbiosis-hcm", tgt.Namespace)
+	assert.Equal(t, "hcm-dhanam-writer", tgt.ExternalSecret)
+	assert.Equal(t, []string{"dhanam_writer_client_id", "dhanam_writer_client_secret"}, tgt.Keys)
+	require.NotNil(t, tgt.Generate)
+	assert.True(t, tgt.Generate.Disabled, "a Janua credential is minted by Janua, never generated")
+	assert.Contains(t, tgt.Description, "--platform symbiosis-hcm-dhanam-writer")
+
+	karafiel, err := GetTarget("symbiosis-hcm/karafiel-client")
+	require.NoError(t, err)
+	assert.NotEqual(t, karafiel.ExternalSecret, tgt.ExternalSecret,
+		"each edge has its own ExternalSecret")
+	for _, k := range tgt.Keys {
+		assert.NotContains(t, karafiel.Keys, k)
+	}
+}
+
+// Karafiel → Dhanam cost events (2026-11-05, RFC 0050 Phase 1). Its own
+// ExternalSecret, so the unprovisioned pair never holds another Karafiel Secret.
+func TestKarafielDhanamCostEventsClientTarget(t *testing.T) {
+	tgt, err := GetTarget("karafiel/dhanam-cost-events-client")
+	require.NoError(t, err)
+	assert.Equal(t, "secret/karafiel", tgt.VaultPath)
+	assert.Equal(t, "karafiel", tgt.Namespace)
+	assert.Equal(t, "karafiel-dhanam-cost-events", tgt.ExternalSecret)
+	assert.Equal(t, []string{"dhanam_cost_events_client_id", "dhanam_cost_events_client_secret"}, tgt.Keys)
+	require.NotNil(t, tgt.Generate)
+	assert.True(t, tgt.Generate.Disabled, "a Janua credential is minted by Janua, never generated")
+	assert.Contains(t, tgt.Description, "--platform karafiel-dhanam-cost-events")
+
+	// Every target on secret/karafiel, sorted: a new one must be added here, and
+	// no two share an ExternalSecret or a key.
+	reg, err := LoadRegistry()
+	require.NoError(t, err)
+	var onKarafiel []string
+	seenKeys := map[string]string{}
+	for name, other := range reg {
+		if other.VaultPath != "secret/karafiel" {
+			continue
+		}
+		onKarafiel = append(onKarafiel, name)
+		for _, k := range other.Keys {
+			prev, dup := seenKeys[k]
+			assert.False(t, dup, "key %s on both %s and %s", k, prev, name)
+			seenKeys[k] = name
+		}
+	}
+	sort.Strings(onKarafiel)
+	assert.Equal(t, []string{
+		"karafiel/admin-oidc-janua",
+		"karafiel/admin-session",
+		"karafiel/dhanam-cost-events-client",
+		"karafiel/dhanam-webhook-secret",
+		"karafiel/hcm-signing-bindings",
+		"karafiel/web-oidc-janua",
+	}, onKarafiel)
+	for _, name := range onKarafiel {
+		if name == "karafiel/dhanam-cost-events-client" {
+			continue
+		}
+		other, err := GetTarget(name)
+		require.NoError(t, err)
+		assert.NotEqual(t, other.ExternalSecret, tgt.ExternalSecret, "%s shares the ExternalSecret", name)
+	}
 }

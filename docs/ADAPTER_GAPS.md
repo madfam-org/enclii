@@ -20,12 +20,57 @@ Track operations that still require break-glass (`kubectl`, provider CLIs, manua
 | k3s packaged addons (CoreDNS replicas) | CoreDNS is k3s's packaged `coredns` manifest, applied by the k3s server and not by GitOps; nothing in this repo manages it. It runs 1 replica, so cluster DNS lives on one node. Raising it is a break-glass `kubectl -n kube-system scale deployment coredns --replicas=2` by the owner (the packaged manifest sets no `replicas`, and already spreads by hostname with `DoNotSchedule`) | An `ops` operation for the replica count of a named kube-system addon, audited, or a GitOps-owned CoreDNS with `--disable=coredns` on the server | P1: DNS is a single-node dependency of every workload (infra-stability audit 2026-10-17, E2-04) |
 | Cloudflare tunnel route and DNS deletion | Enclii can add and reconcile tunnel routes and DNS records but cannot delete one. Retiring a public hostname (2026-10-17: two operator consoles closed to the tunnel by #772) leaves its route and record to the Cloudflare dashboard, as break-glass | An audited `providers cloudflare` delete for one route and its record, dry run first, bound to the reviewed plan like `tunnels-apply --expect-plan` | P2 |
 | Shared Postgres server settings read | No Enclii read returns `pg_settings` (for example `max_connections`, `shared_buffers`) of the shared Postgres; `enclii db wal-status` needs a local kubeconfig. #785's settings (2026-10-18) were confirmed by an operator read, not through Enclii | A read-only `ops`/`db` operation that returns named server settings and connection counts | P2 |
+| Scale a retired legacy project to 0 | A legacy `projects/<name>/config.json` project has no Enclii service bound to an explicit workload target, so Enclii's scale path does not reach it. After `"lifecycle": "retired"` drops its Argo auto-sync, its Deployments are scaled to 0 with break-glass `kubectl -n <namespace> scale deploy --all --replicas=0` ([Retiring a project](../infra/argocd/README.md#retiring-a-project); sim4d, 2026-11-04) | An audited `ops apps` operation that scales a retired project's Deployments to 0, refusing while its Application still auto-syncs | P3 |
 | ARC runner image read | `enclii ops runners arc` returns scale-set runner counts but not the runner image, so the digest a pool actually runs is read with break-glass `kubectl` (`infra/k8s/production/arc/README.md`) | Add each scale set's runner and init-container image to the `ops.runners.arc` read | P3 |
 | Node scheduling reads (taints, allocatable, requests) | None through Enclii: node taints, conditions and allocatable-vs-requested cannot be read, so whether a constraint (`required` anti-affinity, a spread) can be satisfied is inferred from pod placement | A read in `ops` (or `admin topology`) that returns, per node ROLE, taints, conditions, allocatable and summed requests, never hostnames or IPs | P2 |
+| Addon restore drill | `scripts/restore-addon.sh`: break-glass `kubectl` (namespace, credential copy, recovery Cluster, row counts over `kubectl exec`), dry run first and bound to its `PLAN-HASH` with `--expect-plan` (2026-10-26). Backups themselves are converged by switchyard-api; only the proof is manual | `enclii ops addons restore-drill <addon>`: dry run returns the plan and hash, apply with `--expect-plan` and `--reason`, audited, result row recorded; then a schedule | P1: a backup nobody restores is a hypothesis ([ADDON_BACKUPS.md](runbooks/ADDON_BACKUPS.md)) |
 
 When closing a gap, remove the row and link the PR that added the adapter.
 
 ## Progress log
+
+### 2026-11-02 — Full sync clears completed Argo operation state atomically
+
+Boundary checkpoint: platform engineering; public source behavior only. Runtime
+receipts and recovery details remain in `internal-devops`; see
+[PUBLIC_REPO_BOUNDARY.md](PUBLIC_REPO_BOUNDARY.md).
+
+Replacing an Application's root `operation` alone can retain a previous
+selective sync in `status.operationState`: Argo's controller merge-patches the
+new state and can inherit omitted resource filters and automated flags. The
+source fix matches [Argo CD v3.2.5 SetAppOperation](https://github.com/argoproj/argo-cd/blob/v3.2.5/util/argo/argo.go#L811-L835): clear only the completed operation state and assign the
+new operation in one resource-version-conditional Application Update. The
+[Application CRD](https://github.com/argoproj/argo-cd/blob/v3.2.5/manifests/crds/application-crd.yaml)
+has no status subresource. Other status/history remains; active or unknown
+operation state refuses and a concurrent update is never retried. Source tests
+do not establish deployed hook execution; release verification remains separate.
+
+### 2026-11-01 — The backup sweep clears a ScheduledBackup wedged behind `walArchivingFailing`
+
+In CloudNativePG 1.29 a Backup in phase `walArchivingFailing` never ends, and
+its ScheduledBackup takes no other backup while it exists («The system is
+already taking a backup for this ScheduledBackup, retrying in 60 seconds»).
+That kept two addon schedules without a daily for 4–5 days after archiving
+recovered, and the fix on 2026-11-01 was a break-glass `kubectl delete backup`
+for each. The addon backup sweep now deletes such a Backup itself: only one its
+cluster's own Enclii schedule created, only while the Cluster reports
+`ContinuousArchiving=True`, with an `addon.backup.wedged_deleted` audit row
+before and after the UID-preconditioned delete
+(`apps/switchyard-api/internal/addons/postgres_backup_wedged.go`).
+RBAC: `delete` on `backups.postgresql.cnpg.io`. Procedure:
+[`runbooks/ADDON_BACKUPS.md`](runbooks/ADDON_BACKUPS.md#a-schedule-wedged-behind-walarchivingfailing).
+
+### 2026-10-26 — `ops pods restart` recreates CNPG instance pods in project namespaces
+
+On 2026-10-24 a project database instance kept a broken volume mount after a
+node fault, and the fix was a break-glass `kubectl delete pod`:
+`ENCLII_OPS_RESTART_NAMESPACES` lists platform namespaces, and project
+namespaces are never listed. `pod/<name>` in an Enclii `project-<id>`
+namespace now recreates a CloudNativePG instance pod of an Enclii addon of
+that project, and nothing else; apply needs `--expect-uid`
+(`apps/switchyard-api/internal/api/operator_pods_restart_cnpg.go`). No RBAC
+change: pod `delete` and Cluster `get` were already in the ClusterRole.
+Procedure: [`docs/cli/commands/ops.md`](cli/commands/ops.md#cnpg-instance-pods-in-project-namespaces).
 
 ### 2026-10-17 — Longhorn replica count: drift is visible, changing it is not wired (gap open)
 
@@ -223,7 +268,7 @@ Documented separate AGPL repo `madfam-org/coupler` for Composio-class agent tool
 - `enclii projects reconcile-services <slug>` — admin POST `/v1/admin/projects/:slug/reconcile-services`
 - `enclii db schema` + `GET /v1/admin/db/schema` — migration version, dirty flag, GA column checks (migration 030 `rollout_blocked_reason`)
 - `enclii ops storage settings-apply` — Longhorn CPU settings from helm values (O-5)
-- `enclii ops storage prune-detached` — delete detached Longhorn orphan volumes (O-4)
+- `enclii ops storage prune-detached` — delete orphaned Longhorn volumes (O-4): detached with a Released PV or none; Bound claims refused; apply needs `--expect-plan` (2026-10-26)
 - `enclii admin ga-verify` — Wave 0 security + schema + Longhorn plan smoke
 - `scripts/wave0-ga-ops.sh` — Enclii-first Wave 0 orchestration (O-4–O-6)
 

@@ -1,12 +1,11 @@
 /**
- * Enclii Health Check Load Test
+ * Enclii public liveness smoke / explicit deep-health diagnostic
  *
- * Tests the /health endpoint under load.
- * This is an unauthenticated endpoint - good for baseline performance.
+ * The default low-load smoke checks only dependency-free /health/public.
+ * Deep /health calls live dependencies and requires explicit operator opt-in.
  *
  * Usage:
  *   k6 run tests/load/health.js
- *   k6 run --env TARGET_RPS=500 tests/load/health.js
  *   k6 run --env ENCLII_BASE_URL=http://localhost:8080 tests/load/health.js
  */
 
@@ -14,17 +13,23 @@ import http from 'k6/http';
 import { check, sleep } from 'k6';
 import { Rate, Trend } from 'k6/metrics';
 import { CONFIG, STAGES } from './config.js';
+import { healthProfile, healthyResponse } from './health-contract.js';
+import { SUMMARY_TREND_STATS, renderSummary } from './summary.js';
+
+const profile = healthProfile(__ENV, STAGES);
 
 // Custom metrics
 const healthErrors = new Rate('health_errors');
+const healthSloBreaches = new Rate('health_slo_breaches');
 const healthDuration = new Trend('health_duration');
 
 // Test configuration
 export const options = {
+  summaryTrendStats: SUMMARY_TREND_STATS,
   scenarios: {
     health_check: {
       executor: 'ramping-vus',
-      stages: STAGES.load,
+      stages: profile.stages,
       gracefulRampDown: '30s',
     },
   },
@@ -32,12 +37,13 @@ export const options = {
     http_req_duration: ['p(95)<200', 'p(99)<500'],  // Health should be fast
     http_req_failed: ['rate<0.001'],                // 0.1% error rate
     health_errors: ['rate<0.001'],
+    health_slo_breaches: ['rate<0.001'],
     health_duration: ['p(95)<200'],
   },
 };
 
 export default function () {
-  const url = `${CONFIG.baseUrl}/health`;
+  const url = `${CONFIG.baseUrl}${profile.path}`;
 
   const res = http.get(url, {
     tags: { name: 'health_check' },
@@ -48,58 +54,18 @@ export default function () {
 
   const success = check(res, {
     'status is 200': (r) => r.status === 200,
-    'response time < 200ms': (r) => r.timings.duration < 200,
-    'body contains status': (r) => {
-      try {
-        const body = JSON.parse(r.body);
-        return body.status === 'healthy';
-      } catch {
-        return false;
-      }
-    },
+    'body matches health contract': (r) => healthyResponse(r, profile.path === '/health'),
   });
-
+  const latencySuccess = check(res, { 'response time < 200ms': (r) => r.timings.duration < 200 });
   healthErrors.add(!success);
+  // Count the union once per request, as the original combined check did.
+  healthSloBreaches.add(!(success && latencySuccess));
 
   sleep(0.1);  // 100ms between requests per VU
 }
 
 export function handleSummary(data) {
-  const http = data.metrics.http_req_duration;
-  if (!http || !http.values) {
-    return { stdout: 'No HTTP metrics collected' };
-  }
-
-  const summary = `
-================================================================================
-                          ENCLII HEALTH CHECK LOAD TEST
-================================================================================
-
-RESULTS SUMMARY
----------------
-Total Requests:    ${data.metrics.http_reqs.values.count}
-Failed Requests:   ${data.metrics.http_req_failed.values.passes}
-Success Rate:      ${((1 - data.metrics.http_req_failed.values.rate) * 100).toFixed(2)}%
-
-RESPONSE TIMES (ms)
--------------------
-  Min:    ${http.values.min.toFixed(2)}
-  Avg:    ${http.values.avg.toFixed(2)}
-  Med:    ${http.values.med.toFixed(2)}
-  P95:    ${http.values['p(95)'].toFixed(2)}
-  P99:    ${http.values['p(99)'].toFixed(2)}
-  Max:    ${http.values.max.toFixed(2)}
-
-SLO COMPLIANCE
---------------
-  P95 < 200ms:     ${http.values['p(95)'] < 200 ? 'PASS' : 'FAIL'}
-  Error Rate < 0.1%: ${data.metrics.http_req_failed.values.rate < 0.001 ? 'PASS' : 'FAIL'}
-
-================================================================================
-`;
-
-  return {
-    stdout: summary,
-    'tests/load/results/health-summary.json': JSON.stringify(data, null, 2),
-  };
+  return renderSummary(data, `ENCLII ${profile.name.toUpperCase()}`, 'health',
+    profile.path === '/health' ? 'Deep dependency health under controlled load; does not locate a latency bottleneck.' :
+      'Anonymous public liveness at low load; does not establish dependency readiness or API capacity.');
 }

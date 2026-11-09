@@ -1,0 +1,46 @@
+# Descheduler (kubernetes-sigs/descheduler v0.33.0)
+# Deploys: a CronJob in its own namespace, from Git-owned manifests in
+# infra/k8s/production/descheduler (policy.yaml is the policy it reads).
+# Purpose: move a few pods per run off the control-plane node and off
+# over-requested nodes, so the right-sized requests of 2026-11-04 are actually
+# used. Owner-approved 2026-11-04.
+#
+# The control-plane node carries the soft taint
+# `node-role.madfam.io/control-plane:PreferNoSchedule`, applied by the
+# coordinator outside Git; until it does, RemovePodsViolatingNodeTaints finds
+# nothing to do and only the balance plugins act.
+#
+# The root Application (infra/argocd/root-application.yaml) syncs
+# infra/argocd/apps with automated prune + selfHeal, so this file is adopted
+# without an operator step. Runbook: infra/k8s/production/descheduler/README.md.
+---
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: descheduler
+  namespace: argocd
+  labels:
+    app.kubernetes.io/name: descheduler
+    app.kubernetes.io/part-of: enclii
+    app.kubernetes.io/component: scheduling
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: default
+
+  source:
+    repoURL: https://github.com/madfam-org/enclii.git
+    targetRevision: main
+    path: infra/k8s/production/descheduler
+
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: descheduler
+
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
+      - ServerSideApply=true

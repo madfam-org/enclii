@@ -55,11 +55,13 @@ type inventoryPod struct {
 	Age        int64                `json:"age_seconds"`
 }
 type inventoryNamespace struct {
-	Name        string         `json:"name"`
-	Pods        int            `json:"pod_count"`
-	Deployments int            `json:"deployment_count"`
-	Services    int            `json:"service_count"`
-	Phases      map[string]int `json:"pod_phases"`
+	Name             string         `json:"name"`
+	Pods             int            `json:"pod_count"`
+	Deployments      int            `json:"deployment_count"`
+	Services         int            `json:"service_count"`
+	Phases           map[string]int `json:"pod_phases"`
+	DataAccess       string         `json:"data_access_label"`
+	PostgresConsumer string         `json:"postgres_consumer_label"`
 }
 type inventoryPort struct {
 	Port     int32  `json:"port"`
@@ -68,12 +70,13 @@ type inventoryPort struct {
 	Name     string `json:"name,omitempty"`
 }
 type inventoryService struct {
-	Name      string            `json:"name"`
-	Namespace string            `json:"namespace"`
-	Type      string            `json:"type"`
-	ClusterIP *string           `json:"cluster_ip"`
-	Ports     []inventoryPort   `json:"ports"`
-	Selector  map[string]string `json:"selector"`
+	Name      string                   `json:"name"`
+	Namespace string                   `json:"namespace"`
+	Type      string                   `json:"type"`
+	ClusterIP *string                  `json:"cluster_ip"`
+	Ports     []inventoryPort          `json:"ports"`
+	Selector  map[string]string        `json:"selector"`
+	Backends  inventoryBackendEvidence `json:"backend_observation"`
 }
 type inventoryTotals struct {
 	Nodes          int   `json:"nodes"`
@@ -128,6 +131,7 @@ func (h *Handler) readInventoryTopology(ctx context.Context) (inventoryTopology,
 	if err != nil {
 		return out, err
 	}
+	endpointSlices := readInventoryEndpointSlices(ctx, client)
 	now := time.Now().UTC()
 	nodeIndexes := map[string]int{}
 	for _, node := range nodes.Items {
@@ -221,7 +225,8 @@ func (h *Handler) readInventoryTopology(ctx context.Context) (inventoryTopology,
 		}
 	}
 	for _, service := range services.Items {
-		item := inventoryService{Name: service.Name, Namespace: service.Namespace, Type: string(service.Spec.Type), Selector: service.Spec.Selector, Ports: []inventoryPort{}}
+		backend := inventoryServiceBackends(service, pods.Items, endpointSlices)
+		item := inventoryService{Name: service.Name, Namespace: service.Namespace, Type: string(service.Spec.Type), Selector: service.Spec.Selector, Backends: backend, Ports: []inventoryPort{}}
 		if item.Type == "" {
 			item.Type = "ClusterIP"
 		}
@@ -245,6 +250,12 @@ func (h *Handler) readInventoryTopology(ctx context.Context) (inventoryTopology,
 		out.Services = append(out.Services, item)
 		if ns := namespaceStats[service.Namespace]; ns != nil {
 			ns.Services++
+		}
+	}
+	for _, ns := range namespaces.Items {
+		if stat := namespaceStats[ns.Name]; stat != nil {
+			stat.DataAccess = inventoryAccessLabel(ns.Labels, "enclii.dev/data-access")
+			stat.PostgresConsumer = inventoryAccessLabel(ns.Labels, "enclii.dev/postgres-consumer")
 		}
 	}
 	for _, ns := range namespaceStats {

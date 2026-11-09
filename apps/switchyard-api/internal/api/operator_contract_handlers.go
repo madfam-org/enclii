@@ -14,15 +14,21 @@ import (
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/client-go/kubernetes"
+
+	"github.com/madfam-org/enclii/apps/switchyard-api/internal/logging"
 )
 
 type operatorOperationRequest struct {
-	Operation      string            `json:"operation"`
-	DryRun         bool              `json:"dry_run"`
-	Reason         string            `json:"reason,omitempty"`
-	IdempotencyKey string            `json:"idempotency_key,omitempty"`
-	Scope          map[string]string `json:"scope,omitempty"`
-	Args           map[string]string `json:"args,omitempty"`
+	// Internal-only constraints for narrowly delegated release operations.
+	// JSON callers cannot install or bypass these callbacks/annotations.
+	validateApplication func(*unstructured.Unstructured) error
+	auditAnnotations    map[string]string
+	Operation           string            `json:"operation"`
+	DryRun              bool              `json:"dry_run"`
+	Reason              string            `json:"reason,omitempty"`
+	IdempotencyKey      string            `json:"idempotency_key,omitempty"`
+	Scope               map[string]string `json:"scope,omitempty"`
+	Args                map[string]string `json:"args,omitempty"`
 }
 
 type operatorOperationStep struct {
@@ -75,7 +81,35 @@ func (h *Handler) HandleProviderOperation(c *gin.Context) {
 	h.handleOperatorOperation(c, "providers", provider, action, providerCapabilities)
 }
 
+// writeOperatorResult sends an operator response. api.enclii.dev is served
+// through Cloudflare, which replaces an origin's 502 or 504 body with its own
+// error page, so an upstream failure reported that way reached the CLI without
+// its summary (the 31-oct-2026 addon backup-credential apply: Cloudflare
+// refused the token mint and nobody could read why). Those two are answered as
+// 424 Failed Dependency, which passes through untouched, with the original
+// status named in a warning, and the summary is logged so the reason survives
+// even when the client loses the body.
+func (h *Handler) writeOperatorResult(c *gin.Context, status int, resp operatorOperationResponse) {
+	if status == http.StatusBadGateway || status == http.StatusGatewayTimeout {
+		if h.logger != nil {
+			h.logger.Warn(c.Request.Context(), "Operator operation failed upstream",
+				logging.String("operation", resp.Operation),
+				logging.String("status", resp.Status),
+				logging.Int("upstream_status", status),
+				logging.String("audit_id", resp.AuditID),
+				logging.String("summary", resp.Summary))
+		}
+		resp.Warnings = append(resp.Warnings, fmt.Sprintf("an upstream dependency failed (reported as HTTP %d, sent as 424 so the summary survives the edge proxy)", status))
+		status = http.StatusFailedDependency
+	}
+	c.JSON(status, resp)
+}
+
 func (h *Handler) handleOperatorOperation(c *gin.Context, prefix, domain, action string, capabilities []operatorCapability) {
+	if prefix == "ops" && domain == "jobs" && action == "run-target" {
+		h.RunJobForVerifiedTarget(c)
+		return
+	}
 	if prefix == "ops" && domain == "apps" && action == "bind-target" {
 		h.PlanServiceDeploymentTarget(c)
 		return
@@ -101,17 +135,37 @@ func (h *Handler) handleOperatorOperation(c *gin.Context, prefix, domain, action
 
 	if prefix == "ops" && domain == "jobs" && action == "suspend" {
 		resp, status := h.handleOpsJobsSuspend(c.Request.Context(), req, c.GetString("user_id"))
-		c.JSON(status, resp)
+		h.writeOperatorResult(c, status, resp)
 		return
 	}
 	if prefix == "ops" && domain == "apps" && action == "tracking" {
 		resp, status := h.handleOpsAppsTracking(c.Request.Context(), req, c.GetString("user_id"))
-		c.JSON(status, resp)
+		h.writeOperatorResult(c, status, resp)
+		return
+	}
+	if prefix == "ops" && domain == "addons" && action == "backup-credential" {
+		resp, status := h.handleOpsAddonsBackupCredential(c.Request.Context(), req, opsActorFromContext(c))
+		h.writeOperatorResult(c, status, resp)
+		return
+	}
+	if prefix == "ops" && domain == "addons" && action == "hibernate" {
+		resp, status := h.handleOpsAddonsHibernate(c.Request.Context(), req, opsActorFromContext(c))
+		h.writeOperatorResult(c, status, resp)
+		return
+	}
+	if prefix == "ops" && domain == "addons" && action == "cpu-request" {
+		resp, status := h.handleOpsAddonsCPURequest(c.Request.Context(), req, opsActorFromContext(c))
+		h.writeOperatorResult(c, status, resp)
+		return
+	}
+	if prefix == "ops" && domain == "storage" && action == "prune-detached" {
+		resp, status := h.handleOpsStoragePruneDetached(c.Request.Context(), req, opsActorFromContext(c))
+		h.writeOperatorResult(c, status, resp)
 		return
 	}
 	if prefix == "ops" && domain == "pods" && action == "restart" {
 		resp, status := h.handleOpsPodsRestart(c.Request.Context(), req, opsActorFromContext(c))
-		c.JSON(status, resp)
+		h.writeOperatorResult(c, status, resp)
 		return
 	}
 	if req.DryRun {
@@ -126,7 +180,7 @@ func (h *Handler) handleOperatorOperation(c *gin.Context, prefix, domain, action
 	}
 	if !req.DryRun {
 		if resp, statusCode, handled := h.handleApplyOperatorOperation(c.Request.Context(), prefix, domain, action, operation, req); handled {
-			c.JSON(statusCode, resp)
+			h.writeOperatorResult(c, statusCode, resp)
 			return
 		}
 	}
@@ -214,9 +268,6 @@ func (h *Handler) handleApplyOperatorDryRun(ctx context.Context, prefix, domain,
 	if prefix == "ops" && domain == "storage" && action == "settings-apply" {
 		return h.handleOpsStorageSettingsApplyDryRun(ctx, operation, req), true
 	}
-	if prefix == "ops" && domain == "storage" && action == "prune-detached" {
-		return h.handleOpsStoragePruneDetachedDryRun(ctx, operation, req), true
-	}
 	if prefix != "ops" {
 		return operatorOperationResponse{}, false
 	}
@@ -234,7 +285,7 @@ func (h *Handler) handleApplyOperatorDryRun(ctx context.Context, prefix, domain,
 		mutation = "patch Argo Application operation.sync"
 		adapterReady = h != nil && h.k8sClient != nil && h.k8sClient.DynamicClient != nil
 	case "apps.retire":
-		mutation = "delete Argo Application with orphan propagation unless cascade=true"
+		mutation = "remove Argo resources finalizers, then delete only the Argo Application; cascade=true keeps them so Argo CD deletes its resources; refuses ApplicationSet-generated Applications"
 		adapterReady = h != nil && h.k8sClient != nil && h.k8sClient.DynamicClient != nil
 	case "jobs.trigger":
 		mutation = "create one-off Job from the live CronJob template"
@@ -396,100 +447,7 @@ func (h *Handler) handleApplyOperatorOperation(ctx context.Context, prefix, doma
 		resp, statusCode := h.handleOpsStorageSettingsApply(ctx, operation, req)
 		return resp, statusCode, true
 	}
-	if prefix == "ops" && domain == "storage" && action == "prune-detached" && h.k8sClient != nil && h.k8sClient.DynamicClient != nil {
-		resp, statusCode := h.handleOpsStoragePruneDetachedApply(ctx, operation, req)
-		return resp, statusCode, true
-	}
 	return operatorOperationResponse{}, 0, false
-}
-
-func (h *Handler) handleOpsAppsRetireApply(ctx context.Context, operation string, req operatorOperationRequest) (operatorOperationResponse, int) {
-	operationID := fmt.Sprintf("op_%d", time.Now().UTC().UnixNano())
-	namespace := strings.TrimSpace(req.Scope["namespace"])
-	if namespace == "" {
-		namespace = strings.TrimSpace(req.Args["namespace"])
-	}
-	if namespace == "" {
-		namespace = "argocd"
-	}
-	target := strings.TrimSpace(req.Args["target"])
-	if target == "" {
-		target = strings.TrimSpace(req.Scope["target"])
-	}
-	if target == "" {
-		return operatorOperationResponse{
-			OperationID: operationID,
-			Operation:   operation,
-			Status:      "invalid_request",
-			DryRun:      false,
-			Summary:     "apps.retire requires a target Argo Application name",
-			Warnings:    []string{"missing args.target or scope.target"},
-		}, http.StatusBadRequest
-	}
-
-	appResource := h.k8sClient.DynamicClient.Resource(argoApplicationGVR).Namespace(namespace)
-	app, err := appResource.Get(ctx, target, metav1.GetOptions{})
-	if err != nil {
-		statusCode := http.StatusInternalServerError
-		status := "failed"
-		if k8serrors.IsNotFound(err) {
-			statusCode = http.StatusNotFound
-			status = "not_found"
-		}
-		return operatorOperationResponse{
-			OperationID: operationID,
-			Operation:   operation,
-			Status:      status,
-			DryRun:      false,
-			Summary:     fmt.Sprintf("failed to load Argo Application %s/%s", namespace, target),
-			Warnings:    []string{err.Error()},
-		}, statusCode
-	}
-
-	propagation := metav1.DeletePropagationOrphan
-	if strings.EqualFold(strings.TrimSpace(req.Args["cascade"]), "true") {
-		propagation = metav1.DeletePropagationForeground
-	}
-	if err := appResource.Delete(ctx, target, metav1.DeleteOptions{PropagationPolicy: &propagation}); err != nil {
-		return operatorOperationResponse{
-			OperationID: operationID,
-			Operation:   operation,
-			Status:      "failed",
-			DryRun:      false,
-			Summary:     fmt.Sprintf("failed to retire Argo Application %s/%s", namespace, target),
-			Warnings:    []string{err.Error()},
-		}, http.StatusInternalServerError
-	}
-
-	syncStatus, _, _ := unstructured.NestedString(app.Object, "status", "sync", "status")
-	healthStatus, _, _ := unstructured.NestedString(app.Object, "status", "health", "status")
-	currentRevision, _, _ := unstructured.NestedString(app.Object, "status", "sync", "revision")
-	return operatorOperationResponse{
-		OperationID: operationID,
-		Operation:   operation,
-		Status:      "submitted",
-		DryRun:      false,
-		Summary:     fmt.Sprintf("retired Argo Application %s/%s through Enclii", namespace, target),
-		Data: map[string]any{
-			"application":      target,
-			"namespace":        namespace,
-			"previousSync":     syncStatus,
-			"previousHealth":   healthStatus,
-			"previousRevision": currentRevision,
-			"propagation":      string(propagation),
-		},
-		Steps: []operatorOperationStep{
-			{Name: "authorize", Status: "completed", Detail: "reason supplied and caller passed endpoint authorization"},
-			{Name: "load-state", Status: "completed", Detail: "loaded Argo Application from cluster"},
-			{Name: "diff", Status: "completed", Detail: "retire target selected; resources orphaned unless cascade=true"},
-			{Name: "audit", Status: "completed", Detail: "operation executed through Enclii API audit path"},
-		},
-		Next: []string{
-			"poll ops.apps.status for the successor application",
-			"confirm shared resource warnings disappear",
-			"only use cascade=true for reviewed destructive retirements",
-		},
-	}, http.StatusAccepted
 }
 
 func (h *Handler) handleOpsJobsTriggerUnlocked(ctx context.Context, operation string, req operatorOperationRequest) (operatorOperationResponse, int) {
@@ -547,6 +505,14 @@ func (h *Handler) handleOpsJobsTriggerUnlocked(ctx context.Context, operation st
 			Annotations: annotations,
 		},
 		Spec: *cronJob.Spec.JobTemplate.Spec.DeepCopy(),
+	}
+	// A manual run has no ownerReference to the CronJob, so the CronJob's
+	// history limits never prune it. Without a TTL, failed manual runs stayed
+	// in the namespace indefinitely (some since June). Keep the template's own
+	// TTL when it sets one.
+	if job.Spec.TTLSecondsAfterFinished == nil {
+		ttl := manualCronJobRunTTLSeconds
+		job.Spec.TTLSecondsAfterFinished = &ttl
 	}
 
 	created, err := kubeClient.BatchV1().Jobs(namespace).Create(ctx, job, metav1.CreateOptions{})
@@ -612,6 +578,10 @@ func operationSupported(domain, action string, capabilities []operatorCapability
 	}
 	return false
 }
+
+// manualCronJobRunTTLSeconds expires a finished manual CronJob run after 7
+// days unless the CronJob's template sets its own TTL.
+const manualCronJobRunTTLSeconds int32 = 7 * 24 * 60 * 60
 
 func manualCronJobRunName(cronJobName string, now time.Time) string {
 	const separator = "-manual-"

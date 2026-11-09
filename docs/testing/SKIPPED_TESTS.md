@@ -26,6 +26,7 @@ exists in the tree.
 |---|---|---|
 | `internal/addons/postgres_runtime_postgres_test.go` | `ENCLII_RUNTIME_POSTGRES_PROOF_URL` is unset; accepts only an explicitly owned loopback PostgreSQL fixture | Yes: `runtime-postgres-proof` in `ci.yml`, disposable PostgreSQL 16; no real cluster/database credentials |
 | `internal/jobholds/store_integration_test.go` (`-tags integration`) | `JOB_HOLD_TEST_DATABASE_URL` is unset; execution also requires `LOCAL_DB=yes` and a loopback host | Yes: the `smoke` job runs migration/serialization checks against its disposable Postgres |
+| `internal/workloadtargets/*_postgres_test.go` (`-tags workload_target_postgres`), including held staging preregistration | Excluded from ordinary builds; the explicit proof tag has no skip and requires the owned loopback PG18/TLS fixture | Yes: required Unit Tests runs `scripts/prove-workload-target-postgres.py`; the `^TestNativeTarget` filter includes immutable binding and inert preregistration cases |
 | `internal/db/*_integration_test.go` (`-tags integration`) | `TEST_DATABASE_URL` is unset | Yes: the `smoke` job of `ci.yml` runs `go test -tags integration ./internal/db/...` against its Postgres |
 | `internal/provisioning/generated_roles_integration_test.go` (`-tags integration`) | `TEST_POSTGRES_ADMIN_URL` is unset | No. Gap: no workflow runs it; run it locally against a disposable Postgres (superuser URL, TCP) |
 | `internal/api/handlers_integration_test.go`, `internal/services/auth_integration_test.go` (`-tags integration`) | `TEST_DATABASE_URL` is unset | No. Gap: no workflow runs them; run them locally against a disposable Postgres |
@@ -54,6 +55,7 @@ Removed in the 2026-10-02 close-out:
 |---|---|
 | `tests/scripts/test_arc_pool_health.py`, `test_stuck_runner_watchdog.py` | A required CLI tool is missing, or `date` is BSD rather than GNU (macOS) |
 | `infra/synthetic-flow-probe/tests/test_probe.py` manifest case | The journey manifests are not in the checkout |
+| `tests/scripts/test_pgbouncer_auth_query.py` end-to-end case | No PostgreSQL binaries (`initdb`, `pg_ctl`, `psql`; `PG_BIN_DIR`) or no `pgbouncer` (`PGBOUNCER_BIN`), or running as root. The `pgbouncer-auth-query` job in `ci.yml` installs pgbouncer and uses the runner's PostgreSQL, so it runs in CI; the static, init-script and wrapper cases never skip |
 | `tests/scripts/test_client_slo_rules.py` promtool case | `promtool` is not on PATH and `ENCLII_PROMTOOL` is unset, or the evaluator cannot run (no Docker daemon, image pull failure). The `client-slo-rules-test` job in `ci.yml` sets `ENCLII_PROMTOOL` to the pinned `prom/prometheus` image, so it runs in CI; the structural cases never skip |
 
 `tests/scripts/test_digest_pin_push_retry.py` does not skip on macOS: it shims

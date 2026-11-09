@@ -166,6 +166,14 @@ func TestArgocdObservationAlreadyTracked(t *testing.T) {
 			want:     true,
 		},
 		{
+			name:     "same revision with stale image reaches reconciliation",
+			dep:      runningDep,
+			rel:      &types.Release{ID: relID, GitSHA: "rev1", ImageURI: "ghcr.io/x/y@sha256:old"},
+			revision: "rev1",
+			image:    "ghcr.io/x/y@sha256:new",
+			want:     false,
+		},
+		{
 			name:     "different revision is not tracked",
 			dep:      runningDep,
 			rel:      &types.Release{ID: relID, GitSHA: "rev0", ImageURI: "ghcr.io/x/y@sha256:old"},

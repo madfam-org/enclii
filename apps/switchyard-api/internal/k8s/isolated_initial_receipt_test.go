@@ -217,6 +217,7 @@ type initialHTTPFixture struct {
 	puts               int
 	unknownUpdate      bool
 	conflictUpdate     bool
+	listContinue       string
 }
 
 // Literal per-kernel identities, independent of the closed table under test.
@@ -231,7 +232,7 @@ func initialNativeHTTP(t *testing.T) (*Client, *initialHTTPFixture) {
 	return initialNativeHTTPProfile(t, "portal-sim-initial")
 }
 
-func initialNativeHTTPProfile(t *testing.T, profile string) (*Client, *initialHTTPFixture) {
+func initialNativeHTTPProfile(t *testing.T, profile string, customize ...func(*IsolatedInitialJobPlan)) (*Client, *initialHTTPFixture) {
 	t.Helper()
 	p := initialPortalPlan()
 	if kernel, isMAP := initialKernelFixtures[profile]; isMAP {
@@ -245,14 +246,25 @@ func initialNativeHTTPProfile(t *testing.T, profile string) (*Client, *initialHT
 		for _, key := range []string{"DATABASE_URL", "DIRECT_DATABASE_URL", "MAP_SIMULATION_RUNTIME_DATABASE_URL", "MAP_SIMULATION_SEED_ENABLED", "MAP_SIMULATION_ENABLED", "MAP_SIMULATION_KERNEL_ID", "APP_ORIGIN", "JANUA_AUDIENCE", "JANUA_ISSUER_URL", "JANUA_JWKS_URL", "RLS_POR_CASO", "MAP_SIMULATION_CONTEXT_KEY", "MAP_SIMULATION_CONTROL_KEY", "MAP_SIMULATION_MAIL_KEY", "MAP_SIMULATION_MCP_CLIENT_ID", "MAP_MCP_PSEUDONYM_KEY"} {
 			p.Data[key] = []byte("synthetic-value")
 		}
-	} else if profile == fixedStepTurnoVigenteProfile {
+	} else if profile == KarafielSchemaProfile {
+		p = karafielSchemaPlan()
+	} else if profile == PortalReconstructionCloseProfile {
+		p = reconstructionClosePlanFixture(t)
+	} else if IsFixedStepProfile(profile) {
 		// Same portal custody; a live workload is bound by generation.
 		p.Profile = profile
 		p.Identity.DeploymentResourceVersion, p.Identity.DeploymentGeneration = "", 3
+	} else if profile == PortalFenceReadProfile {
+		p = fenceReadPlan()
+	} else if IsProvenanceReadProfile(profile) {
+		p = generationReadPlan()
 	} else {
 		require.Equal(t, "portal-sim-initial", profile)
 	}
 	p.Revalidate = func(context.Context) error { return nil }
+	for _, change := range customize {
+		change(&p)
+	}
 	expected, e := BuildIsolatedInitialJob(p)
 	require.NoError(t, e)
 	job := expected.DeepCopy()
@@ -280,8 +292,35 @@ func initialNativeHTTPProfile(t *testing.T, profile string) (*Client, *initialHT
 	}
 	f := &initialHTTPFixture{p: p, expected: expected, job: job, pod: pod, intent: cm, stdout: `{"fuente":"portal-sim-reset-custody","version":"crea-sim-reset-custody-v1","estado":"PREPARADO","schemaSha256":"` + strings.Repeat("d", 64) + `","databaseIdentitySha256":"` + strings.Repeat("e", 64) + `"}` + "\n", initStdout: `{"perfil":"crea-sim-portal-inicial","version":"portal-inicial-v1","estado":"PREPARADO"}` + "\n"}
 
+	if profile == KarafielSchemaProfile {
+		for i := range f.pod.Status.ContainerStatuses {
+			f.pod.Status.ContainerStatuses[i].State.Terminated.StartedAt = metav1.NewTime(time.Date(2026, 10, 25, 12, 0, 0, 0, time.UTC))
+			f.pod.Status.ContainerStatuses[i].State.Terminated.FinishedAt = metav1.NewTime(time.Date(2026, 10, 25, 12, 0, 2, 0, time.UTC))
+		}
+		body, err := json.Marshal(KarafielSchemaReceipt{Schema: "karafiel-staging-schema-v1", SourceRevision: p.Identity.SourceRevision, Database: "karafiel_staging_sim", OwnerRole: "enclii_migrator", GraphSHA256: strings.Repeat("c", 64), CatalogSHA256: strings.Repeat("d", 64), Applied: 98, Required: 98, Lineage: "FRESH_SYNTHETIC"})
+		require.NoError(t, err)
+		f.stdout = string(body) + "\n"
+		f.initStdout = ""
+	}
+	if profile == PortalReconstructionCloseProfile {
+		body, err := json.Marshal(reconstructionCloseReceiptFixture(p))
+		require.NoError(t, err)
+		f.stdout, f.initStdout = string(body)+"\n", ""
+	}
 	if profile == fixedStepTurnoVigenteProfile {
 		f.stdout, f.initStdout = fixedStepStdout("APLICADO"), ""
+	}
+	if profile == fixedStepCierreReconstruccionPasoProfile {
+		f.stdout, f.initStdout = cierrePasoStdout("APLICADO"), ""
+	}
+	if profile == PortalFenceReadProfile {
+		b, err := json.Marshal(fenceReceiptFixture())
+		require.NoError(t, err)
+		f.stdout, f.initStdout = string(b)+"\n", ""
+	} else if IsProvenanceReadProfile(profile) {
+		b, err := json.Marshal(generationReceiptFixture())
+		require.NoError(t, err)
+		f.stdout, f.initStdout = string(b)+"\n", ""
 	}
 	if _, isMAP := initialKernelFixtures[profile]; isMAP {
 		f.stdout = `{"huella":"` + strings.Repeat("d", 64) + `","codigoSha256":"` + strings.Repeat("e", 64) + `","fixtureSha256":"` + strings.Repeat("f", 64) + `","roles":7,"casos":6}` + "\n"
@@ -351,6 +390,12 @@ func initialNativeHTTPProfile(t *testing.T, profile string) (*Client, *initialHT
 		switch {
 		case strings.HasSuffix(path, "/namespaces/"+p.Namespace):
 			send(&corev1.Namespace{ObjectMeta: metav1.ObjectMeta{Name: p.Namespace, UID: types.UID(p.Identity.AddonNamespaceUID), Labels: map[string]string{LabelProjectNamespace: p.ProjectID.String()}}})
+		case strings.HasSuffix(path, "/configmaps"):
+			items := []corev1.ConfigMap{*f.intent}
+			if f.receipt != nil {
+				items = append(items, *f.receipt)
+			}
+			send(&corev1.ConfigMapList{ListMeta: metav1.ListMeta{Continue: f.listContinue}, Items: items})
 		case strings.HasSuffix(path, "/configmaps/"+p.jobName()+"-intent"):
 			send(f.intent)
 		case strings.HasSuffix(path, "/configmaps/"+p.jobName()+"-receipt"):
@@ -366,7 +411,7 @@ func initialNativeHTTPProfile(t *testing.T, profile string) (*Client, *initialHT
 				send(f.job)
 			}
 		case strings.HasSuffix(path, "/pods"):
-			require.Equal(t, "batch.kubernetes.io/controller-uid=job-uid", r.URL.Query().Get("labelSelector"))
+			require.Equal(t, "batch.kubernetes.io/controller-uid="+string(f.job.UID), r.URL.Query().Get("labelSelector"))
 			items := []corev1.Pod{*f.pod}
 			if f.duplicatePod {
 				items = append(items, *f.pod)

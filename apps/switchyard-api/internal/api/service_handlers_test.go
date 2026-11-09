@@ -15,6 +15,7 @@ import (
 
 	"github.com/madfam-org/enclii/apps/switchyard-api/internal/config"
 	"github.com/madfam-org/enclii/apps/switchyard-api/internal/db"
+	"github.com/madfam-org/enclii/packages/sdk-go/pkg/types"
 )
 
 // serviceListByGitRepoColumns matches the columns scanned by
@@ -69,7 +70,7 @@ func TestListServicesByGitRepo_MissingParam(t *testing.T) {
 
 // TestListServicesByGitRepo_IncludesImageAgeFields asserts Pillar 3.5: the
 // public response carries current_image_uri, current_release_created_at,
-// and recent_releases sourced from the latest succeeded release.
+// and recent_releases sourced from the latest ready release.
 func TestListServicesByGitRepo_IncludesImageAgeFields(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	h, mock, cleanup := setupServiceTestHandler(t)
@@ -89,8 +90,8 @@ func TestListServicesByGitRepo_IncludesImageAgeFields(t *testing.T) {
 			time.Now(), time.Now(), []byte(`[]`), "web", "default",
 		))
 
-	// 2. EnrichWithLatestRelease: current succeeded release.
-	mock.ExpectQuery(`SELECT image_uri, created_at FROM releases\s+WHERE service_id = \$1 AND status = 'succeeded'`).
+	// 2. EnrichWithLatestRelease: current ready release.
+	mock.ExpectQuery(`SELECT image_uri, created_at FROM releases\s+WHERE service_id = \$1 AND status = 'ready'`).
 		WithArgs(serviceID).
 		WillReturnRows(sqlmock.NewRows([]string{"image_uri", "created_at"}).
 			AddRow("ghcr.io/madfam-org/enclii-api@sha256:abc123", releaseCreated))
@@ -99,7 +100,7 @@ func TestListServicesByGitRepo_IncludesImageAgeFields(t *testing.T) {
 	mock.ExpectQuery(`SELECT id, version, image_uri, git_sha, status, created_at FROM releases\s+WHERE service_id = \$1`).
 		WithArgs(serviceID).
 		WillReturnRows(sqlmock.NewRows([]string{"id", "version", "image_uri", "git_sha", "status", "created_at"}).
-			AddRow(releaseID, "v42", "ghcr.io/madfam-org/enclii-api@sha256:abc123", "deadbeef", "succeeded", releaseCreated))
+			AddRow(releaseID, "v42", "ghcr.io/madfam-org/enclii-api@sha256:abc123", "deadbeef", types.ReleaseStatusReady, releaseCreated))
 
 	w := httptest.NewRecorder()
 	_, engine := gin.CreateTestContext(w)
@@ -124,14 +125,14 @@ func TestListServicesByGitRepo_IncludesImageAgeFields(t *testing.T) {
 
 	// Pillar 3.5 fields.
 	assert.Equal(t, "ghcr.io/madfam-org/enclii-api@sha256:abc123", svc["current_image_uri"])
-	assert.NotNil(t, svc["current_release_created_at"], "current_release_created_at must be present when a succeeded release exists")
+	assert.NotNil(t, svc["current_release_created_at"], "current_release_created_at must be present when a ready release exists")
 	require.NotNil(t, svc["recent_releases"], "recent_releases must be present")
 	releases, ok := svc["recent_releases"].([]interface{})
 	require.True(t, ok, "recent_releases must serialize as an array")
 	require.Len(t, releases, 1)
 	release := releases[0].(map[string]interface{})
 	assert.Equal(t, "ghcr.io/madfam-org/enclii-api@sha256:abc123", release["image_uri"])
-	assert.Equal(t, "succeeded", release["status"])
+	assert.Equal(t, string(types.ReleaseStatusReady), release["status"])
 
 	assert.NoError(t, mock.ExpectationsWereMet())
 }
@@ -156,8 +157,8 @@ func TestListServicesByGitRepo_NoReleasesYet(t *testing.T) {
 			time.Now(), time.Now(), []byte(`[]`), "web", "default",
 		))
 
-	// Current succeeded release: none.
-	mock.ExpectQuery(`SELECT image_uri, created_at FROM releases\s+WHERE service_id = \$1 AND status = 'succeeded'`).
+	// Current ready release: none.
+	mock.ExpectQuery(`SELECT image_uri, created_at FROM releases\s+WHERE service_id = \$1 AND status = 'ready'`).
 		WithArgs(serviceID).
 		WillReturnRows(sqlmock.NewRows([]string{"image_uri", "created_at"}))
 
@@ -189,8 +190,8 @@ func TestListServicesByGitRepo_NoReleasesYet(t *testing.T) {
 	_, hasImage := svc["current_image_uri"]
 	_, hasTime := svc["current_release_created_at"]
 	_, hasRecent := svc["recent_releases"]
-	assert.False(t, hasImage, "current_image_uri must be omitted when no succeeded release")
-	assert.False(t, hasTime, "current_release_created_at must be omitted when no succeeded release")
+	assert.False(t, hasImage, "current_image_uri must be omitted when no ready release")
+	assert.False(t, hasTime, "current_release_created_at must be omitted when no ready release")
 	assert.False(t, hasRecent, "recent_releases must be omitted when no releases")
 
 	assert.NoError(t, mock.ExpectationsWereMet())

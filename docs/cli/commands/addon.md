@@ -1,5 +1,7 @@
 # enclii addon
 
+Last Updated: 2026-10-20
+
 Manage database addons — fresh, isolated managed Postgres instances scoped to a service.
 
 ## Synopsis
@@ -19,6 +21,51 @@ The CLI talks to switchyard-api, which validates the requested plan, provisions 
 See `docs/architecture/managed-db-addon.md` for the full design.
 
 ## Subcommands
+
+### `staging-plan`
+
+Read the closed Janua staging addon preview, without creating or binding anything:
+
+```bash
+enclii addon staging-plan --project janua --plan standard-0 --json
+```
+
+`--project janua` and an existing PostgreSQL `--plan` are required. Optional
+`--service-id` identifies a persisted staging API service; a production service
+is refused and no identifier is assumed when omitted. The platform operator
+route returns ownership/resource metadata, read counts and unresolved gates.
+It always reports `apply_supported: false`; the observation hash is not apply
+authority. No SQL, namespace, credentials or apply flag is accepted.
+
+See [the exact preview and custody contract](../../runbooks/JANUA_STAGING_ADDON_PLAN.md).
+
+### `staging-admission`
+
+Dry-admit the fixed Janua staging database candidate after its separate service
+and isolation prerequisites exist:
+
+```bash
+enclii addon staging-admission --project janua --plan standard-0 --service-id <STAGING_API_SERVICE_UUID> --json
+```
+
+This platform-operator POST accepts no body, image, SQL, credentials, namespace or
+apply flag. It verifies the source-reviewed immutable official PostgreSQL image
+with native cosign, then sends only server-side `DryRunAll` requests for a Cluster,
+two narrow NetworkPolicies and a credential-free `postgres --version` Pod. The Pod
+is never created or executed. Actual stage/source ownership, clean namespace
+policy metadata and canonical API destination metadata must pass first; a
+production service or existing database is never adopted.
+
+`ADMITTED_DRY_RUN_ONLY` always retains `apply_supported: false` and explicit
+runtime/custody/migration/recovery gates. No resource or addon row is persisted.
+The CLI makes one bounded request without redirects or automatic replay, withholds
+upstream error bodies, and rejects incompatible/partial success receipts. JSON
+output re-encodes only the shared closed receipt; fixed target/image/profile,
+requested service/plan, UUIDs, exact modes/count, canonical timestamp, hash shape
+and complete gate enum are validated. Unknown upstream fields are never printed.
+Native
+operator read/admission permissions must already exist; this command adds none.
+See [the admission boundary](../../runbooks/JANUA_STAGING_ADDON_PLAN.md#typed-server-side-dry-admission).
 
 ### `plans`
 

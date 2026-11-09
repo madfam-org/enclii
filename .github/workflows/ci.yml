@@ -24,8 +24,14 @@ on:
         type: string
 
 env:
-  GO_VERSION: '1.26.9'
+  GO_VERSION: '1.26.10'
   NODE_VERSION: '22'
+
+# Keep only the newest proof for a PR. Non-PR runs have distinct groups so
+# queued main builds and digest publication are never replaced by this rule.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event_name == 'pull_request' && github.event.pull_request.number || github.run_id }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   runtime-postgres-proof:
@@ -86,6 +92,7 @@ jobs:
           go-version: ${{ env.GO_VERSION }}
           check-latest: true
           cache: true
+          cache-dependency-path: '**/go.sum'
 
       - name: Install golangci-lint
         run: |
@@ -442,6 +449,21 @@ jobs:
       - name: Run pgBackRest restore drill tests
         run: pytest tests/scripts/test_pgbackrest_restore_drill.py tests/scripts/test_pgbackrest_version_parity.py -v
 
+      # Managed-Postgres addon backups: the intake target, ExternalSecret,
+      # switchyard-api env and ScheduledBackup RBAC must agree with each other
+      # and with the provisioner (no addon was ever backed up while any one was
+      # missing). The addon restore drill's own cases, including the
+      # --expect-plan binding, run in restore-drill-lint.
+      - name: Run addon backup wiring tests
+        run: pytest tests/scripts/test_addon_backup_wiring.py -v
+
+      # The Redpanda chart renders a limit and no request, so the request
+      # defaulted to a full core per broker (3000m reserved, 80m used). The
+      # request is set through statefulset.podTemplate; this keeps it in the
+      # live Application and its mirror, below the limit.
+      - name: Run Redpanda CPU request guard
+        run: pytest tests/scripts/test_redpanda_cpu_request.py -v
+
       # Runs scripts/commercial-ga-proof.sh against a local stub. A 404/5xx on
       # signup or checkout must fail; a checkout that lands on the sales
       # booking page must be a CHECK (not a pass, and not an exit 1 that would
@@ -479,7 +501,7 @@ jobs:
         run: pip install --quiet pyyaml pytest
 
       - name: Run Alertmanager config self-tests
-        run: pytest tests/scripts/test_check_alertmanager_config.py tests/scripts/test_alertmanager_secret_mounts.py tests/scripts/test_grafana_admin_secret.py -v
+        run: pytest tests/scripts/test_check_alertmanager_config.py tests/scripts/test_alertmanager_routing.py tests/scripts/test_alertmanager_secret_mounts.py tests/scripts/test_grafana_admin_secret.py -v
 
       - name: Run Alertmanager config loadability lint
         # ENCLII_AMTOOL points the lint at the real validator from the same
@@ -505,8 +527,13 @@ jobs:
     # threshold equals cluster.yaml's `instances`. Also the PagerPathDrill
     # rule, the one critical alert that fires on purpose: its weekly and
     # one-off windows, its two per-product series, and its route to
-    # critical-receiver. promtool evaluates the real rules with the image
-    # production runs; a failed pull skips with a reason.
+    # critical-receiver. And cv's availability and delivery rules
+    # (test_cv_rules.py: 503 and probes never page, the migrate rule reads
+    # the Job's Failed condition). And the per-project CNPG health rules
+    # (test_cnpg_project_rules.py: every kube_cnpg_cluster_* series they read
+    # is one kube-state-metrics' custom-resource config publishes; hibernated
+    # clusters excluded only once CNPG confirms). And test_critical_coverage_rules.py. promtool evaluates the real
+    # rules with the image production runs; a failed pull skips with a reason.
     steps:
       - uses: actions/checkout@v7
 
@@ -524,7 +551,36 @@ jobs:
             docker run --rm --entrypoint /bin/promtool -v {dir}:/w:ro
             docker.io/prom/prometheus:v2.53.3
             test rules /w/{name}
-        run: pytest tests/scripts/test_alert_noise_rules.py tests/scripts/test_pager_path_drill.py -v -rs
+        run: pytest tests/scripts/test_alert_noise_rules.py tests/scripts/test_pager_path_drill.py tests/scripts/test_retainer_cycle_rules.py tests/scripts/test_cv_rules.py tests/scripts/test_cnpg_project_rules.py tests/scripts/test_critical_coverage_rules.py -v -rs
+
+  prometheus-storage-budget-test:
+    name: Prometheus storage budget
+    runs-on: ubuntu-24.04
+    # Cheap. The main Prometheus must hold 7-9 days inside its 16GB cap
+    # (RFC 0049 D6). Until 2026-11-04 the size cap fired first and history was
+    # about 56 hours. Pins the retention flags and the volume headroom, that
+    # every exporter is scraped by one job only, and that no bucket drop
+    # removes a metric a rule or a git-provisioned dashboard reads. promtool
+    # parses the rendered prometheus.yml with the image production runs; a
+    # failed pull skips with a reason.
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Set up Python
+        uses: actions/setup-python@v7
+        with:
+          python-version: '3.11'
+
+      - name: Install deps
+        run: pip install --quiet pyyaml pytest
+
+      - name: Run Prometheus storage budget tests
+        env:
+          ENCLII_PROMTOOL_CHECK_CONFIG: >-
+            docker run --rm --entrypoint /bin/promtool -v {dir}:/w:ro
+            docker.io/prom/prometheus:v2.53.3
+            check config --syntax-only /w/{name}
+        run: pytest tests/scripts/test_prometheus_storage_budget.py -v -rs
 
   client-slo-rules-test:
     name: Client SLO rule coverage
@@ -583,7 +639,17 @@ jobs:
             docker run --rm --entrypoint /bin/promtool -v {dir}:/w:ro
             docker.io/prom/prometheus:v2.53.3
             test rules /w/{name}
-        run: pytest tests/scripts/test_revenue_probe_rules.py -v -rs
+        run: pytest tests/scripts/test_revenue_probe_rules.py tests/scripts/test_money_engine_status.py -v -rs
+
+      # The geometry-factory probes (blackbox-geometry job, geometry-probes
+      # rule group) share the exporter and its modules; same layers.
+      - name: Run geometry probe rule tests
+        env:
+          ENCLII_PROMTOOL: >-
+            docker run --rm --entrypoint /bin/promtool -v {dir}:/w:ro
+            docker.io/prom/prometheus:v2.53.3
+            test rules /w/{name}
+        run: pytest tests/scripts/test_geometry_probe_rules.py -v -rs
 
       - name: Validate blackbox modules with the pinned exporter
         run: |
@@ -598,6 +664,28 @@ jobs:
           chmod -R a+rX "$dir"
           image="$(python3 -c 'import yaml; d=[x for x in yaml.safe_load_all(open("infra/k8s/production/monitoring/blackbox-exporter.yaml")) if x and x.get("kind")=="Deployment"][0]; print(d["spec"]["template"]["spec"]["containers"][0]["image"])')"
           docker run --rm -v "$dir":/w:ro "$image" --config.file=/w/config.yml --config.check
+
+  capacity-scrapes-test:
+    name: Capacity plane scrapes
+    runs-on: ubuntu-24.04
+    # Cheap. The Longhorn, ARC controller and Selva grant scrape jobs (RFC
+    # 0049 Phase 1) select their targets by port name and keep a bounded set
+    # of series. A port name the target does not serve, or a keep regex that
+    # misses, gives an empty job that looks configured. Pins the selectors,
+    # the kept/dropped metric names and the egress path to each target.
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Set up Python
+        uses: actions/setup-python@v7
+        with:
+          python-version: '3.11'
+
+      - name: Install deps
+        run: pip install --quiet pyyaml pytest
+
+      - name: Run capacity scrape tests
+        run: pytest tests/scripts/test_capacity_scrapes.py -v -rs
 
   synthetic-journeys-test:
     name: Synthetic buyer manifests and rules
@@ -643,6 +731,70 @@ jobs:
 
       - name: Run Courier envelope tests
         run: bash ./scripts/tests/test-courier-envelope.sh
+
+  kyverno-policy-tests:
+    name: Kyverno policy tests
+    runs-on: ubuntu-24.04
+    # Cheap (a few seconds, no cluster). `kyverno test` applies the policies in
+    # infra/k8s/base/kyverno/policies to the fixtures under tests/kyverno/ and
+    # compares the mutated output. The CLI is pinned to the Kyverno release the
+    # chart installs (infra/argocd/apps/kyverno.yaml, chart 3.1.4 = v1.11.4),
+    # so a policy that passes here is one that release admits.
+    env:
+      KYVERNO_CLI_VERSION: v1.11.4
+      KYVERNO_CLI_SHA256: dd43253ca1c764c8c14fccc45a476482c81fdafb7b3a5818ff38e4bcc669a1d1  # pragma: allowlist secret (release checksum, public)
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Install the Kyverno CLI (checksum-pinned)
+        run: |
+          set -euo pipefail
+          tarball="kyverno-cli_${KYVERNO_CLI_VERSION}_linux_x86_64.tar.gz"
+          curl -fsSL --retry 3 -o "${RUNNER_TEMP}/${tarball}" \
+            "https://github.com/kyverno/kyverno/releases/download/${KYVERNO_CLI_VERSION}/${tarball}"
+          echo "${KYVERNO_CLI_SHA256}  ${RUNNER_TEMP}/${tarball}" | sha256sum -c -
+          mkdir -p "${RUNNER_TEMP}/kyverno"
+          tar -xzf "${RUNNER_TEMP}/${tarball}" -C "${RUNNER_TEMP}/kyverno" kyverno
+          echo "${RUNNER_TEMP}/kyverno" >> "$GITHUB_PATH"
+
+      - name: Run Kyverno policy tests
+        run: kyverno test tests/kyverno/ --detailed-results
+
+  pgbouncer-auth-query:
+    name: pgbouncer auth_query
+    runs-on: ubuntu-24.04
+    # A few seconds. Pins the chain Vault -> ExternalSecret -> init container
+    # -> pgbouncer.ini auth_query -> pgbouncer.get_auth, runs the shipped init
+    # script and scripts/pgbouncer-auth-query.sh against stubs (the password
+    # never reaches stdout, stderr or argv), and then runs the real migration
+    # and the manifest's pgbouncer.ini against a disposable PostgreSQL and
+    # pgbouncer: a role with a userlist line, a role resolved through
+    # auth_query, a superuser refused, and the rollback.
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Set up Python
+        uses: actions/setup-python@v7
+        with:
+          python-version: '3.11'
+
+      - name: Install deps (pgbouncer from the distribution; PostgreSQL ships with the runner image)
+        run: |
+          set -euo pipefail
+          pip install --quiet pyyaml pytest
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq --no-install-recommends pgbouncer
+          if ! ls /usr/lib/postgresql/*/bin/initdb >/dev/null 2>&1; then
+            sudo apt-get install -y -qq --no-install-recommends postgresql
+          fi
+          ls -d /usr/lib/postgresql/*/bin
+          /usr/sbin/pgbouncer --version
+
+      - name: Run pgbouncer auth_query tests
+        env:
+          PGBOUNCER_BIN: /usr/sbin/pgbouncer
+          PGBOUNCER_AUTH_QUERY_E2E_REQUIRED: '1'
+        run: pytest tests/scripts/test_pgbouncer_auth_query.py -v -rs
 
   restore-drill-lint:
     name: Addon restore drill (safety + drill row)
@@ -929,6 +1081,7 @@ jobs:
           go-version: ${{ env.GO_VERSION }}
           check-latest: true
           cache: true
+          cache-dependency-path: '**/go.sum'
 
       - name: Auto-discover and test Go modules
         run: |
@@ -1070,7 +1223,7 @@ jobs:
           echo "All $MEASURED modules meet their coverage floor"
 
       - name: Upload coverage to Codecov
-        uses: codecov/codecov-action@v7
+        uses: codecov/codecov-action@303a32d7a59b442fa8d48b6a1cc6825c09c847a5 # v7.1.1
         with:
           files: ${{ env.COVERAGE_FILES }}
           flags: unit
@@ -1090,6 +1243,7 @@ jobs:
           go-version: ${{ env.GO_VERSION }}
           check-latest: true
           cache: true
+          cache-dependency-path: '**/go.sum'
 
       - name: Auto-discover and build Go binaries
         run: |
@@ -1168,6 +1322,7 @@ jobs:
           go-version: ${{ env.GO_VERSION }}
           check-latest: true
           cache: true
+          cache-dependency-path: '**/go.sum'
 
       - name: Build the API binary
         run: |
@@ -1220,7 +1375,7 @@ jobs:
           node-version: ${{ env.NODE_VERSION }}
 
       - name: Setup pnpm
-        uses: pnpm/action-setup@v6
+        uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6.0.10
         # No `version:` here on purpose. pnpm/action-setup reads the pnpm
         # version from the root package.json `packageManager` field, which is
         # the single source of truth for the pin (shared with the Dockerfiles).
@@ -1341,6 +1496,7 @@ jobs:
           go-version: ${{ env.GO_VERSION }}
           check-latest: true
           cache: true
+          cache-dependency-path: '**/go.sum'
 
       - name: Install gosec
         run: |
@@ -1493,13 +1649,16 @@ jobs:
           echo "$CHANGED_FILES"
           echo ""
 
+          # Drain each matcher input instead of grep -q: an early match can
+          # SIGPIPE its writer under pipefail and silently skip a required build
+          # when the changed-file/request list exceeds a pipe buffer.
           # Build matrix of changed services
           SERVICES_JSON=$(cat services.json)
           MATRIX_INCLUDE="[]"
           FORCE_ALL=false
           REQUESTED_SERVICES="${{ github.event.inputs.services || '' }}"
 
-          if echo "$CHANGED_FILES" | grep -q "^services.json$"; then
+          if printf '%s\n' "$CHANGED_FILES" | grep -Fx 'services.json' >/dev/null; then
             echo "services.json changed; rebuilding every registered service"
             FORCE_ALL=true
           fi
@@ -1553,18 +1712,29 @@ jobs:
             if [ "$FORCE_ALL" == "true" ]; then
               CHANGED=true
             elif [ -n "$REQUESTED_SERVICES" ]; then
-              if echo "$REQUESTED_SERVICES" | tr ',' '\n' | sed 's/^ *//;s/ *$//' | grep -qx "$NAME"; then
+              if printf '%s\n' "$REQUESTED_SERVICES" | tr ',' '\n' | sed 's/^ *//;s/ *$//' | grep -Fx "$NAME" >/dev/null; then
                 CHANGED=true
               fi
             else
-              if echo "$CHANGED_FILES" | grep -q "^${PATH_PREFIX}/"; then
+              if printf '%s\n' "$CHANGED_FILES" | grep "^${PATH_PREFIX}/" >/dev/null; then
                 CHANGED=true
               fi
               for dep in $DEPS; do
-                if echo "$CHANGED_FILES" | grep -q "^${dep}/"; then
+                if printf '%s\n' "$CHANGED_FILES" | grep "^${dep}/" >/dev/null; then
                   CHANGED=true
                 fi
               done
+              # These two images install from the root pnpm workspace. Root
+              # dependency/config changes must reach their browser bundles;
+              # status/docs/landing have independent Docker install inputs.
+              # The COPY-consumer regression test guards this bounded list.
+              case "$NAME" in
+                switchyard-ui|dispatch)
+                  if printf '%s\n' "$CHANGED_FILES" | grep -E '^(package\.json|pnpm-lock\.yaml|pnpm-workspace\.yaml|\.npmrc)$' >/dev/null; then
+                    CHANGED=true
+                  fi
+                  ;;
+              esac
             fi
 
             if [ "$CHANGED" == "true" ]; then
@@ -1645,17 +1815,17 @@ jobs:
           exit 1
 
       - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v4
+        uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
 
       - name: Login to GitHub Container Registry
-        uses: docker/login-action@v3
+        uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3.7.0
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GHCR_PAT || github.token }}
 
       - name: Install cosign
-        uses: sigstore/cosign-installer@v3
+        uses: sigstore/cosign-installer@398d4b0eeef1380460a10c8013a76f728fb906ac # v3.9.1
         with:
           cosign-release: 'v2.4.3'
 
@@ -1690,7 +1860,7 @@ jobs:
 
       - name: Build and push ${{ matrix.name }}
         id: docker-build
-        uses: docker/build-push-action@v7
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
         with:
           context: .
           file: ${{ matrix.dockerfile }}
@@ -1810,7 +1980,7 @@ jobs:
 
       - name: Login to GitHub Container Registry
         if: matrix.scan == true && steps.scan-ref.outputs.have_digest == 'true'
-        uses: docker/login-action@v3
+        uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3.7.0
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
@@ -1819,7 +1989,7 @@ jobs:
       - name: Scan ${{ matrix.name }}
         id: trivy
         if: matrix.scan == true && steps.scan-ref.outputs.have_digest == 'true'
-        uses: aquasecurity/trivy-action@d2a0b60797ff03db6132bd4e2b293f9b37081297 # master (2026-09-23)
+        uses: aquasecurity/trivy-action@8f28faec26515256b6d22074d1d2a8986f4cbd87 # master (2026-09-23)
         with:
           image-ref: ${{ steps.scan-ref.outputs.image_ref }}
           format: sarif
@@ -1957,14 +2127,14 @@ jobs:
         # Private GHCR packages require registry auth for cosign verify's
         # signature manifest reads. Prefer the org package PAT when present,
         # matching the reusable build-publish workflow.
-        uses: docker/login-action@v3
+        uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3.7.0
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GHCR_PAT || github.token }}
 
       - name: Install cosign
-        uses: sigstore/cosign-installer@v3
+        uses: sigstore/cosign-installer@398d4b0eeef1380460a10c8013a76f728fb906ac # v3.9.1
         with:
           cosign-release: 'v2.4.3'
 
@@ -2512,5 +2682,39 @@ jobs:
       - name: Install Python test deps
         run: pip install --quiet pyyaml pytest
 
+      # `"lifecycle": "retired"` in a project's config.json drops that one
+      # Application's auto-sync and resources finalizer; every other project
+      # must render unchanged. Deleting a config.json instead would cascade.
+      - name: Run project ApplicationSet lifecycle guard
+        run: pytest tests/scripts/test_project_appset_lifecycle.py -v
+
+      - name: Verify actual Trivy image command parser
+        run: |
+          set -euo pipefail
+          umask 077
+          parser_fixture=$(mktemp -d "${RUNNER_TEMP:?}/trivy-image-parser.XXXXXXXX")
+          trap 'rm -rf "$parser_fixture"' EXIT
+          archive="$parser_fixture/trivy.tar.gz"
+          # The parser fixture has a 90-second wall-clock download budget.
+          if ! timeout 90s env -i PATH="$PATH" curl -q --fail --silent --show-error --location \
+            --proto '=https' --tlsv1.2 --connect-timeout 10 --max-time 60 \
+            --max-filesize 268435456 --retry 1 --retry-delay 2 --retry-max-time 85 \
+            https://github.com/aquasecurity/trivy/releases/download/v0.76.1/trivy_0.76.1_Linux-64bit.tar.gz \
+            --output "$archive" > "$parser_fixture/download.log" 2>&1; then
+            echo "::error::Verified image-parser fixture download failed."; exit 1
+          fi
+          printf '%s  %s\n' c7cbe3137fb8a48a17574bede3dd6beb16742d1e9772929940fc90082c39d9c0 "$archive" \
+            | sha256sum --check --status
+          tar -xzf "$archive" -C "$parser_fixture" trivy
+          chmod 700 "$parser_fixture/trivy"
+          python3 tests/scripts/check_build_publish_trivy_image_cli.py \
+            --trivy "$parser_fixture/trivy" --archive "$archive"
+
+      # The descheduler evicts pods on a schedule. Pins what it may never
+      # evict (local storage, PVCs, DaemonSets, excluded namespaces, builder
+      # nodes), its 5-per-run cap and its least-privilege RBAC.
+      - name: Run descheduler policy guard
+        run: pytest tests/scripts/test_descheduler_policy.py -v
+
       - name: Run workflow contract tests
-        run: pytest tests/scripts/test_digest_pin_push_retry.py tests/scripts/test_arc_runner_image_promotion.py tests/scripts/test_commit_digests_unpinned_gate.py -v -rs
+        run: pytest tests/scripts/test_digest_pin_push_retry.py tests/scripts/test_arc_runner_image_promotion.py tests/scripts/test_commit_digests_unpinned_gate.py tests/scripts/test_arc_control_scheduling.py tests/scripts/test_arc_runner_requests.py tests/scripts/test_check_arc_runner_render_env.py tests/scripts/test_conservation_root_dependencies.py tests/scripts/test_build_publish_scan_gate.py -v -rs

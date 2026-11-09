@@ -27,7 +27,7 @@ cutover; `postgres-ha-daily` protects the parallel CNPG cluster.
 Daily:
   1:00 AM  github-repos-backup        GitHub org mirror (all repos)
   1:15 AM  cloudflare-config-backup   DNS + tunnels + zone settings
-  1:30 AM  k3s-datastore-backup       state.db + TLS + token
+  1:30 AM  k3s-datastore-backup       state.db (online SQLite backup) + TLS + token
   2:00 AM  Longhorn daily-snapshot     Block storage snapshots
   2:30 AM  node-maintenance            Image prune + log rotation
   2:30 AM  postgres-ha-daily           CNPG base backup + continuous WAL
@@ -63,13 +63,29 @@ exist.
 | ArgoCD Secrets | `argocd-secrets/` | 12 weeks | 7 days | `r2-backup-credentials` |
 | Longhorn | Longhorn internal + R2 | 7 daily / 4 weekly | varies | Longhorn managed |
 
+### K3s datastore archive contents
+
+The control plane runs k3s on SQLite in WAL mode. Each archive holds:
+
+- `state.db`: a consistent snapshot from SQLite's online backup API (host
+  `python3`, read-only connection), checked with `PRAGMA quick_check` before
+  upload. A plain `cp state.db` would miss every write still in `state.db-wal`.
+- `BACKUP_METHOD`: `sqlite-online-backup`, `etcd-snapshot`, or
+  `file-copy-not-crash-consistent` (fallback when the host has no `python3`;
+  treat such an archive as best-effort).
+- `tls/` and `token`: the server CA material and join token.
+
+The job is pinned to the control-plane node. It uses the non-preempting
+`enclii-backup-critical` PriorityClass and a 3 h deadline, so a temporarily
+full node delays the backup instead of failing it.
+
 ## Alerting
 
 All backup CronJobs are monitored by Prometheus (`cronjob-health` rule group):
 
 | Alert | Condition | Severity |
 |-------|-----------|----------|
-| `CronJobFailed` | Any job failure in `enclii\|monitoring\|data` | warning |
+| `CronJobFailed` | Latest run of a CronJob in `enclii\|monitoring\|data` did not succeed (no run in progress) | warning |
 | `PostgresBackupMissing` | No successful postgres-backup in 25h | critical |
 | `K3sBackupMissing` | No successful k3s-datastore-backup in 25h | critical |
 | `GitHubBackupMissing` | No successful github-repos-backup in 25h | critical |

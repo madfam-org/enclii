@@ -65,6 +65,13 @@ Sizing is chosen by plan. There are no `--version`, `--size`, `--storage`, or `-
 
 `enclii addon plans` is the authoritative, live catalog.
 
+The CPU column is the instance's CPU **limit**. Since 2026-11-04 every addon
+requests `100m` CPU (or its plan CPU when that is smaller) and bursts up to
+the limit; memory is both request and limit. Addons created earlier move to
+that shape one at a time with
+[`enclii ops addons cpu-request`](../cli/commands/ops.md#ops-addons-cpu-request),
+which restarts the instance.
+
 ### Connect Service to Database
 
 A service is bound when the addon is created. The connection string is injected into the service as `DATABASE_URL` (`REDIS_URL` / `MYSQL_URL` for those engines), and the bound service rolls automatically once the credentials secret exists:

@@ -1,5 +1,7 @@
 # enclii secrets
 
+Last Updated: 2026-10-20
+
 Manage service secrets and environment variables.
 
 ## Synopsis
@@ -272,6 +274,7 @@ Chat-safe credential handoff into Vault — values never appear in agent transcr
 
 ```bash
 enclii secrets intake targets
+enclii secrets intake training-capabilities --json
 enclii secrets intake submit ceq/vast-api-key --reason "orchestrator bootstrap"
 enclii secrets intake submit ceq/vast-api-key --value-file ~/.config/madfam/vast.key --reason "orchestrator bootstrap"
 enclii secrets intake submit <client-portal>/internal-api-key --generate internal_api_key --reason "client portal smoke gate"
@@ -281,6 +284,7 @@ enclii secrets intake status int_1234567890
 | Subcommand | Description |
 |------------|-------------|
 | `targets` | List registered intake targets (Vault path, keys, namespace) |
+| `training-capabilities` | Observe current writer authorization on ten fixed training custody paths; metadata only |
 | `submit TARGET` | Send secret value(s) once; masked prompt, `--value-file`, `--stdin`, or `--generate` |
 | `status INTAKE_ID` | Poll metadata only — safe for agents (no values returned) |
 
@@ -295,6 +299,25 @@ enclii secrets intake status int_1234567890
 | `--json` | JSON output |
 
 `--reason` is required on submit. After submit, tell your agent the `intake_id` only — never paste the secret into chat.
+
+### `training-capabilities` (read-only authorization evidence)
+
+Requires an existing platform-operator login. The command uses the active managed
+CLI configuration; an explicit API token takes precedence and is never retried
+with a different identity. It sends one fixed GET, with no path selector, query,
+body, redirect or automatic retry. Only bounded, validated metadata is rendered;
+raw proxy responses and errors are withheld. `--json` prints a closed
+receipt including all ten reviewed paths, capability enums, UTC
+observation time and derived status. No values, cookies or credential files are
+copied.
+
+Only `verified_required_capabilities` exits successfully. Complete missing or
+excess-authority evidence, and validated `unverified`/`unavailable` receipts, are
+printed for inspection and exit nonzero. Malformed, extra or incomplete metadata
+is refused without printing it. This proves the current scoped writer's path
+authorization only; it grants no permission to mint credentials and proves no
+delivery, ownership, admission or runtime readiness. See the
+[training custody capability contract](../../runbooks/TRAINING_CUSTODY_CAPABILITIES.md).
 
 ### `--generate` (server-side minting)
 
@@ -316,8 +339,14 @@ enclii secrets intake submit <client-portal>/internal-api-key \
   declare is rejected before anything is written.
 - Per-target entropy is tunable in the registry with `generate: {bytes: N}` (16–128).
 
-Nothing outside Vault ever holds a copy, so rotation is a re-run of the same
-command with no scrollback or clipboard to clean up.
+For generic keys, rotation is a re-run of the same command with no scrollback or
+clipboard to clean up. Fixed
+[Janua staging profiles](../../runbooks/ISOLATED_TRAINING_CUSTODY.md#typed-janua-staging-initialization)
+are initialization-only: list every declared key in `--generate` to create a
+matched RSA/Fernet or Redis group, with no supplied values. An existing group
+or concurrent Vault change refuses with 409 and no retry. Database/CA targets
+are supplied-only and reject generation. No arbitrary generator, destination,
+production key reuse or rotation option is exposed.
 
 Requires Switchyard Vault writer enabled (`ENCLII_SECRET_ROTATION_ENABLED` + `vault-credentials` secret). Until then, submit returns `503 vault_writer_disabled`.
 
@@ -342,17 +371,59 @@ enclii secrets provision oidc --all --dry-run --reason "ecosystem sweep"
 |------|-------------|
 | `--platform` | Platform key from registry (`dhanam`, `phynd-crm`, `ceq`, …) |
 | `--all` | Provision every platform in the registry |
-| `--dry-run` | Plan the Janua reconcile without the Vault intake |
+| `--dry-run` | Local plan only: validates the declaration and lists the keys an intake would write. It never contacts Janua or Vault, so it does not show what a run would change in Janua (use `inspect`) |
 | `--reason` | Required audit reason (same as intake) |
 | `--registry` | Legacy mutable registry YAML input; preflight validated, not evidence of an approved training tenant |
 | `--organization-id` | Canonical UUID from supported organization creation/readback; one embedded `--platform` only, never `--all` or `--registry` |
 | `--rotate-secret` | Rotate the Janua client secret when an existing client has no retrievable secret (default `false`; deliberate rotation only) |
 | `--json` | JSON output (no secret values) |
 | `--grace-hours` | Grace period, `0`–`168` hours, for the previous secrets when a secret is rotated. Unset keeps Janua's default (24 h) |
+| `--intake-profile` | Stored login that submits the Vault intake (the `platform_admin` operator under ADR-003). The active profile keeps the Janua calls. Unset uses the active profile |
+
+**Two identities since ADR-003 (2026-10-17).** The Vault intake routes accept only
+the `platform_admin` operator, so a tenant administrator such as `admin@madfam.io`
+gets `403 platform_admin rank required`. Keep `--profile admin` for the Janua calls
+and name the operator's login with `--intake-profile`:
+
+```bash
+enclii --profile admin secrets provision oidc --platform cv-app \
+  --intake-profile default --reason "cv-app sign-in"
+```
+
+Before any Janua change the run lists the intake targets as that login, so a
+refused login or an unknown target stops it with Janua untouched. A run that
+created a client and then lost its intake (the CLI before this check) leaves a
+confidential client whose one-time secret was never stored: re-run with
+`--rotate-secret --grace-hours 0`.
 
 For Dhanam, also auto-submits `dhanam/session-auth` (generated `SESSION_SECRET` /
 `NEXTAUTH_SECRET`) when configured in the registry. After provision, force-sync
 Dhanam ExternalSecrets — see [SECRET_INTAKE runbook](../../runbooks/SECRET_INTAKE.md).
+
+**Canonical registry and first-party silent SSO (2026-10-27).** The registry is
+the one declaration of every MADFAM product client (owner decision D5). Each
+confidential first-party browser client lists Janua's `madfam:silent_auth` scope
+(owner decision D2), which lets it use `prompt=none` against the shared Janua
+session and skip the consent screen. Public clients cannot: Janua issues
+silently only to confidential clients. What a run does to an existing client:
+
+- The admin path PATCHes `redirect_uris`, `allowed_scopes`, `grant_types` and
+  `audience` **wholesale** to the declaration. A scope granted in Janua but not
+  listed in the registry is removed. Read the live row first:
+  `enclii --profile admin secrets provision oidc inspect --platform <id> --json`.
+- `madfam:silent_auth` is a reserved scope. Adding it, and every later edit or
+  rotation of a client that holds it, needs a Janua platform-admin session.
+- On an existing **confidential** client without `--rotate-secret`, the PATCH
+  lands and the run then exits non-zero ("exists without retrievable secret");
+  no secret is rotated and nothing is written to Vault. With `--rotate-secret`
+  the secret is rotated and filed through intake, so the consumer must be
+  reading that Vault path before you rotate. Never combine `--all` with
+  `--rotate-secret`.
+- A pinned `client_id` makes a name or confidentiality mismatch fail closed
+  before any PATCH. An unpinned entry is matched by name; if no row has that
+  name, the run creates one.
+- Leave `JANUA_INTERNAL_API_KEY` unset: with it set the run takes Janua's
+  internal `/register` path instead of the admin path described here.
 
 **Ordinary organization-bound clients.** Grants determine the kind: an ordinary
 client uses `authorization_code` (optionally `refresh_token`); a machine uses only

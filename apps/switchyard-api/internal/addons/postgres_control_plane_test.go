@@ -54,6 +54,59 @@ func TestEnsureControlPlaneEgressIsIdempotent(t *testing.T) {
 	require.Error(t, p.ensureControlPlaneEgress(ctx, "", "pg-fixture"))
 }
 
+func TestOperatorIngressAdmitsOnlyTheCNPGOperatorOnTheStatusPort(t *testing.T) {
+	pol := buildOperatorIngressPolicy("project-fixture", "pg-fixture")
+	require.Equal(t, "pg-fixture-operator-ingress", pol.Name)
+	require.Equal(t, "project-fixture", pol.Namespace)
+	require.Equal(t, map[string]string{"cnpg.io/cluster": "pg-fixture"}, pol.Spec.PodSelector.MatchLabels)
+	require.Equal(t, []networkingv1.PolicyType{networkingv1.PolicyTypeIngress}, pol.Spec.PolicyTypes, "ingress only: egress is the control-plane policy")
+	require.Len(t, pol.Spec.Ingress, 1)
+	rule := pol.Spec.Ingress[0]
+	require.Len(t, rule.From, 1)
+	require.Nil(t, rule.From[0].IPBlock)
+	require.Equal(t, map[string]string{"kubernetes.io/metadata.name": "cnpg-system"}, rule.From[0].NamespaceSelector.MatchLabels)
+	require.Equal(t, map[string]string{"app.kubernetes.io/name": "cloudnative-pg"}, rule.From[0].PodSelector.MatchLabels, "the operator's pods, not the whole namespace")
+	require.Len(t, rule.Ports, 1)
+	require.Equal(t, corev1.ProtocolTCP, *rule.Ports[0].Protocol)
+	require.Equal(t, int32(8000), rule.Ports[0].Port.IntVal, "the instance status port; 5432 stays with data-access")
+}
+
+func TestEnsureCNPGNetworkPoliciesWritesBothAndIsIdempotent(t *testing.T) {
+	ctx := context.Background()
+	kube := kubefake.NewSimpleClientset()
+	p := &PostgresProvisioner{k8sClient: &k8s.Client{KubeClient: kube}}
+	require.NoError(t, p.ensureCNPGNetworkPolicies(ctx, "project-fixture", "pg-fixture"))
+	require.NoError(t, p.ensureCNPGNetworkPolicies(ctx, "project-fixture", "pg-fixture"))
+	list, err := kube.NetworkingV1().NetworkPolicies("project-fixture").List(ctx, metav1.ListOptions{})
+	require.NoError(t, err)
+	names := []string{}
+	for _, pol := range list.Items {
+		names = append(names, pol.Name)
+	}
+	require.ElementsMatch(t, []string{"pg-fixture-control-plane", "pg-fixture-operator-ingress"}, names)
+	require.Error(t, (&PostgresProvisioner{}).ensureCNPGNetworkPolicies(ctx, "project-fixture", "pg-fixture"))
+}
+
+func TestConvergeCNPGNetworkPoliciesSkipsWhatIsNotALiveCluster(t *testing.T) {
+	kube := kubefake.NewSimpleClientset()
+	s := &AddonService{logger: testLogger(), provisioners: map[types.DatabaseAddonType]AddonProvisioner{
+		types.DatabaseAddonTypePostgres: &PostgresProvisioner{k8sClient: &k8s.Client{KubeClient: kube}}}}
+	live := &types.DatabaseAddon{Type: types.DatabaseAddonTypePostgres, Status: types.DatabaseAddonStatusReady, K8sNamespace: "project-fixture", K8sResourceName: "pg-fixture"}
+	require.NoError(t, s.ConvergeCNPGNetworkPolicies(context.Background(), live))
+	for name, addon := range map[string]*types.DatabaseAddon{
+		"nil":       nil,
+		"redis":     {Type: types.DatabaseAddonTypeRedis, Status: types.DatabaseAddonStatusReady, K8sNamespace: "n", K8sResourceName: "r"},
+		"no ns":     {Type: types.DatabaseAddonTypePostgres, Status: types.DatabaseAddonStatusReady, K8sResourceName: "r"},
+		"deleting":  {Type: types.DatabaseAddonTypePostgres, Status: types.DatabaseAddonStatusDeleting, K8sNamespace: "n", K8sResourceName: "r"},
+		"retention": {Type: types.DatabaseAddonTypePostgres, Status: types.DatabaseAddonStatusPendingDeletion, K8sNamespace: "n", K8sResourceName: "r"},
+	} {
+		require.ErrorIs(t, s.ConvergeCNPGNetworkPolicies(context.Background(), addon), ErrNetworkConvergenceNotApplicable, name)
+	}
+	list, err := kube.NetworkingV1().NetworkPolicies("n").List(context.Background(), metav1.ListOptions{})
+	require.NoError(t, err)
+	require.Empty(t, list.Items)
+}
+
 func TestRefreshConvergesControlPlaneEgressForExistingCluster(t *testing.T) {
 	raw, mock, err := sqlmock.New()
 	require.NoError(t, err)
@@ -82,6 +135,8 @@ func TestRefreshConvergesControlPlaneEgressForExistingCluster(t *testing.T) {
 	pol, err := kube.NetworkingV1().NetworkPolicies(ns).Get(context.Background(), resource+"-control-plane", metav1.GetOptions{})
 	require.NoError(t, err, "refresh converges the egress for a cluster provisioned before it existed")
 	require.Equal(t, map[string]string{"cnpg.io/cluster": resource}, pol.Spec.PodSelector.MatchLabels)
+	_, err = kube.NetworkingV1().NetworkPolicies(ns).Get(context.Background(), resource+"-operator-ingress", metav1.GetOptions{})
+	require.NoError(t, err, "refresh also converges the operator ingress")
 	require.Len(t, dyn.Actions(), 1, "the Cluster itself is still only read")
 	require.NoError(t, mock.ExpectationsWereMet())
 }

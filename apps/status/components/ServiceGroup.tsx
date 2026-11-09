@@ -7,18 +7,31 @@ import type { HealthCheckResult, UptimeData, ServiceStatus, ResponseTimeThreshol
 import { calculateOverallStatus } from '@/lib/types'
 import { STATUS_PRIORITY } from '@/lib/status-config'
 import { ChevronDown, ChevronsUpDown } from 'lucide-react'
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useSyncExternalStore } from 'react'
 
 const STORAGE_KEY = 'status-groups-expanded'
 const FAMILY_STORAGE_KEY = 'status-families-expanded'
 
 const DEFAULT_FAMILY = 'Other'
 
-function loadExpandedGroups(): Set<string> | null {
+function preferenceSnapshot(key: string): string | null {
+  try { return localStorage.getItem(key) } catch { return null }
+}
+
+const groupSnapshot = () => preferenceSnapshot(STORAGE_KEY)
+const familySnapshot = () => preferenceSnapshot(FAMILY_STORAGE_KEY)
+const serverSnapshot = () => null
+
+function subscribePreferences(notify: () => void) {
+  window.addEventListener('storage', notify)
+  return () => window.removeEventListener('storage', notify)
+}
+
+function parseExpanded(stored: string | null): Set<string> | null {
   try {
-    const stored = localStorage.getItem(STORAGE_KEY)
-    if (stored) return new Set(JSON.parse(stored))
-  } catch { /* SSR or parse error */ }
+    const names: unknown = stored === null ? null : JSON.parse(stored)
+    if (Array.isArray(names) && names.every(name => typeof name === 'string')) return new Set(names)
+  } catch { /* Invalid stored preferences use the default expanded view. */ }
   return null
 }
 
@@ -26,14 +39,6 @@ function saveExpandedGroups(groups: Set<string>) {
   try {
     localStorage.setItem(STORAGE_KEY, JSON.stringify([...groups]))
   } catch { /* SSR safety */ }
-}
-
-function loadExpandedFamilies(): Set<string> | null {
-  try {
-    const stored = localStorage.getItem(FAMILY_STORAGE_KEY)
-    if (stored) return new Set(JSON.parse(stored))
-  } catch { /* SSR or parse error */ }
-  return null
 }
 
 function saveExpandedFamilies(families: Set<string>) {
@@ -284,6 +289,14 @@ export function ServiceList({
     )
   }
 
+  return <GroupedServiceList services={services} uptimeData={uptimeData} groupBy={groupBy}
+    variant={variant} thresholds={thresholds} />
+}
+
+// Mount grouped state only for grouped views, so changing groupBy never changes
+// the hook order of a mounted component.
+function GroupedServiceList({ services, uptimeData, groupBy, variant = 'card', thresholds }: ServiceListProps) {
+  const maxResponseTime = Math.max(...services.map(s => s.responseTime ?? 0), 1) * 1.2
   // Group services
   const groups = services.reduce((acc, service) => {
     const key = groupBy === 'status' ? service.status : service.group
@@ -302,45 +315,31 @@ export function ServiceList({
 
   const groupNames = sortedGroups.map(([name]) => name)
 
-  // State: which groups are expanded
-  const [expandedGroups, setExpandedGroups] = useState<Set<string>>(
-    () => new Set(groupNames) // default all expanded
+  // The server snapshot keeps all groups expanded for hydration. Browser
+  // preferences arrive through the external store without an effect-driven
+  // state reset. Local overrides also work when localStorage is unavailable.
+  const storedGroups = useSyncExternalStore(subscribePreferences, groupSnapshot, serverSnapshot)
+  const [groupOverride, setGroupOverride] = useState<Set<string> | null>(null)
+  const parsedGroups = parseExpanded(storedGroups)
+  const expandedGroups = groupOverride ?? new Set(
+    parsedGroups ? [...parsedGroups].filter(name => groupNames.includes(name)) : groupNames,
   )
-  const [initialized, setInitialized] = useState(false)
 
-  // Load persisted state on mount
-  useEffect(() => {
-    const stored = loadExpandedGroups()
-    if (stored) {
-      // Only keep groups that still exist
-      const valid = new Set([...stored].filter(g => groupNames.includes(g)))
-      setExpandedGroups(valid)
-    }
-    setInitialized(true)
-  }, []) // eslint-disable-line react-hooks/exhaustive-deps
-
-  const toggleGroup = useCallback((name: string) => {
-    setExpandedGroups(prev => {
-      const next = new Set(prev)
-      if (next.has(name)) {
-        next.delete(name)
-      } else {
-        next.add(name)
-      }
-      saveExpandedGroups(next)
-      return next
-    })
-  }, [])
+  function toggleGroup(name: string) {
+    const next = new Set(expandedGroups)
+    if (next.has(name)) next.delete(name); else next.add(name)
+    setGroupOverride(next)
+    saveExpandedGroups(next)
+  }
 
   const allExpanded = expandedGroups.size === groupNames.length
-  const toggleAll = useCallback(() => {
+  function toggleAll() {
     const next = allExpanded ? new Set<string>() : new Set(groupNames)
-    setExpandedGroups(next)
+    setGroupOverride(next)
     saveExpandedGroups(next)
-  }, [allExpanded, groupNames])
+  }
 
-  // Before localStorage is loaded, default all expanded (SSR-safe)
-  const isExpanded = (name: string) => !initialized || expandedGroups.has(name)
+  const isExpanded = (name: string) => expandedGroups.has(name)
 
   // --- Family-level grouping (S1) ---
   // When any service has a `family`, wrap groups in family accordions. Otherwise
@@ -366,29 +365,21 @@ export function ServiceList({
     return a.localeCompare(b)
   })
 
-  const [expandedFamilies, setExpandedFamilies] = useState<Set<string>>(
-    () => new Set(familyNames),
+  const storedFamilies = useSyncExternalStore(subscribePreferences, familySnapshot, serverSnapshot)
+  const [familyOverride, setFamilyOverride] = useState<Set<string> | null>(null)
+  const parsedFamilies = parseExpanded(storedFamilies)
+  const expandedFamilies = familyOverride ?? new Set(
+    parsedFamilies ? [...parsedFamilies].filter(name => familyNames.includes(name)) : familyNames,
   )
 
-  useEffect(() => {
-    if (!hasFamilies) return
-    const stored = loadExpandedFamilies()
-    if (stored) {
-      const valid = new Set([...stored].filter(f => familyNames.includes(f)))
-      setExpandedFamilies(valid)
-    }
-  }, [hasFamilies]) // eslint-disable-line react-hooks/exhaustive-deps
+  function toggleFamily(name: string) {
+    const next = new Set(expandedFamilies)
+    if (next.has(name)) next.delete(name); else next.add(name)
+    setFamilyOverride(next)
+    saveExpandedFamilies(next)
+  }
 
-  const toggleFamily = useCallback((name: string) => {
-    setExpandedFamilies(prev => {
-      const next = new Set(prev)
-      if (next.has(name)) next.delete(name); else next.add(name)
-      saveExpandedFamilies(next)
-      return next
-    })
-  }, [])
-
-  const isFamilyExpanded = (name: string) => !initialized || expandedFamilies.has(name)
+  const isFamilyExpanded = (name: string) => expandedFamilies.has(name)
 
   if (hasFamilies) {
     return (
@@ -417,7 +408,7 @@ export function ServiceList({
               thresholds={thresholds}
               maxResponseTime={maxResponseTime}
               expandedGroups={expandedGroups}
-              initialized={initialized}
+              initialized={true}
               onToggleGroup={toggleGroup}
             />
           )

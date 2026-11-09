@@ -194,11 +194,11 @@ case "$last" in
       esac
     done
     cat "$STATE/server.log" >> "$log"
-    touch "$STATE/running" "$STATE/replaying"
+    touch "$STATE/running" "$STATE/replaying" "$STATE/started"
     echo "server started"
     exit 0 ;;
   status) [ -f "$STATE/running" ] && exit 0; exit 3 ;;
-  *) rm -f "$STATE/running"; exit 0 ;;
+  *) [ "${STOP_FAIL:-0}" = 1 ] && exit 1; rm -f "$STATE/running"; exit 0 ;;
 esac
 """
 
@@ -302,7 +302,7 @@ def _gnu_date_dir(tmp_path: Path) -> Path | None:
 
 
 def _run_drill(
-    tmp_path: Path, server_log: str, isready: list[int]
+    tmp_path: Path, server_log: str, isready: list[int], *, stop_fails: bool = False, clear_fails: str = "0", premature_exit: bool = False
 ) -> tuple[subprocess.CompletedProcess, Path]:
     state, bindir, target, scratch = (tmp_path / n for n in ("state", "bin", "target", "scratch"))
     for d in (state, bindir, target / "pgdata", scratch):
@@ -312,6 +312,7 @@ def _run_drill(
         "pg_ctl": STUB_PG_CTL,
         "pg_isready": STUB_PG_ISREADY,
         "psql": STUB_PSQL,
+        "find": '#!/bin/bash\nif [ -f "$STATE/started" ] && [[ " $* " == *" -delete "* ]]; then\n  case "${CLEAR_FAIL:-0}" in fail) exit 1 ;; lie) exit 0 ;; esac\nfi\nexec ' + (shutil.which("find") or "/usr/bin/find") + ' "$@"\n',
         "sleep": "#!/bin/bash\nexit 0\n",  # the replay poll waits 10 s per round
     }.items():
         (bindir / name).write_text(body)
@@ -329,6 +330,8 @@ def _run_drill(
         .replace("/opt/pgbackrest/bin/pgbackrest", str(bindir / "pgbackrest"))
         .replace("/var/lib/restore-drill", str(target))
     )
+    if premature_exit:
+        script = script.replace('echo "[4/5] Validate restored contents"', 'exit 0')
     path = [str(bindir)]
     gnu = _gnu_date_dir(tmp_path)
     if gnu:
@@ -337,6 +340,8 @@ def _run_drill(
         **_drill_env(),
         "PATH": os.pathsep.join(path + [os.environ["PATH"]]),
         "STATE": str(state),
+        "STOP_FAIL": "1" if stop_fails else "0",
+        "CLEAR_FAIL": clear_fails,
         "HOME": str(tmp_path),
     }
     command = _drill_container()["command"]
@@ -363,6 +368,9 @@ def test_waits_for_promotion_then_passes(tmp_path: Path) -> None:
     assert proc.returncode == 0, out
     assert "not accepting connections" not in out
     assert "RESTORE DRILL PASSED" in _last_line(proc.stdout)
+    assert proc.stdout.index("RESTORE CLEANUP PASSED") < proc.stdout.index("RESTORE DRILL PASSED")
+    assert not (state / "running").exists()
+    assert not list((tmp_path / "target/pgdata").iterdir())
     assert "wal_segments=3 " in proc.stdout
     assert len((state / "isready.calls").read_text().splitlines()) == 4
     assert "--archive-mode=off" in (state / "restore.args").read_text()
@@ -400,3 +408,25 @@ def test_server_that_dies_in_replay_fails_with_its_log_and_the_reason_last(tmp_p
     assert "unable to get address" in proc.stderr
     assert "command begin" not in proc.stderr, "the long option dumps would crowd the termination message"
     assert "RESTORE DRILL FAILED: restored cluster stopped during WAL replay" in _last_line(proc.stderr)
+
+
+@pytest.mark.parametrize("stop_fails,clear_fails", [(True, "0"), (False, "fail"), (False, "lie")])
+def test_cleanup_failure_never_publishes_success(tmp_path: Path, stop_fails: bool, clear_fails: str) -> None:
+    proc, state = _run_drill(tmp_path, _server_log(last_tx=datetime.now(timezone.utc)), [0],
+                             stop_fails=stop_fails, clear_fails=clear_fails)
+    assert proc.returncode == 1, proc.stdout + proc.stderr
+    assert "RESTORE DRILL PASSED" not in proc.stdout
+    assert "RESTORE CLEANUP PASSED" not in proc.stdout
+    assert "RESTORE DRILL FAILED: cleanup incomplete" in _last_line(proc.stderr)
+    assert list((tmp_path / "target/pgdata").iterdir()), "failed cleanup must be observable"
+    if stop_fails:
+        assert (state / "running").exists(), "a failed stop must not be hidden"
+
+
+def test_incomplete_verification_cannot_exit_successfully(tmp_path: Path) -> None:
+    proc, state = _run_drill(tmp_path, _server_log(last_tx=datetime.now(timezone.utc)), [0], premature_exit=True)
+    assert proc.returncode == 1, proc.stdout + proc.stderr
+    assert "RESTORE DRILL PASSED" not in proc.stdout
+    assert "RESTORE DRILL FAILED: verification did not complete" in _last_line(proc.stderr)
+    assert not (state / "running").exists()
+    assert not list((tmp_path / "target/pgdata").iterdir())

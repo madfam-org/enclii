@@ -68,9 +68,14 @@ attempt();`
 type IsolatedInitialJobPlan struct {
 	ProjectID, AddonID, ServiceID                              uuid.UUID
 	Namespace, Cluster, Profile, Image, IdempotencyKey, Reason string
-	Data                                                       map[string][]byte           `json:"-"`
-	Revalidate                                                 func(context.Context) error `json:"-"`
-	Identity                                                   InitialBootstrapIdentity    `json:"-"`
+	Data                                                       map[string][]byte               `json:"-"`
+	Revalidate                                                 func(context.Context) error     `json:"-"`
+	Identity                                                   InitialBootstrapIdentity        `json:"-"`
+	GenerationRead                                             *PortalGenerationReadInput      `json:"-"`
+	FenceRead                                                  *PortalFenceReadInput           `json:"-"`
+	FenceOrigin                                                *PortalFenceOrigin              `json:"-"`
+	ReconstructionClose                                        *PortalReconstructionCloseInput `json:"-"`
+	ReconstructionEvidence                                     *PortalReconstructionEvidence   `json:"-"`
 	retainedJobName                                            string
 }
 
@@ -133,6 +138,17 @@ func BuildIsolatedInitialJob(p IsolatedInitialJobPlan) (*batchv1.Job, error) {
 	var command, migration []string
 	allowed := map[string]bool{"ca.crt": true}
 	switch {
+	case p.Profile == KarafielSchemaProfile:
+		if string(p.Data["DB_HOST"]) != p.Cluster+"-rw."+p.Namespace+".svc.cluster.local" || string(p.Data["DB_PORT"]) != "5432" || string(p.Data["DB_NAME"]) != "karafiel_staging_sim" || string(p.Data["DB_USER"]) != "enclii_migrator" || string(p.Data["SOURCE_SHA"]) != p.Identity.SourceRevision || string(p.Data["CLUSTER_UID"]) != p.Identity.ClusterUID {
+			return nil, fmt.Errorf("fixed Karafiel database/source custody refused")
+		}
+		if !strings.HasPrefix(p.Image, "ghcr.io/madfam-org/karafiel/api@sha256:") {
+			return nil, fmt.Errorf("fixed Karafiel producer mismatch")
+		}
+		command = []string{"python", "-c", karafielSchemaCommand}
+		for _, name := range []string{"DB_HOST", "DB_PORT", "DB_NAME", "DB_USER", "DB_PASSWORD", "DJANGO_SECRET_KEY", "ENCRYPTION_MASTER_KEY", "SOURCE_SHA", "CLUSTER_UID"} {
+			allowed[name] = true
+		}
 	case IsMapSimProfile(p.Profile):
 		if !strings.HasPrefix(p.Image, "ghcr.io/madfam-org/crea-map/crea-map-web@sha256:") {
 			return nil, fmt.Errorf("initial MAP producer mismatch")
@@ -157,6 +173,34 @@ func BuildIsolatedInitialJob(p IsolatedInitialJobPlan) (*batchv1.Job, error) {
 		}
 		command = []string{"node", "packages/entrenamiento/src/preparar-turno-vigente.ts"}
 		allowed["CREA_SIM_MIGRATOR_DATABASE_URL"], allowed["CREA_SIM_PORTAL_DATABASE_URL"], allowed["CREA_SIM_DATABASE_NAMESPACE"] = true, true, true
+	case p.Profile == fixedStepCierreReconstruccionPasoProfile:
+		// Step 004 likewise takes no argument and no SQL; the preparer applies
+		// only the image's own 004 file, and only on an accredited 003.
+		if !strings.HasPrefix(p.Image, "ghcr.io/madfam-org/crea-sim/gateway@sha256:") {
+			return nil, fmt.Errorf("fixed step portal producer mismatch")
+		}
+		command = []string{"node", "packages/entrenamiento/src/preparar-cierre-reconstruccion.ts"}
+		allowed["CREA_SIM_MIGRATOR_DATABASE_URL"], allowed["CREA_SIM_PORTAL_DATABASE_URL"], allowed["CREA_SIM_DATABASE_NAMESPACE"] = true, true, true
+	case p.Profile == PortalReconstructionCloseProfile:
+		if !strings.HasPrefix(p.Image, "ghcr.io/madfam-org/crea-sim/gateway@sha256:") || !compatibleReconstructionClose(p) {
+			return nil, fmt.Errorf("reconstruction close custody refused")
+		}
+		input, err := ReconstructionCloseBytes(p.ReconstructionClose)
+		if err != nil || string(input) != string(p.Data["request.json"]) {
+			return nil, fmt.Errorf("reconstruction close input refused")
+		}
+		command = []string{"sh", "-c", portalReconstructionCloseCommand}
+		allowed["CREA_SIM_MIGRATOR_DATABASE_URL"], allowed["CREA_SIM_PORTAL_DATABASE_URL"], allowed["CREA_SIM_DATABASE_NAMESPACE"], allowed["request.json"] = true, true, true, true
+	case IsProvenanceReadProfile(p.Profile):
+		if !strings.HasPrefix(p.Image, "ghcr.io/madfam-org/crea-sim/gateway@sha256:") {
+			return nil, fmt.Errorf("provenance reader producer refused")
+		}
+		input, commandText, err := provenanceReadBytes(p.Profile, p.GenerationRead, p.FenceRead)
+		if err != nil || string(input) != string(p.Data["request.json"]) {
+			return nil, fmt.Errorf("provenance reader input refused")
+		}
+		command = []string{"sh", "-c", commandText}
+		allowed["CREA_SIM_PORTAL_DATABASE_URL"], allowed["CREA_SIM_DATABASE_NAMESPACE"], allowed["request.json"] = true, true, true
 	default:
 		return nil, fmt.Errorf("unsupported initial Job profile")
 	}
@@ -168,7 +212,7 @@ func BuildIsolatedInitialJob(p IsolatedInitialJobPlan) (*batchv1.Job, error) {
 		if !allowed[key] || len(value) == 0 {
 			return nil, fmt.Errorf("initial Job environment refused")
 		}
-		if key != "ca.crt" {
+		if key != "ca.crt" && key != "request.json" {
 			keys = append(keys, key)
 		}
 	}
@@ -207,6 +251,28 @@ func BuildIsolatedInitialJob(p IsolatedInitialJobPlan) (*batchv1.Job, error) {
 	}
 	if IsFixedStepProfile(p.Profile) {
 		job.Spec.Template.Spec.InitContainers = []corev1.Container{initialNetworkReady(container, "CREA_SIM_MIGRATOR_DATABASE_URL")}
+	}
+	if IsProvenanceReadProfile(p.Profile) || p.Profile == PortalReconstructionCloseProfile {
+		job.Spec.ActiveDeadlineSeconds = ptr.To[int64](180)
+		job.Spec.Template.Spec.Volumes[1].EmptyDir.SizeLimit = resource.NewQuantity(16<<20, resource.BinarySI)
+		job.Spec.Template.Spec.Containers[0].VolumeMounts = append(job.Spec.Template.Spec.Containers[0].VolumeMounts, corev1.VolumeMount{Name: "request", MountPath: "/var/run/crea-sim/request", ReadOnly: true})
+		job.Spec.Template.Spec.Volumes = append(job.Spec.Template.Spec.Volumes, corev1.Volume{Name: "request", VolumeSource: corev1.VolumeSource{Secret: &corev1.SecretVolumeSource{SecretName: p.jobName() + "-credentials", DefaultMode: ptr.To[int32](0444), Items: []corev1.KeyToPath{{Key: "request.json", Path: "request.json"}}}}})
+		variable := "CREA_SIM_PORTAL_DATABASE_URL"
+		if p.Profile == PortalReconstructionCloseProfile {
+			variable = "CREA_SIM_MIGRATOR_DATABASE_URL"
+		}
+		job.Spec.Template.Spec.InitContainers = []corev1.Container{initialNetworkReady(container, variable)}
+	}
+	if p.Profile == KarafielSchemaProfile {
+		job.Spec.Template.Spec.SecurityContext.RunAsUser = ptr.To[int64](1001)
+		job.Spec.Template.Spec.SecurityContext.RunAsGroup = ptr.To[int64](1001)
+		job.Spec.Template.Spec.SecurityContext.FSGroup = ptr.To[int64](1001)
+		for key, value := range map[string]string{"ENVIRONMENT": "staging", "DB_ENGINE": "django.db.backends.postgresql", "BANK_ALLOCATION_LEDGER_ENABLED": "false", "DHANAM_SOURCE_CURRENTNESS_ENABLED": "false", "FEATURE_CFDI_AUTO_ISSUE": "false", "FEATURE_GRANT_COMPLIANCE": "false", "PGSSLMODE": "verify-full", "PGSSLROOTCERT": "/var/run/crea-sim/ca/ca.crt", "PYTHONPATH": "/app/apps/api", "DJANGO_SETTINGS_MODULE": "karafiel.settings", "STORAGE_BACKEND": "local", "MEDIA_ROOT": "/tmp/karafiel-staging-synthetic", "CELERY_BROKER_URL": "memory://", "CELERY_RESULT_BACKEND": "cache+memory://", "JANUA_ISSUER_URL": "https://auth.madfam.io", "JANUA_AUDIENCE": "karafiel-staging-api", "JANUA_ADDITIONAL_AUDIENCES": ""} {
+			job.Spec.Template.Spec.Containers[0].Env = append(job.Spec.Template.Spec.Containers[0].Env, corev1.EnvVar{Name: key, Value: value})
+		}
+		sort.Slice(job.Spec.Template.Spec.Containers[0].Env, func(i, j int) bool {
+			return job.Spec.Template.Spec.Containers[0].Env[i].Name < job.Spec.Template.Spec.Containers[0].Env[j].Name
+		})
 	}
 	return job, nil
 }
@@ -371,11 +437,18 @@ func (c *Client) admitInitialJob(ctx context.Context, job *batchv1.Job, includeJ
 // Create suspended first, bind its observed UID in immutable namespace intent,
 // prepare owned transient custody/network, recheck
 // authority, then activate once. A timeout never starts an automatic retry.
-func (c *Client) RunIsolatedInitialJob(ctx context.Context, p IsolatedInitialJobPlan, dryRun bool) (*IsolatedInitialJobReceipt, error) {
+func (c *Client) RunIsolatedInitialJob(ctx context.Context, p IsolatedInitialJobPlan, dryRun bool) (result *IsolatedInitialJobReceipt, err error) {
+	stage := "plan"
+	defer func() {
+		if _, alreadyHeld := err.(*initialJobHoldError); err != nil && !alreadyHeld {
+			err = &initialJobHoldError{stage: stage, cause: err}
+		}
+	}()
 	job, err := BuildIsolatedInitialJob(p)
 	if err != nil {
 		return nil, err
 	}
+	stage = "namespace_authority"
 	if err = c.checkInitialJobNamespace(ctx, p); err != nil {
 		return nil, err
 	}
@@ -383,11 +456,13 @@ func (c *Client) RunIsolatedInitialJob(ctx context.Context, p IsolatedInitialJob
 	if err != nil {
 		return nil, err
 	}
+	stage = "operation_exclusion"
 	if err = c.checkOperationExclusion(ctx, p); err != nil {
 		return nil, err
 	}
 	kind := p.kind()
 	jobs := c.kubeClient().BatchV1().Jobs(p.Namespace)
+	stage = "retained_intent"
 	retained, intentErr := c.readInitialIntent(ctx, p, intent)
 	existing, jobErr := jobs.Get(ctx, job.Name, metav1.GetOptions{})
 	if intentErr == nil {
@@ -402,7 +477,7 @@ func (c *Client) RunIsolatedInitialJob(ctx context.Context, p IsolatedInitialJob
 		if !k8serrors.IsNotFound(receiptErr) {
 			return nil, receiptErr
 		}
-		if IsFixedStepProfile(p.Profile) && k8serrors.IsNotFound(jobErr) {
+		if IsRepeatedProfile(p.Profile) && k8serrors.IsNotFound(jobErr) {
 			// Its Job outlived its TTL uncollected. Nothing runs and nothing is
 			// written here; the database's own step receipt holds the outcome,
 			// and this operation no longer blocks a new key.
@@ -417,7 +492,7 @@ func (c *Client) RunIsolatedInitialJob(ctx context.Context, p IsolatedInitialJob
 		if existing.Status.Failed > 0 {
 			// An initial failure is never resumed. A fixed step's failed Job
 			// is collected once as a terminal held receipt; nothing reruns.
-			if !IsFixedStepProfile(p.Profile) {
+			if !IsRepeatedProfile(p.Profile) {
 				return nil, fmt.Errorf("initial Job partial or failed; held, no repair")
 			}
 			receipt := initialJobReceipt(existing, kind, dryRun)
@@ -449,21 +524,47 @@ func (c *Client) RunIsolatedInitialJob(ctx context.Context, p IsolatedInitialJob
 	if !k8serrors.IsNotFound(intentErr) {
 		return nil, fmt.Errorf("initial retained intent unavailable or conflicting")
 	}
-	if !k8serrors.IsNotFound(jobErr) {
+	recovering := jobErr == nil
+	if recovering {
+		stage = "unstarted_witness"
+		if err = c.checkUnstartedInitialRead(ctx, p, existing, job, intent); err != nil {
+			return nil, err
+		}
+	} else if !k8serrors.IsNotFound(jobErr) {
 		return nil, fmt.Errorf("existing or unknown Job without retained intent; held")
 	}
+	stage = "registry_admission"
 	if err = c.ensureInitialRegistryCustody(ctx, p, true, true); err != nil {
 		return nil, err
 	}
-	if err = c.admitInitialJob(ctx, job, true); err != nil {
+	stage = "job_pod_admission"
+	// A recovered Job already exists: dry-run CREATE would conflict. Its GET
+	// was checked strictly; Pod admission and the final real CAS still apply.
+	if err = c.admitInitialJob(ctx, job, !recovering); err != nil {
 		return nil, err
 	}
+	stage = "intent_admission"
 	record, err := initialRecord(p, "-intent", intent)
 	if err != nil {
 		return nil, err
 	}
 	if _, err = c.kubeClient().CoreV1().ConfigMaps(p.Namespace).Create(ctx, record, metav1.CreateOptions{DryRun: []string{metav1.DryRunAll}}); err != nil {
 		return nil, fmt.Errorf("initial intent admission refused")
+	}
+	if boundedInitialProfile(p.Profile) {
+		stage = "preparation_admission"
+		_, preparationErr := c.readInitialPreparation(ctx, p, intent)
+		if k8serrors.IsNotFound(preparationErr) {
+			prepared, e := initialRecord(p, "-prepared", intent)
+			if e != nil {
+				return nil, e
+			}
+			if _, err = c.kubeClient().CoreV1().ConfigMaps(p.Namespace).Create(ctx, prepared, metav1.CreateOptions{DryRun: []string{metav1.DryRunAll}}); err != nil {
+				return nil, fmt.Errorf("bounded Job preparation admission refused")
+			}
+		} else if preparationErr != nil {
+			return nil, fmt.Errorf("original bounded Job preparation unavailable or conflicting")
+		}
 	}
 	if dryRun {
 		receipt := initialJobReceipt(job, kind, true)
@@ -474,16 +575,47 @@ func (c *Client) RunIsolatedInitialJob(ctx context.Context, p IsolatedInitialJob
 	}
 
 	expected := job.DeepCopy()
-	name := job.Name
-	job, err = jobs.Create(ctx, job, metav1.CreateOptions{})
-	if err != nil {
-		_, _ = jobs.Get(ctx, name, metav1.GetOptions{})
-		return nil, fmt.Errorf("initial Job creation uncertain; read same operation, no retry")
+	if recovering {
+		stage = "unstarted_identity_recheck"
+		job, err = jobs.Get(ctx, existing.Name, metav1.GetOptions{})
+		if err != nil || job.UID != existing.UID || job.ResourceVersion != existing.ResourceVersion {
+			return nil, fmt.Errorf("unstarted initial Job identity changed; held")
+		}
+		if err = c.checkUnstartedInitialRead(ctx, p, job, expected, intent); err != nil {
+			return nil, err
+		}
+		if err = p.Revalidate(ctx); err != nil {
+			return nil, fmt.Errorf("unstarted initial Job authority changed; held")
+		}
+		expected.Generation = job.Generation // A recovered Job must never have been activated, including before the final CAS.
+	} else {
+		if boundedInitialProfile(p.Profile) {
+			stage = "preparation_authority"
+			if err = p.Revalidate(ctx); err != nil {
+				return nil, fmt.Errorf("bounded Job preparation authority changed; held")
+			}
+			stage = "preparation_retention"
+			prepared, e := c.retainInitialPreparation(ctx, p, intent)
+			if e != nil {
+				return nil, e
+			}
+			bindInitialPreparation(job, prepared)
+			bindInitialPreparation(expected, prepared)
+		}
+		stage = "suspended_job_creation"
+		name := job.Name
+		job, err = jobs.Create(ctx, job, metav1.CreateOptions{})
+		if err != nil {
+			_, _ = jobs.Get(ctx, name, metav1.GetOptions{})
+			return nil, fmt.Errorf("initial Job creation uncertain; read same operation, no retry")
+		}
 	}
+	stage = "suspended_job_spec"
 	if job.UID == "" || job.ResourceVersion == "" || !initialJobMatches(job, expected, intent) {
 		return nil, fmt.Errorf("initial suspended Job identity/spec unavailable; held")
 	}
 	intent.JobUID = string(job.UID)
+	stage = "intent_retention"
 	intent.CreationResourceVersion = job.ResourceVersion
 	record, err = initialRecord(p, "-intent", intent)
 	if err != nil {
@@ -498,21 +630,27 @@ func (c *Client) RunIsolatedInitialJob(ctx context.Context, p IsolatedInitialJob
 	if validateInitialRecord(retained, p, "-intent", &kept) != nil || !reflect.DeepEqual(kept, intent) {
 		return nil, fmt.Errorf("initial intent retention not accredited")
 	}
+	stage = "registry_custody"
 	if err = c.ensureInitialRegistryCustody(ctx, p, false, true); err != nil {
 		return nil, err
 	}
 	owner := metav1.OwnerReference{APIVersion: "batch/v1", Kind: "Job", Name: job.Name, UID: job.UID, Controller: ptr.To(true)}
+	stage = "transient_custody"
 	secret := &corev1.Secret{ObjectMeta: metav1.ObjectMeta{Name: job.Name + "-credentials", Namespace: p.Namespace, Labels: p.jobLabels(), OwnerReferences: []metav1.OwnerReference{owner}}, Type: corev1.SecretTypeOpaque, Data: p.Data}
+	if IsProvenanceReadProfile(p.Profile) {
+		secret.Immutable = ptr.To(true)
+	}
 	secrets := c.kubeClient().CoreV1().Secrets(p.Namespace)
 	oldSecret, getErr := secrets.Get(ctx, secret.Name, metav1.GetOptions{})
 	if k8serrors.IsNotFound(getErr) {
 		_, err = secrets.Create(ctx, secret, metav1.CreateOptions{})
-	} else if getErr != nil || !reflect.DeepEqual(oldSecret.OwnerReferences, secret.OwnerReferences) || !reflect.DeepEqual(oldSecret.Data, secret.Data) {
+	} else if getErr != nil || !reflect.DeepEqual(oldSecret.OwnerReferences, secret.OwnerReferences) || !reflect.DeepEqual(oldSecret.Data, secret.Data) || IsProvenanceReadProfile(p.Profile) && (oldSecret.Immutable == nil || !*oldSecret.Immutable) {
 		err = fmt.Errorf("initial transient custody conflicts")
 	}
 	if err != nil {
 		return nil, fmt.Errorf("initial Job remains suspended: custody unavailable")
 	}
+	stage = "transient_network"
 	network := initialDatabasePolicy(p, owner)
 	networks := c.kubeClient().NetworkingV1().NetworkPolicies(p.Namespace)
 	oldNetwork, getErr := networks.Get(ctx, network.Name, metav1.GetOptions{})
@@ -524,6 +662,7 @@ func (c *Client) RunIsolatedInitialJob(ctx context.Context, p IsolatedInitialJob
 	if err != nil {
 		return nil, fmt.Errorf("initial Job remains suspended: network unavailable")
 	}
+	stage = "authority_recheck"
 	if err = p.Revalidate(ctx); err != nil {
 		return nil, fmt.Errorf("initial Job remains suspended: authority changed")
 	}
@@ -533,6 +672,7 @@ func (c *Client) RunIsolatedInitialJob(ctx context.Context, p IsolatedInitialJob
 	if err = c.ensureInitialRegistryCustody(ctx, p, true, false); err != nil {
 		return nil, fmt.Errorf("initial Job remains suspended: registry custody changed")
 	}
+	stage = "activation_cas"
 	job, err = c.activateInitialJob(ctx, p, job, expected, intent, retained)
 	if err != nil {
 		return nil, err
@@ -553,7 +693,7 @@ func (c *Client) IsolatedInitialJobStatus(ctx context.Context, namespace, name s
 		return nil, nil, fmt.Errorf("initial Job status scope refused")
 	}
 	suffix := ""
-	for _, kind := range []bootstrapKind{initialKind, fixedStepKind} {
+	for _, kind := range []bootstrapKind{initialKind, fixedStepKind, provenanceReadKind, karafielSchemaKind} {
 		if strings.HasPrefix(name, kind.namePrefix) {
 			suffix = name[len(kind.namePrefix):]
 		}
@@ -573,7 +713,7 @@ func (c *Client) activateInitialJob(ctx context.Context, p IsolatedInitialJobPla
 	// Read the same UID and fixed spec immediately before the one CAS PUT.
 	// The original creation RV stays historical; controller updates may advance it.
 	current, e := jobs.Get(ctx, job.Name, metav1.GetOptions{})
-	if e != nil || !initialJobMatches(current, expected, intent) || current.Spec.Suspend == nil || !*current.Spec.Suspend || current.Status.Active != 0 || current.Status.Succeeded != 0 || current.Status.Failed != 0 {
+	if e != nil || !initialJobMatches(current, expected, intent) || (expected.Generation != 0 && current.Generation != expected.Generation) || current.Spec.Suspend == nil || !*current.Spec.Suspend || current.Status.Active != 0 || current.Status.Succeeded != 0 || current.Status.Failed != 0 {
 		return nil, fmt.Errorf("initial suspended Job changed; held")
 	}
 	currentIntent, e := c.readInitialIntent(ctx, p, intent)

@@ -26,8 +26,8 @@ func (h *Handler) RequirePlatformOperator() gin.HandlerFunc {
 
 // During the additive inventory rollout, existing operator routes retain
 // their original admin role guard. Inventory is new and requires platform rank
-// immediately, as do jobs suspend, apps bind-target/tracking and pods
-// restart: a tenant admin must not reach another tenant's workloads, and the
+// immediately, as do jobs suspend, apps bind-target/tracking, pods restart
+// and addons hibernate/backup-credential/cpu-request: a tenant admin must not reach another tenant's workloads, and the
 // admin role guard cannot tell a tenant admin from a platform operator. Both
 // this guard and adapter dispatch use the same domain param; an operation name
 // in the body cannot select or authorize another adapter.
@@ -38,9 +38,12 @@ func registerOperatorRoutes(protected *gin.RouterGroup, h *Handler) {
 	ops.GET("/capabilities", legacyAdmin, h.GetOpsCapabilities)
 	ops.GET("/apps/bind-target/:idempotency_id", platformOperator, h.ReadServiceDeploymentTargetReceipt)
 	ops.POST("/:domain/:action", func(c *gin.Context) {
-		if c.Param("domain") == "inventory" || (c.Param("domain") == "jobs" && c.Param("action") == "suspend") ||
-			(c.Param("domain") == "apps" && (c.Param("action") == "bind-target" || c.Param("action") == "tracking")) ||
-			(c.Param("domain") == "pods" && c.Param("action") == "restart") {
+		if c.Param("domain") == "inventory" || (c.Param("domain") == "jobs" && (c.Param("action") == "suspend" || c.Param("action") == "run-target")) ||
+			(c.Param("domain") == "apps" && (c.Param("action") == "bind-target" || c.Param("action") == "tracking" ||
+				c.Param("action") == "sync" || c.Param("action") == "sync-sweep" || c.Param("action") == "retire" || c.Param("action") == "rollback")) ||
+			(c.Param("domain") == "pods" && c.Param("action") == "restart") ||
+			(c.Param("domain") == "addons" && (c.Param("action") == "hibernate" || c.Param("action") == "backup-credential" || c.Param("action") == "cpu-request")) ||
+			(c.Param("domain") == "storage" && c.Param("action") == "prune-detached") {
 			platformOperator(c)
 			return
 		}

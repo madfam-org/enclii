@@ -242,8 +242,8 @@ export function getUpgradeMessage(action: BlockedAction, tier: FoundryTier): str
  * Get the upgrade URL for upgrading to Sovereign (slug `pro`,
  * entitlement `enclii_pro`).
  *
- * Points at enclii's OWN upgrade page (app.enclii.dev/upgrade), which POSTs to
- * /v1/billing/checkout and redirects to Dhanam's hosted checkout. It must never
+ * Points at enclii's OWN upgrade page (app.enclii.dev/upgrade), which sends the
+ * browser to Dhanam's hosted checkout (getDhanamCheckoutUrl). It must never
  * point at the historical dhanam.madfam.io host, which is NXDOMAIN and serves
  * no checkout route — a tier-blocked user would otherwise dead-end. Override the
  * base with NEXT_PUBLIC_UPGRADE_URL.
@@ -260,4 +260,58 @@ export function getCheckoutUrl(userId?: string, returnUrl?: string): string {
     params.set('return_url', returnUrl);
   }
   return `${baseUrl}?${params.toString()}`;
+}
+
+/** Dhanam's hosted checkout page (the link pattern every MADFAM product uses). */
+export const DHANAM_CHECKOUT_URL = 'https://app.dhan.am/checkout';
+
+/** Dhanam catalog plan id for Sovereign (`<product>_<tier>`). */
+export const ENCLII_PRO_PLAN_ID = 'enclii_pro';
+
+/**
+ * The Dhanam-hosted checkout link for Sovereign.
+ *
+ * The buyer signs in with Janua on app.dhan.am/checkout, and Dhanam resolves
+ * who the purchase entitles there, so the link carries no identity: no
+ * user_id, no token. Only the plan, the product and where to come back to.
+ * Override the base with NEXT_PUBLIC_DHANAM_CHECKOUT_URL (e.g. staging).
+ *
+ * `returnUrl` must be an http(s) URL; anything else is dropped and Dhanam
+ * falls back to its own default.
+ */
+export function getDhanamCheckoutUrl(returnUrl?: string): string {
+  const base = process.env.NEXT_PUBLIC_DHANAM_CHECKOUT_URL || DHANAM_CHECKOUT_URL;
+  const url = new URL(base);
+  url.searchParams.set('plan', ENCLII_PRO_PLAN_ID);
+  url.searchParams.set('product', 'enclii');
+  if (returnUrl) {
+    try {
+      const parsed = new URL(returnUrl);
+      if (parsed.protocol === 'https:' || parsed.protocol === 'http:') {
+        url.searchParams.set('return_url', parsed.toString());
+      }
+    } catch {
+      // not a URL: leave return_url out
+    }
+  }
+  return url.toString();
+}
+
+/** The console a finished or abandoned checkout comes back to. */
+export const CONSOLE_ORIGIN = 'https://app.enclii.dev';
+
+/**
+ * The `return_url` to hand Dhanam: the requested one when it points back at
+ * the console, otherwise the console's settings page. Pure and deterministic
+ * (no window), so a rendered checkout link hydrates unchanged.
+ */
+export function getUpgradeReturnUrl(candidate?: string | null): string {
+  const fallback = `${CONSOLE_ORIGIN}/settings`;
+  if (!candidate) return fallback;
+  try {
+    const parsed = new URL(candidate);
+    return parsed.origin === CONSOLE_ORIGIN ? parsed.toString() : fallback;
+  } catch {
+    return fallback;
+  }
 }

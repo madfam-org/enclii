@@ -52,6 +52,11 @@ const config: Config = {
           // Show last updated time for docs
           showLastUpdateTime: true,
         },
+        // Operator runbooks and audit records build (other docs link to
+        // them) but stay out of the sitemap; nginx also marks them noindex.
+        sitemap: {
+          ignorePatterns: ['/runbooks/**', '/audits/**'],
+        },
         pages: false,
         blog: false,
         theme: {

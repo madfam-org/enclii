@@ -68,11 +68,18 @@ else
 fi
 
 echo
-echo "--- Longhorn detached orphan prune (O-4) ---"
+echo "--- Longhorn orphan prune (O-4) ---"
+# Never bulk-applied from here: the prune deletes volumes, so it is applied only
+# with the plan_hash of a dry run a human reviewed (PRUNE_EXPECT_PLAN). The
+# server refuses detached volumes whose PV is still Bound (hibernated databases,
+# idle claims), and refuses an apply whose plan changed since the review.
+enclii ops storage prune-detached
 if [ "$APPLY" = true ]; then
-  enclii ops storage prune-detached --apply --reason "$REASON"
-else
-  enclii ops storage prune-detached
+  if [ -n "${PRUNE_EXPECT_PLAN:-}" ]; then
+    enclii ops storage prune-detached --expect-plan "$PRUNE_EXPECT_PLAN" --apply --reason "$REASON"
+  else
+    echo "Skipped prune apply: review the eligible rows above, then re-run with PRUNE_EXPECT_PLAN=<plan_hash>."
+  fi
 fi
 
 echo

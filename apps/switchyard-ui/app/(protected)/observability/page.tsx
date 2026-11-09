@@ -235,7 +235,8 @@ export default function ObservabilityPage() {
             <option value="1h">Last 1 hour</option>
             <option value="6h">Last 6 hours</option>
             <option value="24h">Last 24 hours</option>
-            <option value="7d">Last 7 days</option>
+            {/* No 7-day option: an API replica keeps 24 hours in memory, so
+                a 7-day chart could only ever show the last day. */}
           </select>
           <Button variant="outline" onClick={() => refreshAll(false)}>
             <RefreshCw className="mr-2 h-4 w-4" />
@@ -249,7 +250,7 @@ export default function ObservabilityPage() {
       <div className="grid gap-4 md:grid-cols-4">
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Error Rate</CardTitle>
+            <CardTitle className="text-sm font-medium">5xx Rate</CardTitle>
             <AlertTriangle className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
@@ -260,7 +261,9 @@ export default function ObservabilityPage() {
                   ? "—"
                   : "…"}
             </div>
-            <p className="text-xs text-muted-foreground">HTTP request error rate</p>
+            <p className="text-xs text-muted-foreground">
+              Server errors on one API replica since it started
+            </p>
           </CardContent>
         </Card>
 
@@ -277,7 +280,9 @@ export default function ObservabilityPage() {
                   ? "—"
                   : "…"}
             </div>
-            <p className="text-xs text-muted-foreground">Average response time</p>
+            <p className="text-xs text-muted-foreground">
+              One API replica since it started
+            </p>
           </CardContent>
         </Card>
 

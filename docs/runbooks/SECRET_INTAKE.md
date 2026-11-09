@@ -1,6 +1,6 @@
 # Secret Intake (chat-safe credential handoff)
 
-**Last Updated:** 2026-10-13
+**Last Updated:** 2026-10-20
 
 Isolated training and API-only Janua staging targets are documented in
 [Isolated training custody](ISOLATED_TRAINING_CUSTODY.md). These declarations
@@ -88,6 +88,9 @@ Canonical routing: `apps/switchyard-api/internal/secretsintake/registry.yaml`
 | `dhanam/banxico` | `secret/dhanam` | `banxico_api_token` (ExternalSecret `dhanam-secrets-extended`) |
 | `dhanam/karafiel-callback-secret` | `secret/dhanam` | `karafiel_dhanam_signing_secret` (generated; see [Dhanam ↔ Karafiel webhook keys](#dhanam--karafiel-webhook-keys-2026-10-14)) |
 | `karafiel/dhanam-webhook-secret` | `secret/karafiel` | `dhanam_karafiel_signing_secret` (generated; same section) |
+| `dhanam/billing-webhook-secret` | `secret/dhanam` | `billing_webhook_secret` (generated; see [Remediation wave](#remediation-wave-phynd-crm-edge-crawler-caller-keys-dhanam-metering-key-2026-11-09)) |
+| `madfam-crawler/api-key-<caller>` | `secret/madfam-crawler` | `api_key_<caller>` for forgesight, fortuna, tulana, rondelio, avala, tezca (generated; same section) |
+| `nauta/phynd-crm-oauth` | `secret/nauta` | `phynd_crm_oauth_client_id`, `phynd_crm_oauth_client_secret`: **provisioned, never submitted** (`enclii secrets provision oidc --platform nauta-phynd-crm`; same section) |
 | `platform/comms-resend-api-key` | `secret/comms` | `resend-api-key` → `resend_api_key` in Vault |
 
 After `platform/comms-resend-api-key` intake, fan-out to all consumers:
@@ -98,11 +101,15 @@ After `platform/comms-resend-api-key` intake, fan-out to all consumers:
 
 ESO sources: `enclii-secrets`, `janua-secrets`, `madfam-site-secrets`, `phynd-crm-secrets` (and staging) read `secret/comms.resend_api_key`.
 | `enclii/internal-api-key` | `secret/enclii` | `INTERNAL_API_KEY` |
+| `enclii/addon-db-backups` | `secret/enclii` | `addon_backup_access_key_id`, `addon_backup_secret_access_key`: **provisioned, never submitted.** `enclii ops addons backup-credential` ensures the bucket, mints a token scoped to it and writes both keys; no human holds the value (see [ADDON_BACKUPS.md](ADDON_BACKUPS.md#provisioning-the-credential-one-time-no-human-holds-it)). A hand submit is break-glass only. |
 | `coupler/janua-service-token` | `secret/coupler` | `JANUA_SERVICE_TOKEN` |
 | `janua/internal-api-key` | `secret/janua` | `internal_api_key` |
 | `<client-portal>/internal-api-key` | `secret/<client-portal>` | `internal_api_key` |
 | `<client-portal>/kalya-feeds` | `secret/<client-portal>` | `kalya_occupancy_feed_url`, `kalya_capacity_feed_url` |
 | `symbiosis-hcm/<portal>-absence-feed` | `secret/symbiosis-hcm` | `<portal>_absence_feed_url`, `<portal>_absence_feed_key` |
+| `symbiosis-hcm/karafiel-client` | `secret/symbiosis-hcm` | `karafiel_service_client_id`, `karafiel_service_client_secret`: **provisioned, never submitted** (`enclii secrets provision oidc --platform symbiosis-hcm-karafiel`) |
+| `symbiosis-hcm/dhanam-writer-client` | `secret/symbiosis-hcm` | `dhanam_writer_client_id`, `dhanam_writer_client_secret`: **provisioned, never submitted** (`enclii secrets provision oidc --platform symbiosis-hcm-dhanam-writer`) |
+| `karafiel/dhanam-cost-events-client` | `secret/karafiel` | `dhanam_cost_events_client_id`, `dhanam_cost_events_client_secret`: **provisioned, never submitted** (`enclii secrets provision oidc --platform karafiel-dhanam-cost-events`) |
 | `nauta/kalya-feed-tokens` | `secret/nauta` | `kalya_feed_tokens` |
 | `nauta/symbiosis-hcm-token` | `secret/nauta` | `symbiosis_hcm_token` |
 | `angelia/courier-producer-keys` | `secret/angelia` | `courier_producer_key_alarms`, `courier_producer_key_enclii_ops`, `courier_producer_key_tulana`, `courier_producer_key_madfam_site` |
@@ -115,6 +122,8 @@ ESO sources: `enclii-secrets`, `janua-secrets`, `madfam-site-secrets`, `phynd-cr
 | `family-history/api-access` | `secret/family-history` | `fh_early_access_allowlist` |
 | `family-history/web-oidc` | `secret/family-history` | `auth_janua_client_id`, `auth_janua_client_secret` |
 | `family-history/web-session` | `secret/family-history` | `fh_session_secret` |
+| `telesia/oidc-janua` | `secret/telesia` | `janua_client_id`, `janua_client_secret` |
+| `telesia/web-session` | `secret/telesia` | `auth_secret` (`--generate`, 48 bytes) |
 | `pravara-mes/yantra4d-step-reader` | `secret/pravara-mes` | `yantra4d_step_reader_client_id`, `yantra4d_step_reader_client_secret` |
 | `pravara-mes/asset-shells-publisher-madfam-ecosystem` | `secret/pravara-mes` | `asset_shells_publisher_madfam_ecosystem_client_id`, `asset_shells_publisher_madfam_ecosystem_client_secret` |
 | `pravara-mes/fabrication-prep-client` | `secret/pravara-mes` | `fabrication_prep_client_id`, `fabrication_prep_client_secret` |
@@ -125,6 +134,11 @@ ESO sources: `enclii-secrets`, `janua-secrets`, `madfam-site-secrets`, `phynd-cr
 | `digifab-quoting/web-oidc` | `secret/digifab-quoting` | `janua_client_id`, `janua_client_secret` |
 | `digifab-quoting/web-session` | `secret/digifab-quoting` | `nextauth_secret` |
 | `zavlo/cfdi-emitter` | `secret/zavlo` | `zavlo_cfdi_emitter_client_id`, `zavlo_cfdi_emitter_client_secret` |
+| `zavlo/api-runtime` | `secret/zavlo` | `redis_url` |
+| `zavlo/email` | `secret/zavlo` | `resend_api_key` |
+| `zavlo/blockchain` | `secret/zavlo` | `wallet_private_key`, `polygon_rpc_url`, `contract_address` |
+| `zavlo/billing` | `secret/zavlo` | `dhanam_webhook_secret`, `federation_api_token` |
+| `zavlo/karafiel-hmac` | `secret/zavlo` | `zavlo_karafiel_hmac_secret` |
 | `routecraft/billing-relay` | `secret/routecraft` | `billing_relay_client_id`, `billing_relay_client_secret` |
 | `voxa/selva-client` | `secret/voxa` | `selva_client_id`, `selva_client_secret` |
 | `voxa/web-session` | `secret/voxa` | `auth_secret` |
@@ -247,7 +261,9 @@ scripts/apply-switchyard-vault-policy-remote.sh`):
 
 ```bash
 export ENCLII_API_ENDPOINT=https://api.enclii.dev
-# Creating a Janua client needs a Janua admin session (`--profile admin`).
+# Creating a Janua client needs a Janua admin session (`--profile admin`); since
+# ADR-003 the intake needs the platform_admin operator: add `--intake-profile default`
+# (docs/cli/commands/secrets.md#enclii-secrets-provision-oidc).
 # Until a CLI release embeds family-history-web, pass the registry from a main checkout:
 enclii --profile admin secrets provision oidc --platform family-history-web \
   --registry config/ecosystem-oidc-provision.yaml \
@@ -355,6 +371,85 @@ enclii secrets provision oidc --profile admin --platform voxa-selva --json --rea
 
 Then pin the printed `jnc_…` id as `janua_client.client_id` for `voxa-selva` in
 both registry copies.
+
+### Symbiosis-HCM → Karafiel edge (2026-11-02)
+
+One Janua `client_credentials` client for HCM's API and Celery worker calling
+Karafiel: `symbiosis-hcm-karafiel` (Janua client `symbiosis-hcm-karafiel`,
+audience `karafiel-api`, scopes `legal:contractor-draft`,
+`legal:employment-draft` and `fiscal:invoice`, platform-admin with no
+organization, like `zavlo-cfdi-emitter`). HCM asks Janua for ONE scope per
+token, so a contract-draft token never carries `fiscal:invoice`. The pair is
+filed at `symbiosis-hcm/karafiel-client` → `secret/symbiosis-hcm` and delivered
+by HCM's dedicated `hcm-service-clients` ExternalSecret (symbiosis-hcm
+`infra/k8s/production/externalsecret-service-clients.yaml`), never by the
+hand-made `hcm-secrets`. That ExternalSecret maps the two lowercase properties
+to `KARAFIEL_SERVICE_CLIENT_ID`/`_SECRET`, `KARAFIEL_CONTRACTOR_DRAFT_CLIENT_ID`/
+`_SECRET` and `KARAFIEL_EMPLOYMENT_CLIENT_ID`/`_SECRET`. HCM ignores the pair
+until `KARAFIEL_CONTRACTOR_DRAFTS` / `KARAFIEL_EMPLOYMENT_CONTRACTS_ENABLED`
+are on.
+
+Janua must reserve `legal:contractor-draft` and `legal:employment-draft` for
+platform admins (its RESERVED_SCOPES) before this client is registered; until
+then a non-platform org admin could register a client holding the same scopes.
+
+Owner sequence, after the Janua reservation is deployed and this registry
+change is deployed (switchyard-api digest bump), from an up-to-date checkout.
+`secret/symbiosis-hcm` is already in the switchyard Vault policy:
+
+```bash
+cd ~/labspace/enclii && git pull --ff-only
+make -C ~/labspace/enclii install-cli CLI_INSTALL_DIR=$HOME/.local/bin
+enclii login --profile admin   # only if the admin session expired
+enclii --profile admin secrets provision oidc --platform symbiosis-hcm-karafiel --intake-profile default --json --reason "symbiosis-hcm to karafiel machine edge: contract drafts and CFDI"
+```
+
+Then pin the printed `jnc_…` id as `janua_client.client_id` for
+`symbiosis-hcm-karafiel` in both registry copies.
+
+### Symbiosis-HCM → Dhanam scheduled-payments writer (2026-11-02)
+
+`symbiosis-hcm-dhanam-writer` (audience `dhanam-api`, scope
+`dhanam-scheduled-payments:write`, org-bound to `madfam-ecosystem` because
+Dhanam's writer strategy refuses a token without `org_id`), filed at
+`symbiosis-hcm/dhanam-writer-client` → `secret/symbiosis-hcm` and delivered by
+HCM's dedicated `hcm-dhanam-writer` ExternalSecret as `DHANAM_WRITER_CLIENT_ID`
+/ `DHANAM_WRITER_CLIENT_SECRET`. The token alone authorizes nothing: Dhanam's
+`ScheduledPaymentWriterGrant` (Dhanam `apps/api/scripts/provision-scheduled-payment-writer-grant.ts`)
+binds this client id and organization to one business space.
+
+The scope has ONE colon because Janua registers only `namespace:action`.
+Dhanam (`WRITER_SCOPE`) and HCM (`prestadores/dhanam_plan.py` `ALCANCE`) must
+use this exact string before the client is provisioned.
+
+```bash
+enclii --profile admin secrets provision oidc --platform symbiosis-hcm-dhanam-writer --intake-profile default --json --reason "symbiosis-hcm to dhanam scheduled-payments writer"
+```
+
+Then pin the printed `jnc_…` id in both registry copies and use it as the
+grant's `clientId`.
+
+### Karafiel → Dhanam cost events (2026-11-05)
+
+`karafiel-dhanam-cost-events` (audience `dhanam-api`, scope
+`dhanam-cost-events:write`, org-bound to `madfam-ecosystem` because Dhanam's
+cost-events strategy refuses a token without `org_id`), filed at
+`karafiel/dhanam-cost-events-client` → `secret/karafiel` and delivered by
+Karafiel's dedicated `karafiel-dhanam-cost-events` ExternalSecret as
+`DHANAM_COST_EVENTS_CLIENT_ID` / `DHANAM_COST_EVENTS_CLIENT_SECRET`. The token
+alone authorizes nothing: Dhanam's `CostEventWriterGrant` (Dhanam
+`apps/api/scripts/provision-cost-event-writer-grant.ts`) binds this client id
+and organization to one business space and the source `karafiel`.
+
+Provision after the Janua image that reserves `dhanam-cost-events:write` is
+promoted:
+
+```bash
+enclii --profile admin secrets provision oidc --platform karafiel-dhanam-cost-events --intake-profile default --json --reason "karafiel to dhanam cost events (RFC 0050 phase 1)"
+```
+
+Then pin the printed `jnc_…` id in both registry copies and use it as the
+grant's `clientId`.
 
 ### Voxa web session and API runtime (2026-10-04)
 
@@ -747,6 +842,48 @@ turned off in the dhanam and karafiel repos. Do not rotate either key after
 that flip without a deploy window: both sides read the new value only when
 their pods restart.
 
+### Remediation wave: phynd-crm edge, crawler caller keys, Dhanam metering key (2026-11-09)
+
+Three verifier-owned credentials. Each is minted or filed where it is
+verified, and every reader takes the same Vault property cross-path through
+its own ExternalSecret.
+
+| Mechanism | Target | Property | Verifier ExternalSecret (force-synced) | Readers |
+|---|---|---|---|---|
+| nauta → phynd-crm machine edge (`nauta-phynd-crm`, audience `phynd-crm`, scope `phynd-crm-engagements:read`, org-bound to `madfam-ecosystem`) | `nauta/phynd-crm-oauth` | `secret/nauta` `phynd_crm_oauth_client_id` / `_secret` | `nauta-phynd-crm-oauth` (nauta) | nauta only; phynd-crm verifies the Janua token, not this pair |
+| madfam-crawler per-caller keys | `madfam-crawler/api-key-<caller>` | `secret/madfam-crawler` `api_key_<caller>` | `madfam-crawler-caller-key-<caller>` (crawler-api, `CALLER_KEY_<CALLER>`) | each caller's own ExternalSecret |
+| Dhanam credit-metering key (DHC-07) | `dhanam/billing-webhook-secret` | `secret/dhanam` `billing_webhook_secret` | `dhanam-billing-webhook` (dhanam api, `BILLING_WEBHOOK_SECRET_NEXT` first) | `karafiel-dhanam-credit-signing` (karafiel, `DHANAM_CREDIT_WEBHOOK_SECRET`) |
+
+Every verifier-side and reader-side ExternalSecret above is **spec only** in its
+own repo until its property exists, so until then intake reports
+`external_secret_refreshed: false`, which is expected.
+
+**Before the first run, in order:**
+
+1. This registry is deployed: the merge rebuilds switchyard-api and pins its
+   digest in `infra/k8s/production`.
+2. The operator re-applies the writer policy for the new path:
+   `ASSERT_PATH=madfam-crawler scripts/apply-switchyard-vault-policy-remote.sh`.
+   `secret/nauta` and `secret/dhanam` are already writable.
+3. For `nauta-phynd-crm` only: the Janua image that reserves `phynd-crm` and
+   `phynd-crm-engagements:read` (`reserved_oauth_boundaries.py`) is promoted.
+   The provision run also needs a CLI whose embedded OIDC registry carries
+   the edge (`make -C ~/labspace/enclii install-cli` from an up-to-date `main`),
+   or `--registry config/ecosystem-oidc-provision.yaml`.
+
+```bash
+enclii --profile admin secrets provision oidc --platform nauta-phynd-crm --intake-profile default --json --reason "nauta to phynd-crm CRM reads"
+enclii secrets intake submit madfam-crawler/api-key-forgesight --generate api_key_forgesight --reason "madfam-crawler per-caller key"
+# … the same for fortuna, tulana, rondelio, avala, tezca, one caller at a time
+enclii secrets intake submit dhanam/billing-webhook-secret --generate billing_webhook_secret --reason "DHC-07 credit metering key"
+```
+
+Pin the printed `jnc_…` id of `nauta-phynd-crm` in both registry copies. Run
+the Dhanam submit **once**: a re-run rotates the key, and Dhanam and Karafiel
+read the new value only when their pods restart. The caller-side moves (wire
+each ExternalSecret, restart, retire the legacy `API_KEYS` entry) are in
+madfam-crawler `docs/CALLER_KEYS.md`.
+
 
 Add targets via PR to the registry — do not hardcode paths in runbooks. A new
 `vault_path` also needs its block in `scripts/provision-switchyard-vault-writer.sh`;
@@ -785,8 +922,11 @@ returned by any endpoint** — not by submit, not by status, not in logs. The
 intake record names the key in `keys_generated` and the ESO annotation records
 `enclii.dev/secret-intake-source: generated`; the value exists only in Vault.
 
-Because nothing outside Vault ever holds a copy, rotation is a re-run of the same
-command, and there is no scrollback, clipboard, or password manager to clean up.
+For generic generated keys, rotation is a re-run of the same command, with no
+scrollback, clipboard, or password manager to clean up. The
+[typed Janua staging profiles](ISOLATED_TRAINING_CUSTODY.md#typed-janua-staging-initialization)
+are initialization-only, generate complete matched groups in their consumer
+formats, and refuse existing custody atomically instead of rotating it.
 
 Mix generated and supplied keys on one target when only some values are secrets
 nobody should see:
@@ -802,6 +942,9 @@ A key cannot be both generated and supplied — that is a `400`, not a silent
 preference for one of them. `--generate` rejects any key the target does not
 declare. Entropy defaults to 32 bytes and can be raised per target with a
 `generate: {bytes: N}` block in the registry (16–128).
+Targets with `generate: {disabled: true}` accept supplied values only; they
+refuse `--generate`. A fixed `generate.profile` selects typed initialization
+instead of generic unpadded base64url and cannot override the entropy policy.
 
 ### After intake: ESO → reloader
 

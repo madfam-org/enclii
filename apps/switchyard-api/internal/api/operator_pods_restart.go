@@ -41,9 +41,11 @@ import (
 // operator_routes.go), so a tenant administrator cannot reach this adapter
 // for any namespace. The namespace must also be in ENCLII_OPS_RESTART_NAMESPACES;
 // an unset list refuses everything, and kube-* namespaces are refused even when
-// listed. Apply writes an audit row (who, what, when, why) BEFORE the mutation
-// and refuses to mutate when that row cannot be written; a second row records
-// the result.
+// listed. One narrow exception: in an Enclii project namespace (never listed),
+// `pod/<name>` may recreate a CloudNativePG instance pod of an Enclii addon,
+// and nothing else (operator_pods_restart_cnpg.go). Apply writes an audit row
+// (who, what, when, why) BEFORE the mutation and refuses to mutate when that
+// row cannot be written; a second row records the result.
 const (
 	opsRestartNamespacesEnv = "ENCLII_OPS_RESTART_NAMESPACES"
 	restartedAtAnnotation   = "kubectl.kubernetes.io/restartedAt"
@@ -343,7 +345,12 @@ func (h *Handler) handleOpsPodsRestart(ctx context.Context, req operatorOperatio
 			return resp, http.StatusBadRequest
 		}
 	}
-	if refusal := restartNamespaceRefusal(namespace, opsRestartAllowlist()); refusal != "" {
+	refusal := restartNamespaceRefusal(namespace, opsRestartAllowlist())
+	// A pod in an Enclii project namespace may still be a CNPG instance pod,
+	// the one thing that path recreates (operator_pods_restart_cnpg.go). Its
+	// checks need the cluster, so it runs after the client checks below.
+	cnpgPath := refusal != "" && kind == restartKindPod && projectNamespaceCandidate(namespace)
+	if refusal != "" && !cnpgPath {
 		resp.Status = "refused"
 		resp.Summary = refusal + "; nothing was read or changed"
 		resp.Data = map[string]any{"namespace": namespace, "kind": kind, "name": name, "allowedNamespaces": opsRestartAllowlist()}
@@ -359,6 +366,9 @@ func (h *Handler) handleOpsPodsRestart(ctx context.Context, req operatorOperatio
 		resp.Status = "adapter_unconfigured"
 		resp.Summary = "the audit store is not configured; nothing was changed"
 		return resp, http.StatusServiceUnavailable
+	}
+	if cnpgPath {
+		return h.restartCNPGInstancePod(ctx, req, actor, resp, namespace, name, refusal)
 	}
 	if kind == restartKindPod {
 		return h.restartPod(ctx, req, actor, resp, namespace, name)

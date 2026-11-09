@@ -118,3 +118,44 @@ def test_catches_a_drill_left_behind():
                 if env.get("name") == "PGBACKREST_DEB_VERSION":
                     env["value"] = "2.55.1-1.pgdg12+1"
     assert any("versions differ" in p for p in find_problems(find_pins(docs)))
+
+
+# 2026-10-26: 2.59.1 rotated out of the live PGDG suite. The archive fallback
+# pointed at http://apt-archive, which redirects to https://, and the image had
+# no CA bundle yet (ca-certificates was only in the same failing apt call), so
+# both the drill and a restarted postgres pod failed init. The fallback must
+# install ca-certificates BEFORE it writes the archive suite, over https.
+def installer_scripts(docs_by_file: dict[str, list[dict]]):
+    for name, docs in docs_by_file.items():
+        for doc in docs:
+            for c in containers(doc):
+                if any(e.get("name") == "PGBACKREST_DEB_VERSION" for e in c.get("env") or []):
+                    yield name, c["name"], "\n".join(c.get("command") or [])
+
+
+def archive_fallback_problems(script: str) -> list[str]:
+    problems: list[str] = []
+    archive_list = script.find("pgdg-archive.list")
+    ca_first = script.find("apt-get install -y --no-install-recommends ca-certificates")
+    if archive_list < 0:
+        problems.append("no apt-archive fallback")
+    elif ca_first < 0 or ca_first > archive_list:
+        problems.append("ca-certificates is not installed before the archive suite is written")
+    if "http://apt-archive" in script:
+        problems.append("archive suite uses http:// (redirects to https:// without a CA bundle)")
+    return problems
+
+
+def test_archive_fallback_installs_ca_before_https_archive():
+    found = list(installer_scripts(load_docs()))
+    assert {f for f, _, _ in found} == set(FILES)
+    for name, container, script in found:
+        assert archive_fallback_problems(script) == [], f"{name}/{container}"
+
+
+def test_catches_the_2026_10_26_http_fallback():
+    old = (
+        'echo "pinned"\n'
+        "sed -E 's#x#http://apt-archive.postgresql.org/pub/repos/apt \\1-pgdg-archive main#' a > pgdg-archive.list\n"
+    )
+    assert len(archive_fallback_problems(old)) == 2

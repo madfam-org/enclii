@@ -1,0 +1,159 @@
+# promtool cases for cv-rules.yml (prometheus-rules ConfigMap); source: internal-devops grafana/alerts/cv.test.yaml.
+# Run by tests/scripts/test_cv_rules.py with the image production runs (prom/prometheus v2.53.3).
+# Each rule is shown to fire on the outage it names and to stay silent on its near misses: one pod down, 503 only,
+# too few errors, a migrate Job that is not failed.
+rule_files:
+  - cv-rules.yml
+
+evaluation_interval: 30s
+
+tests:
+  # CVTargetDown: every pod unscrapable fires after 2m; one pod still up does not; no target at all fires.
+  - interval: 30s
+    input_series:
+      - series: 'up{job="kubernetes-pods", namespace="cv", app="cv", pod="cv-a"}'
+        values: '0x10'
+      - series: 'up{job="kubernetes-pods", namespace="cv", app="cv", pod="cv-b"}'
+        values: '0x10'
+    alert_rule_test:
+      - eval_time: 1m
+        alertname: CVTargetDown
+        exp_alerts: []
+      - eval_time: 3m
+        alertname: CVTargetDown
+        exp_alerts:
+          - exp_labels: {severity: critical, product: cv, service: cv}
+            exp_annotations:
+              summary: "cv is down or unobservable: no cv pod answers a scrape on 9090 (2m)"
+              description: "No pod of Deployment cv/cv has answered GET /metrics on its internal port 9090 for 2 minutes.\nEither no pod runs (crash loop, failed pull, scaled to 0) and cv.madfam.io, cv-app.madfam.io and\ncv-api.madfam.io are down, or the scrape path broke (NetworkPolicy allow-monitoring-ingress, the\nprometheus.io annotations, the namespace's data-access label). Check `enclii ops pods diagnose -n cv`\nand the public /health first, then the target list (lastError) on the main Prometheus.\n"
+              runbook_url: "https://github.com/madfam-org/internal-devops/blob/main/runbooks/cv-alerts.md#cvtargetdown"
+  - interval: 30s
+    input_series:
+      - series: 'up{job="kubernetes-pods", namespace="cv", app="cv", pod="cv-a"}'
+        values: '0x10'
+      - series: 'up{job="kubernetes-pods", namespace="cv", app="cv", pod="cv-b"}'
+        values: '1x10'
+    alert_rule_test:
+      - eval_time: 4m
+        alertname: CVTargetDown
+        exp_alerts: []
+  - interval: 30s
+    input_series:
+      - series: 'up{job="kubernetes-pods", namespace="other", app="other"}'
+        values: '1x10'
+    alert_rule_test:
+      - eval_time: 3m
+        alertname: CVTargetDown
+        exp_alerts:
+          - exp_labels: {severity: critical, product: cv, service: cv, job: kubernetes-pods, namespace: cv, app: cv}
+            exp_annotations:
+              summary: "cv is down or unobservable: no cv pod answers a scrape on 9090 (2m)"
+              description: "No pod of Deployment cv/cv has answered GET /metrics on its internal port 9090 for 2 minutes.\nEither no pod runs (crash loop, failed pull, scaled to 0) and cv.madfam.io, cv-app.madfam.io and\ncv-api.madfam.io are down, or the scrape path broke (NetworkPolicy allow-monitoring-ingress, the\nprometheus.io annotations, the namespace's data-access label). Check `enclii ops pods diagnose -n cv`\nand the public /health first, then the target list (lastError) on the main Prometheus.\n"
+              runbook_url: "https://github.com/madfam-org/internal-devops/blob/main/runbooks/cv-alerts.md#cvtargetdown"
+
+  # CVReadinessFailing: every pod unready fires after 3m; one ready pod keeps it silent.
+  - interval: 30s
+    input_series:
+      - series: 'cv_ready{job="kubernetes-pods", namespace="cv", app="cv", pod="cv-a"}'
+        values: '0x12'
+      - series: 'cv_ready{job="kubernetes-pods", namespace="cv", app="cv", pod="cv-b"}'
+        values: '0x12'
+    alert_rule_test:
+      - eval_time: 2m
+        alertname: CVReadinessFailing
+        exp_alerts: []
+      - eval_time: 4m
+        alertname: CVReadinessFailing
+        exp_alerts:
+          - exp_labels: {severity: critical, product: cv, service: cv}
+            exp_annotations:
+              summary: "cv has no ready pod: /ready fails on every pod (3m)"
+              description: "cv_ready is 0 on every scraped cv pod for 3 minutes, so the Service has no ready endpoint. The\nreadiness body names the failing check (config or database). If cv_db_readiness_checks_total\n{outcome=\"error\"} is rising, PgBouncer/Postgres in `data` is unreachable from cv (NetworkPolicy\nallow-pgbouncer-egress, the cv_app role, the shared connection budget).\n"
+              runbook_url: "https://github.com/madfam-org/internal-devops/blob/main/runbooks/cv-alerts.md#cvreadinessfailing"
+  - interval: 30s
+    input_series:
+      - series: 'cv_ready{job="kubernetes-pods", namespace="cv", app="cv", pod="cv-a"}'
+        values: '0x12'
+      - series: 'cv_ready{job="kubernetes-pods", namespace="cv", app="cv", pod="cv-b"}'
+        values: '1x12'
+    alert_rule_test:
+      - eval_time: 5m
+        alertname: CVReadinessFailing
+        exp_alerts: []
+
+  # CVHigh5xxRate: api answering 500 on 3 of 13 requests a minute fires for host_role api only; the landing's
+  # 503s (deliberate) and the app's two 500s in 5 minutes (too few) stay silent.
+  - interval: 1m
+    input_series:
+      - series: 'cv_http_requests_total{job="kubernetes-pods", namespace="cv", app="cv", pod="cv-a", host_role="api", route="/api/v1/jobs", method="GET", status="500"}'
+        values: '0+3x20'
+      - series: 'cv_http_requests_total{job="kubernetes-pods", namespace="cv", app="cv", pod="cv-a", host_role="api", route="/api/v1/jobs", method="GET", status="200"}'
+        values: '0+10x20'
+      - series: 'cv_http_requests_total{job="kubernetes-pods", namespace="cv", app="cv", pod="cv-a", host_role="landing", route="/", method="GET", status="503"}'
+        values: '0+10x20'
+      - series: 'cv_http_requests_total{job="kubernetes-pods", namespace="cv", app="cv", pod="cv-a", host_role="landing", route="/", method="GET", status="200"}'
+        values: '0+1x20'
+      - series: 'cv_http_requests_total{job="kubernetes-pods", namespace="cv", app="cv", pod="cv-a", host_role="app", route="/perfil", method="GET", status="500"}'
+        values: '0+0.4x20'
+      - series: 'cv_http_requests_total{job="kubernetes-pods", namespace="cv", app="cv", pod="cv-a", host_role="app", route="/perfil", method="GET", status="200"}'
+        values: '0+1x20'
+      - series: 'cv_http_requests_total{job="kubernetes-pods", namespace="cv", app="cv", pod="cv-a", host_role="none", route="/ready", method="GET", status="500"}'
+        values: '0+10x20'
+    alert_rule_test:
+      - eval_time: 4m
+        alertname: CVHigh5xxRate
+        exp_alerts: []
+      - eval_time: 12m
+        alertname: CVHigh5xxRate
+        exp_alerts:
+          - exp_labels: {severity: critical, product: cv, service: cv, host_role: api}
+            exp_annotations:
+              summary: "cv api: 23.08% of requests fail with a 5xx (5m)"
+              description: "Requests to the api host (landing = cv.madfam.io, app = cv-app.madfam.io,\napi = cv-api.madfam.io, pages = the user-pages host) are failing with 500/502/504 above 5% for\n5 minutes. 503 is excluded on purpose (dormant features and the readiness path). The JSON request\nlog names the failing route template: `\"level\":\"error\"` lines with this host_role.\n"
+              runbook_url: "https://github.com/madfam-org/internal-devops/blob/main/runbooks/cv-alerts.md#cvhigh5xxrate"
+
+  # CVPreSyncMigrateFailing: the Failed condition fires after 1m; a Job that failed one pod and then completed does
+  # not (kube_job_failed{condition="true"} stays 0 while kube_job_status_failed is 1).
+  - interval: 30s
+    input_series:
+      - series: 'kube_job_failed{namespace="cv", job_name="cv-migrate", condition="true"}'
+        values: '1x6'
+      - series: 'kube_namespace_status_phase{namespace="cv", phase="Active"}'
+        values: '1x6'
+    alert_rule_test:
+      - eval_time: 2m
+        alertname: CVPreSyncMigrateFailing
+        exp_alerts:
+          - exp_labels: {severity: critical, product: cv, service: cv, namespace: cv, job_name: cv-migrate}
+            exp_annotations:
+              summary: "cv deploys are blocked: the PreSync migrate Job failed"
+              description: "Job cv/cv-migrate failed terminally, so the Argo sync of cv-services stopped before the Deployment.\nThe running pods keep serving the previous image. Its log ends with \"cv migrate: failed: <reason>\"\n(no URL or value is printed). Verify applied migrations in drizzle.__drizzle_migrations, never only\nthe Job status.\n"
+              runbook_url: "https://github.com/madfam-org/internal-devops/blob/main/runbooks/cv-alerts.md#cvpresyncmigratefailing"
+      - eval_time: 2m
+        alertname: CVMigrateJobUnobservable
+        exp_alerts: []
+  - interval: 30s
+    input_series:
+      - series: 'kube_job_failed{namespace="cv", job_name="cv-migrate", condition="true"}'
+        values: '0x6'
+      - series: 'kube_job_status_failed{namespace="cv", job_name="cv-migrate"}'
+        values: '1x6'
+    alert_rule_test:
+      - eval_time: 3m
+        alertname: CVPreSyncMigrateFailing
+        exp_alerts: []
+
+  # CVMigrateJobUnobservable: no kube-state-metrics series for namespace cv for 15m (warning).
+  - interval: 1m
+    input_series:
+      - series: 'kube_namespace_status_phase{namespace="other", phase="Active"}'
+        values: '1x20'
+    alert_rule_test:
+      - eval_time: 16m
+        alertname: CVMigrateJobUnobservable
+        exp_alerts:
+          - exp_labels: {severity: warning, product: cv, service: cv, namespace: cv, phase: Active}
+            exp_annotations:
+              summary: "cv kube-state rules are blind (no kube-state-metrics series for namespace cv)"
+              description: "kube-state-metrics exports nothing for namespace cv, so CVPreSyncMigrateFailing cannot fire. Either\nkube-state-metrics is not scraped, or the namespace was renamed or deleted.\n"
+              runbook_url: "https://github.com/madfam-org/internal-devops/blob/main/runbooks/cv-alerts.md#cvmigratejobunobservable"

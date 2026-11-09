@@ -21,6 +21,7 @@ import React, {
 } from "react";
 import type { AuthMode, AuthContextType, User, RedirectTokens, LoginWithOIDCOptions } from "./auth-types";
 import { apiFetchResponse, apiPublicFetchResponse, attemptTokenRefresh } from "@/lib/api";
+import { generateOAuthState, storeOAuthState, safeReturnPath } from "@/lib/oauth-state";
 
 // =============================================================================
 // CONFIGURATION
@@ -243,12 +244,17 @@ function OIDCAuthProvider({ children }: { children: ReactNode }) {
     const codeVerifier = generateCodeVerifier();
     const codeChallenge = await generateCodeChallenge(codeVerifier);
 
-    // Store verifier for callback
-    sessionStorage.setItem("enclii_code_verifier", codeVerifier);
+    // Bind this attempt to the tab: a fresh `state` stored next to the
+    // verifier; the callback exchanges the code only when they match.
+    const state = generateOAuthState();
 
-    // Store return URL
+    // Store verifier and state for callback (per-tab, single-use)
+    sessionStorage.setItem("enclii_code_verifier", codeVerifier);
+    storeOAuthState(state);
+
+    // Store return URL (same-origin relative path only)
     if (typeof window !== "undefined") {
-      localStorage.setItem("auth_return_url", window.location.pathname);
+      localStorage.setItem("auth_return_url", safeReturnPath(window.location.pathname, window.location.origin));
     }
 
     // Redirect to Janua OAuth authorize endpoint with PKCE
@@ -259,6 +265,7 @@ function OIDCAuthProvider({ children }: { children: ReactNode }) {
       scope: "openid profile email",
       code_challenge: codeChallenge,
       code_challenge_method: "S256",
+      state,
     });
 
     // Optional OIDC `prompt` (account switching). Appended only when supplied,
@@ -501,7 +508,7 @@ function LocalAuthProvider({ children }: { children: ReactNode }) {
     // switch). The `LoginWithOIDCOptions` arg from the interface is simply not
     // read here; local login has no chooser.
     loginWithOIDC: () => {
-      if (typeof window !== "undefined") localStorage.setItem("auth_return_url", window.location.pathname);
+      if (typeof window !== "undefined") localStorage.setItem("auth_return_url", safeReturnPath(window.location.pathname, window.location.origin));
       clearStorage();
       window.location.href = `${API_BASE_URL}/v1/auth/login`;
     },

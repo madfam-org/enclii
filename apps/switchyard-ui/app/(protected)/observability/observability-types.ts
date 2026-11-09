@@ -35,21 +35,36 @@ export interface MetricsSnapshot {
     error_rate: number;
     active_pods: number;
   };
+  /** What the numbers describe: one switchyard-api replica, not the platform. */
+  scope?: string;
+  /** Counters accumulate from this time (the replica's start). */
+  since?: string;
 }
 
+/**
+ * One minute of one switchyard-api replica. Rates over the minute, never
+ * lifetime counters. Latency and error rate are null for a minute with no
+ * requests (nothing was measured).
+ */
 export interface MetricsDataPoint {
   timestamp: string;
   requests_per_sec: number;
-  average_latency_ms: number;
-  error_rate: number;
+  average_latency_ms: number | null;
+  /** Share of 5xx responses in the minute. */
+  error_rate: number | null;
+  /** Cores, averaged over the minute. */
   cpu_usage: number;
+  /** Resident memory, MB. */
   memory_usage: number;
 }
 
 export interface MetricsHistory {
   time_range: string;
   resolution: string;
-  data_points: MetricsDataPoint[];
+  data_points: MetricsDataPoint[] | null;
+  scope?: string;
+  retained_since?: string;
+  note?: string;
 }
 
 // =============================================================================

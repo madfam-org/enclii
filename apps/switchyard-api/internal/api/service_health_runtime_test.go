@@ -87,6 +87,7 @@ func TestServiceHealthFanoutWithNativeBinding(t *testing.T) {
 			require.NoError(t, err)
 			require.False(t, partial)
 			require.Len(t, result.Services, 1)
+			require.Equal(t, "fixture", result.Services[0].Namespace, "observation must identify the namespace actually queried")
 			if tc.fail {
 				require.Equal(t, "unknown", result.Services[0].Status)
 				require.Equal(t, "runtime_access_denied", result.Services[0].ObservationReason)

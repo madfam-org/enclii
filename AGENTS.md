@@ -72,6 +72,13 @@ redirect and should not become the source of truth again.
 - **ARC runner pins deploy through Argo** (`arc-runners-blue`,
   `arc-runners-deploy`), not through `arc-self-deploy.yml`, which on a push
   only validates: [`infra/k8s/production/arc/README.md`](infra/k8s/production/arc/README.md#how-a-merged-pin-reaches-the-pools).
+- **Never `kubectl patch` a key into `monitoring/prometheus-rules`.** Prometheus
+  loads every key, and under server-side apply Argo never removed keys another
+  field manager wrote: an April hand-patch kept an unfiltered `PodNotReady`
+  firing for finished Job pods until 2026-10-21. That ConfigMap now syncs with
+  `Replace=true`, and `PrometheusRuleFileNotInGit` warns about a stray key.
+  Add rules in `prometheus.yaml` and in that alert's `rule_group` regex;
+  `tests/scripts/test_alert_noise_rules.py` checks the two match.
 - **pgBackRest versions move together** (postgres init container, sidecar
   image, restore drill); `tests/scripts/test_pgbackrest_version_parity.py`.
 - **`packages/sdk-py` models** are generated from `docs/api/openapi.yaml` with

@@ -1,6 +1,46 @@
 # Secret intake routing registry — friendly target id → Vault + ESO.
 # Values are NEVER stored here. Add entries via PR review.
 targets:
+  karafiel-staging/core:
+    label: Karafiel isolated staging core
+    description: Fresh server-generated staging Django and encryption group; create once without rotation
+    vault_path: secret/karafiel-staging
+    namespace: enclii
+    external_secret: karafiel-staging-core-source # pragma: allowlist secret -- Kubernetes ExternalSecret object name; not a credential
+    keys: [django_secret_key, encryption_master_key]
+    generate:
+      profile: karafiel-staging-core-v1
+
+  karafiel-staging/admin-session:
+    label: Karafiel isolated staging session
+    description: Fresh server-generated staging admin session key; create once without rotation
+    vault_path: secret/karafiel-staging
+    namespace: enclii
+    external_secret: karafiel-staging-core-source # pragma: allowlist secret -- Kubernetes ExternalSecret object name; not a credential
+    keys: [admin_session_secret]
+    generate:
+      profile: karafiel-staging-session-v1
+
+  karafiel-staging/web-oidc:
+    label: Karafiel isolated staging web OIDC
+    description: Dedicated staging web registration from managed Janua provisioning
+    vault_path: secret/karafiel-staging
+    namespace: enclii
+    external_secret: karafiel-staging-core-source # pragma: allowlist secret -- Kubernetes ExternalSecret object name; not a credential
+    keys: [web_oidc_client_id, web_janua_secret_key, web_oidc_issuer]
+    generate:
+      disabled: true
+
+  karafiel-staging/admin-oidc:
+    label: Karafiel isolated staging admin OIDC
+    description: Dedicated staging admin registration from managed Janua provisioning
+    vault_path: secret/karafiel-staging
+    namespace: enclii
+    external_secret: karafiel-staging-core-source # pragma: allowlist secret -- Kubernetes ExternalSecret object name; not a credential
+    keys: [admin_oidc_client_id, admin_janua_secret_key, admin_oidc_issuer]
+    generate:
+      disabled: true
+
   ceq/vast-api-key:
     label: CEQ VAST API Key
     description: Orchestrator worker VAST provider key
@@ -94,6 +134,41 @@ targets:
     keys:
       - admin_session_secret
 
+  # Private reviewed authority map for HCM simple electronic acceptance.
+  # Supplied JSON only: RFC -> {organization_id, company_signer_sub}.
+  # Its isolated ExternalSecret is registered after intake; an absent object
+  # makes force-sync report false without blocking the Vault write. This
+  # target never enables signing, reads identities, or generates a subject.
+  karafiel/hcm-signing-bindings:
+    label: Karafiel HCM signing authority bindings
+    description: Reviewed private JSON RFC-to-organization and personal company-signer bindings for LEGAL_HCM_SIGNING_BINDINGS. Supplied only; validate with the consumer parser before intake. Dedicated optional projection; signing remains disabled.
+    vault_path: secret/karafiel
+    namespace: karafiel
+    external_secret: karafiel-hcm-signing-bindings # pragma: allowlist secret -- Kubernetes ExternalSecret object name; not a credential
+    keys:
+      - hcm_signing_bindings
+    generate:
+      disabled: true
+
+  # Karafiel Admin Janua client (SSO wave 1, 2026-10-27): the confidential pair
+  # of ecosystem-oidc platform karafiel-admin, written ONLY by
+  # `enclii secrets provision oidc --platform karafiel-admin`. karafiel splits
+  # the pair across two ExternalSecrets: karafiel-admin-oidc reads
+  # oidc_client_id, karafiel-admin-auth reads janua_secret_key. Intake
+  # force-syncs the secret's ExternalSecret; the id is pinned and does not
+  # change, and karafiel-admin-oidc refreshes on its own interval.
+  karafiel/admin-oidc-janua:
+    label: Karafiel Admin Janua OAuth client
+    description: Karafiel Admin operator console (admin.karafiel.mx) Janua confidential client id + secret, filed by `enclii secrets provision oidc --platform karafiel-admin`. Separate from the tenant client karafiel/web-oidc-janua.
+    vault_path: secret/karafiel
+    namespace: karafiel
+    external_secret: karafiel-admin-auth # pragma: allowlist secret — Kubernetes object name, not a credential
+    keys:
+      - oidc_client_id
+      - janua_secret_key
+    generate:
+      disabled: true
+
   phynd-crm/oidc-janua:
     label: Phynd CRM Janua OAuth client
     description: Staff SSO for crm.madfam.io
@@ -142,6 +217,40 @@ targets:
     external_secret: enclii-secrets
     keys:
       - resend-api-key
+
+  # enclii (2026-10-26) — the object-store credential every managed-Postgres
+  # addon cluster backs up with. Until this target existed the Secret the
+  # provisioner replicates (enclii/enclii-db-backup-credentials) had no writer,
+  # so no addon had ever been backed up (AddonBackupNeverCompleted on every
+  # live cluster). An R2 token scoped to the enclii-addon-db-backups bucket
+  # ONLY: the copy lands in every addon namespace, so a bucket-wide or
+  # account-wide token there would expose the platform backups too.
+  #
+  # NO HUMAN HOLDS IT (owner rule, 2026-10-26: only the Vault admin token is
+  # handled by a person). `enclii ops addons backup-credential` ensures the
+  # bucket and mints the token server-side through R2Provisioner, then merges
+  # the two keys into this path; dry run, plan hash, audit, idempotent
+  # (apps/switchyard-api/internal/api/operator_addons_backup_credential.go).
+  # This entry stays the routing contract (path and key names) that the
+  # operation and the ExternalSecret share. A hand submit here is break-glass
+  # only and needs a token minted outside Enclii.
+  # The enclii-db-backup-credentials ExternalSecret
+  # (infra/k8s/production/enclii-db-backup-credentials.externalsecret.yaml)
+  # projects the two properties as ACCESS_KEY_ID / SECRET_ACCESS_KEY. This
+  # target names no external_secret (a hand submit lands on the 15-minute
+  # refresh); the ops operation force-syncs it itself. Same
+  # Vault path as the other enclii targets (the write is a merge), so
+  # the writer policy needs no new path (scripts/check-intake-policy-parity.sh).
+  enclii/addon-db-backups:
+    label: Addon database backups (R2 token for enclii-addon-db-backups)
+    description: S3 access key id and secret of a Cloudflare R2 token with Object Read & Write on the enclii-addon-db-backups bucket only. Provisioned server-side by `enclii ops addons backup-credential` (bucket ensured, token minted and stored by Switchyard, never generated here and never seen by a human); do not submit by hand except as break-glass. Projected to enclii/enclii-db-backup-credentials, which Switchyard replicates into each addon namespace; the reconciler's backup sweep then wires backups onto every live addon cluster.
+    vault_path: secret/enclii
+    namespace: enclii
+    keys:
+      - addon_backup_access_key_id
+      - addon_backup_secret_access_key
+    generate:
+      disabled: true
 
   enclii/internal-api-key:
     label: Enclii internal API key
@@ -307,6 +416,22 @@ targets:
       - janua_mail_client_id
       - janua_mail_client_secret
 
+  # crea-map web Janua client (SSO wave 1, 2026-10-27): the confidential
+  # client secret of ecosystem-oidc platform crea-map, written ONLY by
+  # `enclii secrets provision oidc --platform crea-map`. Only the secret: the
+  # client id is plain config in crea-map's Deployment. crea-map-secrets maps
+  # `property: janua_client_secret` to JANUA_CLIENT_SECRET.
+  crea-map/web-oidc:
+    label: crea-map web Janua OAuth client secret
+    description: crea-map web (map.creatumundo.mx) Janua confidential client secret, filed by `enclii secrets provision oidc --platform crea-map`. No human types it.
+    vault_path: secret/crea-map
+    namespace: crea-map
+    external_secret: crea-map-secrets
+    keys:
+      - janua_client_secret
+    generate:
+      disabled: true
+
   # symbiosis-hcm is the PRODUCER of the absence feed; crea-map cross-reads
   # map_absence_feed_key and consumes it as HCM_FEED_API_KEY. Intaking both keys
   # at the producer's path keeps one copy of the truth — the consumer's
@@ -321,6 +446,64 @@ targets:
     keys:
       - map_absence_feed_url
       - map_absence_feed_key
+
+  # symbiosis-hcm → Karafiel machine edge (2026-11-02). The client_credentials
+  # pair of ecosystem-oidc platform symbiosis-hcm-karafiel (audience
+  # karafiel-api; scopes legal:contractor-draft, legal:employment-draft,
+  # fiscal:invoice), written ONLY by
+  # `enclii secrets provision oidc --platform symbiosis-hcm-karafiel`; no human
+  # types either value. Same path as symbiosis-hcm/map-absence-feed
+  # (secret/symbiosis-hcm, a merge), but delivered by HCM's DEDICATED
+  # hcm-service-clients ExternalSecret, never by hcm-secrets: hcm-secrets
+  # carries DATABASE_URL and is mounted optional: false, so it must never wait
+  # on, or be rewritten by, a machine-client pair. LOWERCASE keys, as Vault
+  # stores them; the ExternalSecret maps these `property:` names byte for byte.
+  symbiosis-hcm/karafiel-client:
+    label: Symbiosis-HCM → Karafiel service client
+    description: Janua client_credentials pair (symbiosis-hcm-karafiel; scopes legal:contractor-draft, legal:employment-draft, fiscal:invoice) HCM's API and worker use for Karafiel contract drafts and CFDI. Filed by `enclii secrets provision oidc --platform symbiosis-hcm-karafiel`.
+    vault_path: secret/symbiosis-hcm
+    namespace: symbiosis-hcm
+    external_secret: hcm-service-clients  # pragma: allowlist secret
+    keys:
+      - karafiel_service_client_id
+      - karafiel_service_client_secret
+    generate:
+      disabled: true
+
+  # symbiosis-hcm → Dhanam scheduled-payments writer (2026-11-02). The pair of
+  # ecosystem-oidc platform symbiosis-hcm-dhanam-writer (audience dhanam-api,
+  # scope dhanam-scheduled-payments:write, org-bound to madfam-ecosystem),
+  # written ONLY by `enclii secrets provision oidc --platform
+  # symbiosis-hcm-dhanam-writer`. Its OWN ExternalSecret, hcm-dhanam-writer,
+  # not hcm-service-clients: ESO is all-or-nothing per ExternalSecret and the
+  # two edges are provisioned on different days, so one missing pair must
+  # never hold the other's Secret. LOWERCASE keys, mapped to
+  # DHANAM_WRITER_CLIENT_ID / DHANAM_WRITER_CLIENT_SECRET.
+  symbiosis-hcm/dhanam-writer-client:
+    label: Symbiosis-HCM → Dhanam scheduled-payments writer client
+    description: Janua client_credentials pair (symbiosis-hcm-dhanam-writer, scope dhanam-scheduled-payments:write, org-bound) HCM uses to push contractor retainer plans into Dhanam. Filed by `enclii secrets provision oidc --platform symbiosis-hcm-dhanam-writer`.
+    vault_path: secret/symbiosis-hcm
+    namespace: symbiosis-hcm
+    external_secret: hcm-dhanam-writer  # pragma: allowlist secret
+    keys:
+      - dhanam_writer_client_id
+      - dhanam_writer_client_secret
+    generate:
+      disabled: true
+
+  # HCM's view of the same reviewed company signer, keyed by organization.
+  # No real subject or organization values belong in the registry. Keep this
+  # separate from service credentials and the mandatory database Secret.
+  symbiosis-hcm/signing-bindings:
+    label: Symbiosis HCM company signer bindings
+    description: Reviewed private JSON organization-to-personal-subject bindings for KARAFIEL_COMPANY_SIGNERS. Supplied only; validate with the consumer parser before intake. Dedicated optional projection; signing remains disabled.
+    vault_path: secret/symbiosis-hcm
+    namespace: symbiosis-hcm
+    external_secret: hcm-signing-bindings # pragma: allowlist secret -- Kubernetes ExternalSecret object name; not a credential
+    keys:
+      - company_signers
+    generate:
+      disabled: true
 
   nauta/kalya-feed-tokens:
     label: Nauta tokens de feeds de kalya
@@ -365,6 +548,24 @@ targets:
     keys:
       - symbiosis_hcm_oauth_client_id
       - symbiosis_hcm_oauth_client_secret
+
+  # nauta → phynd-crm CRM reads (2026-11-09): the client_credentials pair for
+  # the nauta-phynd-crm edge (config/ecosystem-oidc-provision.yaml), written
+  # ONLY by `enclii secrets provision oidc --platform nauta-phynd-crm`. Its own
+  # ExternalSecret nauta-phynd-crm-oauth (nauta repo, spec only until this pair
+  # exists), so the unprovisioned pair never blocks another nauta Secret.
+  # Generation stays off: a random value here would not be a Janua credential.
+  nauta/phynd-crm-oauth:
+    label: Nauta cliente OAuth de phynd-crm (client_credentials)
+    description: Par id+secreto del cliente máquina org-bound (audience phynd-crm, scope phynd-crm-engagements:read) con el que nauta acuña tokens de lectura del CRM; lo escribe `enclii secrets provision oidc --platform nauta-phynd-crm`
+    vault_path: secret/nauta
+    namespace: nauta
+    external_secret: nauta-phynd-crm-oauth  # pragma: allowlist secret -- Kubernetes ExternalSecret object name; not a credential
+    keys:
+      - phynd_crm_oauth_client_id
+      - phynd_crm_oauth_client_secret
+    generate:
+      disabled: true
 
   janua/internal-api-key:
     label: Janua internal API key
@@ -494,7 +695,7 @@ targets:
       - porkbun_api_key
       - porkbun_secret_key
 
-  # Telesia (onboarded 2026-09-12, enclii#546). Two targets, one Vault path.
+  # Telesia (onboarded 2026-09-12, enclii#546). Three targets, one Vault path.
   #
   # LOWERCASE properties throughout, matching the `property:` fields telesia's
   # ExternalSecrets reference. ESO is all-or-nothing per ExternalSecret: one
@@ -539,6 +740,28 @@ targets:
       - database_url
       - direct_database_url
       - redis_url
+
+  # Telesia's dashboard session secret (2026-10-31, gate U5). Auth.js signs the
+  # app.telesia.quest session cookie with AUTH_SECRET, and telesia-web refuses
+  # sign-in until AUTH_SECRET, JANUA_CLIENT_ID and JANUA_CLIENT_SECRET are all
+  # present. A separate target from telesia/oidc-janua for the creator-census
+  # reason: the CLI prompts for every key not in --generate, so one target holding
+  # the Janua pair and auth_secret would make `--generate auth_secret` ask for a
+  # client secret no human holds. Written only by
+  # `enclii secrets intake submit telesia/web-session --generate auth_secret`.
+  # 48 bytes matches telesia's own runbook (`openssl rand -base64 48`); its env
+  # schema floors AUTH_SECRET at 32 characters. Same path and ExternalSecret as
+  # telesia/oidc-janua (intake writes merge), so the writer policy needs no new path.
+  telesia/web-session:
+    label: Telesia web session signing secret
+    description: Signs the Telesia dashboard (app.telesia.quest) Auth.js session cookie (AUTH_SECRET). Mint server-side with --generate auth_secret (48 bytes crypto/rand, never returned); rotating it signs every player out.
+    vault_path: secret/telesia
+    namespace: telesia
+    external_secret: telesia-web-secrets  # pragma: allowlist secret
+    generate:
+      bytes: 48
+    keys:
+      - auth_secret
 
   # creator-census (2026-09-24) — the census web (cc-app.madfam.io), a Next.js
   # BFF that signs in through Janua. Its Deployment mounts Secret
@@ -650,6 +873,68 @@ targets:
     external_secret: family-history-web  # pragma: allowlist secret
     keys:
       - fh_session_secret
+
+  # cv (2026-10-22) — the cv product: landing cv.madfam.io, the app
+  # cv-app.madfam.io (an Auth.js BFF that signs in through Janua) and the API
+  # cv-api.madfam.io (audience cv-api), all served by ONE Enclii service `cv`
+  # in namespace cv (repo madfam-org/ai-portfolio-builder). Everything lands
+  # in ONE Vault path, secret/cv, delivered by ONE planned ExternalSecret,
+  # cv-web-auth, in namespace cv. DATABASE_URL is NOT here: it comes from the
+  # onboarding project Secret (cv-secrets), written by `enclii onboard`, which
+  # intake cannot reach.
+  #
+  # TWO targets, one path — one write route per property, the family-history
+  # split. web-oidc is written only by `enclii secrets provision oidc
+  # --platform cv-app` (both the client id and the secret, so the id never
+  # sits in the public repo). web-session only by
+  # `enclii secrets intake submit cv/web-session --generate auth_secret`: it is
+  # Auth.js's own AUTH_SECRET (ruling R42), never the Janua client secret.
+  # Intake writes are merges, so the two land side by side in secret/cv.
+  #
+  # LOWERCASE keys, because that is what Vault stores (normalizeVaultSecretKey)
+  # and what the planned ExternalSecret must map: `property:
+  # auth_janua_client_id`, `auth_janua_client_secret`, `auth_secret`. ESO is
+  # all-or-nothing per ExternalSecret: cv-web-auth stays NotReady until both
+  # targets have been written. Until the ExternalSecret exists, intake still
+  # merges into Vault and reports external_secret_refreshed: false, which is
+  # expected and harmless.
+  cv/web-oidc:
+    label: cv web Janua OAuth client
+    description: cv web (cv-app.madfam.io) Janua confidential client id + secret, filed by `enclii secrets provision oidc --platform cv-app`. No human types either value.
+    vault_path: secret/cv
+    namespace: cv
+    external_secret: cv-web-auth  # pragma: allowlist secret
+    keys:
+      - auth_janua_client_id
+      - auth_janua_client_secret
+
+  cv/web-session:
+    label: cv web session signing secret
+    description: Auth.js AUTH_SECRET for the cv web (signs and encrypts the session cookie); never the Janua client secret. Mint server-side with --generate auth_secret (32 bytes crypto/rand, never returned); rotating it signs every user out.
+    vault_path: secret/cv
+    namespace: cv
+    external_secret: cv-web-auth  # pragma: allowlist secret
+    keys:
+      - auth_secret
+
+  # cv → Symbiosis-HCM market benchmarks (2026-10-22). The client_credentials
+  # pair of ecosystem-oidc platform cv-hcm-benchmarks (scope
+  # hcm-benchmarks:read, audience symbiosis-hcm), written ONLY by
+  # `enclii secrets provision oidc --platform cv-hcm-benchmarks`; no human
+  # types either value. Same path as cv/web-oidc (secret/cv, a merge) but its
+  # OWN ExternalSecret, cv-hcm-client, so the benchmark edge can be absent or
+  # rotated without touching sign-in: cv-web-auth is all-or-nothing and must
+  # never wait on this pair. LOWERCASE keys, as Vault stores them; cv's
+  # ExternalSecret maps them to HCM_CLIENT_ID / HCM_CLIENT_SECRET.
+  cv/hcm-client:
+    label: cv → Symbiosis-HCM market benchmarks client
+    description: Janua client_credentials pair (cv-hcm-benchmarks, scope hcm-benchmarks:read) cv's server uses for HCM's public ENOE market benchmarks. Filed by `enclii secrets provision oidc --platform cv-hcm-benchmarks`.
+    vault_path: secret/cv
+    namespace: cv
+    external_secret: cv-hcm-client  # pragma: allowlist secret
+    keys:
+      - hcm_client_id
+      - hcm_client_secret
 
   # Digital-twins machine edges (2026-10-03). Nine client_credentials pairs,
   # each written ONLY by `enclii secrets provision oidc --platform <id>`
@@ -945,8 +1230,8 @@ targets:
   # through intake. These two targets cover the two that converge-dash
   # generates and checks itself. The other four are deliberately not here: the
   # two metrics-ingest HMAC keys are also held by the senders that sign with
-  # them, and the web OIDC client pair waits on its Janua client registration.
-  # ESO is all-or-nothing, so converge-dash-secrets syncs only once all six
+  # them, and the web OIDC client pair has its own target, converge-dash/web-oidc,
+  # filled by the OIDC provisioner. ESO is all-or-nothing, so converge-dash-secrets syncs only once all six
   # exist in Vault.
   converge-dash/session:
     label: converge-dash web session signing secret
@@ -965,6 +1250,142 @@ targets:
     external_secret: converge-dash-secrets  # pragma: allowlist secret
     keys:
       - dash_internal_read_token
+
+  # converge-dash web Janua client (SSO wave 1, 2026-10-27): the confidential
+  # pair of ecosystem-oidc platform converge-dash-web, written ONLY by
+  # `enclii secrets provision oidc --platform converge-dash-web`. The two
+  # properties are the ones converge-dash-secrets already maps to
+  # DASH_WEB_JANUA_CLIENT_ID / DASH_WEB_JANUA_CLIENT_SECRET. Generation is
+  # disabled: a random value here is not a Janua credential.
+  converge-dash/web-oidc:
+    label: converge-dash web Janua OAuth client
+    description: converge-dash web (dash.madfam.io) Janua confidential client id + secret, filed by `enclii secrets provision oidc --platform converge-dash-web`. No human types either value.
+    vault_path: secret/converge-dash
+    namespace: converge-dash
+    external_secret: converge-dash-secrets  # pragma: allowlist secret
+    keys:
+      - dash_web_janua_client_id
+      - dash_web_janua_client_secret
+    generate:
+      disabled: true
+
+  # phynd-crm convergence read API bearer (2026-11-04, phynd-crm#123): the one
+  # value that converge-dash (dash.madfam.io) presents to phynd-crm's
+  # GET /api/v1/convergence/* routes. phynd-crm verifies it, so its canonical
+  # copy is phynd-crm's (secret/phynd-crm, projected by the dedicated
+  # ExternalSecret phynd-crm-convergence-secrets as CONVERGENCE_API_TOKEN);
+  # converge-dash holds the SAME value at secret/converge-dash, which
+  # converge-dash-secrets already maps to PHYND_CRM_API_TOKEN.
+  #
+  # Two targets because intake writes one Vault path per target. Generation
+  # is disabled on both: a server-minted value would differ on each side, so
+  # the operator mints one value and supplies it to both targets in the same
+  # window. Rotating it means re-supplying both, then restarting
+  # phynd-crm-web and converge-dash's worker (env is read at container start).
+  phynd-crm/convergence:
+    label: phynd-crm convergence API bearer (verifier copy)
+    description: CONVERGENCE_API_TOKEN, the bearer phynd-crm checks on GET /api/v1/convergence/* (leads, opportunities). Must equal converge-dash/phynd-crm-token; supply the same value to both targets. Supplied-only.
+    vault_path: secret/phynd-crm
+    namespace: phynd-crm
+    external_secret: phynd-crm-convergence-secrets  # pragma: allowlist secret
+    keys:
+      - convergence_api_token
+    generate:
+      disabled: true
+
+  converge-dash/phynd-crm-token:
+    label: converge-dash phynd-crm convergence API bearer (caller copy)
+    description: PHYND_CRM_API_TOKEN, the bearer converge-dash presents to phynd-crm's convergence read API. Must equal phynd-crm/convergence; supply the same value to both targets. Supplied-only.
+    vault_path: secret/converge-dash
+    namespace: converge-dash
+    external_secret: converge-dash-secrets  # pragma: allowlist secret
+    keys:
+      - phynd_crm_api_token
+    generate:
+      disabled: true
+
+  # Dhanam convergence read API bearer (2026-11-04, RFC 0049): the one value
+  # converge-dash presents to Dhanam's GET /v1/convergence/* routes. Dhanam
+  # verifies it (ConvergenceAuthGuard, constant-time against
+  # CONVERGENCE_API_TOKEN), so its canonical copy is Dhanam's (secret/dhanam,
+  # merged into dhanam-secrets by the dedicated ExternalSecret
+  # dhanam-secrets-convergence, dhanam repo infra/k8s/production);
+  # converge-dash holds the SAME value at secret/converge-dash, which
+  # converge-dash-secrets already maps to DHANAM_API_TOKEN. Same two-target,
+  # supplied-only mechanics as phynd-crm/convergence above.
+  dhanam/convergence:
+    label: Dhanam convergence API bearer (verifier copy)
+    description: CONVERGENCE_API_TOKEN, the bearer Dhanam checks on GET /v1/convergence/*. Must equal converge-dash/dhanam-token; supply the same value to both targets. Supplied-only.
+    vault_path: secret/dhanam
+    namespace: dhanam
+    external_secret: dhanam-secrets-convergence  # pragma: allowlist secret
+    keys:
+      - convergence_api_token
+    generate:
+      disabled: true
+
+  converge-dash/dhanam-token:
+    label: converge-dash Dhanam convergence API bearer (caller copy)
+    description: DHANAM_API_TOKEN, the bearer converge-dash presents to Dhanam's convergence read API. Must equal dhanam/convergence; supply the same value to both targets. Supplied-only.
+    vault_path: secret/converge-dash
+    namespace: converge-dash
+    external_secret: converge-dash-secrets  # pragma: allowlist secret
+    keys:
+      - dhanam_api_token
+    generate:
+      disabled: true
+
+  # converge-dash → Enclii (2026-11-04, RFC 0049): ENCLII_API_TOKEN, a
+  # read-scoped Enclii API token (`enclii tokens create`, value shown once and
+  # piped straight into this target) that converge-dash's worker presents to
+  # Switchyard's observability reads. Supplied-only: a random value is not an
+  # Enclii token.
+  converge-dash/enclii-token:
+    label: converge-dash Enclii API token
+    description: ENCLII_API_TOKEN, a read-scoped Enclii API token converge-dash's worker presents to Switchyard. Created with `enclii tokens create` and piped here; never typed. Supplied-only.
+    vault_path: secret/converge-dash
+    namespace: converge-dash
+    external_secret: converge-dash-secrets  # pragma: allowlist secret
+    keys:
+      - enclii_api_token
+    generate:
+      disabled: true
+
+  # converge-dash → Selva (2026-11-04, RFC 0049): the Janua client_credentials
+  # pair of ecosystem-oidc platform converge-dash-selva (audience selva-office,
+  # scope selva:read, org-bound to madfam-ecosystem), written ONLY by
+  # `enclii secrets provision oidc --platform converge-dash-selva`. Its own
+  # ExternalSecret, converge-dash-service-clients, because ESO is all-or-nothing
+  # and converge-dash-secrets must keep syncing while this pair does not exist.
+  converge-dash/selva-client:
+    label: converge-dash → Selva service client
+    description: Janua client_credentials pair (converge-dash-selva, scope selva:read) converge-dash's worker uses to fetch a token for Selva's convergence feed. Filed by `enclii secrets provision oidc --platform converge-dash-selva`.
+    vault_path: secret/converge-dash
+    namespace: converge-dash
+    external_secret: converge-dash-service-clients  # pragma: allowlist secret
+    keys:
+      - selva_service_client_id
+      - selva_service_client_secret
+    generate:
+      disabled: true
+
+  # Avala Janua client (SSO wave 1, 2026-10-27): the confidential pair of
+  # ecosystem-oidc platform avala. Avala still reads its pair from a hand-made
+  # Secret; this target writes secret/avala for the PLANNED avala-janua-oidc
+  # ExternalSecret. Until that exists, intake merges into Vault and reports
+  # external_secret_refreshed: false, and nothing reaches the pod, so a
+  # rotating provision run must wait for avala's ExternalSecret.
+  avala/oidc-janua:
+    label: Avala Janua OAuth client
+    description: Avala (admin.avala.studio, app.avala.studio) Janua confidential client id + secret, filed by `enclii secrets provision oidc --platform avala`. Waits on avala's avala-janua-oidc ExternalSecret before any rotation.
+    vault_path: secret/avala
+    namespace: avala
+    external_secret: avala-janua-oidc  # pragma: allowlist secret
+    keys:
+      - janua_client_id
+      - janua_client_secret
+    generate:
+      disabled: true
 
   # monitoring (2026-10-05) — Alertmanager's SMTP password, the credential
   # behind every `email_configs` block in infra/k8s/production/monitoring/
@@ -1013,6 +1434,26 @@ targets:
     external_secret: grafana-admin  # pragma: allowlist secret
     keys:
       - grafana_admin_password
+
+  # data (2026-10-21) — pgbouncer_auth, the one role the shared pgbouncer logs
+  # in as to run auth_query (infra/k8s/platform-infra/pgbouncer.yaml). The
+  # pgbouncer-auth ExternalSecret (platform-infra) projects it; the pooler's
+  # init container writes it as the first userlist line, and
+  # scripts/pgbouncer-auth-query.sh migrate sets the same value on the Postgres
+  # role, reading it from that Secret in the cluster.
+  #
+  # Generatable: nothing outside the pooler and Postgres holds it. --generate
+  # pgbouncer_auth_password mints 32 bytes (43 characters of base64url), the
+  # shape the init container accepts. Path secret/enclii, which the intake
+  # writer policy already covers; enclii-secrets does not map the property.
+  data/pgbouncer-auth:
+    label: pgbouncer auth_query role password
+    description: Password of the pgbouncer_auth role the shared pgbouncer (namespace data) uses for auth_query. Mint server-side with --generate pgbouncer_auth_password. Projected to the pgbouncer-auth Secret by the pgbouncer-auth ExternalSecret; then run scripts/pgbouncer-auth-query.sh migrate (sets it on the role) and restart the pgbouncer Deployment.
+    vault_path: secret/enclii
+    namespace: data
+    external_secret: pgbouncer-auth  # pragma: allowlist secret
+    keys:
+      - pgbouncer_auth_password
 
   # synthetics (2026-10-14) — the S-Gate 1 synthetic buyer: the identity the
   # journeys CronJob (infra/k8s/production/synthetics) signs in to Dhanam
@@ -1254,7 +1695,7 @@ targets:
 
   janua-staging/runtime-crypto:
     label: Fresh isolated staging identity crypto
-    description: Governed isolated runtime custody; no owner, provider or production credential
+    description: Initialize all five fresh staging crypto keys together with --generate; matched RSA pair and padded Fernet key, no overwrite or production credential
     vault_path: secret/janua-staging
     namespace: janua-staging
     external_secret: janua-staging-secrets # pragma: allowlist secret -- ExternalSecret resource name; not a credential
@@ -1264,6 +1705,8 @@ targets:
       - jwt_secret_key
       - secret_key
       - field_encryption_key
+    generate:
+      profile: janua-staging-crypto-v1
 
   janua-staging/database:
     label: Isolated staging nonowner database URI
@@ -1273,6 +1716,8 @@ targets:
     external_secret: janua-staging-secrets # pragma: allowlist secret -- ExternalSecret resource name; not a credential
     keys:
       - database_url
+    generate:
+      disabled: true
 
   janua-staging/database-ca:
     label: Verified public staging database CA
@@ -1282,16 +1727,20 @@ targets:
     external_secret: janua-staging-ca # pragma: allowlist secret -- ExternalSecret resource name; not a credential
     keys:
       - database_ca
+    generate:
+      disabled: true
 
   janua-staging/redis:
     label: Fresh private staging Redis authentication
-    description: Governed isolated runtime custody; no owner, provider or production credential
+    description: Initialize both fresh staging Redis keys together with --generate; matched password and private service URI, no overwrite or production credential
     vault_path: secret/janua-staging
     namespace: janua-staging
     external_secret: janua-staging-redis # pragma: allowlist secret -- ExternalSecret resource name; not a credential
     keys:
       - redis_password
       - redis_url
+    generate:
+      profile: janua-staging-redis-v1
 
   # Dhanam <-> Karafiel webhook signing keys (owner ruling 2026-10-14): one
   # dedicated HMAC key per direction, carried with a signed timestamp. Each is
@@ -1315,6 +1764,26 @@ targets:
     keys:
       - dhanam_karafiel_signing_secret
 
+  # Karafiel → Dhanam cost events (2026-11-05, RFC 0050 Phase 1). The pair of
+  # ecosystem-oidc platform karafiel-dhanam-cost-events (audience dhanam-api,
+  # scope dhanam-cost-events:write, org-bound to madfam-ecosystem), written
+  # ONLY by `enclii secrets provision oidc --platform
+  # karafiel-dhanam-cost-events`. Its OWN ExternalSecret,
+  # karafiel-dhanam-cost-events: ESO is all-or-nothing per ExternalSecret, so
+  # an unprovisioned pair never holds another Karafiel Secret. LOWERCASE keys,
+  # mapped to DHANAM_COST_EVENTS_CLIENT_ID / DHANAM_COST_EVENTS_CLIENT_SECRET.
+  karafiel/dhanam-cost-events-client:
+    label: Karafiel → Dhanam cost-events writer client
+    description: Janua client_credentials pair (karafiel-dhanam-cost-events, scope dhanam-cost-events:write, org-bound) Karafiel's worker uses to push cost.event.v1 events from CFDI into Dhanam. Filed by `enclii secrets provision oidc --platform karafiel-dhanam-cost-events`.
+    vault_path: secret/karafiel
+    namespace: karafiel
+    external_secret: karafiel-dhanam-cost-events  # pragma: allowlist secret
+    keys:
+      - dhanam_cost_events_client_id
+      - dhanam_cost_events_client_secret
+    generate:
+      disabled: true
+
   dhanam/karafiel-callback-secret:
     label: Dhanam callback key for Karafiel
     description: HMAC key Karafiel's worker signs its cfdi-issued callback to Dhanam with (X-Dhanam-Timestamp + X-Dhanam-Signature-V2) and Dhanam's api verifies, projected by dhanam-secrets-karafiel-callback. Karafiel holds a read-only copy through its own ExternalSecret karafiel-dhanam-callback-signing (namespace karafiel). Mint server-side with --generate karafiel_dhanam_signing_secret.
@@ -1323,3 +1792,132 @@ targets:
     external_secret: dhanam-secrets-karafiel-callback  # pragma: allowlist secret
     keys:
       - karafiel_dhanam_signing_secret
+
+  # Dhanam credit-metering key (DHC-07, 2026-11-09). Dhanam verifies it, so it
+  # owns the one canonical copy at secret/dhanam; signers read it cross-path.
+  # Generation stays ON (default entropy): no person ever handles the value.
+  dhanam/billing-webhook-secret:
+    label: Dhanam credit-metering key
+    description: HMAC key for POST /v1/billing/credits/usage (X-Billing-Signature, hex HMAC-SHA256 of the raw body). Dhanam's api verifies it, first as BILLING_WEBHOOK_SECRET_NEXT and after promotion as BILLING_WEBHOOK_SECRET, projected by dhanam-billing-webhook. Signers read it cross-path through their own ExternalSecret (Karafiel through karafiel-dhanam-credit-signing, namespace karafiel). Mint server-side with --generate billing_webhook_secret, ONCE; a re-run rotates it.
+    vault_path: secret/dhanam
+    namespace: dhanam
+    external_secret: dhanam-billing-webhook  # pragma: allowlist secret
+    keys:
+      - billing_webhook_secret
+
+  # madfam-crawler per-caller API keys (2026-11-09, verifier-owns, cross-path
+  # read). madfam-crawler verifies these keys, so it owns the one canonical
+  # copy per caller at secret/madfam-crawler; each caller reads ITS OWN
+  # property cross-path through its own ExternalSecret. One key per target so
+  # `--generate api_key_<caller>` runs with no prompt. One ExternalSecret per
+  # caller on the madfam-crawler side (madfam-crawler-caller-key-<caller>,
+  # spec only until its key is minted) so a missing key for one caller never
+  # blocks another. LOWERCASE properties, to match the ExternalSecrets'
+  # `property:` fields. Generation stays ON (default entropy).
+  madfam-crawler/api-key-forgesight:
+    label: madfam-crawler API key for forgesight
+    description: Per-caller key crawler-api verifies for forgesight (CALLER_KEY_FORGESIGHT, attributed caller=forgesight). forgesight reads it cross-path via forgesight-crawler-credentials (namespace forgesight), so that copy changes in the same window. Mint server-side with --generate api_key_forgesight.
+    vault_path: secret/madfam-crawler
+    namespace: madfam-crawler
+    external_secret: madfam-crawler-caller-key-forgesight # pragma: allowlist secret -- Kubernetes ExternalSecret object name; not a credential
+    keys:
+      - api_key_forgesight
+
+  madfam-crawler/api-key-fortuna:
+    label: madfam-crawler API key for fortuna
+    description: Per-caller key crawler-api verifies for fortuna (CALLER_KEY_FORTUNA, attributed caller=fortuna). fortuna reads it cross-path via fortuna-secrets (namespace fortuna) once it moves off secret/fortuna:madfam_crawler_token. Mint server-side with --generate api_key_fortuna.
+    vault_path: secret/madfam-crawler
+    namespace: madfam-crawler
+    external_secret: madfam-crawler-caller-key-fortuna # pragma: allowlist secret -- Kubernetes ExternalSecret object name; not a credential
+    keys:
+      - api_key_fortuna
+
+  madfam-crawler/api-key-tulana:
+    label: madfam-crawler API key for tulana
+    description: Per-caller key crawler-api verifies for tulana (CALLER_KEY_TULANA, attributed caller=tulana). tulana reads it cross-path via tulana-secrets (namespace tulana) once it moves off secret/tulana:crawler_api_token / crawler_api_key. Mint server-side with --generate api_key_tulana.
+    vault_path: secret/madfam-crawler
+    namespace: madfam-crawler
+    external_secret: madfam-crawler-caller-key-tulana # pragma: allowlist secret -- Kubernetes ExternalSecret object name; not a credential
+    keys:
+      - api_key_tulana
+
+  madfam-crawler/api-key-rondelio:
+    label: madfam-crawler API key for rondelio
+    description: Per-caller key crawler-api verifies for rondelio (CALLER_KEY_RONDELIO, attributed caller=rondelio). rondelio reads it cross-path via rondelio-secrets (namespace rondelio, MADFAM_CRAWLER_TOKEN) once it moves off secret/rondelio:madfam_crawler_token. Mint server-side with --generate api_key_rondelio.
+    vault_path: secret/madfam-crawler
+    namespace: madfam-crawler
+    external_secret: madfam-crawler-caller-key-rondelio # pragma: allowlist secret -- Kubernetes ExternalSecret object name; not a credential
+    keys:
+      - api_key_rondelio
+
+  madfam-crawler/api-key-avala:
+    label: madfam-crawler API key for avala
+    description: Per-caller key crawler-api verifies for avala (CALLER_KEY_AVALA, attributed caller=avala). avala reads it cross-path through an ExternalSecret of its own (namespace avala, MADFAM_CRAWLER_TOKEN in avala-secrets today, no ExternalSecret yet). Mint server-side with --generate api_key_avala.
+    vault_path: secret/madfam-crawler
+    namespace: madfam-crawler
+    external_secret: madfam-crawler-caller-key-avala # pragma: allowlist secret -- Kubernetes ExternalSecret object name; not a credential
+    keys:
+      - api_key_avala
+
+  madfam-crawler/api-key-tezca:
+    label: madfam-crawler API key for tezca
+    description: Per-caller key crawler-api verifies for tezca (CALLER_KEY_TEZCA, attributed caller=tezca). tezca's worker reads it cross-path through an ExternalSecret of its own (namespace tezca, MADFAM_CRAWLER_TOKEN in tezca-secrets today, no ExternalSecret yet). Mint server-side with --generate api_key_tezca.
+    vault_path: secret/madfam-crawler
+    namespace: madfam-crawler
+    external_secret: madfam-crawler-caller-key-tezca # pragma: allowlist secret -- Kubernetes ExternalSecret object name; not a credential
+    keys:
+      - api_key_tezca
+
+  # zavlo on Enclii (2026-10-21). zavlo-api (namespace zavlo) projects one
+  # ExternalSecret per target below (zavlo repo, infra/k8s/production/
+  # externalsecrets-api.yaml), so an unfilled optional concern never blocks a
+  # required one (ESO is all-or-nothing per ExternalSecret). zavlo/cfdi-emitter
+  # (above) is the sixth. DATABASE_URL is not here: onboarding writes it to the
+  # project Secret zavlo-secrets. LOWERCASE keys, as Vault stores them.
+  zavlo/api-runtime:
+    label: Zavlo API runtime Redis URL
+    description: REDIS_URL for zavlo-api's Bull queues — the shared platform Redis with its password and zavlo's own DB index (first free index ≥ 10 by `redis-cli INFO keyspace`). Composed on the host and typed at the masked prompt; never generated. Required at boot.
+    vault_path: secret/zavlo
+    namespace: zavlo
+    external_secret: zavlo-api-runtime  # pragma: allowlist secret
+    keys:
+      - redis_url
+
+  zavlo/email:
+    label: Zavlo API email provider key
+    description: RESEND_API_KEY for zavlo-api's transactional email. The current code constructs its Resend client at boot, so the API does not start without it. Which sender and account zavlo uses is an owner ruling (R46); typed at the masked prompt.
+    vault_path: secret/zavlo
+    namespace: zavlo
+    external_secret: zavlo-api-email  # pragma: allowlist secret
+    keys:
+      - resend_api_key
+
+  zavlo/blockchain:
+    label: Zavlo API chain wallet, RPC and contract
+    description: WALLET_PRIVATE_KEY (the stamp minter's hot wallet), POLYGON_RPC_URL (may embed a provider key) and CONTRACT_ADDRESS (not secret; kept beside the key so the three change together) for zavlo-api's BlockchainService, which builds its wallet at boot. Which network and which key is an owner ruling; typed at the masked prompt, never generated here.
+    vault_path: secret/zavlo
+    namespace: zavlo
+    external_secret: zavlo-api-blockchain  # pragma: allowlist secret
+    keys:
+      - wallet_private_key
+      - polygon_rpc_url
+      - contract_address
+
+  zavlo/billing:
+    label: Zavlo Dhanam billing federation secrets
+    description: DHANAM_WEBHOOK_SECRET (verifies Dhanam's signed zavlo subscription webhooks; must equal what Dhanam signs them with) and FEDERATION_API_TOKEN (bearer for zavlo's calls to Dhanam's customer federation). Optional for boot; zavlo's billing fails closed without them. Typed at the masked prompt.
+    vault_path: secret/zavlo
+    namespace: zavlo
+    external_secret: zavlo-api-billing  # pragma: allowlist secret
+    keys:
+      - dhanam_webhook_secret
+      - federation_api_token
+
+  zavlo/karafiel-hmac:
+    label: Zavlo → Karafiel CFDI envelope HMAC key
+    description: ZAVLO_KARAFIEL_HMAC_SECRET, the HMAC zavlo signs its CFDI envelopes to Karafiel's zavlo intake with. Karafiel must verify with the same value (its ZAVLO_BILLING_WEBHOOK_SECRET), through its own read-only ExternalSecret on this property (a karafiel change). Mint server-side with --generate zavlo_karafiel_hmac_secret. Optional for boot; the emitter fails closed without it.
+    vault_path: secret/zavlo
+    namespace: zavlo
+    external_secret: zavlo-api-karafiel  # pragma: allowlist secret
+    keys:
+      - zavlo_karafiel_hmac_secret

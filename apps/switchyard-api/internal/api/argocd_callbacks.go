@@ -100,15 +100,13 @@ func (h *Handler) processArgocdSyncRequest(ctx context.Context, req ArgocdSyncRe
 
 	deploymentsCreated := 0
 
-	for _, imageURI := range req.Images {
-		// Associate the image with a registered enclii service. Unknown
-		// images (no name/repo match) are skipped — the poller relies on this
-		// to ignore Applications that don't map to a tracked service.
-		service, serviceName := h.argocdServiceForImage(ctx, req.AppName, imageURI)
-		if service == nil {
-			continue
-		}
-
+	// Unknown images are ignored; mixed rollout images for one service wait
+	// until its summary settles instead of choosing the first array element.
+	images := argocdUnambiguousServiceImages(req.Images, func(imageURI string) (*types.Service, string) {
+		return h.argocdServiceForImage(ctx, req.AppName, imageURI)
+	})
+	for _, observed := range images {
+		imageURI, service, serviceName := observed.image, observed.service, observed.name
 		// Find the latest release for this service, or create one
 		release, err := h.findOrCreateRelease(ctx, service, imageURI, req.Revision)
 		if err != nil {
@@ -117,12 +115,29 @@ func (h *Handler) processArgocdSyncRequest(ctx context.Context, req ArgocdSyncRe
 				logging.Error("error", err))
 			continue
 		}
+		imageCorrectionRefused := false
+		if release.ImageURI != imageURI {
+			// A sync can initially report the previous rollout's summary image.
+			// Correct only current observer metadata, before the same-release
+			// no-op below, after a fresh authoritative Application read.
+			updated, err := h.reconcileArgocdReleaseImage(ctx, req, source, service, release, imageURI)
+			if err != nil || !updated {
+				h.logger.Warn(ctx, "ArgoCD release image reconciliation refused",
+					logging.String("release_id", release.ID.String()), logging.Error("error", err))
+				imageCorrectionRefused = true
+			} else {
+				release.ImageURI = imageURI
+			}
+		}
 
 		// Skip if this service already has a running deployment with the same release.
 		// If the latest same-release row is failed and Argo reports success, keep
 		// processing so the callback can recover the deployment record.
 		latestDeployment, _ := h.repos.Deployments.GetLatestByService(ctx, service.ID.String())
 		skipSameReleaseDeployment, recoverSameReleaseDeployment := argocdSameReleaseDeploymentDecision(latestDeployment, release.ID, callbackHealthy)
+		if imageCorrectionRefused && recoverSameReleaseDeployment == nil {
+			continue
+		}
 		if skipSameReleaseDeployment {
 			h.logger.Debug(ctx, "Service already deployed with this release, skipping",
 				logging.String("service_name", serviceName),
@@ -145,7 +160,16 @@ func (h *Handler) processArgocdSyncRequest(ctx context.Context, req ArgocdSyncRe
 		}
 
 		// Check for existing deployment with 'deploying' status (created by CI lifecycle event)
-		existingDeployment, findErr := h.repos.Deployments.FindDeployingByServiceAndSHA(ctx, service.ID, req.Revision)
+		var existingDeployment *types.Deployment
+		var findErr error
+		if imageCorrectionRefused {
+			// Preserve the existing healthy same-release failed-row recovery.
+			// A metadata refusal cannot create/adopt another deployment, rewrite
+			// image provenance, or suppress that status-only recovery.
+			existingDeployment = recoverSameReleaseDeployment
+		} else {
+			existingDeployment, findErr = h.repos.Deployments.FindDeployingByServiceAndSHA(ctx, service.ID, req.Revision)
+		}
 		if findErr != nil {
 			h.logger.Warn(ctx, "Error looking up existing deploying deployment",
 				logging.String("service_name", serviceName),
@@ -438,7 +462,8 @@ func argocdDeploymentHealth(healthStatus string) types.HealthStatus {
 	}
 }
 
-// findOrCreateRelease finds an existing release matching the image+SHA or creates a new one
+// findOrCreateRelease deduplicates by service/revision. Its caller separately
+// reconciles a stale observer image with a fresh, guarded Application read.
 func (h *Handler) findOrCreateRelease(ctx interface{ Value(any) any }, service *types.Service, imageURI, gitSHA string) (*types.Release, error) {
 	// Try to find existing release by service + git SHA
 	releases, err := h.repos.Releases.ListByService(service.ID)

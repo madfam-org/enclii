@@ -10,7 +10,7 @@ WORKDIR /app
 FROM base AS deps
 WORKDIR /app/docs-site
 COPY apps/docs-site/package.json apps/docs-site/package-lock.json* ./
-RUN npm install --legacy-peer-deps
+RUN npm ci --ignore-scripts --legacy-peer-deps --no-audit --no-fund
 
 # Build the application
 FROM base AS builder
@@ -51,16 +51,33 @@ FROM docker.io/library/nginx:alpine AS runner
 # 2.42.3) retires the seven util-linux entries from .trivyignore.
 # 2026-10-17: CVE-2026-77214 (libexpat 2.8.5-r0, fixed 2.9.0-r0) failed
 # `Scan: docs-site` on main run 39064455550.
-ARG APK_SECURITY_REFRESH=2026-10-17
+# 2026-10-19: CVE-2026-88806 (libx11 1.8.13-r0, fixed 1.8.14-r0)
+# failed docs-site on main run 39243201232. Alpine v3.24 main secdb confirms
+# the floor, which also covers CVE-2026-94283/94284/94285. Refresh the cached
+# upgrade layer; retain the scan/signature gate without a vulnerability waiver.
+# 2026-10-26: CVE-2026-92392 affected curl/libcurl 8.22.0-r0 in both
+# API/docs images. Alpine v3.24 main publishes the fix at 8.23.0-r0.
+# Keep both hard floors and refresh the cached upgrade; no scan waiver.
+# https://curl.se/docs/CVE-2026-92392.html
+# https://secdb.alpinelinux.org/v3.24/main.json
+ARG APK_SECURITY_REFRESH=2026-10-26
 RUN echo "apk security refresh: ${APK_SECURITY_REFRESH}" && \
     apk upgrade --no-cache && \
-    apk add --no-cache 'libexpat>=2.9.0-r0' 'pcre2>=10.49-r0' 'libuuid>=2.42.3-r0'
+    apk add --no-cache 'libexpat>=2.9.0-r0' 'pcre2>=10.49-r0' 'libuuid>=2.42.3-r0' 'libx11>=1.8.14-r0' 'curl>=8.23.0-r0' 'libcurl>=8.23.0-r0'
 
 # Copy custom nginx config (standard port 80)
 # Security headers applied at origin (defense-in-depth; Cloudflare may also set some).
 # CSP keeps 'unsafe-inline' for Docusaurus runtime; revisit with nonces later.
 # connect-src includes analytics.madfam.io for PostHog tracking.
-RUN echo 'server { \
+# Operator runbooks and audit records stay reachable by link but carry
+# X-Robots-Tag noindex (empty for every other path, so nginx omits it). A map
+# keeps the server-level add_header set intact; a nested location's add_header
+# would drop the security headers above it.
+RUN echo 'map $uri $docs_robots_tag { \
+    ~^/(runbooks|audits)(/|$) "noindex, nofollow"; \
+    default ""; \
+} \
+server { \
     listen 80; \
     server_name localhost; \
     root /usr/share/nginx/html; \
@@ -73,6 +90,7 @@ RUN echo 'server { \
     add_header X-Content-Type-Options "nosniff" always; \
     add_header Referrer-Policy "strict-origin-when-cross-origin" always; \
     add_header Permissions-Policy "camera=(), microphone=(), geolocation=()" always; \
+    add_header X-Robots-Tag $docs_robots_tag always; \
     location ~* \.(js|css|png|jpg|jpeg|gif|ico|svg|woff|woff2)$ { \
         expires 1y; \
         add_header Cache-Control "public, immutable" always; \

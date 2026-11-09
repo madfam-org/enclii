@@ -30,6 +30,7 @@ func (h *Handler) registerProjectServiceRoutes(protected *gin.RouterGroup) {
 	// Environments
 	protected.POST("/projects/:slug/environments", h.auth.RequireRole(string(types.RoleDeveloper)), h.CreateEnvironment)
 	protected.GET("/projects/:slug/environments", h.ListEnvironments)
+	protected.GET("/projects/:slug/registered-environments", h.ListRegisteredEnvironments)
 	protected.GET("/projects/:slug/environments/:env_name", h.GetEnvironment)
 
 	// Services

@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useRef, useState, useCallback } from 'react'
+import { useEffect, useState } from 'react'
 import type { TimelineResponse } from '@/lib/types'
 
 interface UseTimelineDataResult {
@@ -18,38 +18,42 @@ export function useTimelineData(windowMinutes: number): UseTimelineDataResult {
   const [data, setData] = useState<TimelineResponse | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
-  const isInitialLoad = useRef(true)
-  const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null)
-
-  const fetchTimeline = useCallback(async () => {
-    try {
-      const res = await fetch(`/api/status/timeline?hours=24&window=${windowMinutes}`)
-      if (!res.ok) throw new Error(`HTTP ${res.status}`)
-      const json: TimelineResponse = await res.json()
-      setData(json)
-      setError(null)
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to load timeline')
-    } finally {
-      if (isInitialLoad.current) {
-        isInitialLoad.current = false
-        setLoading(false)
-      }
-    }
-  }, [windowMinutes])
 
   useEffect(() => {
-    fetchTimeline()
+    let active = true
+    let interval: ReturnType<typeof setInterval> | null = null
+
+    function fetchTimeline() {
+      return Promise.resolve()
+        .then(() => fetch(`/api/status/timeline?hours=24&window=${windowMinutes}`))
+        .then(res => {
+          if (!res.ok) throw new Error(`HTTP ${res.status}`)
+          return res.json() as Promise<TimelineResponse>
+        })
+        .then(json => {
+          if (!active) return
+          setData(json)
+          setError(null)
+        })
+        .catch(err => {
+          if (active) setError(err instanceof Error ? err.message : 'Failed to load timeline')
+        })
+        .finally(() => {
+          if (active) setLoading(false)
+        })
+    }
+
+    void fetchTimeline()
 
     function startPolling() {
       stopPolling()
-      intervalRef.current = setInterval(fetchTimeline, 60_000)
+      interval = setInterval(fetchTimeline, 60_000)
     }
 
     function stopPolling() {
-      if (intervalRef.current !== null) {
-        clearInterval(intervalRef.current)
-        intervalRef.current = null
+      if (interval !== null) {
+        clearInterval(interval)
+        interval = null
       }
     }
 
@@ -63,14 +67,15 @@ export function useTimelineData(windowMinutes: number): UseTimelineDataResult {
       }
     }
 
-    startPolling()
+    if (document.visibilityState === 'visible') startPolling()
     document.addEventListener('visibilitychange', handleVisibility)
 
     return () => {
+      active = false // Ignore responses from an obsolete window or unmounted view.
       stopPolling()
       document.removeEventListener('visibilitychange', handleVisibility)
     }
-  }, [fetchTimeline])
+  }, [windowMinutes])
 
-  return { data, loading, error, isInitialLoad: isInitialLoad.current }
+  return { data, loading, error, isInitialLoad: loading }
 }

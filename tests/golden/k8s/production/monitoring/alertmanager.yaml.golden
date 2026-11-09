@@ -45,6 +45,33 @@ data:
       repeat_interval: 4h
       receiver: 'default-receiver'
       routes:
+        # Owner hold, 2026-10-29: no automatic MAP email. Operational alerts
+        # remain visible and can page via Courier's non-email channels.
+        # Stop before ANY fallback email route, including resolved messages.
+        - matchers:
+            - namespace="crea-map"
+          receiver: 'courier-only-receiver'
+          continue: false
+        - matchers:
+            - service="crea-map"
+          receiver: 'courier-only-receiver'
+          continue: false
+        - matchers:
+            - application="crea-map"
+          receiver: 'courier-only-receiver'
+          continue: false
+        - matchers:
+            - product="crea-map"
+          receiver: 'courier-only-receiver'
+          continue: false
+        - matchers:
+            - name="crea-map"
+          receiver: 'courier-only-receiver'
+          continue: false
+        - matchers:
+            - dest_namespace="crea-map"
+          receiver: 'courier-only-receiver'
+          continue: false
         # THE MESSAGING PATH'S OWN FAILURE MUST NOT USE THE MESSAGING PATH.
         # CourierReceiverDown fires when Alertmanager cannot deliver to
         # angelia-api's Courier receiver. It is `severity: critical`, so

@@ -54,8 +54,12 @@ func (h *Handler) handleOpsAppsSyncApply(ctx context.Context, operation string, 
 			Warnings:    []string{err.Error()},
 		}, statusCode
 	}
+	if req.validateApplication != nil && req.validateApplication(app) != nil {
+		return operatorOperationResponse{OperationID: operationID, Operation: operation,
+			Status: "conflict", Summary: "Application release binding changed; no operation submitted"}, http.StatusConflict
+	}
 
-	if activeOperation, found, _ := unstructured.NestedMap(app.Object, "operation"); found && len(activeOperation) > 0 {
+	if activeOperation, found, readErr := unstructured.NestedMap(app.Object, "operation"); readErr != nil || (found && len(activeOperation) > 0) {
 		return operatorOperationResponse{
 			OperationID: operationID,
 			Operation:   operation,
@@ -76,15 +80,30 @@ func (h *Handler) handleOpsAppsSyncApply(ctx context.Context, operation string, 
 			Warnings: []string{"retry after the active Argo operation completes"},
 		}, http.StatusConflict
 	}
+	previousState, hasState, stateErr := unstructured.NestedMap(app.Object, "status", "operationState")
+	phase, hasPhase, phaseErr := unstructured.NestedString(previousState, "phase")
+	if stateErr != nil || (hasState && (phaseErr != nil || !hasPhase || (phase != "Succeeded" && phase != "Failed" && phase != "Error"))) {
+		return operatorOperationResponse{
+			OperationID: operationID, Operation: operation, Status: "conflict", DryRun: false,
+			Summary:  "Application operation state is active or unconfirmed; no operation submitted",
+			Warnings: []string{"inspect the current Application operation state before retrying"},
+		}, http.StatusConflict
+	}
 
 	revision := strings.TrimSpace(req.Args["revision"])
 	prune := true
 	if strings.EqualFold(strings.TrimSpace(req.Args["prune"]), "false") {
 		prune = false
 	}
-	syncOptions := []string{"PruneLast=true"}
-	if options := strings.TrimSpace(req.Args["sync_options"]); options != "" {
-		syncOptions = splitCSV(options)
+	syncOptions, err := appsSyncOptions(app, req.Args["sync_options"])
+	if err != nil {
+		return operatorOperationResponse{
+			OperationID: operationID,
+			Operation:   operation,
+			Status:      "failed",
+			Summary:     fmt.Sprintf("failed to read sync options for Argo Application %s/%s; no operation submitted", namespace, target),
+			Warnings:    []string{err.Error()},
+		}, http.StatusInternalServerError
 	}
 
 	optionValues := make([]any, len(syncOptions))
@@ -107,11 +126,19 @@ func (h *Handler) handleOpsAppsSyncApply(ctx context.Context, operation string, 
 	if req.IdempotencyKey != "" {
 		annotations["enclii.dev/last-ops-idempotency-key"] = req.IdempotencyKey
 	}
+	for key, value := range req.auditAnnotations {
+		annotations[key] = value
+	}
 	// Replace the complete operation on the version we just inspected. A merge
 	// patch can inherit a concurrent auto-sync's revision/resources/automated
 	// fields; Update uses metadata.resourceVersion as an atomic precondition.
 	// Never retry a conflict here: the caller must inspect the new operation.
 	requested := app.DeepCopy()
+	// Match Argo CD v3.2.5 SetAppOperation: its controller later merge-patches
+	// the new state. Retaining old state would inherit omitted selective-sync
+	// resources/automated fields on that patch and contaminate resumed work.
+	// Clear only the confirmed terminal state in the same versioned Update.
+	unstructured.RemoveNestedField(requested.Object, "status", "operationState")
 	requested.Object["operation"] = map[string]any{
 		"initiatedBy": map[string]any{"username": "enclii-ops"},
 		"sync":        syncSpec,
@@ -178,4 +205,23 @@ func (h *Handler) handleOpsAppsSyncApply(ctx context.Context, operation string, 
 			"escalate to human review if Argo reports Degraded, Error, or Unknown after timeout",
 		},
 	}, http.StatusAccepted
+}
+
+func appsSyncOptions(app *unstructured.Unstructured, override string) ([]string, error) {
+	if options := strings.TrimSpace(override); options != "" {
+		return splitCSV(options), nil
+	}
+
+	// Argo consumes the operation's options, so retain the policy on the exact
+	// Application version reviewed above instead of replacing it with defaults.
+	options, _, err := unstructured.NestedStringSlice(app.Object, "spec", "syncPolicy", "syncOptions")
+	if err != nil {
+		return nil, err
+	}
+	for _, option := range options {
+		if strings.HasPrefix(option, "PruneLast=") {
+			return options, nil
+		}
+	}
+	return append(options, "PruneLast=true"), nil
 }

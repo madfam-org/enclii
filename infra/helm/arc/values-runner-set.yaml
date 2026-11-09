@@ -77,19 +77,27 @@ template:
           - /home/runner/run.sh
         resources:
           requests:
-            # Keep scheduler requests aligned with the dedicated 8 vCPU
-            # builder. 2Gi is the minimum observed safe request for memory-heavy
-            # frontend builds while still keeping the active blue pool schedulable
-            # on the dedicated builder node.
-            cpu: 400m
-            memory: 2Gi
+            # Owner-approved 2026-11-04 from 2 days / 3,436 runner pods of
+            # per-pod peaks: median 0.23 CPU / 0.3GiB, p95 1.37 CPU / 4.75GiB,
+            # max 6GiB. The request is what a typical job holds; the limit
+            # below covers the measured max. 1 CPU / 4Gi (2026-10-26) reserved
+            # a p90 peak for every job, so most of it sat idle while jobs
+            # queued. Keep these equal to the runner container in
+            # infra/k8s/production/arc/runner-{blue,deploy}/rendered.yaml, which
+            # also carry the dind requests and the full evidence;
+            # tests/scripts/test_arc_runner_requests.py checks the three agree.
+            cpu: 750m
+            memory: 2560Mi  # 2.5Gi
           limits:
-            cpu: 1500m
+            # Above the p95 peak (1.37), so a heavy job is not throttled.
+            cpu: "2"
             # 4Gi proved too small for monorepo CI (dhanam 2026-07-21 outage:
             # kernel cgroup-OOM killed Node mid-job — turbo fan-out of two Next
             # builds + jest workers — with no logs; the stuck-runner watchdog
-            # then reaped the dead worker). 6Gi + in-repo NODE_OPTIONS caps.
-            memory: 6Gi
+            # then reaped the dead worker). 6Gi + in-repo NODE_OPTIONS caps
+            # held until 2026-11-04, when the measured max reached 6GiB: 7Gi
+            # keeps 1GiB above it.
+            memory: 7Gi
 
 # Listener configuration (manages scale set communication with GitHub)
 listenerTemplate:

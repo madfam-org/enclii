@@ -15,24 +15,35 @@
 # KEDA operator (controller)
 operator:
   replicaCount: 1
-  resources:
-    requests:
-      cpu: 50m
-      memory: 128Mi
-    limits:
-      cpu: 200m
-      memory: 256Mi
 
 # Metrics API server (aggregated API for HPA)
 metricsServer:
   replicaCount: 1
-  resources:
+
+# Requests/limits: the chart reads ONLY resources.{operator,metricServer,webhooks}.
+# Kept identical to the inline values in infra/argocd/apps/keda.yaml.
+resources:
+  operator:
     requests:
       cpu: 50m
-      memory: 64Mi
+      memory: 100Mi
     limits:
-      cpu: 100m
-      memory: 128Mi
+      cpu: 1
+      memory: 1000Mi
+  metricServer:
+    requests:
+      cpu: 50m
+      memory: 100Mi
+    limits:
+      cpu: 1
+      memory: 1000Mi
+  webhooks:
+    requests:
+      cpu: 50m
+      memory: 32Mi
+    limits:
+      cpu: 1
+      memory: 1000Mi
 
 # Tolerate GPU nodes (don't schedule on them)
 tolerations:

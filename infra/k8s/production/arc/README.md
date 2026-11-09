@@ -12,11 +12,11 @@ halved capacity.
 | Path | What it is | Synced by |
 | --- | --- | --- |
 | `controller/rendered.yaml` | the ARC controller (chart 0.14.0) | `arc-runners` |
-| `runner-blue/rendered.yaml` | `madfam-runners-blue` — the whole org's CI pool, `maxRunners: 20` | `arc-runners-blue` |
+| `runner-blue/rendered.yaml` | `madfam-runners-blue` — the whole org's CI pool, `maxRunners: 30` | `arc-runners-blue` |
 | `runner-deploy/rendered.yaml` | `madfam-runners-deploy` — the ADR-010a deploy pool, `maxRunners: 2` | `arc-runners-deploy` |
 | `pool-health-alert.yaml` | the detector that pages when the pool stops serving jobs | `arc-watchdog` |
 | `stuck-runner-watchdog.yaml` | purges EphemeralRunners stuck against completed runs | `arc-watchdog` |
-| `priority-classes.yaml` | runner PriorityClasses — declared, **not yet referenced** | `arc-watchdog` |
+| `priority-classes.yaml` | non-preempting deploy priority; other classes declared | `arc-watchdog` |
 | `monitoring.yaml` | ServiceMonitor + PrometheusRule. **Not deployed and not coverage** — see its own header | nothing |
 
 `madfam-runners-green` exists only as Helm values: a dormant standby for
@@ -26,6 +26,88 @@ The `arc-watchdog` Application uses an explicit `directory.include`
 allowlist. **A new file in this directory is not deployed until it is named
 there.** That is why `monitoring.yaml` sat looking healthy for 82 days
 without ever being applied.
+
+## Runner requests are the per-node cap
+
+The scheduler packs builder nodes by **request**, so the runner and dind
+requests are what decide how many runners share a node. Until 2026-10-26 the
+runner asked for 400m / 2Gi and dind for nothing; on 2026-10-24 that let 15
+runners onto an 8 vCPU / 31Gi builder (the other builder was at its pod cap).
+The node ran out of memory without ever crossing a pod limit (node-level OOM
+kills, no cgroup OOMs), stopped answering the control plane and went NotReady
+twice. The taint-eviction controller then deleted its runners and its Longhorn
+instance-manager, and the volume replicas on that node had to be rebuilt.
+
+From 2026-10-26 both pools requested runner `1` CPU / `4Gi`, the p90
+per-pod peak of the following week, so a wave queued at GitHub instead of
+taking a node down. That reserved a heavy job's peak for every job.
+
+Since 2026-11-04 (owner decision) the runner requests `500m` / `2.5Gi`
+(written `2560Mi`) with a `2` CPU / `7Gi` limit; dind still requests `100m` /
+`512Mi`. Over 2 days and 3,436 runner pods the median job peaked at 0.23 CPU /
+0.3GiB, p95 at 1.37 CPU / 4.75GiB, and the largest at 6GiB. The request now
+matches a typical job and the limit covers the measured max. Blue's
+`maxRunners` went from 20 to 30 at the same time.
+
+Later on 2026-11-04 (owner decision) the CPU request went to `750m`. At `500m`
+a full pool saturated the builders' CPU, a builder went NotReady for a few
+seconds, and the slowest jobs ran longer, even though queue times had dropped
+sharply. `750m` keeps most of the queue gain and leaves the kubelet room. The
+node-side half (kubelet `system-reserved` / `kube-reserved` and a memory
+eviction threshold on the builders) is applied on the nodes, outside this
+repo; see ROADMAP.md.
+
+How many runners run at once is still set by what the builder nodes hold by
+request, not by `maxRunners`; the node layout and its per-node runner counts
+are kept in the private ops repo (`internal-devops`). Runners beyond that wait
+as Pending pods and their jobs wait queued at GitHub; the pool-health alert
+pages only when nothing is running.
+
+The trade-off, stated plainly: the scheduler now places more runners per node
+than their combined peaks would fit, betting that heavy jobs rarely coincide
+on one node. When they do, memory pressure is the 2026-10-24 failure again.
+The guard against that is the builder kubelet's memory eviction threshold
+(engineering backlog), which turns pressure into one evicted runner instead
+of a NotReady node. Watch for runner pods evicted or OOM-killed on the
+builders after this change; if they appear, raise the memory request before
+lowering `maxRunners`.
+
+Changing `maxRunners` replaces the listener. Under `updateStrategy: eventual`
+the new listener waits until the running runners finish, so no new job is
+assigned for up to one job's length; merge such a change in a quiet hour.
+On chart 0.14.0 an idle warm runner (`minRunners: 1`) can keep the listener
+from coming back at all ([upstream report](https://github.com/actions/actions-runner-controller/issues/4432)).
+If `AutoscalingListener` is still absent once no job is running, scale the
+blue `EphemeralRunnerSet` to 0 replicas, which is break-glass, and let ARC
+recreate both.
+
+`tests/scripts/test_arc_runner_requests.py` keeps the Helm values, both
+rendered pools and `infra/scripts/arc/blue-green-switch.sh` in agreement,
+refuses requests below the approved floor and limits below the measured
+peaks. Moving either is a capacity decision made with new measurements; see
+the ARC items in the
+[engineering backlog](../../../../ROADMAP.md#engineering-backlog-platform-and-fleet-wide).
+
+## Capacity recovery without cancelling jobs
+
+Controller pods require non-builder nodes and retain two replicas, leader
+election and a disruption budget. Values and rendered manifests explicitly
+select `updateStrategy: eventual`: a runner-template change waits for assigned
+jobs to finish instead of stopping active runners. ARC configuration validation
+uses the existing dedicated deploy pool, with the same Helm and manifest checks,
+so a blue scheduling backlog cannot block its own repair.
+
+Do not change an active scale set's listener template merely to move its listener.
+Upstream reports a warm-runner listener recreation deadlock for values-only
+changes on the deployed controller version
+([upstream report](https://github.com/actions/actions-runner-controller/issues/4432)).
+The deploy-pool capacity change must wait until the eventual-strategy
+controller rollout is verified through Enclii. Observe pool assignments before
+and after the change; no active runner deletion or workflow cancellation is part
+of this recovery. The deploy pool now starts on demand (`minRunners: 0`, `maxRunners: 2`) and
+uses the existing non-preempting deploy PriorityClass. Its listener requires a
+non-builder node. It must preserve the blue
+worker template and verify actual pickup of previously queued jobs.
 
 ## Controller ownership
 
@@ -143,9 +225,10 @@ browser matrix — the observed case was ~30 minutes for one deploy job, then
 **priority rule, not a partition**: nothing reserves blue for CI, and
 nothing stops other workflows being pointed at this label later.
 
-It is small on purpose (`minRunners: 1`, `maxRunners: 2`) and lands on the
-same builder nodes as blue, which already sit at 94–95% CPU. Capacity is not
-the point; not queueing is.
+It is small and starts on demand (`minRunners: 0`, `maxRunners: 2`). Workers
+land on builder nodes; the listener stays off builders. This reclaims an idle
+worker reservation when no deploy is waiting. Non-preempting priority lets a
+waiting deploy use the next available slot without evicting a running job.
 
 **Provisioning order matters, and it is the reason this is a separate PR
 from any workflow change.** The scale set must exist and be observed
@@ -162,8 +245,8 @@ the two steps are independently revertible.
 
 `enclii-deploy` > `fragua-paid` > `fragua-trial` > `enclii-internal-ci`
 
-**Nothing sets `priorityClassName` yet**, in this repo or anywhere else, so
-they currently have no runtime effect. They are declared now so the ordering
+The deploy pool sets `priorityClassName: enclii-deploy`; blue CI retains its
+existing default priority. They are declared now so the ordering
 is a reviewed artifact instead of a number invented during the first capacity
 incident. All four use `preemptionPolicy: Never`: they change queue order,
 never evicting a running job — a CI job killed mid-run presents as a lost

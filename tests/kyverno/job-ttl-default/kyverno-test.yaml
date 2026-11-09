@@ -1,0 +1,46 @@
+# Kyverno CLI test for infra/k8s/base/kyverno/policies/job-ttl-default.yaml.
+# Run: kyverno test tests/kyverno/   (CLI v1.11.4, the chart's Kyverno version;
+# CI job "Kyverno policy tests").
+apiVersion: cli.kyverno.io/v1alpha1
+kind: Test
+metadata:
+  name: job-ttl-default
+policies:
+  - ../../../infra/k8s/base/kyverno/policies/job-ttl-default.yaml
+resources:
+  - resources.yaml
+variables: values.yaml
+results:
+  # A Job with no TTL gets 7 days.
+  - policy: job-ttl-default
+    rule: add-ttl-seconds-after-finished
+    kind: Job
+    resources: [plain-job]
+    patchedResource: patched-plain-job.yaml
+    result: pass
+  # Hook Jobs get it too: Argo CD does not recreate a deleted hook.
+  - policy: job-ttl-default
+    rule: add-ttl-seconds-after-finished
+    kind: Job
+    resources: [argo-hook-job]
+    patchedResource: patched-argo-hook-job.yaml
+    result: pass
+  - policy: job-ttl-default
+    rule: add-ttl-seconds-after-finished
+    kind: Job
+    resources: [helm-hook-job]
+    patchedResource: patched-helm-hook-job.yaml
+    result: pass
+  # A Job's own TTL wins (the +( ) anchor adds only when absent).
+  - policy: job-ttl-default
+    rule: add-ttl-seconds-after-finished
+    kind: Job
+    resources: [own-ttl-job]
+    result: skip
+  # Argo-tracked ordinary Jobs, kube-system, kyverno and infrastructure
+  # namespaces are skipped.
+  - policy: job-ttl-default
+    rule: add-ttl-seconds-after-finished
+    kind: Job
+    resources: [argo-tracked-job, system-job, kyverno-job, infra-job]
+    result: skip

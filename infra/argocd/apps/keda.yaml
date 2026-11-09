@@ -28,23 +28,39 @@ spec:
       values: |
         operator:
           replicaCount: 1
-          resources:
-            requests:
-              cpu: 50m
-              memory: 128Mi
-            limits:
-              cpu: 200m
-              memory: 256Mi
 
         metricsServer:
           replicaCount: 1
-          resources:
+
+        # The chart (2.16.x) reads requests/limits ONLY from
+        # resources.{operator,metricServer,webhooks}. The operator.resources
+        # and metricsServer.resources blocks that sat here from 2026-07-07
+        # were ignored, so the pods ran on chart defaults (100m CPU each).
+        # 2026-11-04 right-sizing wave 3: requests from measured use (highest
+        # daily CPU p95 x 1.3, at most a 50% cut per step; memory max x 1.25).
+        # Limits stay at the chart defaults the pods run with today.
+        resources:
+          operator:
             requests:
               cpu: 50m
-              memory: 64Mi
+              memory: 100Mi
             limits:
-              cpu: 100m
-              memory: 128Mi
+              cpu: 1
+              memory: 1000Mi
+          metricServer:
+            requests:
+              cpu: 50m
+              memory: 100Mi
+            limits:
+              cpu: 1
+              memory: 1000Mi
+          webhooks:
+            requests:
+              cpu: 50m
+              memory: 32Mi
+            limits:
+              cpu: 1
+              memory: 1000Mi
 
         tolerations:
           - key: "nvidia.com/gpu"

@@ -14,6 +14,8 @@ import (
 type isolatedBootstrapProfile struct {
 	Name, Project, Service, Namespace, Database, RuntimeRole string
 	Producer, Workflow, PinPath, Image, SignerIdentity       string
+	CIWorkflow                                               string
+	CandidateRun                                             int64
 	EnvironmentKeys, RequiredChecks                          []string
 	// VaultPath is the only Vault path the held workload's ExternalSecret may
 	// read for a key the initial Job copies.
@@ -69,6 +71,14 @@ type bootstrapSourceRequirement struct {
 // new step), so a different file at the verified revision is refused, not run.
 const turnoVigenteSQLSHA256 = "b15f76f4097cae69847034406116343d87e8a7aaf25b5af88d0ddf912bef0594" // pragma: allowlist secret -- public SHA-256 of a source file; not a credential
 
+const karafielStageCoreSeedSHA256 = "5da5e466fb830280e050cd4877e7092f19668b69d2859ffd91aa91ee5e127d81"  // pragma: allowlist secret -- public SHA-256 of the reviewed staging seed guard; not a credential
+const karafielStageLegalSeedSHA256 = "d76c9ccc76c3863498a67bdd0eb027596a9171b28c18771401f135bdef5fc221" // pragma: allowlist secret -- public SHA-256 of the reviewed staging seed guard; not a credential
+
+// cierreReconstruccionSQLSHA256 pins crea-sim's fixed step 004
+// (`004-cierre-por-reconstruccion.sql`, crea-sim#112, main 11fbe1c) byte for
+// byte, on the same rule as step 003.
+const cierreReconstruccionSQLSHA256 = "a9ea106ec748408ec39bced9c50686c06552ca58ee0eb1fbf154b598e41227e3" // pragma: allowlist secret -- public SHA-256 of a source file; not a credential
+
 // The training kernels share one Vault path: the Vault writer policy grants
 // exactly five training data paths, and a sixth would need a policy change.
 const initialMAPVaultPath = "secret/crea-sim-map01"
@@ -84,6 +94,24 @@ func isolatedBootstrapProfileFor(name string) (isolatedBootstrapProfile, error) 
 		return profile, nil
 	}
 	switch name {
+	case k8s.KarafielSchemaProfile:
+		return isolatedBootstrapProfile{Name: k8s.KarafielSchemaProfile, Project: "karafiel", Service: "karafiel-api-staging", Namespace: "enclii-karafiel-staging", Database: "karafiel_staging_sim", RuntimeRole: "karafiel_staging_runtime", Producer: "madfam-org/karafiel", Workflow: "release-build-candidate.yml", PinPath: "infra/k8s/overlays/staging/kustomization.yaml", Image: "ghcr.io/madfam-org/karafiel/api", CIWorkflow: "ci.yml", SignerIdentity: `^https://github\.com/madfam-org/karafiel/\.github/workflows/release-build-candidate\.yml@refs/heads/main$`, RequiredChecks: []string{"NetworkPolicy port consistency", "Celery task signature consistency", "Ops script unit tests", "API lint and test", "lint-and-test"}, SourceRequirements: []bootstrapSourceRequirement{{Path: "apps/api/core/migrations/0009_seed_madfam_admin_access.py", SHA256: karafielStageCoreSeedSHA256}, {Path: "apps/api/legalgen/migrations/0003_seed_madfam_data.py", SHA256: karafielStageLegalSeedSHA256}}}, nil
+	case k8s.PortalFenceReadProfile:
+		profile := portalSimProfile(name)
+		profile.SourceRequirements = []bootstrapSourceRequirement{
+			{Path: "packages/entrenamiento/src/leer-freno-reset.ts", SHA256: k8s.PortalFenceReaderSHA256},
+			{Path: "packages/entrenamiento/sql/002-custodia-reset.sql", SHA256: k8s.PortalGenerationSchemaSHA256},
+			{Path: "packages/entrenamiento/sql/004-cierre-por-reconstruccion.sql", SHA256: cierreReconstruccionSQLSHA256},
+			{Path: "packages/entrenamiento/src/cerrar-por-reconstruccion.ts", SHA256: k8s.PortalReconstructionCloserSHA256},
+		}
+		return profile, nil
+	case k8s.PortalGenerationReadProfile:
+		profile := portalSimProfile(name)
+		profile.SourceRequirements = []bootstrapSourceRequirement{
+			{Path: "packages/entrenamiento/src/leer-generacion-retenida.ts", SHA256: k8s.PortalGenerationReaderSHA256},
+			{Path: "packages/entrenamiento/sql/002-custodia-reset.sql", SHA256: k8s.PortalGenerationSchemaSHA256},
+		}
+		return profile, nil
 	case "portal-sim-initial":
 		return portalSimProfile(name), nil
 	case "portal-sim-turno-vigente":
@@ -94,6 +122,24 @@ func isolatedBootstrapProfileFor(name string) (isolatedBootstrapProfile, error) 
 		profile.SourceRequirements = []bootstrapSourceRequirement{
 			{Path: "packages/entrenamiento/sql/003-turno-vigente-por-persona.sql", SHA256: turnoVigenteSQLSHA256},
 			{Path: "packages/entrenamiento/src/preparar-turno-vigente.ts"},
+		}
+		return profile, nil
+	case k8s.PortalReconstructionCloseProfile:
+		profile := portalSimProfile(name)
+		profile.SourceRequirements = []bootstrapSourceRequirement{
+			{Path: "packages/entrenamiento/sql/004-cierre-por-reconstruccion.sql", SHA256: cierreReconstruccionSQLSHA256},
+			{Path: "packages/entrenamiento/src/cerrar-por-reconstruccion.ts", SHA256: k8s.PortalReconstructionCloserSHA256},
+		}
+		return profile, nil
+	case "portal-sim-cierre-reconstruccion-paso":
+		// Fixed step 004 (ADR-0007 §2c) on the same portal database, after 003.
+		// Same custody as step 003; the image must already carry 004 and its
+		// preparer, so 004 never runs while the gateway rejects its catalogue.
+		// It adds the close-by-rebuild catalogue and closes no reservation.
+		profile := portalSimProfile(name)
+		profile.SourceRequirements = []bootstrapSourceRequirement{
+			{Path: "packages/entrenamiento/sql/004-cierre-por-reconstruccion.sql", SHA256: cierreReconstruccionSQLSHA256},
+			{Path: "packages/entrenamiento/src/preparar-cierre-reconstruccion.ts"},
 		}
 		return profile, nil
 	default:
@@ -116,7 +162,7 @@ func portalSimProfile(name string) isolatedBootstrapProfile {
 // portalDatabase reports whether the profile works on the portal database
 // with its four-key migrator custody (CREA_SIM_*), rather than a MAP kernel's.
 func (p isolatedBootstrapProfile) portalDatabase() bool {
-	return p.Name == "portal-sim-initial" || p.Name == "portal-sim-turno-vigente"
+	return p.Name == "portal-sim-initial" || k8s.IsFixedStepProfile(p.Name) || k8s.IsProvenanceReadProfile(p.Name)
 }
 
 // mapSimInitialProfile is the one constructor for the three MAP kernels. The
@@ -132,8 +178,10 @@ func mapSimInitialProfile(name string) (isolatedBootstrapProfile, bool) {
 		Name: name, Project: "crea-sim", Service: kernel.Service, Namespace: "crea-sim",
 		Database: kernel.Database, RuntimeRole: kernel.RuntimeRole,
 		Producer: "madfam-org/crea-map", Workflow: "build-deploy.yml", PinPath: "infra/k8s/production/kustomization.yaml",
-		Image:           "ghcr.io/madfam-org/crea-map/crea-map-web",
-		SignerIdentity:  `^(` + bootstrapReusableWorkflow + `v1\.0\.0-alpha\.8|https://github\.com/madfam-org/crea-map/\.github/workflows/build-deploy\.yml@refs/heads/main)$`,
+		Image: "ghcr.io/madfam-org/crea-map/crea-map-web",
+		// crea-map moved to build-publish v1.0.0-alpha.14 on 2026-10-18 (crea-map#639).
+		// alpha.8 stays for images that only an earlier (historical) pin names.
+		SignerIdentity:  `^(` + bootstrapReusableWorkflow + `v1\.0\.0-alpha\.(8|14)|https://github\.com/madfam-org/crea-map/\.github/workflows/build-deploy\.yml@refs/heads/main)$`,
 		RequiredChecks:  []string{"Instalar dependencias (caché)", "Seguridad de dependencias", "Compuertas de esquema y copy", "Lint + typecheck", "Pruebas unitarias", "Clinical RLS (presence gate)", "Compilación (next build)", "verify-ok", "Móvil + a11y (e2e) 1/6", "Móvil + a11y (e2e) 2/6", "Móvil + a11y (e2e) 3/6", "Móvil + a11y (e2e) 4/6", "Móvil + a11y (e2e) 5/6", "Móvil + a11y (e2e) 6/6", "e2e-ok"},
 		EnvironmentKeys: []string{"MAP_SIMULATION_ENABLED", "MAP_SIMULATION_KERNEL_ID", "APP_ORIGIN", "JANUA_AUDIENCE", "JANUA_ISSUER_URL", "JANUA_JWKS_URL", "RLS_POR_CASO", "MAP_SIMULATION_CONTEXT_KEY", "MAP_SIMULATION_CONTROL_KEY", "MAP_SIMULATION_MAIL_KEY", "MAP_SIMULATION_MCP_CLIENT_ID", "MAP_MCP_PSEUDONYM_KEY"},
 		VaultPath:       initialMAPVaultPath,

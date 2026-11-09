@@ -23,6 +23,11 @@ import (
 // annotation tracking. The declaration therefore restates, rather than changes,
 // how the installation already tracks resources. A present key of any other
 // value is a tracking migration and is refused here.
+//
+// Production grants switchyard-api no RBAC write on argocd-cm, so the apply
+// path is refused there (Forbidden) by design: the plan is the supported
+// read-only check, and changing the declaration is a reviewed platform-bootstrap
+// action.
 const (
 	argoConfigNamespace    = "argocd"
 	argoConfigName         = "argocd-cm"
@@ -144,6 +149,12 @@ func (h *Handler) handleOpsAppsTracking(ctx context.Context, req operatorOperati
 	if err != nil {
 		if k8serrors.IsConflict(err) {
 			return refuse("argocd-cm changed concurrently; nothing written by this request; obtain a new plan")
+		}
+		// The platform deliberately grants switchyard-api no write on argocd-cm
+		// (infra/k8s/cross-namespace-rbac/rbac.yaml). The apiserver rejects a
+		// Forbidden request before any write, so the outcome is known.
+		if k8serrors.IsForbidden(err) {
+			return refuse("the platform grants no write on argocd/argocd-cm; nothing written by this request; declaring tracking is a reviewed platform-bootstrap action")
 		}
 		resp.Status, resp.Data = "unknown", state.data("declare-annotation")
 		resp.Summary = "declaration outcome not confirmed; inspect with a dry run before another attempt"

@@ -16,6 +16,7 @@ import (
 	"github.com/madfam-org/enclii/apps/waybill/internal/config"
 	"github.com/madfam-org/enclii/apps/waybill/internal/events"
 	"github.com/madfam-org/enclii/apps/waybill/internal/metering"
+	"github.com/madfam-org/enclii/apps/waybill/internal/resourceusage"
 	"github.com/madfam-org/enclii/apps/waybill/internal/telemetry"
 )
 
@@ -103,10 +104,19 @@ func main() {
 	}
 	costHandlers := api.NewCostHandlers(store, costReader, logger)
 
+	// Daily resource ledger reads (RFC 0049 Phase 2). Only the time zone is
+	// read from the WAYBILL_RESOURCE_* settings: the API never calls
+	// Prometheus, it serves what the aggregator captured.
+	resourceCfg, err := resourceusage.LoadConfig()
+	if err != nil {
+		logger.Fatal("invalid resource usage configuration", zap.Error(err))
+	}
+	resourceHandlers := api.NewResourceUsageHandlers(resourceusage.NewStore(db), resourceCfg.Location, logger)
+
 	// Create API server
 	server := api.NewServer(handlers, costHandlers, &api.ServerConfig{
 		InternalAPIKey: cfg.InternalAPIKey,
-	}, logger)
+	}, logger, resourceHandlers)
 
 	// Start server - prefer PORT (set by Enclii platform) over API_PORT
 	port := os.Getenv("PORT")

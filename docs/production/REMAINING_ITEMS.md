@@ -89,9 +89,11 @@ sudo kubectl scale statefulset --all -n posthog --replicas=0
 sudo kubectl delete pods -n posthog --all --grace-period=0 --force
 sudo kubectl delete pvc -n posthog --all
 
-# Delete detached Longhorn volumes (Enclii-first)
+# Delete orphaned Longhorn volumes (Enclii-first). Only a detached volume whose
+# PV is Released or absent is eligible; a Bound PV (hibernated DB, idle claim) is
+# refused. Apply with the plan_hash of the reviewed dry run.
 enclii ops storage prune-detached
-enclii ops storage prune-detached --apply --reason "Commercial GA O-4 orphan cleanup"
+enclii ops storage prune-detached --expect-plan <plan_hash> --apply --reason "Commercial GA O-4 orphan cleanup"
 
 # Or wave0 orchestration:
 # ./scripts/wave0-ga-ops.sh --apply --reason "Commercial GA Wave 0"

@@ -108,7 +108,9 @@ Compact LLM context index for this repository.
   `pod/<name>` = delete one controller-owned pod (StatefulSet stuck on an old
   revision under OrderedReady). Needs platform_admin rank and the namespace in
   `ENCLII_OPS_RESTART_NAMESPACES` (kube-* always refused); `--apply --reason`
-  writes an audit row first. Doc: `docs/cli/commands/ops.md`.
+  writes an audit row first. Exception: in an Enclii `project-<id>` namespace,
+  `pod/<name>` recreates a CloudNativePG instance pod of an Enclii addon only
+  (same PVCs; apply needs `--expect-uid`). Doc: `docs/cli/commands/ops.md`.
 - ExternalSecret ordering: **Vault property first, manifest second.** An
   ExternalSecret is all-or-nothing — one missing property fails the whole sync
   and the target Secret keeps its old data, or on a first sync is never created.

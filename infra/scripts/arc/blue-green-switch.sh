@@ -49,13 +49,20 @@ log_error() {
     echo -e "${RED}[ERROR]${NC} $(date '+%H:%M:%S') $1"
 }
 
+# Read maxRunners from the color's values file, which
+# tests/scripts/test_arc_runner_requests.py keeps equal to the rendered
+# manifest. A hardcoded copy here said blue=12 while blue ran 20, so this
+# break-glass path would have clamped the pool it was meant to restore.
 max_runners_for_color() {
     local color=$1
-    if [[ "${color}" == "blue" ]]; then
-        echo "12"
-    else
-        echo "2"
+    local values_file="${REPO_ROOT}/infra/helm/arc/values-runner-set-${color}.yaml"
+    local max
+    max=$(awk '/^maxRunners:/ {print $2; exit}' "${values_file}" 2>/dev/null || true)
+    if [[ ! "${max}" =~ ^[0-9]+$ ]]; then
+        log_error "No numeric top-level maxRunners in ${values_file}" >&2
+        return 1
     fi
+    echo "${max}"
 }
 
 # Get the currently active color from scale set labels
