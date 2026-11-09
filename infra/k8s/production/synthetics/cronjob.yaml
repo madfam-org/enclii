@@ -3,7 +3,11 @@
 #
 # What one run does (journey `dhanam.staging.essentials.checkout`, runner in
 # the private ops repo, tools/journeys): sign in as the synthetic staging
-# identity (Node-side), reset it to the free tier, load staging pricing, open
+# identity (Node-side), reset it to the free tier, load staging pricing, load
+# the Dhanam-hosted checkout anonymously (/checkout, the route
+# HOSTED_CHECKOUT_ENABLED gates: a product plan must render rather than 302
+# to Kalya, and Dhanam's own plan must be handed to /billing/upgrade; this leg
+# arrives with the next journeys image digest), open
 # the Essentials checkout through the staging API, type Stripe's published
 # test card (4242 4242 4242 4242) on checkout.stripe.com, assert Stripe's
 # redirect back to staging, assert the staging API shows Essentials, then
@@ -14,7 +18,8 @@
 # Outcome: synthetic_journey_* metrics pushed to the pushgateway; rules
 # SyntheticCheckoutFailing (2 consecutive failures) and
 # SyntheticJourneysNotRunning (no success for 45 minutes) in
-# monitoring/prometheus.yaml (`synthetic-journeys-rules.yml`).
+# monitoring/prometheus.yaml (`synthetic-journeys-rules.yml`), plus the D6
+# gate series synthetic_journey:gate_green_7d (1 = green for 7 days).
 #
 # Sizing: one headless Chromium. activeDeadlineSeconds (14 min) ends a hung
 # run before the next schedule; backoffLimit 0 because a retry would hide a

@@ -3004,8 +3004,10 @@ data:
                 The synthetic buyer {{ $labels.journey }} (product
                 {{ $labels.product }}, env {{ $labels.env }}) has failed
                 {{ $value }} consecutive runs. Each run buys Dhanam Essentials
-                on STAGING with Stripe TEST mode: staging pricing, a checkout
-                opened through the staging API, Stripe's test card, Stripe's
+                on STAGING with Stripe TEST mode: staging pricing, the hosted
+                checkout (/checkout must render a product plan and hand
+                Dhanam's own plan to /billing/upgrade), a checkout opened
+                through the staging API, Stripe's test card, Stripe's
                 redirect back, then the staging API must show Essentials
                 (Stripe webhook -> entitlement). No real money moves.
 
@@ -3019,13 +3021,17 @@ data:
                      synthetics/dhanam-staging-checkout) or Dhanam staging's
                      synthetic cancel (404 = SYNTHETIC_CANCEL_ENABLED, sk_test_
                      keys or SYNTHETIC_ACCOUNT_IDS not set on staging).
-                  3. checkout_session / payment: Dhanam staging
+                  3. hosted-checkout-product / hosted-checkout-dhanam: the
+                     staging hosted checkout (HOSTED_CHECKOUT_ENABLED on
+                     dhanam-web and dhanam-api staging, the staging catalog,
+                     or a redirect to kalya.app).
+                  4. checkout_session / payment: Dhanam staging
                      (enclii ops pods diagnose -n enclii-dhanam-staging) or
                      Stripe test mode.
-                  4. entitlement after a passing payment: the Stripe test-mode
+                  5. entitlement after a passing payment: the Stripe test-mode
                      webhook to staging-api.dhan.am is not delivered, or the
                      staging webhook handler fails.
-                  5. guard_refusal / live_key_detected: STOP. Staging returned
+                  6. guard_refusal / live_key_detected: STOP. Staging returned
                      a live-mode session or a live Stripe key; treat it as a
                      live key reaching staging, not as a flaky probe.
 
@@ -3080,6 +3086,33 @@ data:
                      pushgateway-ingress-synthetics in monitoring) or the
                      pushgateway lost its state.
                 In Grafana: synthetic_journey_last_run_timestamp_seconds{job="journeys"}.
+
+      # The D6 gate (hosted checkout on in production) reads as data, not as a
+      # page: "the synthetic buyer is green for 7 days". No alert here; the
+      # pages above already cover red. Read-only check:
+      #   synthetic_journey:gate_green_7d{journey="dhanam.staging.essentials.checkout"} == 1
+      #
+      # green_and_fresh is 1 while the last run passed AND it ran in the last
+      # 45 minutes (a stopped runner is not green), 0 otherwise. It is
+      # evaluated every 30 s, so 7 days hold 20160 samples.
+      #
+      # gate_green_7d is 1 only when every sample of the last 7 days is 1 AND
+      # at least 99 % of them exist (19958 of 20160): a Prometheus outage or a
+      # retention cut (PrometheusRetentionBelow7Days) shortens the history and
+      # the gate reads 0, never a green it cannot prove. Retention is 9d.
+      - name: synthetic-journeys-gate
+        interval: 30s
+        rules:
+          - record: synthetic_journey:green_and_fresh
+            expr: |
+              synthetic_journey_success{job="journeys", env="staging"}
+              *
+              ((time() - synthetic_journey_last_run_timestamp_seconds{job="journeys", env="staging"}) < bool 2700)
+          - record: synthetic_journey:gate_green_7d
+            expr: |
+              min_over_time(synthetic_journey:green_and_fresh[7d])
+              *
+              (count_over_time(synthetic_journey:green_and_fresh[7d]) >= bool 19958)
 
   # =========================================================================
   # Resurrected 2026-08-26 (availability remediation Tier 0.3): the 5 of 8
@@ -3508,7 +3541,7 @@ data:
           - alert: PrometheusRuleFileNotInGit
             expr: |
               count by (rule_group) (
-                prometheus_rule_group_rules{job="prometheus", rule_group!~"/etc/prometheus/rules/(alert-delivery-rules|arc-pool-health-rules|chronic-restart-rules|client-slo-rules|cloudflared-tunnel-rules|courier-page-budget-rules|courier-receiver-rules|critical-coverage-rules|cv-rules|deploy-parity-alerts|deploy-pipeline-freshness-rules|enclii-alerts|geometry-probe-rules|longhorn-filesystem-health|maintenance-alerts|pager-path-drill-rules|pgbackrest-health-rules|postgres-wal-archive-rules|retainer-cycle-rules|revenue-probe-rules|secret-integrity-rules|synthetic-flow-probe-rules)\\.yml;.*"}
+                prometheus_rule_group_rules{job="prometheus", rule_group!~"/etc/prometheus/rules/(alert-delivery-rules|arc-pool-health-rules|chronic-restart-rules|client-slo-rules|cloudflared-tunnel-rules|courier-page-budget-rules|courier-receiver-rules|critical-coverage-rules|cv-rules|deploy-parity-alerts|deploy-pipeline-freshness-rules|enclii-alerts|geometry-probe-rules|longhorn-filesystem-health|maintenance-alerts|pager-path-drill-rules|pgbackrest-health-rules|postgres-wal-archive-rules|retainer-cycle-rules|revenue-probe-rules|secret-integrity-rules|synthetic-flow-probe-rules|synthetic-journeys-rules)\\.yml;.*"}
               ) > 0
             for: 15m
             labels:

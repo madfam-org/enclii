@@ -370,6 +370,36 @@ def test_rules_page_critical_under_the_revenue_route():
     assert "product" in route["group_by"]
 
 
+def _gate_records() -> dict[str, dict]:
+    groups = yaml.safe_load(_rules_cm()["data"][RULES_KEY])["groups"]
+    (group,) = [g for g in groups if g.get("name") == "synthetic-journeys-gate"]
+    return {r["record"]: r for r in group["rules"]}
+
+
+def test_the_d6_gate_is_recorded_not_paged():
+    """The 7-day green bar is a recorded series the owner reads, not an alert:
+    red already pages through the two rules above."""
+    groups = yaml.safe_load(_rules_cm()["data"][RULES_KEY])["groups"]
+    gate = [g for g in groups if g.get("name") == "synthetic-journeys-gate"]
+    assert len(gate) == 1 and gate[0]["interval"] == "30s"
+    assert all("alert" not in r for r in gate[0]["rules"])
+    records = _gate_records()
+    assert set(records) == {"synthetic_journey:green_and_fresh", "synthetic_journey:gate_green_7d"}
+    fresh = records["synthetic_journey:green_and_fresh"]["expr"]
+    assert 'synthetic_journey_success{job="journeys", env="staging"}' in fresh
+    assert "< bool 2700" in fresh, "a runner silent for 45 minutes is not green"
+    gate_expr = records["synthetic_journey:gate_green_7d"]["expr"]
+    assert "min_over_time(synthetic_journey:green_and_fresh[7d])" in gate_expr
+    # 99 % of 7 days at the group's 30 s interval: 0.99 * 7 * 24 * 120.
+    assert f">= bool {int(0.99 * 7 * 24 * 120)}" in gate_expr
+
+
+def test_prometheus_keeps_more_than_the_gate_window():
+    args = " ".join(_one(PROMETHEUS, "Deployment", "prometheus")["spec"]["template"]["spec"]["containers"][0]["args"])
+    days = int(re.search(r"--storage\.tsdb\.retention\.time=(\d+)d", args).group(1))
+    assert days > 7, f"retention {days}d cannot hold the 7-day D6 gate"
+
+
 def test_failing_needs_two_consecutive_failures():
     expr = _rules()["SyntheticCheckoutFailing"]["expr"]
     assert re.search(r"synthetic_journey_consecutive_failures\{[^}]*\}\s*>=\s*2\b", expr)
@@ -525,7 +555,64 @@ PROMTOOL_TEST = textwrap.dedent(
             alertname: SyntheticJourneysNotRunning
             exp_alerts: []
 
-      # 6. The legacy rule still pages for its own pusher.
+      # 6. The D6 gate: green and fresh while runs pass every 15 minutes; one
+      #    red run reads 0; a runner silent for 45 minutes reads 0.
+      - interval: 1m
+        input_series:
+          - series: 'synthetic_journey_success{{{S}}}'
+            values: '1x30 0x15 1x40 1x60'
+          - series: 'synthetic_journey_last_run_timestamp_seconds{{{S}}}'
+            values: '0+60x85 5100x60'
+        promql_expr_test:
+          - expr: synthetic_journey:green_and_fresh
+            eval_time: 20m
+            exp_samples:
+              - labels: 'synthetic_journey:green_and_fresh{{{S}}}'
+                value: 1
+          - expr: synthetic_journey:green_and_fresh
+            eval_time: 40m
+            exp_samples:
+              - labels: 'synthetic_journey:green_and_fresh{{{S}}}'
+                value: 0
+          - expr: synthetic_journey:green_and_fresh
+            eval_time: 140m
+            exp_samples:
+              - labels: 'synthetic_journey:green_and_fresh{{{S}}}'
+                value: 0
+          # Green, but 25 minutes of history is far short of 99 % of 7 days.
+          - expr: synthetic_journey:gate_green_7d
+            eval_time: 25m
+            exp_samples:
+              - labels: 'synthetic_journey:gate_green_7d{{{S}}}'
+                value: 0
+          # A red run inside the window keeps the gate at 0.
+          - expr: synthetic_journey:gate_green_7d
+            eval_time: 80m
+            exp_samples:
+              - labels: 'synthetic_journey:gate_green_7d{{{S}}}'
+                value: 0
+
+      # 7. Seven and a half days green and fresh: the gate reads 1 once 99 %
+      #    of a 7-day window holds samples, and 0 a day before that.
+      - interval: 1m
+        input_series:
+          - series: 'synthetic_journey_success{{{S}}}'
+            values: '1x11000'
+          - series: 'synthetic_journey_last_run_timestamp_seconds{{{S}}}'
+            values: '0+60x11000'
+        promql_expr_test:
+          - expr: synthetic_journey:gate_green_7d
+            eval_time: 6d
+            exp_samples:
+              - labels: 'synthetic_journey:gate_green_7d{{{S}}}'
+                value: 0
+          - expr: synthetic_journey:gate_green_7d
+            eval_time: 7d12h
+            exp_samples:
+              - labels: 'synthetic_journey:gate_green_7d{{{S}}}'
+                value: 1
+
+      # 8. The legacy rule still pages for its own pusher.
       - interval: 1m
         input_series:
           - series: 'synthetic_journey_consecutive_failures{{job="synthetic-flow-probe",platform="selva",journey="admin-login"}}'
@@ -592,7 +679,7 @@ def test_promtool_checks_the_full_rule_text():
     body = _rules_cm()["data"][RULES_KEY]
     code, output = _promtool({RULES_KEY: body}, RULES_KEY, "check rules")
     assert code == 0, f"promtool rejected {RULES_KEY}:\n{output}"
-    assert "SUCCESS: 2 rules found" in output, output
+    assert "SUCCESS: 4 rules found" in output, output
 
 
 def test_promtool_evaluates_the_synthetic_journey_rules():
