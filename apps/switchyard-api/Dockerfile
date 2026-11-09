@@ -62,9 +62,19 @@ ENV COSIGN_VERSION=v3.1.3
 # GHSA-mgcc-cww5-fp2q (HIGH: unbounded RSA JWK validation CPU use). The
 # switchyard-api scan in run 40664640944 found v4.1.4 in BOTH runtime binaries;
 # the API module and this independent cosign build must both carry the fix.
+# 2026-11-09: x/net floor raised v0.60.0 -> v0.62.0 for CVE-2026-78661 (HIGH:
+# golang.org/x/net/html DoS via crafted HTML). The switchyard-api scan of
+# enclii#949's push build found x/net v0.60.0 in BOTH runtime binaries, so the
+# digest carrying #949 was never pinned. x/net v0.62.0 requires x/text >=
+# v0.43.0 (and x/crypto v0.58.0, x/sys v0.49.0, x/term v0.47.0, which `go get`
+# raises on its own), so the x/text floor moves 0.42 -> 0.43; x/text v0.43.0
+# still requires x/mod v0.41.0, so that floor is unchanged. Verified locally:
+# go get + go mod tidy + go build of cosign v3.1.3 succeed, and `go version -m`
+# shows x/net v0.62.0, x/text v0.43.0, x/mod v0.41.0, grpc v1.83.2,
+# compress v1.18.7, go-jose/v4 v4.1.6.
 RUN git clone --depth 1 -b "${COSIGN_VERSION}" https://github.com/sigstore/cosign /tmp/cosign-src && \
     cd /tmp/cosign-src && \
-    go get golang.org/x/text@v0.42.0 google.golang.org/grpc@v1.83.2 golang.org/x/mod@v0.41.0 golang.org/x/net@v0.60.0 github.com/klauspost/compress@v1.18.7 github.com/go-jose/go-jose/v4@v4.1.6 && \
+    go get golang.org/x/text@v0.43.0 google.golang.org/grpc@v1.83.2 golang.org/x/mod@v0.41.0 golang.org/x/net@v0.62.0 github.com/klauspost/compress@v1.18.7 github.com/go-jose/go-jose/v4@v4.1.6 && \
     go mod tidy && \
     CGO_ENABLED=0 go build -o /usr/local/bin/cosign ./cmd/cosign && \
     rm -rf /tmp/cosign-src
