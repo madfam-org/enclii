@@ -57,28 +57,28 @@ configMapGenerator:
 # (commit-digests runs `kustomize edit set image roundhouse-worker=...`,
 # which rewrites both newName and digest). Do not hand-edit.
 images:
-- digest: sha256:9cf3929187160731ef5b37ebeba4b3d1f21f313a683d06386e573e23f804ffeb
+- digest: sha256:63b523dd8f8c27a0900743c2337ce15400a145a025bcc4b6e5f8b3ebe49a74ad
   name: docs-site
   newName: ghcr.io/madfam-org/enclii/docs-site
 - digest: sha256:fd390fea8ea57cc6df66b028e77e78b8e6d35969a7fd11d4c2df723e56325991
   name: landing-page
   newName: ghcr.io/madfam-org/enclii/landing-page
-- digest: sha256:a8b495de4f56706bf79a2c0c441ff13e4f729d6887dbc2089b8306c69469fff8
+- digest: sha256:ada7f38c0a410a4571df0cade93e1bd4b20f32a13c3f7b2acc8a98cb18170cf4
   name: roundhouse
   newName: ghcr.io/madfam-org/enclii/roundhouse
-- digest: sha256:7ce66ec6f1f4273bdbd8197ca4cf3bb90bc986bbcfca74be1d93d68d0f30fd2b
+- digest: sha256:0192b1d25f56248eb704bd3d29b3f4a24a68c5e6623c115677d9956b5b8e702b
   name: roundhouse-worker
   newName: ghcr.io/madfam-org/enclii/roundhouse-worker
-- digest: sha256:e6e8a657de67655329f4b9d1389d8bca642000f4aa2a71d00796c4d57ffa02c6
+- digest: sha256:ecb94e95c321bf9dfec333fb86551a845d61388a58f879ca0626b1453a582f7a
   name: switchyard-api
   newName: ghcr.io/madfam-org/enclii/switchyard-api
-- digest: sha256:ad71b9133882e2fd5af8658749a379b85ae808098faf05171d476daa0c53a299
+- digest: sha256:e9b4b4f4c91f9c1589fdd02862c5455a4ad313c73e524846cad3cdab291a2caa
   name: switchyard-ui
   newName: ghcr.io/madfam-org/enclii/switchyard-ui
-- digest: sha256:cebe3be81d29fb63685f9da5c71dbd2773105379aa70d4157d02c2d876e0939a
+- digest: sha256:3b168b6a66a4eb72953b73492e99a760300f0a4aa5db2d514612a5ae8975c31c
   name: waybill
   newName: ghcr.io/madfam-org/enclii/waybill
-- digest: sha256:82d03579660baeb0856a42ab0383d565368609a03e5362efe798f25e91f195bf
+- digest: sha256:7829d38a55e85fe233da29e19a53d15546d554f46cd8a291abba94ddb294f568
   name: waybill-aggregator
   newName: ghcr.io/madfam-org/enclii/waybill-aggregator
 # Note: commonLabels removed - it adds to selectors which are immutable.

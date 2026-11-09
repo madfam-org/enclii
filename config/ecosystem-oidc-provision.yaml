@@ -361,6 +361,45 @@ platforms:
         - client_credentials
 
   # ---------------------------------------------------------------------------
+  # nauta → phynd-crm CRM reads (2026-11-09, machine edge). Replaces phynd's
+  # static FEDERATION_API_TOKEN for nauta: that bearer carries write scopes for
+  # any tenant, and nauta only reads. One edge, one client, one scope.
+  #
+  # phynd-crm (apps/web/src/lib/trpc/machine-auth.ts) accepts an RS256 token
+  # with aud `phynd-crm` (PHYND_CRM_MACHINE_AUDIENCE), token_use
+  # client_credentials and scope `phynd-crm-engagements:read`, which it maps to
+  # engagements:read + contacts:read only (MACHINE_SCOPE_GRANTS). It pins the
+  # token's org_id to PHYND_CRM_MACHINE_JANUA_ORG_ID and the tenant to
+  # PHYND_CRM_MACHINE_TENANT_ID, so this client MUST be org-bound to that same
+  # organization (madfam-ecosystem). Off in phynd until both are set.
+  #
+  # Janua reserves the audience and the scope (janua
+  # reserved_oauth_boundaries.py, PHYND_CRM_SCOPES). Provision only after the
+  # Janua image that reserves them is promoted.
+  #
+  # The pair lands at secret/nauta through nauta/phynd-crm-oauth (LOWERCASE
+  # keys), read by nauta's DEDICATED nauta-phynd-crm-oauth ExternalSecret.
+  # NOT pinned yet: the first provision run CREATES the client and prints its
+  # jnc_… id; pin it here (both copies).
+  # ---------------------------------------------------------------------------
+  nauta-phynd-crm:
+    intake_target: nauta/phynd-crm-oauth
+    intake_key_map:
+      phynd_crm_oauth_client_id: client_id
+      phynd_crm_oauth_client_secret: client_secret  # pragma: allowlist secret
+    janua_client:
+      name: Nauta → Phynd CRM (service)
+      client_key: nauta-phynd-crm  # pragma: allowlist secret
+      audience: phynd-crm
+      description: Machine edge (client_credentials) from nauta's cockpit CRM reads to phynd-crm tRPC. Org-bound to madfam-ecosystem, scope phynd-crm-engagements:read only (engagements + contacts read). Replaces the static federation bearer for nauta. Never a browser login.
+      is_confidential: true
+      organization_id: 1a6233ef-185f-43ee-9181-e2591fbb2643
+      allowed_scopes:
+        - phynd-crm-engagements:read
+      grant_types:
+        - client_credentials
+
+  # ---------------------------------------------------------------------------
   # crea-map → janua payment mail (service). The second client_credentials
   # machine edge, shaped exactly like nauta-symbiosis-hcm: one edge, one client,
   # one scope. janua #635's POST /api/v1/email/payment-notices accepts ONLY an
