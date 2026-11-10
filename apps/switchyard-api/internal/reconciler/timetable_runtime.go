@@ -34,6 +34,11 @@ type jobRuntimeContext struct {
 	// then sit podless.
 	PodSecurityContext       *corev1.PodSecurityContext
 	ContainerSecurityContext *corev1.SecurityContext
+	// Source names the live Deployment this context was resolved from. Nil
+	// for every fallback context. Only the opt-in service network identity
+	// reads it (see timetable_network_identity.go); the builders and the
+	// CronJob drift check do not.
+	Source *jobRuntimeSource
 }
 
 // resolveJobRuntimeContext derives the execution context for a timetable job
@@ -116,7 +121,9 @@ func (r *TimetableReconciler) resolveJobRuntimeContext(ctx context.Context, serv
 		"deployment": resolvedName,
 	}).Debug("Timetable: resolved service Deployment for job runtime context")
 
-	return runtimeContextFromDeployment(deployment, explicitImage)
+	rc := runtimeContextFromDeployment(deployment, explicitImage)
+	rc.Source = sourceFromDeployment(resolvedName, deployment.Spec.Template.Labels, deployment.Spec.Template.Spec.Containers)
+	return rc
 }
 
 // getServiceDeployment reads the Deployment backing a service, returning the

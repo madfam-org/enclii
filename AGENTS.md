@@ -81,6 +81,11 @@ redirect and should not become the source of truth again.
   `tests/scripts/test_alert_noise_rules.py` checks the two match.
 - **pgBackRest versions move together** (postgres init container, sidecar
   image, restore drill); `tests/scripts/test_pgbackrest_version_parity.py`.
+- **Bundled cosign floors move together.** `apps/switchyard-api/Dockerfile`
+  and `apps/roundhouse/Dockerfile` build cosign from source and `go get` the
+  same dependency floors; a bump in the repo's `go.mod` does not reach them.
+  `tests/scripts/test_bundled_cosign_floors.py` fails on drift or on a floor
+  below its advisory's fixed version.
 - **`packages/sdk-py` models** are generated from `docs/api/openapi.yaml` with
   `datamodel-code-generator==0.83.0`; CI fails on drift. Regenerate in the
   same PR as a spec change.

@@ -473,6 +473,9 @@ func runOneOffJobGet(cfg *config.Config, jobID string) error {
 	if job.Image != "" {
 		fmt.Printf("Image:       %s\n", job.Image)
 	}
+	if job.NetworkIdentity != "" {
+		fmt.Printf("Network:     %s identity\n", job.NetworkIdentity)
+	}
 	fmt.Printf("Status:      %s\n", job.Status)
 	if job.ExitCode != nil {
 		fmt.Printf("Exit Code:   %d\n", *job.ExitCode)
@@ -603,93 +606,6 @@ func runJobsRuns(cfg *config.Config, jobID string) error {
 	}
 
 	_ = w.Flush()
-	return nil
-}
-
-// --- jobs run-once ---
-
-func newJobsRunOnceCommand(cfg *config.Config) *cobra.Command {
-	var (
-		projectSlug string
-		name        string
-		command     string
-		serviceID   string
-		image       string
-		timeout     int
-	)
-
-	cmd := &cobra.Command{
-		Use:   "run-once",
-		Short: "Run a one-off job immediately",
-		Long: `Run a one-off job that executes once and exits.
-
-The job runs with the service's runtime context: its current deployment
-image, environment variables and secrets. Pass --image to run a different
-image while keeping the service's environment.
-
-Examples:
-  enclii jobs run-once --name db-migrate --command "rails db:migrate" \
-    --service-id <uuid> --project my-project
-
-  enclii jobs run-once --name seed-data --command "./seed.sh" \
-    --service-id <uuid> --project my-project --timeout 600
-
-  enclii jobs run-once --name schema-check --command "migrate status" \
-    --image migrate/migrate:v4 --service-id <uuid> --project my-project`,
-		RunE: func(cmd *cobra.Command, args []string) error {
-			return runJobsRunOnce(cfg, projectSlug, name, command, serviceID, image, timeout)
-		},
-	}
-
-	cmd.Flags().StringVarP(&projectSlug, "project", "p", "", "Project slug (required)")
-	cmd.Flags().StringVarP(&name, "name", "n", "", "Job name (required)")
-	cmd.Flags().StringVarP(&command, "command", "c", "", "Command to execute (required)")
-	cmd.Flags().StringVar(&serviceID, "service-id", "", "Service ID (required)")
-	cmd.Flags().StringVar(&image, "image", "", "Container image (default: the service's current deployment image + env)")
-	cmd.Flags().IntVar(&timeout, "timeout", 3600, "Max execution time in seconds")
-
-	_ = cmd.MarkFlagRequired("project")
-	_ = cmd.MarkFlagRequired("name")
-	_ = cmd.MarkFlagRequired("command")
-	_ = cmd.MarkFlagRequired("service-id")
-
-	return cmd
-}
-
-func runJobsRunOnce(cfg *config.Config, projectSlug, name, command, serviceID, image string, timeout int) error {
-	payload := map[string]interface{}{
-		"name":       name,
-		"command":    command,
-		"service_id": serviceID,
-		"timeout":    timeout,
-	}
-	if image != "" {
-		payload["image"] = image
-	}
-
-	resp, err := jobsRequest(cfg, http.MethodPost, fmt.Sprintf("/v1/projects/%s/one-off-jobs", projectSlug), payload)
-	if err != nil {
-		return fmt.Errorf("failed to create one-off job: %w", err)
-	}
-
-	var createResp struct {
-		OneOffJob types.OneOffJob `json:"one_off_job"`
-		Message   string          `json:"message"`
-	}
-	if err := decodeOrError(resp, &createResp); err != nil {
-		return err
-	}
-	job := createResp.OneOffJob
-
-	fmt.Printf("One-off job created:\n")
-	fmt.Printf("  ID:      %s\n", job.ID)
-	fmt.Printf("  Name:    %s\n", job.Name)
-	fmt.Printf("  Command: %s\n", job.Command)
-	if job.Image != "" {
-		fmt.Printf("  Image:   %s\n", job.Image)
-	}
-	fmt.Printf("  Status:  %s\n", job.Status)
-
 	return nil
 }
 

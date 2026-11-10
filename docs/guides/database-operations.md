@@ -127,6 +127,8 @@ A managed connection pooler (PgBouncer) for addons is not available yet; it is a
 
 Run migrations as a one-off job with [`enclii jobs run-once`](../cli/commands/jobs.md). The job runs in the service's currently deployed image with the service's environment and secrets (so it sees `DATABASE_URL`), and the command is executed with `/bin/sh -c`. There is no `enclii exec`.
 
+If the namespace's NetworkPolicies deny egress by default and admit the database only for pods with the service's labels, add `--network-identity service`: the pod then gets exactly the service's egress (deployed image only). See [Network identity for one-off jobs](../cli/commands/jobs.md#network-identity-for-one-off-jobs).
+
 ### With Popular Migration Tools
 
 **Node.js (Prisma)**:
