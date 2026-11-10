@@ -414,7 +414,18 @@ func (r *TimetableReconciler) dispatchOneOffJob(ctx context.Context, job *types.
 	}
 
 	rc := r.resolveJobRuntimeContext(ctx, job.ServiceID, namespace, job.Image)
+
+	// Opt-in only (job.NetworkIdentity == "service"); nil for every other job.
+	identity, refused, err := r.oneOffJobNetworkIdentity(ctx, job, namespace, rc)
+	if err != nil {
+		return err
+	}
+	if refused {
+		return nil
+	}
+
 	k8sJob := r.buildOneOffJob(job, namespace, rc)
+	identity.applyTo(k8sJob)
 
 	_, err = r.k8sClient.Kube().BatchV1().Jobs(namespace).Create(ctx, k8sJob, metav1.CreateOptions{})
 	if err != nil {
@@ -517,10 +528,9 @@ func (r *TimetableReconciler) buildOneOffJob(job *types.OneOffJob, namespace str
 	// One-off jobs do not retry by default.
 	var backoffLimit int32
 
-	labels := map[string]string{
-		labelManagedBy:   labelManagedByValue,
-		LabelOneOffJobID: job.ID.String(),
-	}
+	// Separate maps for the Job and its pod template: an opt-in network
+	// identity adds labels to the pod only (serviceNetworkIdentity.applyTo).
+	labels := oneOffJobBaseLabels(job)
 
 	return &batchv1.Job{
 		ObjectMeta: metav1.ObjectMeta{
@@ -534,7 +544,7 @@ func (r *TimetableReconciler) buildOneOffJob(job *types.OneOffJob, namespace str
 			TTLSecondsAfterFinished: &ttl,
 			Template: corev1.PodTemplateSpec{
 				ObjectMeta: metav1.ObjectMeta{
-					Labels: labels,
+					Labels: oneOffJobBaseLabels(job),
 				},
 				Spec: corev1.PodSpec{
 					RestartPolicy:      corev1.RestartPolicyNever,

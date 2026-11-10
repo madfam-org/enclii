@@ -26,7 +26,7 @@ func newOneOffJobMockDB(t *testing.T) (*OneOffJobRepository, sqlmock.Sqlmock, fu
 var oneOffJobColumns = []string{
 	"id", "project_id", "service_id", "name", "command", "image",
 	"timeout", "run_at", "status", "exit_code", "failure_reason",
-	"created_at", "started_at", "ended_at",
+	"created_at", "started_at", "ended_at", "network_identity",
 }
 
 func sampleOneOffJob(projectID, serviceID uuid.UUID) *types.OneOffJob {
@@ -67,7 +67,7 @@ func oneOffJobRow(job *types.OneOffJob) *sqlmock.Rows {
 		AddRow(
 			job.ID, job.ProjectID, job.ServiceID, job.Name, job.Command, image,
 			job.Timeout, runAt, job.Status, exitCode, job.FailureReason,
-			job.CreatedAt, startedAt, endedAt,
+			job.CreatedAt, startedAt, endedAt, job.NetworkIdentity,
 		)
 }
 
@@ -92,7 +92,7 @@ func TestOneOffJobRepository_Create(t *testing.T) {
 		mock.ExpectExec(`INSERT INTO one_off_jobs`).
 			WithArgs(
 				sqlmock.AnyArg(), projectID, serviceID, "db-migration", "migrate up",
-				"migrate/migrate:v4", 120, (*time.Time)(nil), "pending", sqlmock.AnyArg(),
+				"migrate/migrate:v4", 120, (*time.Time)(nil), "pending", sqlmock.AnyArg(), "",
 			).
 			WillReturnResult(sqlmock.NewResult(0, 1))
 
@@ -101,6 +101,30 @@ func TestOneOffJobRepository_Create(t *testing.T) {
 		assert.NotEqual(t, uuid.Nil, job.ID)
 		assert.Equal(t, "pending", job.Status)
 		assert.False(t, job.CreatedAt.IsZero())
+		assert.NoError(t, mock.ExpectationsWereMet())
+	})
+
+	t.Run("persists the service network identity opt-in", func(t *testing.T) {
+		repo, mock, cleanup := newOneOffJobMockDB(t)
+		defer cleanup()
+
+		job := &types.OneOffJob{
+			ProjectID:       uuid.New(),
+			ServiceID:       uuid.New(),
+			Name:            "grant-dryrun",
+			Command:         "node script.js -",
+			Timeout:         600,
+			NetworkIdentity: types.OneOffJobNetworkIdentityService,
+		}
+
+		mock.ExpectExec(`INSERT INTO one_off_jobs`).
+			WithArgs(
+				sqlmock.AnyArg(), job.ProjectID, job.ServiceID, "grant-dryrun", "node script.js -",
+				"", 600, (*time.Time)(nil), "pending", sqlmock.AnyArg(), "service",
+			).
+			WillReturnResult(sqlmock.NewResult(0, 1))
+
+		require.NoError(t, repo.Create(context.Background(), job))
 		assert.NoError(t, mock.ExpectationsWereMet())
 	})
 
@@ -150,6 +174,24 @@ func TestOneOffJobRepository_GetByID(t *testing.T) {
 		assert.Equal(t, expected.Image, result.Image)
 		assert.Equal(t, expected.Timeout, result.Timeout)
 		assert.Equal(t, expected.Status, result.Status)
+		assert.Equal(t, "", result.NetworkIdentity)
+		assert.NoError(t, mock.ExpectationsWereMet())
+	})
+
+	t.Run("found with service network identity", func(t *testing.T) {
+		repo, mock, cleanup := newOneOffJobMockDB(t)
+		defer cleanup()
+
+		expected := sampleOneOffJob(uuid.New(), uuid.New())
+		expected.NetworkIdentity = types.OneOffJobNetworkIdentityService
+
+		mock.ExpectQuery(`SELECT id, project_id, service_id, name, command, image`).
+			WithArgs(expected.ID).
+			WillReturnRows(oneOffJobRow(expected))
+
+		result, err := repo.GetByID(context.Background(), expected.ID)
+		require.NoError(t, err)
+		assert.Equal(t, types.OneOffJobNetworkIdentityService, result.NetworkIdentity)
 		assert.NoError(t, mock.ExpectationsWereMet())
 	})
 
@@ -196,8 +238,8 @@ func TestOneOffJobRepository_ListByProject(t *testing.T) {
 		now := time.Now().Truncate(time.Microsecond)
 
 		rows := sqlmock.NewRows(oneOffJobColumns).
-			AddRow(uuid.New(), projectID, serviceID, "migration-01", "migrate up", sql.NullString{Valid: false}, 120, nil, "completed", int64(0), "", now, now, now).
-			AddRow(uuid.New(), projectID, serviceID, "seed-data", "seed run", sql.NullString{String: "node:20", Valid: true}, 60, nil, "pending", nil, "", now, nil, nil)
+			AddRow(uuid.New(), projectID, serviceID, "migration-01", "migrate up", sql.NullString{Valid: false}, 120, nil, "completed", int64(0), "", now, now, now, "").
+			AddRow(uuid.New(), projectID, serviceID, "seed-data", "seed run", sql.NullString{String: "node:20", Valid: true}, 60, nil, "pending", nil, "", now, nil, nil, "")
 
 		mock.ExpectQuery(`SELECT id, project_id, service_id, name, command, image`).
 			WithArgs(projectID, 50, 0).
@@ -351,7 +393,7 @@ func TestOneOffJobRepository_ListPending(t *testing.T) {
 		serviceID := uuid.New()
 
 		rows := sqlmock.NewRows(oneOffJobColumns).
-			AddRow(uuid.New(), projectID, serviceID, "pending-job", "echo run", sql.NullString{Valid: false}, 300, nil, "pending", nil, "", now, nil, nil)
+			AddRow(uuid.New(), projectID, serviceID, "pending-job", "echo run", sql.NullString{Valid: false}, 300, nil, "pending", nil, "", now, nil, nil, "")
 
 		mock.ExpectQuery(`SELECT id, project_id, service_id, name, command, image`).
 			WillReturnRows(rows)

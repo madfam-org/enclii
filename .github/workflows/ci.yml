@@ -449,6 +449,13 @@ jobs:
       - name: Run pgBackRest restore drill tests
         run: pytest tests/scripts/test_pgbackrest_restore_drill.py tests/scripts/test_pgbackrest_version_parity.py -v
 
+      # switchyard-api and roundhouse both build cosign from source and raise
+      # its vulnerable dependencies with `go get` floors. The two copies must
+      # stay identical and every floor must meet its advisory's fixed version
+      # (the roundhouse copy drifted; the compress floor lagged enclii#942).
+      - name: Run bundled cosign dependency floor guard
+        run: pytest tests/scripts/test_bundled_cosign_floors.py -v
+
       # Managed-Postgres addon backups: the intake target, ExternalSecret,
       # switchyard-api env and ScheduledBackup RBAC must agree with each other
       # and with the provisioner (no addon was ever backed up while any one was
