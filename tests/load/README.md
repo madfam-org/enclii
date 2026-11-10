@@ -68,8 +68,8 @@ k6 run --env HEALTH_PROFILE=deep-diagnostic \
 In the Load Tests workflow, select `deep-health` and explicitly check
 `allow_deep_health_diagnostic`. The job refuses without that acknowledgement;
 the diagnostic never runs from a schedule or pull request. This opt-in does
-not change the intentional scheduled authenticated API load test or the
-existing manual stress selection.
+not change the manual authenticated API load test or the existing manual
+stress selection.
 
 ### Full Load Test
 ```bash
@@ -164,6 +164,13 @@ controlled load telemetry remain separate runtime checks.
 - **Capacity Planning**: Actual RPS achieved vs target (1000 RPS)
 
 ## CI/CD Integration
+
+The Load Tests workflow has no schedule. Production runs only when an operator
+dispatches it (`smoke`, `load`, `stress` or `deep-health`). A GitHub-hosted
+runner's round trip to production alone exceeds the smoke `p(95)<200` health
+threshold, so the old weekly run failed every week from June 2026 on, with
+zero errors. Pull requests touching
+the harness still run the offline contract checks.
 
 Add to GitHub Actions:
 ```yaml
