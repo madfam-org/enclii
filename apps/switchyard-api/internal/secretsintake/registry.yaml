@@ -1868,6 +1868,21 @@ targets:
     keys:
       - billing_webhook_secret
 
+  # Dhanam referral reward key (2026-11-10). Until now ReferralHmacGuard fell
+  # back to BILLING_WEBHOOK_SECRET, so referral rewards shared the
+  # credit-metering key. Dhanam verifies this one, so it owns the one
+  # canonical copy, on its own sub-path secret/dhanam/referral (already
+  # writable through secret/data/dhanam/*). Generation stays ON (default
+  # entropy): no person ever handles the value.
+  dhanam/referral-webhook-secret:
+    label: Dhanam referral reward key
+    description: HMAC key for POST /v1/referral/reward (X-Referral-Signature or X-PhyndCRM-Signature, hex HMAC-SHA256 of the raw body). Dhanam's api verifies it as REFERRAL_WEBHOOK_SECRET, projected by dhanam-referral-webhook; while that is unset the guard falls back to BILLING_WEBHOOK_SECRET. A signer reads it cross-path through its own ExternalSecret; none is wired yet. Mint server-side with --generate referral_webhook_secret, ONCE; a re-run rotates it.
+    vault_path: secret/dhanam/referral
+    namespace: dhanam
+    external_secret: dhanam-referral-webhook  # pragma: allowlist secret
+    keys:
+      - referral_webhook_secret
+
   # madfam-crawler per-caller API keys (2026-11-09, verifier-owns, cross-path
   # read). madfam-crawler verifies these keys, so it owns the one canonical
   # copy per caller at secret/madfam-crawler; each caller reads ITS OWN
