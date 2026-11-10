@@ -491,6 +491,47 @@ targets:
     generate:
       disabled: true
 
+  # symbiosis-hcm → Nauta labor hours (2026-11-08, RFC 0050 C10). The pair of
+  # ecosystem-oidc platform symbiosis-hcm-nauta-labor-hours (audience
+  # nauta-api, scope nauta-labor-hours:read, org-bound to madfam-ecosystem),
+  # written ONLY by `enclii secrets provision oidc --platform
+  # symbiosis-hcm-nauta-labor-hours`. Its OWN planned ExternalSecret,
+  # hcm-nauta-labor-hours (symbiosis-hcm#232 declares none yet): ESO is
+  # all-or-nothing per ExternalSecret and each edge is provisioned on its own
+  # day, so one missing pair never holds another's Secret. LOWERCASE keys,
+  # mapped to NAUTA_LABOR_HOURS_CLIENT_ID / NAUTA_LABOR_HOURS_CLIENT_SECRET.
+  symbiosis-hcm/nauta-labor-hours-client:
+    label: Symbiosis-HCM → Nauta labor-hours reader client
+    description: Janua client_credentials pair (symbiosis-hcm-nauta-labor-hours, scope nauta-labor-hours:read, org-bound) HCM's worker uses to read Nauta's monthly logged hours for the labor cost close (symbiosis-hcm#232, RFC 0050 C10). Filed by `enclii secrets provision oidc --platform symbiosis-hcm-nauta-labor-hours`.
+    vault_path: secret/symbiosis-hcm
+    namespace: symbiosis-hcm
+    external_secret: hcm-nauta-labor-hours  # pragma: allowlist secret
+    keys:
+      - nauta_labor_hours_client_id
+      - nauta_labor_hours_client_secret
+    generate:
+      disabled: true
+
+  # symbiosis-hcm → Dhanam cost events (2026-11-08, RFC 0050 C10). The pair of
+  # ecosystem-oidc platform symbiosis-hcm-dhanam-cost-events (audience
+  # dhanam-api, scope dhanam-cost-events:write, org-bound to madfam-ecosystem),
+  # written ONLY by `enclii secrets provision oidc --platform
+  # symbiosis-hcm-dhanam-cost-events`. Its OWN planned ExternalSecret,
+  # hcm-dhanam-cost-events, not hcm-dhanam-writer (the scheduled-payments
+  # pair). LOWERCASE keys, mapped to DHANAM_COST_EVENTS_CLIENT_ID /
+  # DHANAM_COST_EVENTS_CLIENT_SECRET.
+  symbiosis-hcm/dhanam-cost-events-client:
+    label: Symbiosis-HCM → Dhanam cost-events writer client
+    description: Janua client_credentials pair (symbiosis-hcm-dhanam-cost-events, scope dhanam-cost-events:write, org-bound) HCM's worker uses to push the monthly labor cost.event.v1 events per engagement into Dhanam (symbiosis-hcm#232, RFC 0050 C10). Filed by `enclii secrets provision oidc --platform symbiosis-hcm-dhanam-cost-events`.
+    vault_path: secret/symbiosis-hcm
+    namespace: symbiosis-hcm
+    external_secret: hcm-dhanam-cost-events  # pragma: allowlist secret
+    keys:
+      - dhanam_cost_events_client_id
+      - dhanam_cost_events_client_secret
+    generate:
+      disabled: true
+
   # HCM's view of the same reviewed company signer, keyed by organization.
   # No real subject or organization values belong in the registry. Keep this
   # separate from service credentials and the mandatory database Secret.
@@ -981,6 +1022,28 @@ targets:
     keys:
       - fabrication_prep_client_id
       - fabrication_prep_client_secret
+
+  # Pravara MES → Dhanam cost events (2026-11-08, RFC 0050 C12). The pair of
+  # ecosystem-oidc platform pravara-dhanam-cost-events (audience dhanam-api,
+  # scope dhanam-cost-events:write, org-bound to madfam-ecosystem), written
+  # ONLY by `enclii secrets provision oidc --platform
+  # pravara-dhanam-cost-events`. Unlike the targets above, NOT
+  # pravara-service-clients: its OWN planned ExternalSecret,
+  # pravara-dhanam-cost-events (pravara-mes#71 declares none yet), so an
+  # unprovisioned pair never holds the phygital tools' Secret, nor the other
+  # way round. LOWERCASE keys, mapped to PRAVARA_COST_EVENTS_CLIENT_ID /
+  # PRAVARA_COST_EVENTS_CLIENT_SECRET.
+  pravara-mes/dhanam-cost-events-client:
+    label: Pravara MES → Dhanam cost-events writer client
+    description: Janua client_credentials pair (pravara-dhanam-cost-events, scope dhanam-cost-events:write, org-bound) pravara-api uses to push quantity-only consumption cost.event.v1 events into Dhanam (pravara-mes#71, RFC 0050 C12). Filed by `enclii secrets provision oidc --platform pravara-dhanam-cost-events`.
+    vault_path: secret/pravara-mes
+    namespace: pravara-mes
+    external_secret: pravara-dhanam-cost-events  # pragma: allowlist secret
+    keys:
+      - pravara_cost_events_client_id
+      - pravara_cost_events_client_secret
+    generate:
+      disabled: true
 
   yantra4d/asset-shells-publisher:
     label: Yantra4D → asset-shells type publisher client

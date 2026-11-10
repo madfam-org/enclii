@@ -13,7 +13,7 @@ import (
 func TestLoadRegistry(t *testing.T) {
 	reg, err := LoadRegistry()
 	require.NoError(t, err)
-	assert.Len(t, reg, 128)
+	assert.Len(t, reg, 131)
 	assert.Contains(t, reg, "ceq/vast-api-key")
 	assert.Contains(t, reg, "karafiel/web-oidc-janua")
 	adminSession := reg["karafiel/admin-session"]
@@ -38,7 +38,7 @@ func TestGetTarget(t *testing.T) {
 func TestListTargetsSorted(t *testing.T) {
 	list, err := ListTargets()
 	require.NoError(t, err)
-	require.Len(t, list, 128)
+	require.Len(t, list, 131)
 	for i := 1; i < len(list); i++ {
 		assert.Less(t, list[i-1].ID, list[i].ID, "targets should be sorted by id")
 	}
@@ -129,14 +129,17 @@ func TestListTargetsSorted(t *testing.T) {
 		"phynd-crm/oidc-janua",
 		"platform/comms-resend-api-key",
 		"pravara-mes/asset-shells-publisher-madfam-ecosystem",
+		"pravara-mes/dhanam-cost-events-client",
 		"pravara-mes/fabrication-prep-client",
 		"pravara-mes/yantra4d-step-reader",
 		"routecraft/billing-relay",
 		"selva/pravara-mes-client",
 		"selva/yantra4d-client",
+		"symbiosis-hcm/dhanam-cost-events-client",
 		"symbiosis-hcm/dhanam-writer-client",
 		"symbiosis-hcm/karafiel-client",
 		"symbiosis-hcm/map-absence-feed",
+		"symbiosis-hcm/nauta-labor-hours-client",
 		"symbiosis-hcm/signing-bindings",
 		"synthetics/dhanam-staging-checkout",
 		"telesia/oidc-janua",

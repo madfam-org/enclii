@@ -887,7 +887,9 @@ func TestLoadRegistry_dhanamMachineEdgesSorted(t *testing.T) {
 	sort.Strings(names)
 	assert.Equal(t, []string{
 		"karafiel-dhanam-cost-events",
+		"pravara-dhanam-cost-events",
 		"routecraft-billing-relay",
+		"symbiosis-hcm-dhanam-cost-events",
 		"symbiosis-hcm-dhanam-writer",
 	}, names)
 }
@@ -907,8 +909,8 @@ func TestReviewedRegistryGrantKindsDoNotDependOnTenant(t *testing.T) {
 			machines++
 		}
 	}
-	require.Equal(t, 25, humans) // Includes the two isolated Karafiel staging login clients and the eight SSO wave 1 clients.
-	require.Equal(t, 20, machines)
+	require.Equal(t, 25, humans)   // Includes the two isolated Karafiel staging login clients and the eight SSO wave 1 clients.
+	require.Equal(t, 23, machines) // Includes the three RFC 0050 COGS writer/reader edges (HCM → Nauta, HCM → Dhanam, Pravara → Dhanam).
 	p := reg.Platforms["selva-yantra4d"]
 	require.Empty(t, p.JanuaClient.OrganizationID)
 	kind, err := p.JanuaClient.kind()
