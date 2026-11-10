@@ -89,6 +89,7 @@ Canonical routing: `apps/switchyard-api/internal/secretsintake/registry.yaml`
 | `dhanam/karafiel-callback-secret` | `secret/dhanam` | `karafiel_dhanam_signing_secret` (generated; see [Dhanam ↔ Karafiel webhook keys](#dhanam--karafiel-webhook-keys-2026-10-14)) |
 | `karafiel/dhanam-webhook-secret` | `secret/karafiel` | `dhanam_karafiel_signing_secret` (generated; same section) |
 | `dhanam/billing-webhook-secret` | `secret/dhanam` | `billing_webhook_secret` (generated; see [Remediation wave](#remediation-wave-phynd-crm-edge-crawler-caller-keys-dhanam-metering-key-2026-11-09)) |
+| `dhanam/referral-webhook-secret` | `secret/dhanam/referral` | `referral_webhook_secret` (generated; same section) |
 | `madfam-crawler/api-key-<caller>` | `secret/madfam-crawler` | `api_key_<caller>` for forgesight, fortuna, tulana, rondelio, avala, tezca (generated; same section) |
 | `nauta/phynd-crm-oauth` | `secret/nauta` | `phynd_crm_oauth_client_id`, `phynd_crm_oauth_client_secret`: **provisioned, never submitted** (`enclii secrets provision oidc --platform nauta-phynd-crm`; same section) |
 | `platform/comms-resend-api-key` | `secret/comms` | `resend-api-key` → `resend_api_key` in Vault |
@@ -920,6 +921,7 @@ its own ExternalSecret.
 | nauta → phynd-crm machine edge (`nauta-phynd-crm`, audience `phynd-crm`, scope `phynd-crm-engagements:read`, org-bound to `madfam-ecosystem`) | `nauta/phynd-crm-oauth` | `secret/nauta` `phynd_crm_oauth_client_id` / `_secret` | `nauta-phynd-crm-oauth` (nauta) | nauta only; phynd-crm verifies the Janua token, not this pair |
 | madfam-crawler per-caller keys | `madfam-crawler/api-key-<caller>` | `secret/madfam-crawler` `api_key_<caller>` | `madfam-crawler-caller-key-<caller>` (crawler-api, `CALLER_KEY_<CALLER>`) | each caller's own ExternalSecret |
 | Dhanam credit-metering key (DHC-07) | `dhanam/billing-webhook-secret` | `secret/dhanam` `billing_webhook_secret` | `dhanam-billing-webhook` (dhanam api, `BILLING_WEBHOOK_SECRET_NEXT` first) | `karafiel-dhanam-credit-signing` (karafiel, `DHANAM_CREDIT_WEBHOOK_SECRET`) |
+| Dhanam referral reward key (added 2026-11-10) | `dhanam/referral-webhook-secret` | `secret/dhanam/referral` `referral_webhook_secret` | `dhanam-referral-webhook` (dhanam api, `REFERRAL_WEBHOOK_SECRET`; until it is set the guard falls back to the metering key) | none wired yet |
 
 Every verifier-side and reader-side ExternalSecret above is **spec only** in its
 own repo until its property exists, so until then intake reports
@@ -943,11 +945,17 @@ enclii --profile admin secrets provision oidc --platform nauta-phynd-crm --intak
 enclii secrets intake submit madfam-crawler/api-key-forgesight --generate api_key_forgesight --reason "madfam-crawler per-caller key"
 # … the same for fortuna, tulana, rondelio, avala, tezca, one caller at a time
 enclii secrets intake submit dhanam/billing-webhook-secret --generate billing_webhook_secret --reason "DHC-07 credit metering key"
+enclii secrets intake submit dhanam/referral-webhook-secret --generate referral_webhook_secret --reason "Dhanam referral reward key"
 ```
 
 Pin the printed `jnc_…` id of `nauta-phynd-crm` in both registry copies. Run
-the Dhanam submit **once**: a re-run rotates the key, and Dhanam and Karafiel
-read the new value only when their pods restart. The caller-side moves (wire
+each Dhanam submit **once**: a re-run rotates the key, and Dhanam and Karafiel
+read the new value only when their pods restart. The referral key lives on its
+own sub-path `secret/dhanam/referral`, which the existing
+`secret/data/dhanam/*` policy block already covers. Submit it before Dhanam
+wires `REFERRAL_WEBHOOK_SECRET`; the moment that variable is set, a sender
+still signing with the metering key is rejected, so the sender must switch
+first. The caller-side moves (wire
 each ExternalSecret, restart, retire the legacy `API_KEYS` entry) are in
 madfam-crawler `docs/CALLER_KEYS.md`.
 
