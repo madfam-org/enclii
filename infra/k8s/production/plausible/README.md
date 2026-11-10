@@ -16,7 +16,7 @@ on Enclii at `https://plausible.madfam.io`.
 | `namespace.yaml` | Namespace `plausible` (platform tool, like `npm-registry`) |
 | `externalsecrets.yaml` | `plausible-app-secrets`, `plausible-db-credentials`, `plausible-backup-credentials`, all from Vault |
 | `postgres-cluster.yaml` | CNPG `plausible-db` (PostgreSQL 16.15, 1 instance, 2 Gi) plus a daily `ScheduledBackup` |
-| `clickhouse.yaml` | `plausible-events-db` StatefulSet (ClickHouse 24.12.6.70, 5 Gi) and its config |
+| `clickhouse.yaml` | `plausible-events-db` StatefulSet (ClickHouse 24.12.6, 5 Gi) and its config |
 | `plausible.yaml` | Plausible CE v3.2.1 Deployment (createdb and migrate init containers), Service, config |
 | `networkpolicies.yaml` | Default deny plus one allow policy per workload |
 | `kustomization.yaml` | Renders the set (`kubectl kustomize infra/k8s/production/plausible`) |
@@ -36,8 +36,8 @@ manifests, and Plausible is not a tenant product with its own code.
   - Plausible CE **v3.2.1**: the latest stable release, and the first without
     the unauthenticated `/storybook` RCE (CVE-2026-8467, affecting 3.0.0 up to
     3.2.0). That is the project's only published advisory.
-  - ClickHouse **24.12.6.70-alpine** and PostgreSQL **16**, the majors CE
-    v3.2.1 ships with. 24.12.6.70 includes the CVE-2025-1385 fix. 24.12 no
+  - ClickHouse **24.12.6-alpine** and PostgreSQL **16**, the majors CE
+    v3.2.1 ships with. 24.12.6 includes the CVE-2025-1385 fix. 24.12 no
     longer gets upstream patches, so it is reachable only from the Plausible
     pod.
 - **Sizing for tiny traffic.** All three pods together request 0.2 CPU and

@@ -73,7 +73,7 @@ spec:
         name: plausible-db-credentials
       encoding: UTF8
 
-  # No superuser Secret: nothing here needs one, and every database change
+  # Superuser access stays off. Nothing here needs it, and every database change
   # Plausible makes runs as the owner role through its own migrations.
   enableSuperuserAccess: false
 

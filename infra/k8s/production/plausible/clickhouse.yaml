@@ -2,9 +2,10 @@
 #
 # Plausible's event store: one ClickHouse server, internal only. Plausible CE
 # v3.2.1 ships and tests with clickhouse-server 24.12 (its compose.yml pins
-# 24.12-alpine); this is the last 24.12 patch, 24.12.6.70, which includes the
-# CVE-2025-1385 fix (patched in 24.12.5.65). 24.12 no longer gets upstream
-# patches: move to a supported release when Plausible CE qualifies one.
+# 24.12-alpine); 24.12.6-alpine is the last 24.12 patch (2025-03-11) and
+# includes the CVE-2025-1385 fix (first patched in a 24.12.5 build). 24.12
+# no longer gets upstream patches: move to a supported release when Plausible
+# CE qualifies one.
 # ClickHouse is reachable only from the Plausible pod (networkpolicies.yaml).
 #
 # The config files mirror community-edition's clickhouse/*.xml at v3.2.1
@@ -153,7 +154,7 @@ spec:
                       - builder
       containers:
         - name: clickhouse
-          image: docker.io/clickhouse/clickhouse-server:24.12.6.70-alpine@sha256:cd450891db46cc6ffe313ca2b0fb7dbfb897a6873ca74a724cbe050a2cf62621
+          image: docker.io/clickhouse/clickhouse-server:24.12.6-alpine@sha256:cd450891db46cc6ffe313ca2b0fb7dbfb897a6873ca74a724cbe050a2cf62621
           imagePullPolicy: IfNotPresent
           env:
             # Stops the image entrypoint from writing its own user file under
