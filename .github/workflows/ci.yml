@@ -464,6 +464,12 @@ jobs:
       - name: Run addon backup wiring tests
         run: pytest tests/scripts/test_addon_backup_wiring.py -v
 
+      # infra/k8s/production/plausible is a SPEC: this proves nothing wires
+      # it and that it stays deployable (digests, limits, default deny,
+      # ExternalSecrets, the one known Kyverno admission gap).
+      - name: Run Plausible spec-only guard
+        run: pytest tests/scripts/test_plausible_spec_only.py -v
+
       # The Redpanda chart renders a limit and no request, so the request
       # defaulted to a full core per broker (3000m reserved, 80m used). The
       # request is set through statefulset.podTemplate; this keeps it in the

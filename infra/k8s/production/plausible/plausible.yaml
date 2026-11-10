@@ -1,0 +1,276 @@
+# SPEC ONLY: nothing references this directory (see README.md).
+#
+# Plausible Community Edition v3.2.1, the first release without the
+# unauthenticated /storybook RCE (CVE-2026-8467, GHSA-mhcv-h7gf-57cf, affects
+# >= 3.0.0 < 3.2.1). Verified 2026-11-10 as the latest stable release; it is
+# the only published advisory for the project. The digest below is the OCI
+# index of ghcr.io/plausible/community-edition:v3.2.1 resolved on that date.
+#
+# ADMISSION PREREQUISITE: Kyverno's restrict-image-registries does not admit
+# ghcr.io/plausible/* today. Wiring needs either a digest-preserving mirror into
+# ghcr.io/madfam-org or a reviewed allowlist entry (README.md, "Before wiring").
+# tests/scripts/test_plausible_spec_only.py fails if that gap changes silently.
+#
+# The app is stateless here: /var/lib/plausible only holds a cache (session
+# transfer, geolocation database), so it is an emptyDir. All state lives in
+# Postgres (plausible-db) and ClickHouse (plausible-events-db).
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: plausible-config
+  namespace: plausible
+  labels:
+    app.kubernetes.io/name: plausible
+    app.kubernetes.io/part-of: enclii-platform
+data:
+  BASE_URL: "https://plausible.madfam.io"
+  HTTP_PORT: "8000"
+  LISTEN_IP: "0.0.0.0"
+  # Only invited users can register. On a FIRST launch Plausible still opens
+  # registration for the first account, which is why the runbook creates that
+  # account before the public route exists.
+  DISABLE_REGISTRATION: "invite_only"
+  ENABLE_EMAIL_VERIFICATION: "false"
+  LOG_FAILED_LOGIN_ATTEMPTS: "true"
+  # Geolocation stays at COUNTRY level: the bundled DB-IP Lite country
+  # database. No MAXMIND_LICENSE_KEY, so no city-level lookups.
+  DATA_DIR: "/var/lib/plausible"
+  TMPDIR: "/tmp"
+  RELEASE_TMP: "/tmp"
+  HOME: "/tmp"
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: plausible
+  namespace: plausible
+  labels:
+    app.kubernetes.io/name: plausible
+    app.kubernetes.io/part-of: enclii-platform
+spec:
+  type: ClusterIP
+  selector:
+    app.kubernetes.io/name: plausible
+  ports:
+    - name: http
+      port: 8000
+      targetPort: http
+      protocol: TCP
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: plausible
+  namespace: plausible
+  labels:
+    app.kubernetes.io/name: plausible
+    app.kubernetes.io/component: web-analytics
+    app.kubernetes.io/part-of: enclii-platform
+  annotations:
+    configmap.reloader.stakater.com/reload: plausible-config
+    secret.reloader.stakater.com/reload: plausible-app-secrets,plausible-db-credentials
+spec:
+  replicas: 1
+  revisionHistoryLimit: 3
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: plausible
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: plausible
+        app.kubernetes.io/component: web-analytics
+        app.kubernetes.io/part-of: enclii-platform
+    spec:
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 999
+        runAsGroup: 65534
+        fsGroup: 65534
+        seccompProfile:
+          type: RuntimeDefault
+      affinity:
+        nodeAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            nodeSelectorTerms:
+              - matchExpressions:
+                  - key: role
+                    operator: NotIn
+                    values:
+                      - builder
+      initContainers:
+        # Mirrors CE's compose command: `db createdb && db migrate && run`.
+        # createdb only checks Postgres (CNPG already created plausible_db)
+        # and creates plausible_events_db in ClickHouse on the first start.
+        - name: createdb
+          image: ghcr.io/plausible/community-edition:v3.2.1@sha256:33e60bfb40f2df5da00f8753b76fad04f67dba3abe6d73eb516e440e3fb62985
+          imagePullPolicy: IfNotPresent
+          args: ["db", "createdb"]
+          envFrom:
+            - configMapRef:
+                name: plausible-config
+          env:
+            - name: SECRET_KEY_BASE
+              valueFrom:
+                secretKeyRef:
+                  name: plausible-app-secrets
+                  key: SECRET_KEY_BASE
+                  optional: false
+            - name: PG_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: plausible-db-credentials
+                  key: password
+                  optional: false
+            - name: CLICKHOUSE_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: plausible-app-secrets
+                  key: CLICKHOUSE_PASSWORD
+                  optional: false
+            - name: DATABASE_URL
+              value: "postgresql://plausible:$(PG_PASSWORD)@plausible-db-rw.plausible.svc.cluster.local:5432/plausible_db"
+            - name: CLICKHOUSE_DATABASE_URL
+              value: "http://plausible:$(CLICKHOUSE_PASSWORD)@plausible-events-db.plausible.svc.cluster.local:8123/plausible_events_db"
+          resources:
+            requests:
+              cpu: "50m"
+              memory: "256Mi"
+            limits:
+              cpu: "500m"
+              memory: "768Mi"
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop:
+                - ALL
+          volumeMounts:
+            - name: data
+              mountPath: /var/lib/plausible
+            - name: tmp
+              mountPath: /tmp
+        - name: migrate
+          image: ghcr.io/plausible/community-edition:v3.2.1@sha256:33e60bfb40f2df5da00f8753b76fad04f67dba3abe6d73eb516e440e3fb62985
+          imagePullPolicy: IfNotPresent
+          args: ["db", "migrate"]
+          envFrom:
+            - configMapRef:
+                name: plausible-config
+          env:
+            - name: SECRET_KEY_BASE
+              valueFrom:
+                secretKeyRef:
+                  name: plausible-app-secrets
+                  key: SECRET_KEY_BASE
+                  optional: false
+            - name: PG_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: plausible-db-credentials
+                  key: password
+                  optional: false
+            - name: CLICKHOUSE_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: plausible-app-secrets
+                  key: CLICKHOUSE_PASSWORD
+                  optional: false
+            - name: DATABASE_URL
+              value: "postgresql://plausible:$(PG_PASSWORD)@plausible-db-rw.plausible.svc.cluster.local:5432/plausible_db"
+            - name: CLICKHOUSE_DATABASE_URL
+              value: "http://plausible:$(CLICKHOUSE_PASSWORD)@plausible-events-db.plausible.svc.cluster.local:8123/plausible_events_db"
+          resources:
+            requests:
+              cpu: "50m"
+              memory: "256Mi"
+            limits:
+              cpu: "500m"
+              memory: "768Mi"
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop:
+                - ALL
+          volumeMounts:
+            - name: data
+              mountPath: /var/lib/plausible
+            - name: tmp
+              mountPath: /tmp
+      containers:
+        - name: plausible
+          image: ghcr.io/plausible/community-edition:v3.2.1@sha256:33e60bfb40f2df5da00f8753b76fad04f67dba3abe6d73eb516e440e3fb62985
+          imagePullPolicy: IfNotPresent
+          args: ["run"]
+          envFrom:
+            - configMapRef:
+                name: plausible-config
+          env:
+            - name: SECRET_KEY_BASE
+              valueFrom:
+                secretKeyRef:
+                  name: plausible-app-secrets
+                  key: SECRET_KEY_BASE
+                  optional: false
+            - name: PG_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: plausible-db-credentials
+                  key: password
+                  optional: false
+            - name: CLICKHOUSE_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: plausible-app-secrets
+                  key: CLICKHOUSE_PASSWORD
+                  optional: false
+            - name: DATABASE_URL
+              value: "postgresql://plausible:$(PG_PASSWORD)@plausible-db-rw.plausible.svc.cluster.local:5432/plausible_db"
+            - name: CLICKHOUSE_DATABASE_URL
+              value: "http://plausible:$(CLICKHOUSE_PASSWORD)@plausible-events-db.plausible.svc.cluster.local:8123/plausible_events_db"
+          ports:
+            - name: http
+              containerPort: 8000
+              protocol: TCP
+          readinessProbe:
+            httpGet:
+              path: /api/system/health/ready
+              port: http
+            initialDelaySeconds: 10
+            periodSeconds: 10
+            timeoutSeconds: 3
+          livenessProbe:
+            httpGet:
+              path: /api/system/health/live
+              port: http
+            initialDelaySeconds: 30
+            periodSeconds: 20
+            timeoutSeconds: 5
+            failureThreshold: 6
+          resources:
+            requests:
+              cpu: "50m"
+              memory: "384Mi"
+            limits:
+              cpu: "1000m"
+              memory: "1Gi"
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop:
+                - ALL
+          volumeMounts:
+            - name: data
+              mountPath: /var/lib/plausible
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        - name: data
+          emptyDir:
+            sizeLimit: 256Mi
+        - name: tmp
+          emptyDir:
+            sizeLimit: 256Mi

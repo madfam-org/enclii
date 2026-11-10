@@ -1,0 +1,17 @@
+# SPEC ONLY: nothing references this directory (see README.md).
+#
+# Plausible CE gets its own namespace, like npm-registry (Verdaccio): a
+# self-hosted third-party tool the platform runs, wired later by one
+# infra/argocd/projects/plausible/config.json.
+#
+# Deliberately NOT labelled enclii.dev/postgres-consumer: Plausible talks only
+# to its own CNPG cluster in this namespace, never to the shared Postgres.
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: plausible
+  labels:
+    app.kubernetes.io/name: plausible
+    app.kubernetes.io/component: web-analytics
+    app.kubernetes.io/part-of: enclii-platform
+    enclii.dev/type: platform

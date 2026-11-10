@@ -1,0 +1,134 @@
+# SPEC ONLY: nothing references this directory (see README.md).
+#
+# Plausible's Postgres: a dedicated single-instance CloudNativePG cluster in
+# the plausible namespace. Same isolation model as the managed-Postgres addons
+# (cluster per consumer, docs/architecture/managed-db-addon.md D1), declared in
+# git because Plausible is a platform tool, not a tenant project. It keeps
+# Plausible out of the shared Postgres connection budget entirely.
+#
+# What lives here is small and slow-changing: the dashboard accounts, sites,
+# goals, shared links and settings. Visitor events go to ClickHouse.
+#
+# Version: PostgreSQL 16, the major Plausible CE v3.2.1 ships and tests with
+# (its compose.yml uses postgres:16-alpine).
+apiVersion: postgresql.cnpg.io/v1
+kind: Cluster
+metadata:
+  name: plausible-db
+  namespace: plausible
+  labels:
+    app.kubernetes.io/name: plausible-db
+    app.kubernetes.io/component: database
+    app.kubernetes.io/part-of: enclii-platform
+spec:
+  instances: 1
+  imageName: ghcr.io/cloudnative-pg/postgresql:16.15@sha256:34cd4159d07b3410a1b29da35072e2e927a0905e717a61afa3814624a2e8859a
+  primaryUpdateStrategy: unsupervised
+
+  postgresql:
+    parameters:
+      # Plausible's Ecto pool defaults to 10 connections; the migrate init
+      # container adds a few more for a moment.
+      max_connections: "40"
+      shared_buffers: "64MB"
+      effective_cache_size: "192MB"
+      work_mem: "4MB"
+      maintenance_work_mem: "32MB"
+      # Keep WAL small so a stalled archiver is noticed long before the volume
+      # fills: CNPG 1.29 will not grow a volume that is already full.
+      max_wal_size: "256MB"
+      min_wal_size: "64MB"
+
+  resources:
+    requests:
+      cpu: "50m"
+      memory: "128Mi"
+    limits:
+      cpu: "500m"
+      memory: "512Mi"
+
+  storage:
+    size: 2Gi
+    storageClass: longhorn
+
+  affinity:
+    nodeAffinity:
+      requiredDuringSchedulingIgnoredDuringExecution:
+        nodeSelectorTerms:
+          - matchExpressions:
+              # Same rule as postgres-ha: database instances stay off the
+              # builder pool.
+              - key: role
+                operator: NotIn
+                values:
+                  - builder
+
+  bootstrap:
+    initdb:
+      database: plausible_db
+      owner: plausible
+      # basic-auth Secret written by the plausible-db-credentials
+      # ExternalSecret (Vault secret/plausible:db_password).
+      secret:
+        name: plausible-db-credentials
+      encoding: UTF8
+
+  # No superuser Secret: nothing here needs one, and every database change
+  # Plausible makes runs as the owner role through its own migrations.
+  enableSuperuserAccess: false
+
+  # Base backups plus continuous WAL archiving to R2, under a Plausible-only
+  # prefix of the addon backup bucket.
+  #
+  # CNPG 1.29 warns that native barmanObjectStore is removed in 1.30.0. This
+  # cluster moves to the Barman Cloud Plugin together with postgres-ha and the
+  # addon clusters, before any operator upgrade.
+  backup:
+    retentionPolicy: "30d"
+    barmanObjectStore:
+      destinationPath: s3://enclii-addon-db-backups/plausible/plausible-db
+      endpointURL: https://12f1353f7819865c56161ce00297668e.r2.cloudflarestorage.com
+      s3Credentials:
+        accessKeyId:
+          name: plausible-backup-credentials
+          key: ACCESS_KEY_ID
+        secretAccessKey:
+          name: plausible-backup-credentials
+          key: SECRET_ACCESS_KEY
+      wal:
+        compression: gzip
+      data:
+        compression: gzip
+
+  # Labels propagate to the instance pods and the PVC. The Longhorn labels put
+  # the volume in the high-churn snapshot group (Postgres rewrites its WAL),
+  # see infra/helm/longhorn/recurring-jobs.yaml; with `source: enabled` the
+  # volume inherits them from the claim.
+  inheritedMetadata:
+    labels:
+      app.kubernetes.io/part-of: enclii-platform
+      app.kubernetes.io/component: database
+      recurring-job.longhorn.io/source: enabled
+      recurring-job-group.longhorn.io/high-churn: enabled
+---
+apiVersion: postgresql.cnpg.io/v1
+kind: ScheduledBackup
+metadata:
+  name: plausible-db-daily
+  namespace: plausible
+  labels:
+    app.kubernetes.io/name: plausible-db
+    app.kubernetes.io/component: backups
+    app.kubernetes.io/part-of: enclii-platform
+spec:
+  # Daily at 03:15 UTC (CNPG cron has a seconds field). WAL archiving is
+  # continuous; this sets the replay floor for point-in-time recovery.
+  schedule: "0 15 3 * * *"
+  suspend: false
+  # No backup at apply time: the first one runs on schedule, after the smoke
+  # test has shown WAL archiving healthy.
+  immediate: false
+  backupOwnerReference: self
+  cluster:
+    name: plausible-db
+  method: barmanObjectStore

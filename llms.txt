@@ -179,6 +179,13 @@ Routine production operations are Enclii-first. Use Enclii web, API, or CLI
 before raw infrastructure tools. Direct `kubectl`, `helm`, SSH, provider CLIs,
 `docker exec`, or direct container access is bootstrap/break-glass only.
 
+- **Plausible CE is a SPEC, not deployed** (`infra/k8s/production/plausible/`,
+  2026-11-10). Nothing references the directory, and
+  `tests/scripts/test_plausible_spec_only.py` fails if anything does. Wiring
+  order (intake, DNS, wire, smoke, snippets, weekly report):
+  `infra/k8s/production/plausible/RUNBOOK.md`. Known blocker: Kyverno does not admit
+  `ghcr.io/plausible/*`.
+
 ## Commercial GA program (May 2026)
 
 - `docs/production/COMMERCIAL_GA_MASTER_PLAN.md` — **master blueprint** (waves 0–4, 100% definition, timeline)

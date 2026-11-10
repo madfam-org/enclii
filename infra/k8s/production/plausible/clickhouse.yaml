@@ -1,0 +1,254 @@
+# SPEC ONLY: nothing references this directory (see README.md).
+#
+# Plausible's event store: one ClickHouse server, internal only. Plausible CE
+# v3.2.1 ships and tests with clickhouse-server 24.12 (its compose.yml pins
+# 24.12-alpine); this is the last 24.12 patch, 24.12.6.70, which includes the
+# CVE-2025-1385 fix (patched in 24.12.5.65). 24.12 no longer gets upstream
+# patches: move to a supported release when Plausible CE qualifies one.
+# ClickHouse is reachable only from the Plausible pod (networkpolicies.yaml).
+#
+# The config files mirror community-edition's clickhouse/*.xml at v3.2.1
+# (logs, IPv4 listen, low-resource tuning), plus a users file that replaces
+# CE's passwordless default user with a password-protected `plausible` user.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: plausible-events-db-config
+  namespace: plausible
+  labels:
+    app.kubernetes.io/name: plausible-events-db
+    app.kubernetes.io/part-of: enclii-platform
+data:
+  logs.xml: |
+    <clickhouse>
+        <logger>
+            <level>warning</level>
+            <console>true</console>
+        </logger>
+        <query_log replace="1">
+            <database>system</database>
+            <table>query_log</table>
+            <flush_interval_milliseconds>7500</flush_interval_milliseconds>
+            <engine>
+                ENGINE = MergeTree
+                PARTITION BY event_date
+                ORDER BY (event_time)
+                TTL event_date + interval 30 day
+                SETTINGS ttl_only_drop_parts=1
+            </engine>
+        </query_log>
+        <metric_log remove="remove" />
+        <asynchronous_metric_log remove="remove" />
+        <query_thread_log remove="remove" />
+        <text_log remove="remove" />
+        <trace_log remove="remove" />
+        <session_log remove="remove" />
+        <part_log remove="remove" />
+    </clickhouse>
+  ipv4-only.xml: |
+    <clickhouse>
+        <listen_host>0.0.0.0</listen_host>
+    </clickhouse>
+  low-resources.xml: |
+    <clickhouse>
+        <mark_cache_size>524288000</mark_cache_size>
+    </clickhouse>
+  default-profile-low-resources-overrides.xml: |
+    <clickhouse>
+        <profiles>
+            <default>
+                <max_threads>1</max_threads>
+                <max_block_size>8192</max_block_size>
+                <max_download_threads>1</max_download_threads>
+                <input_format_parallel_parsing>0</input_format_parallel_parsing>
+                <output_format_parallel_formatting>0</output_format_parallel_formatting>
+            </default>
+        </profiles>
+    </clickhouse>
+  # The default user keeps working only from inside the pod (probes, an
+  # operator's clickhouse-client). Plausible connects as `plausible`, whose
+  # password comes from the environment (Secret plausible-app-secrets, required:
+  # the container does not start without it).
+  plausible-users.xml: |
+    <clickhouse>
+        <users>
+            <default>
+                <networks replace="replace">
+                    <ip>::1</ip>
+                    <ip>127.0.0.1</ip>
+                </networks>
+            </default>
+            <plausible>
+                <password from_env="CLICKHOUSE_PLAUSIBLE_PASSWORD" />
+                <networks>
+                    <ip>::/0</ip>
+                </networks>
+                <profile>default</profile>
+                <quota>default</quota>
+            </plausible>
+        </users>
+    </clickhouse>
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: plausible-events-db
+  namespace: plausible
+  labels:
+    app.kubernetes.io/name: plausible-events-db
+    app.kubernetes.io/part-of: enclii-platform
+spec:
+  type: ClusterIP
+  selector:
+    app.kubernetes.io/name: plausible-events-db
+  ports:
+    - name: http
+      port: 8123
+      targetPort: http
+      protocol: TCP
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: plausible-events-db
+  namespace: plausible
+  labels:
+    app.kubernetes.io/name: plausible-events-db
+    app.kubernetes.io/component: database
+    app.kubernetes.io/part-of: enclii-platform
+  annotations:
+    # Config files are subPath mounts, which never see ConfigMap updates;
+    # Reloader restarts the pod instead (it reads the workload's annotations).
+    configmap.reloader.stakater.com/reload: plausible-events-db-config
+    secret.reloader.stakater.com/reload: plausible-app-secrets
+spec:
+  serviceName: plausible-events-db
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: plausible-events-db
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: plausible-events-db
+        app.kubernetes.io/component: database
+        app.kubernetes.io/part-of: enclii-platform
+    spec:
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 101
+        runAsGroup: 101
+        fsGroup: 101
+        seccompProfile:
+          type: RuntimeDefault
+      affinity:
+        nodeAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            nodeSelectorTerms:
+              - matchExpressions:
+                  - key: role
+                    operator: NotIn
+                    values:
+                      - builder
+      containers:
+        - name: clickhouse
+          image: docker.io/clickhouse/clickhouse-server:24.12.6.70-alpine@sha256:cd450891db46cc6ffe313ca2b0fb7dbfb897a6873ca74a724cbe050a2cf62621
+          imagePullPolicy: IfNotPresent
+          env:
+            # Stops the image entrypoint from writing its own user file under
+            # /etc; users come only from plausible-users.xml.
+            - name: CLICKHOUSE_SKIP_USER_SETUP
+              value: "1"
+            - name: CLICKHOUSE_PLAUSIBLE_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: plausible-app-secrets
+                  key: CLICKHOUSE_PASSWORD
+                  optional: false
+          ports:
+            - name: http
+              containerPort: 8123
+              protocol: TCP
+          readinessProbe:
+            httpGet:
+              path: /ping
+              port: http
+            initialDelaySeconds: 10
+            periodSeconds: 10
+            timeoutSeconds: 3
+          livenessProbe:
+            httpGet:
+              path: /ping
+              port: http
+            initialDelaySeconds: 60
+            periodSeconds: 20
+            timeoutSeconds: 5
+            failureThreshold: 6
+          resources:
+            requests:
+              cpu: "100m"
+              memory: "512Mi"
+            limits:
+              cpu: "1000m"
+              # ClickHouse sizes max_server_memory_usage from the cgroup limit
+              # (0.9 by default); with the low-resource profile above, tiny
+              # traffic stays far below it.
+              memory: "1536Mi"
+          securityContext:
+            allowPrivilegeEscalation: false
+            # The image entrypoint and server write outside the data and log
+            # paths at start; a read-only root is not validated for this image.
+            readOnlyRootFilesystem: false
+            capabilities:
+              drop:
+                - ALL
+          volumeMounts:
+            - name: data
+              mountPath: /var/lib/clickhouse
+            - name: logs
+              mountPath: /var/log/clickhouse-server
+            - name: config
+              mountPath: /etc/clickhouse-server/config.d/logs.xml
+              subPath: logs.xml
+              readOnly: true
+            - name: config
+              mountPath: /etc/clickhouse-server/config.d/ipv4-only.xml
+              subPath: ipv4-only.xml
+              readOnly: true
+            - name: config
+              mountPath: /etc/clickhouse-server/config.d/low-resources.xml
+              subPath: low-resources.xml
+              readOnly: true
+            - name: config
+              mountPath: /etc/clickhouse-server/users.d/default-profile-low-resources-overrides.xml
+              subPath: default-profile-low-resources-overrides.xml
+              readOnly: true
+            - name: config
+              mountPath: /etc/clickhouse-server/users.d/plausible-users.xml
+              subPath: plausible-users.xml
+              readOnly: true
+      volumes:
+        - name: logs
+          emptyDir:
+            sizeLimit: 512Mi
+        - name: config
+          configMap:
+            name: plausible-events-db-config
+  volumeClaimTemplates:
+    - metadata:
+        name: data
+        labels:
+          app.kubernetes.io/name: plausible-events-db
+          # High-churn snapshot group: ClickHouse merges rewrite parts. With
+          # `source: enabled` the Longhorn volume takes its recurring-job
+          # labels from this claim (daily R2 backup, 2 local snapshots).
+          recurring-job.longhorn.io/source: enabled
+          recurring-job-group.longhorn.io/high-churn: enabled
+      spec:
+        accessModes:
+          - ReadWriteOnce
+        storageClassName: longhorn
+        resources:
+          requests:
+            storage: 5Gi
