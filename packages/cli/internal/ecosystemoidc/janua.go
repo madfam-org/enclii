@@ -135,6 +135,13 @@ func (c *JanuaClient) registerOrReconcile(ctx context.Context, spec JanuaClientS
 			return remoteOAuthClient{}, false, err
 		}
 		kind, _ := spec.kind()
+		if kind == machineClient && c.InternalAPIKey == "" && reviewedMachineScopeWidening(*existing, spec) {
+			updated, err := c.widenMachineScopes(ctx, existing, spec)
+			if err != nil {
+				return remoteOAuthClient{}, false, err
+			}
+			return *updated, false, nil
+		}
 		if kind == machineClient || validateRemoteClient(*existing, spec) == nil {
 			if err := validateRemoteClient(*existing, spec); err != nil {
 				return remoteOAuthClient{}, false, err
@@ -351,6 +358,64 @@ func (c *JanuaClient) reconcileLoginClient(ctx context.Context, existing *remote
 	}
 	sortStrings(fields)
 	updated.reconciled = fields
+	return updated, nil
+}
+
+// reviewedMachineScopeWidening reports whether a live MACHINE client differs
+// from its reviewed declaration only by scopes the registry ADDED. Everything
+// that decides who the client is and how it authenticates (identity, active
+// state, confidentiality, organization, audience, grants and callbacks) must
+// already match, and every scope the client holds today must still be
+// declared. A live scope the registry does not declare is privilege drift and
+// stays refused: it is never reconciled away, and never reconciled around.
+func reviewedMachineScopeWidening(r remoteOAuthClient, s JanuaClientSpec) bool {
+	if validateRemoteIdentity(r, s) != nil {
+		return false
+	}
+	if r.Audience == nil || *r.Audience != s.Audience || !sameStrings(r.RedirectURIs, s.RedirectURIs) || !sameStrings(r.GrantTypes, s.GrantTypes) {
+		return false
+	}
+	if sameStrings(r.AllowedScopes, s.AllowedScopes) {
+		return false
+	}
+	declared := make(map[string]bool, len(s.AllowedScopes))
+	for _, scope := range s.AllowedScopes {
+		declared[scope] = true
+	}
+	for _, scope := range r.AllowedScopes {
+		if !declared[scope] {
+			return false
+		}
+	}
+	return true
+}
+
+// widenMachineScopes adds the scopes a reviewed registry change declared to an
+// existing machine client, through the same admin PATCH the login reconcile
+// uses, and sends allowed_scopes ONLY: a machine client's audience, grants and
+// organization are never patched. The PATCHed client is re-read and must then
+// match the declaration exactly, or the run fails with the outcome held.
+func (c *JanuaClient) widenMachineScopes(ctx context.Context, existing *remoteOAuthClient, spec JanuaClientSpec) (*remoteOAuthClient, error) {
+	if strings.TrimSpace(existing.ID) == "" {
+		return nil, fmt.Errorf("cannot widen Janua client %s: missing internal client UUID", existing.ClientID)
+	}
+	patch := map[string]interface{}{"allowed_scopes": spec.AllowedScopes}
+	var response json.RawMessage
+	status, err := c.doJSON(ctx, http.MethodPatch, "/api/v1/oauth/clients/"+url.PathEscape(existing.ID), patch, &response, false)
+	if err != nil {
+		return nil, fmt.Errorf("Janua scope widening outcome held: %w", err)
+	}
+	if status != http.StatusOK {
+		return nil, fmt.Errorf("unexpected scope widening status; outcome held")
+	}
+	updated, err := c.detailClient(ctx, *existing)
+	if err != nil {
+		return nil, err
+	}
+	if err := validateRemoteClient(*updated, spec); err != nil {
+		return nil, err
+	}
+	updated.reconciled = []string{"allowed_scopes"}
 	return updated, nil
 }
 

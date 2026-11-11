@@ -450,7 +450,7 @@ targets:
   # symbiosis-hcm → Karafiel machine edge (2026-11-02). The client_credentials
   # pair of ecosystem-oidc platform symbiosis-hcm-karafiel (audience
   # karafiel-api; scopes legal:contractor-draft, legal:employment-draft,
-  # fiscal:invoice), written ONLY by
+  # fiscal:invoice, fiscal:csf-intake), written ONLY by
   # `enclii secrets provision oidc --platform symbiosis-hcm-karafiel`; no human
   # types either value. Same path as symbiosis-hcm/map-absence-feed
   # (secret/symbiosis-hcm, a merge), but delivered by HCM's DEDICATED
@@ -460,7 +460,7 @@ targets:
   # stores them; the ExternalSecret maps these `property:` names byte for byte.
   symbiosis-hcm/karafiel-client:
     label: Symbiosis-HCM → Karafiel service client
-    description: Janua client_credentials pair (symbiosis-hcm-karafiel; scopes legal:contractor-draft, legal:employment-draft, fiscal:invoice) HCM's API and worker use for Karafiel contract drafts and CFDI. Filed by `enclii secrets provision oidc --platform symbiosis-hcm-karafiel`.
+    description: Janua client_credentials pair (symbiosis-hcm-karafiel; scopes legal:contractor-draft, legal:employment-draft, fiscal:invoice, fiscal:csf-intake) HCM's API and worker use for Karafiel contract drafts, CFDI and constancia (CSF) intake. Filed by `enclii secrets provision oidc --platform symbiosis-hcm-karafiel`.
     vault_path: secret/symbiosis-hcm
     namespace: symbiosis-hcm
     external_secret: hcm-service-clients  # pragma: allowlist secret

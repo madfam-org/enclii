@@ -414,6 +414,32 @@ enclii --profile admin secrets provision oidc --platform symbiosis-hcm-karafiel 
 Then pin the printed `jnc_…` id as `janua_client.client_id` for
 `symbiosis-hcm-karafiel` in both registry copies.
 
+#### Adding `fiscal:csf-intake` to the existing client (2026-11-11)
+
+HCM's Mi ficha forwards a contractor's constancia de situación fiscal to
+Karafiel's `POST /api/v1/fiscal/csf/extract/`, which Karafiel gates on
+`fiscal:csf-intake` (already reserved in Janua). The registry now declares that
+fourth scope on the same pinned client. `provision oidc` applies a reviewed
+**widening** of a machine client: when the only difference from the live client
+is scopes the registry added, it PATCHes `allowed_scopes` and nothing else. Any
+other machine drift (a live scope the registry does not declare, audience,
+grants, organization, callbacks, inactive) is still refused unpatched. The
+secret of an existing client cannot be read back, so the run also rotates it;
+`--grace-hours` keeps the current secret valid while HCM's pods pick up the new
+one:
+
+```bash
+cd ~/labspace/enclii && git pull --ff-only
+make -C ~/labspace/enclii install-cli CLI_INSTALL_DIR=$HOME/.local/bin
+enclii --profile admin secrets provision oidc --platform symbiosis-hcm-karafiel --intake-profile default --rotate-secret --grace-hours 24 --json --reason "HCM reads contractor CSFs via Karafiel"
+```
+
+HCM's API and worker carry `reloader.stakater.com/match`, so they restart on
+their own when `hcm-service-clients` refreshes (every 15 min) and read the new
+secret well inside the grace window. Until this runs, HCM's
+upload answers with its own «lectura automática aún no disponible» message;
+nothing else on the edge changes.
+
 ### Symbiosis-HCM → Dhanam scheduled-payments writer (2026-11-02)
 
 `symbiosis-hcm-dhanam-writer` (audience `dhanam-api`, scope

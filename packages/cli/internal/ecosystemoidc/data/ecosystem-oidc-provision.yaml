@@ -1145,6 +1145,16 @@ platforms:
   # scope per token (core/janua_service_token.py caches per client and scope),
   # so a drafts token never carries fiscal:invoice and vice versa.
   #
+  # fiscal:csf-intake (2026-11-11): Mi ficha in HCM lets a contractor upload
+  # their constancia de situación fiscal; HCM forwards it to Karafiel's
+  # POST /api/v1/fiscal/csf/extract/, which returns a proposal the person
+  # confirms field by field and keeps the PDF as evidence. Karafiel already
+  # gates that path on this scope (core/middleware/active_rfc.py) and Janua
+  # already reserves it. Adding it to this EXISTING client is a reviewed
+  # widening: `provision oidc` PATCHes allowed_scopes only (it refuses any
+  # other drift) and then needs --rotate-secret, because the secret of an
+  # existing client cannot be read back.
+  #
   # audience `karafiel-api` is Karafiel's JANUA_AUDIENCE (core/janua_audience.py),
   # the audience zavlo-cfdi-emitter already holds. HCM's token
   # request names no audience: Janua stamps the client's. Karafiel admits the
@@ -1174,12 +1184,13 @@ platforms:
       client_id: jnc_gWbJCFfVZsv6J7cJXcieW7VJrCsNmvPp  # pragma: allowlist secret -- public OAuth client id
       client_key: symbiosis-hcm-karafiel  # pragma: allowlist secret
       audience: karafiel-api
-      description: Machine edge (client_credentials) from Symbiosis-HCM's API and worker to Karafiel. Platform-admin, scopes legal:contractor-draft and legal:employment-draft (contract drafts) and fiscal:invoice (CFDI); HCM requests one scope per token.
+      description: Machine edge (client_credentials) from Symbiosis-HCM's API and worker to Karafiel. Platform-admin, scopes legal:contractor-draft and legal:employment-draft (contract drafts), fiscal:invoice (CFDI) and fiscal:csf-intake (reading a contractor's constancia de situación fiscal); HCM requests one scope per token.
       is_confidential: true
       allowed_scopes:
         - legal:contractor-draft
         - legal:employment-draft
         - fiscal:invoice
+        - fiscal:csf-intake
       grant_types:
         - client_credentials
 
