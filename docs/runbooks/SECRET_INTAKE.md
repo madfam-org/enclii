@@ -1,6 +1,6 @@
 # Secret Intake (chat-safe credential handoff)
 
-**Last Updated:** 2026-11-08
+**Last Updated:** 2026-11-11
 
 Isolated training and API-only Janua staging targets are documented in
 [Isolated training custody](ISOLATED_TRAINING_CUSTODY.md). These declarations
@@ -114,6 +114,8 @@ ESO sources: `enclii-secrets`, `janua-secrets`, `madfam-site-secrets`, `phynd-cr
 | `symbiosis-hcm/dhanam-cost-events-client` | `secret/symbiosis-hcm` | `dhanam_cost_events_client_id`, `dhanam_cost_events_client_secret`: **provisioned, never submitted** (`enclii secrets provision oidc --platform symbiosis-hcm-dhanam-cost-events`; same section) |
 | `pravara-mes/dhanam-cost-events-client` | `secret/pravara-mes` | `pravara_cost_events_client_id`, `pravara_cost_events_client_secret`: **provisioned, never submitted** (`enclii secrets provision oidc --platform pravara-dhanam-cost-events`; same section) |
 | `karafiel/dhanam-cost-events-client` | `secret/karafiel` | `dhanam_cost_events_client_id`, `dhanam_cost_events_client_secret`: **provisioned, never submitted** (`enclii secrets provision oidc --platform karafiel-dhanam-cost-events`) |
+| `karafiel/dhanam-bank-ledger-client` | `secret/karafiel` | `dhanam_bank_ledger_client_id`, `dhanam_bank_ledger_client_secret`: **provisioned, never submitted** (`enclii secrets provision oidc --platform karafiel-dhanam-bank-ledger`; see [Karafiel bank-ledger reader and Selva cost events](#karafiel-bank-ledger-reader-and-selva-cost-events-2026-11-11)) |
+| `selva/dhanam-cost-events-client` | `secret/selva` | `dhanam_cost_events_client_id`, `dhanam_cost_events_client_secret`: **provisioned, never submitted** (`enclii secrets provision oidc --platform selva-dhanam-cost-events`; same section) |
 | `nauta/kalya-feed-tokens` | `secret/nauta` | `kalya_feed_tokens` |
 | `nauta/symbiosis-hcm-token` | `secret/nauta` | `symbiosis_hcm_token` |
 | `angelia/courier-producer-keys` | `secret/angelia` | `courier_producer_key_alarms`, `courier_producer_key_enclii_ops`, `courier_producer_key_tulana`, `courier_producer_key_madfam_site` |
@@ -496,6 +498,51 @@ Dhanam ids as the grants' `clientId`. Until each consumer repo adds its
 ExternalSecret, intake reports `external_secret_refreshed=false` and the pair
 sits in Vault unread. Each consumer ignores the pair until its switch is on:
 `HCM_LABOR_EVENTS_ENABLED`, `PRAVARA_COST_EVENTS_ENABLED` (owner-only).
+
+### Karafiel bank-ledger reader and Selva cost events (2026-11-11)
+
+Two more Dhanam machine edges, each the shape of
+[Karafiel → Dhanam cost events](#karafiel--dhanam-cost-events-2026-11-05):
+confidential, `client_credentials` only, no redirect URIs, org-bound to
+`madfam-ecosystem` (`1a6233ef-185f-43ee-9181-e2591fbb2643`), audience
+`dhanam-api`, exactly one scope, and a dedicated ExternalSecret in the
+consumer's namespace.
+
+| Platform id | Scope | Target → Vault path | ExternalSecret | Consumer env |
+|---|---|---|---|---|
+| `karafiel-dhanam-bank-ledger` | `dhanam-bank-ledger:read` | `karafiel/dhanam-bank-ledger-client` → `secret/karafiel` | `karafiel-dhanam-bank-ledger` (namespace `karafiel`, worker only, optional) | `DHANAM_BANK_LEDGER_CLIENT_ID` / `_SECRET` |
+| `selva-dhanam-cost-events` | `dhanam-cost-events:write` | `selva/dhanam-cost-events-client` → `secret/selva` | `selva-dhanam-cost-events` (namespace `selva`, parked until provisioned) | `SELVA_DHANAM_COST_EVENTS_CLIENT_ID` / `_SECRET` |
+
+- **Karafiel bank ledger** (karafiel#383, dhanam#969): Karafiel's bank mirror
+  reads one business space's bank movements from
+  `GET /v1/bank-ledger/spaces/:spaceId/transactions`. Read only. Dhanam's
+  `BankLedgerReaderGrant` (`provision-bank-ledger-reader-grant`) binds the
+  client id and organization to ONE live business space; any other space is
+  403. Only this client may hold `dhanam-bank-ledger:read`.
+- **Selva cost events** (selva-office#363): daily inference `cost.event.v1`,
+  source `selva`, `basis: estimate`. A `CostEventWriterGrant` binds it to one
+  space and the source `selva`. Not a widening of any Selva read client.
+
+**Before provisioning, in order:**
+
+1. This registry is deployed: merging it redeploys switchyard-api with the
+   two intake targets. The Vault policy needs no change (`secret/karafiel`
+   and `secret/selva` are already writable).
+2. For `karafiel-dhanam-bank-ledger`: the Janua image that reserves
+   `dhanam-bank-ledger:read` (`DHANAM_SCOPES` in
+   `apps/api/app/core/reserved_oauth_boundaries.py`) is promoted. Janua
+   already reserves `dhanam-cost-events:write`.
+
+```bash
+enclii --profile admin secrets provision oidc --platform karafiel-dhanam-bank-ledger --intake-profile default --json --reason "karafiel bank mirror reads the company bank ledger (SAT catch-up)"
+enclii --profile admin secrets provision oidc --platform selva-dhanam-cost-events --intake-profile default --json --reason "selva inference usage to dhanam cost events (RFC 0050 C13)"
+```
+
+Until a CLI release embeds these entries, add `--registry "$REG"` with a copy
+from `origin/main`, as above. Pin each printed `jnc_…` id in both registry
+copies and use it as the Dhanam grant's `clientId`. Until the consumer merges
+its ExternalSecret, intake reports `external_secret_refreshed=false` and the
+pair sits in Vault unread.
 
 ### Karafiel → Dhanam cost events (2026-11-05)
 

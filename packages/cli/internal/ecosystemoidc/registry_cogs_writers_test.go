@@ -100,6 +100,7 @@ func TestLoadRegistry_cogsWriterAndReaderMachineEdges(t *testing.T) {
 	assert.Equal(t, []string{
 		"karafiel-dhanam-cost-events",
 		"pravara-dhanam-cost-events",
+		"selva-dhanam-cost-events",
 		"symbiosis-hcm-dhanam-cost-events",
 	}, writers)
 }

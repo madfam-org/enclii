@@ -13,7 +13,7 @@ import (
 func TestLoadRegistry(t *testing.T) {
 	reg, err := LoadRegistry()
 	require.NoError(t, err)
-	assert.Len(t, reg, 132)
+	assert.Len(t, reg, 134)
 	assert.Contains(t, reg, "ceq/vast-api-key")
 	assert.Contains(t, reg, "karafiel/web-oidc-janua")
 	adminSession := reg["karafiel/admin-session"]
@@ -38,7 +38,7 @@ func TestGetTarget(t *testing.T) {
 func TestListTargetsSorted(t *testing.T) {
 	list, err := ListTargets()
 	require.NoError(t, err)
-	require.Len(t, list, 132)
+	require.Len(t, list, 134)
 	for i := 1; i < len(list); i++ {
 		assert.Less(t, list[i-1].ID, list[i].ID, "targets should be sorted by id")
 	}
@@ -105,6 +105,7 @@ func TestListTargetsSorted(t *testing.T) {
 		"karafiel-staging/web-oidc",
 		"karafiel/admin-oidc-janua",
 		"karafiel/admin-session",
+		"karafiel/dhanam-bank-ledger-client",
 		"karafiel/dhanam-cost-events-client",
 		"karafiel/dhanam-webhook-secret",
 		"karafiel/hcm-signing-bindings",
@@ -134,6 +135,7 @@ func TestListTargetsSorted(t *testing.T) {
 		"pravara-mes/fabrication-prep-client",
 		"pravara-mes/yantra4d-step-reader",
 		"routecraft/billing-relay",
+		"selva/dhanam-cost-events-client",
 		"selva/pravara-mes-client",
 		"selva/yantra4d-client",
 		"symbiosis-hcm/dhanam-cost-events-client",
@@ -1169,6 +1171,7 @@ func TestKarafielDhanamCostEventsClientTarget(t *testing.T) {
 	assert.Equal(t, []string{
 		"karafiel/admin-oidc-janua",
 		"karafiel/admin-session",
+		"karafiel/dhanam-bank-ledger-client",
 		"karafiel/dhanam-cost-events-client",
 		"karafiel/dhanam-webhook-secret",
 		"karafiel/hcm-signing-bindings",
