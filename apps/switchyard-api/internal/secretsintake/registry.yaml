@@ -1604,6 +1604,27 @@ targets:
       - pravara_mes_client_id
       - pravara_mes_client_secret
 
+  # Selva → Dhanam cost events (2026-11-11, RFC 0050 C13). The pair of
+  # ecosystem-oidc platform selva-dhanam-cost-events (audience dhanam-api,
+  # scope dhanam-cost-events:write, org-bound to madfam-ecosystem), written
+  # ONLY by `enclii secrets provision oidc --platform selva-dhanam-cost-events`.
+  # Its OWN ExternalSecret, selva-dhanam-cost-events (selva-office#363 parks it
+  # under infra/k8s/production/optional/), NOT selva-service-clients: ESO is
+  # all-or-nothing per ExternalSecret, so this pair never holds the phygital
+  # tools' Secret. LOWERCASE keys, mapped to SELVA_DHANAM_COST_EVENTS_CLIENT_ID /
+  # SELVA_DHANAM_COST_EVENTS_CLIENT_SECRET.
+  selva/dhanam-cost-events-client:
+    label: Selva → Dhanam cost-events writer client
+    description: Janua client_credentials pair (selva-dhanam-cost-events, scope dhanam-cost-events:write, org-bound) Selva's nexus-api sweep uses to push daily inference cost.event.v1 events (basis estimate) into Dhanam (selva-office#363, RFC 0050 C13). Filed by `enclii secrets provision oidc --platform selva-dhanam-cost-events`.
+    vault_path: secret/selva
+    namespace: selva
+    external_secret: selva-dhanam-cost-events  # pragma: allowlist secret
+    keys:
+      - dhanam_cost_events_client_id
+      - dhanam_cost_events_client_secret
+    generate:
+      disabled: true
+
   # Isolated training/staging custody: values never stored in source.
   crea-sim/ui-oidc:
     label: Training UI human OAuth client
@@ -1844,6 +1865,46 @@ targets:
     keys:
       - dhanam_cost_events_client_id
       - dhanam_cost_events_client_secret
+    generate:
+      disabled: true
+
+  # Karafiel → Dhanam bank ledger (2026-11-11). The pair of ecosystem-oidc
+  # platform karafiel-dhanam-bank-ledger (audience dhanam-api, scope
+  # dhanam-bank-ledger:read, org-bound to madfam-ecosystem), written ONLY by
+  # `enclii secrets provision oidc --platform karafiel-dhanam-bank-ledger`. Its
+  # OWN ExternalSecret, karafiel-dhanam-bank-ledger (karafiel#383, mounted
+  # optional on the worker only): ESO is all-or-nothing per ExternalSecret, so
+  # an unprovisioned pair never holds another Karafiel Secret. LOWERCASE keys,
+  # mapped to DHANAM_BANK_LEDGER_CLIENT_ID / DHANAM_BANK_LEDGER_CLIENT_SECRET.
+  karafiel/dhanam-bank-ledger-client:
+    label: Karafiel → Dhanam bank-ledger reader client
+    description: Janua client_credentials pair (karafiel-dhanam-bank-ledger, scope dhanam-bank-ledger:read, org-bound) Karafiel's worker uses to read one business space's bank movements from Dhanam for its bank mirror. Filed by `enclii secrets provision oidc --platform karafiel-dhanam-bank-ledger`.
+    vault_path: secret/karafiel
+    namespace: karafiel
+    external_secret: karafiel-dhanam-bank-ledger  # pragma: allowlist secret
+    keys:
+      - dhanam_bank_ledger_client_id
+      - dhanam_bank_ledger_client_secret
+    generate:
+      disabled: true
+
+  # Karafiel → Dhanam scheduled payments (2026-11-11, RFC 0055 Phase 1.5,
+  # ruling O4). The pair of ecosystem-oidc platform
+  # karafiel-dhanam-scheduled-payments (audience dhanam-api, scope
+  # dhanam-scheduled-payments:write, org-bound to madfam-ecosystem), written
+  # ONLY by `enclii secrets provision oidc --platform
+  # karafiel-dhanam-scheduled-payments`. Its OWN planned ExternalSecret,
+  # karafiel-dhanam-scheduled-payments: ESO is all-or-nothing per
+  # ExternalSecret. LOWERCASE keys.
+  karafiel/dhanam-scheduled-payments-client:
+    label: Karafiel → Dhanam scheduled-payments writer client
+    description: Janua client_credentials pair (karafiel-dhanam-scheduled-payments, scope dhanam-scheduled-payments:write, org-bound) Karafiel uses to push tax obligations into Dhanam as planned payments (RFC 0055 Phase 1.5). Filed by `enclii secrets provision oidc --platform karafiel-dhanam-scheduled-payments`.
+    vault_path: secret/karafiel
+    namespace: karafiel
+    external_secret: karafiel-dhanam-scheduled-payments  # pragma: allowlist secret
+    keys:
+      - dhanam_scheduled_payments_client_id
+      - dhanam_scheduled_payments_client_secret
     generate:
       disabled: true
 

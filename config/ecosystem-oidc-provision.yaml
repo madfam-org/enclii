@@ -1415,6 +1415,137 @@ platforms:
         - client_credentials
 
   # ---------------------------------------------------------------------------
+  # Karafiel → Dhanam bank ledger (2026-11-11, owner ruling 2026-11-10: SAT
+  # catch-up readiness). Karafiel's worker pulls the company's bank movements
+  # into its bank mirror (integrations/dhanam_sync.py, karafiel#383) from
+  # Dhanam's machine-only route GET /v1/bank-ledger/spaces/:spaceId/transactions
+  # (dhanam#969, bank-ledger-reader.strategy.ts). RESICO PM is taxed on cash
+  # flow (LISR arts. 206-215), so collection and payment dates come from the
+  # bank. One edge, one client, one READ scope, client_credentials only.
+  #
+  # audience `dhanam-api`, ORG-BOUND to madfam-ecosystem: the strategy refuses
+  # a token without org_id. The token alone reads nothing: Dhanam's
+  # operator-reviewed BankLedgerReaderGrant binds THIS client id and THIS
+  # organization to ONE live business space (apps/api/scripts/
+  # provision-bank-ledger-reader-grant.ts); any other space is 403.
+  #
+  # SCOPE `dhanam-bank-ledger:read`, ONE colon. Provision only after the Janua
+  # image that RESERVES it (janua apps/api/app/core/reserved_oauth_boundaries.py
+  # DHANAM_SCOPES) is promoted: until then any organization admin may register
+  # a client carrying it.
+  #
+  # The pair lands at secret/karafiel through karafiel/dhanam-bank-ledger-client
+  # (LOWERCASE keys), read by Karafiel's DEDICATED karafiel-dhanam-bank-ledger
+  # ExternalSecret (mounted optional on the worker only), which maps them to
+  # DHANAM_BANK_LEDGER_CLIENT_ID / DHANAM_BANK_LEDGER_CLIENT_SECRET. Without
+  # the pair Karafiel keeps its legacy route.
+  #
+  # NOT pinned yet: the first provision run CREATES the client and prints its
+  # jnc_… id; pin it here (both copies) and use the same id in the Dhanam
+  # reader grant.
+  # ---------------------------------------------------------------------------
+  karafiel-dhanam-bank-ledger:
+    intake_target: karafiel/dhanam-bank-ledger-client
+    intake_key_map:
+      dhanam_bank_ledger_client_id: client_id
+      dhanam_bank_ledger_client_secret: client_secret  # pragma: allowlist secret
+    janua_client:
+      name: karafiel-dhanam-bank-ledger
+      client_key: karafiel-dhanam-bank-ledger  # pragma: allowlist secret
+      audience: dhanam-api
+      description: Machine edge (client_credentials) from Karafiel's worker to Dhanam's bank-ledger read route (one business space's bank movements for the bank mirror, karafiel#383, dhanam#969). Org-bound to madfam-ecosystem, scope dhanam-bank-ledger:read only; Dhanam's reader grant binds it to one space.
+      is_confidential: true
+      organization_id: 1a6233ef-185f-43ee-9181-e2591fbb2643
+      allowed_scopes:
+        - dhanam-bank-ledger:read
+      grant_types:
+        - client_credentials
+
+  # ---------------------------------------------------------------------------
+  # Karafiel → Dhanam scheduled payments (2026-11-11, RFC 0055 Phase 1.5,
+  # owner-adopted ruling O4). Karafiel pushes each tax obligation (the monthly
+  # and annual enteros it computes) into Dhanam as a PLANNED payment through
+  # Dhanam's EXISTING scheduled-payments machine writer route (PUT/GET
+  # /v1/scheduled-payments/external/<source>/<id>, Dhanam #924), the route
+  # symbiosis-hcm-dhanam-writer already uses. One edge, one client, one scope,
+  # client_credentials only, no browser leg. The Karafiel pusher is a later
+  # change; this entry only declares the client.
+  #
+  # audience `dhanam-api`, ORG-BOUND to madfam-ecosystem: the writer strategy
+  # refuses a token without org_id. The token alone authorizes nothing:
+  # Dhanam's operator-reviewed ScheduledPaymentWriterGrant binds THIS client id
+  # and organization to one business space and the source system `karafiel`
+  # (apps/api/scripts/provision-scheduled-payment-writer-grant.ts). Janua
+  # already reserves dhanam-scheduled-payments:write (janua#758).
+  #
+  # The pair lands at secret/karafiel through
+  # karafiel/dhanam-scheduled-payments-client (LOWERCASE keys), for Karafiel's
+  # DEDICATED, planned karafiel-dhanam-scheduled-payments ExternalSecret. Not
+  # karafiel-dhanam-cost-events (another scope and grant).
+  #
+  # NOT pinned yet: pin the printed jnc_… id here (both copies) and use the
+  # same id in the Dhanam writer grant.
+  # ---------------------------------------------------------------------------
+  karafiel-dhanam-scheduled-payments:
+    intake_target: karafiel/dhanam-scheduled-payments-client
+    intake_key_map:
+      dhanam_scheduled_payments_client_id: client_id
+      dhanam_scheduled_payments_client_secret: client_secret  # pragma: allowlist secret
+    janua_client:
+      name: karafiel-dhanam-scheduled-payments
+      client_key: karafiel-dhanam-scheduled-payments  # pragma: allowlist secret
+      audience: dhanam-api
+      description: Machine edge (client_credentials) from Karafiel to Dhanam's scheduled-payments machine writer route (tax obligations as planned payments, RFC 0055 Phase 1.5, ruling O4). Org-bound to madfam-ecosystem, scope dhanam-scheduled-payments:write only; Dhanam's writer grant binds it to one space and the source karafiel.
+      is_confidential: true
+      organization_id: 1a6233ef-185f-43ee-9181-e2591fbb2643
+      allowed_scopes:
+        - dhanam-scheduled-payments:write
+      grant_types:
+        - client_credentials
+
+  # ---------------------------------------------------------------------------
+  # Selva → Dhanam cost events (2026-11-11, RFC 0050 ruling C13). Selva's
+  # nexus-api sweep (selva-office#363, nexus_api/cost_events) rolls
+  # compute_token_ledger up into daily `cost.event.v1` inference events,
+  # source `selva`, every one `basis: estimate`, and pushes them as a MACHINE
+  # to POST /v1/cost-events. Same shape as karafiel-dhanam-cost-events: one
+  # edge, one client, one scope, client_credentials only.
+  #
+  # audience `dhanam-api`, ORG-BOUND to madfam-ecosystem (Dhanam's writer
+  # strategy refuses a token without org_id). Dhanam's CostEventWriterGrant
+  # binds THIS client id and organization to one business space and the source
+  # `selva`. Janua already reserves dhanam-cost-events:write. Distinct from any
+  # Selva READ client of Dhanam's COGS MCP (dhanam-cogs:read): never widen one
+  # into the other.
+  #
+  # The pair lands at secret/selva through selva/dhanam-cost-events-client
+  # (LOWERCASE keys), read by Selva's DEDICATED selva-dhanam-cost-events
+  # ExternalSecret (parked in selva-office infra/k8s/production/optional/ until
+  # this pair exists), which maps them to SELVA_DHANAM_COST_EVENTS_CLIENT_ID /
+  # SELVA_DHANAM_COST_EVENTS_CLIENT_SECRET. Selva ignores the pair until
+  # SELVA_COST_EVENTS_EMIT_ENABLED=true and its CronJob is unsuspended.
+  #
+  # NOT pinned yet: pin the printed jnc_… id here (both copies) and use the
+  # same id in the Dhanam writer grant.
+  # ---------------------------------------------------------------------------
+  selva-dhanam-cost-events:
+    intake_target: selva/dhanam-cost-events-client
+    intake_key_map:
+      dhanam_cost_events_client_id: client_id
+      dhanam_cost_events_client_secret: client_secret  # pragma: allowlist secret
+    janua_client:
+      name: selva-dhanam-cost-events
+      client_key: selva-dhanam-cost-events  # pragma: allowlist secret
+      audience: dhanam-api
+      description: Machine edge (client_credentials) from Selva's nexus-api cost-events sweep to Dhanam's cost-events ingest route (daily inference cost.event.v1, basis estimate, selva-office#363, RFC 0050 C13). Org-bound to madfam-ecosystem, scope dhanam-cost-events:write only; Dhanam's writer grant binds it to one space and the source selva.
+      is_confidential: true
+      organization_id: 1a6233ef-185f-43ee-9181-e2591fbb2643
+      allowed_scopes:
+        - dhanam-cost-events:write
+      grant_types:
+        - client_credentials
+
+  # ---------------------------------------------------------------------------
   # converge-dash → Selva convergence feed (2026-11-04, RFC 0049). converge-dash's
   # worker reads GET /api/v1/convergence/ai-tasks on Selva's nexus-api, which
   # only accepts a Janua JWT whose `aud` contains `selva-office` (the audience
