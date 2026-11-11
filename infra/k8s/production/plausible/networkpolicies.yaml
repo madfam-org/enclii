@@ -1,0 +1,170 @@
+# SPEC ONLY: nothing references this directory (see README.md).
+#
+# Default deny, then one allow policy per workload.
+#
+# Every peer is a BARE podSelector or a BARE namespaceSelector, never both in
+# one entry: on this cluster's k3s network-policy controller the combined
+# "pods X in namespace Y" shape has rendered as deny-all before.
+#
+# What is NOT allowed, on purpose:
+#   - Plausible has no internet egress. Nothing it needs is outside the
+#     namespace (no SMTP, no MaxMind download, no Sentry). Side effect: the
+#     dashboard's referrer favicons, which Plausible fetches server-side, do
+#     not load.
+#   - ClickHouse has no egress at all beyond DNS.
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: default-deny-all
+  namespace: plausible
+  labels:
+    app.kubernetes.io/part-of: enclii-platform
+spec:
+  podSelector: {}
+  policyTypes:
+    - Ingress
+    - Egress
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-dns-egress
+  namespace: plausible
+  labels:
+    app.kubernetes.io/part-of: enclii-platform
+spec:
+  podSelector: {}
+  policyTypes:
+    - Egress
+  egress:
+    - to:
+        - namespaceSelector: {}
+      ports:
+        - protocol: UDP
+          port: 53
+        - protocol: TCP
+          port: 53
+---
+# Plausible web: the Cloudflare tunnel reaches it on 8000 (script, /api/event,
+# dashboard); it reaches its two databases and nothing else.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: plausible-web
+  namespace: plausible
+  labels:
+    app.kubernetes.io/name: plausible
+    app.kubernetes.io/part-of: enclii-platform
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: plausible
+  policyTypes:
+    - Ingress
+    - Egress
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: cloudflare-tunnel
+      ports:
+        - protocol: TCP
+          port: 8000
+  egress:
+    - to:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: plausible-events-db
+      ports:
+        - protocol: TCP
+          port: 8123
+    - to:
+        - podSelector:
+            matchLabels:
+              cnpg.io/cluster: plausible-db
+      ports:
+        - protocol: TCP
+          port: 5432
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: plausible-events-db
+  namespace: plausible
+  labels:
+    app.kubernetes.io/name: plausible-events-db
+    app.kubernetes.io/part-of: enclii-platform
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: plausible-events-db
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: plausible
+      ports:
+        - protocol: TCP
+          port: 8123
+---
+# CNPG instance (and its initdb Job pod, which carries the same cnpg.io/cluster
+# label).
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: plausible-db
+  namespace: plausible
+  labels:
+    app.kubernetes.io/name: plausible-db
+    app.kubernetes.io/part-of: enclii-platform
+spec:
+  podSelector:
+    matchLabels:
+      cnpg.io/cluster: plausible-db
+  policyTypes:
+    - Ingress
+    - Egress
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: plausible
+      ports:
+        - protocol: TCP
+          port: 5432
+    - from:
+        - podSelector:
+            matchLabels:
+              cnpg.io/cluster: plausible-db
+      ports:
+        - protocol: TCP
+          port: 5432
+    # The CNPG operator polls each instance manager on 8000. Without this rule
+    # the cluster sits in «Instance Status Extraction Error» and reconciles
+    # nothing (seen on the addon namespaces before enclii#854).
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: cnpg-system
+      ports:
+        - protocol: TCP
+          port: 8000
+  egress:
+    - to:
+        - podSelector:
+            matchLabels:
+              cnpg.io/cluster: plausible-db
+      ports:
+        - protocol: TCP
+          port: 5432
+    # Kubernetes API (the instance manager watches its Cluster; 443 to the
+    # Service IP or 6443 to the endpoint depending on service translation) and
+    # Barman to R2 over HTTPS. Same shape as postgres-ha.
+    - ports:
+        - protocol: TCP
+          port: 443
+        - protocol: TCP
+          port: 6443

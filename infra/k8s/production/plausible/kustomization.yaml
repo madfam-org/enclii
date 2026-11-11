@@ -1,0 +1,17 @@
+# SPEC ONLY. Nothing in the repo references this directory: no Argo
+# Application, no infra/argocd/projects/*/config.json, no parent
+# kustomization. Merging it deploys nothing. Wiring is one file,
+# infra/argocd/projects/plausible/config.json (README.md, "Wiring").
+# Guarded by tests/scripts/test_plausible_spec_only.py.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: plausible
+
+resources:
+  - namespace.yaml
+  - externalsecrets.yaml
+  - networkpolicies.yaml
+  - postgres-cluster.yaml
+  - clickhouse.yaml
+  - plausible.yaml
