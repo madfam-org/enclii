@@ -1888,6 +1888,26 @@ targets:
     generate:
       disabled: true
 
+  # Karafiel → Dhanam scheduled payments (2026-11-11, RFC 0055 Phase 1.5,
+  # ruling O4). The pair of ecosystem-oidc platform
+  # karafiel-dhanam-scheduled-payments (audience dhanam-api, scope
+  # dhanam-scheduled-payments:write, org-bound to madfam-ecosystem), written
+  # ONLY by `enclii secrets provision oidc --platform
+  # karafiel-dhanam-scheduled-payments`. Its OWN planned ExternalSecret,
+  # karafiel-dhanam-scheduled-payments: ESO is all-or-nothing per
+  # ExternalSecret. LOWERCASE keys.
+  karafiel/dhanam-scheduled-payments-client:
+    label: Karafiel → Dhanam scheduled-payments writer client
+    description: Janua client_credentials pair (karafiel-dhanam-scheduled-payments, scope dhanam-scheduled-payments:write, org-bound) Karafiel uses to push tax obligations into Dhanam as planned payments (RFC 0055 Phase 1.5). Filed by `enclii secrets provision oidc --platform karafiel-dhanam-scheduled-payments`.
+    vault_path: secret/karafiel
+    namespace: karafiel
+    external_secret: karafiel-dhanam-scheduled-payments  # pragma: allowlist secret
+    keys:
+      - dhanam_scheduled_payments_client_id
+      - dhanam_scheduled_payments_client_secret
+    generate:
+      disabled: true
+
   dhanam/karafiel-callback-secret:
     label: Dhanam callback key for Karafiel
     description: HMAC key Karafiel's worker signs its cfdi-issued callback to Dhanam with (X-Dhanam-Timestamp + X-Dhanam-Signature-V2) and Dhanam's api verifies, projected by dhanam-secrets-karafiel-callback. Karafiel holds a read-only copy through its own ExternalSecret karafiel-dhanam-callback-signing (namespace karafiel). Mint server-side with --generate karafiel_dhanam_signing_secret.

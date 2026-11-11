@@ -9,8 +9,9 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// Two Dhanam machine-client pairs declared 2026-11-11: Karafiel's bank-ledger
-// reader (karafiel#383) and Selva's cost-events writer (selva-office#363).
+// Three Dhanam machine-client pairs declared 2026-11-11: Karafiel's bank-ledger
+// reader (karafiel#383), Karafiel's scheduled-payments writer (RFC 0055 Phase
+// 1.5) and Selva's cost-events writer (selva-office#363).
 // Pinned end to end because each link fails silently: a wrong Vault path is a
 // write nothing reads, a wrong key is an ExternalSecret that syncs nothing, and
 // a shared ExternalSecret would hold another edge's Secret until this pair
@@ -25,6 +26,12 @@ func TestBankLedgerAndSelvaCostEventsClientTargets(t *testing.T) {
 			vaultPath: "secret/karafiel", namespace: "karafiel", externalSecret: "karafiel-dhanam-bank-ledger",
 			scope: "dhanam-bank-ledger:read",
 			keys:  []string{"dhanam_bank_ledger_client_id", "dhanam_bank_ledger_client_secret"},
+		},
+		{
+			id: "karafiel/dhanam-scheduled-payments-client", platform: "karafiel-dhanam-scheduled-payments",
+			vaultPath: "secret/karafiel", namespace: "karafiel", externalSecret: "karafiel-dhanam-scheduled-payments",
+			scope: "dhanam-scheduled-payments:write",
+			keys:  []string{"dhanam_scheduled_payments_client_id", "dhanam_scheduled_payments_client_secret"},
 		},
 		{
 			id: "selva/dhanam-cost-events-client", platform: "selva-dhanam-cost-events",

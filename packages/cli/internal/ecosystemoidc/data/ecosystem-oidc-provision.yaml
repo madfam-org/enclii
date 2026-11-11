@@ -1462,6 +1462,48 @@ platforms:
         - client_credentials
 
   # ---------------------------------------------------------------------------
+  # Karafiel → Dhanam scheduled payments (2026-11-11, RFC 0055 Phase 1.5,
+  # owner-adopted ruling O4). Karafiel pushes each tax obligation (the monthly
+  # and annual enteros it computes) into Dhanam as a PLANNED payment through
+  # Dhanam's EXISTING scheduled-payments machine writer route (PUT/GET
+  # /v1/scheduled-payments/external/<source>/<id>, Dhanam #924), the route
+  # symbiosis-hcm-dhanam-writer already uses. One edge, one client, one scope,
+  # client_credentials only, no browser leg. The Karafiel pusher is a later
+  # change; this entry only declares the client.
+  #
+  # audience `dhanam-api`, ORG-BOUND to madfam-ecosystem: the writer strategy
+  # refuses a token without org_id. The token alone authorizes nothing:
+  # Dhanam's operator-reviewed ScheduledPaymentWriterGrant binds THIS client id
+  # and organization to one business space and the source system `karafiel`
+  # (apps/api/scripts/provision-scheduled-payment-writer-grant.ts). Janua
+  # already reserves dhanam-scheduled-payments:write (janua#758).
+  #
+  # The pair lands at secret/karafiel through
+  # karafiel/dhanam-scheduled-payments-client (LOWERCASE keys), for Karafiel's
+  # DEDICATED, planned karafiel-dhanam-scheduled-payments ExternalSecret. Not
+  # karafiel-dhanam-cost-events (another scope and grant).
+  #
+  # NOT pinned yet: pin the printed jnc_… id here (both copies) and use the
+  # same id in the Dhanam writer grant.
+  # ---------------------------------------------------------------------------
+  karafiel-dhanam-scheduled-payments:
+    intake_target: karafiel/dhanam-scheduled-payments-client
+    intake_key_map:
+      dhanam_scheduled_payments_client_id: client_id
+      dhanam_scheduled_payments_client_secret: client_secret  # pragma: allowlist secret
+    janua_client:
+      name: karafiel-dhanam-scheduled-payments
+      client_key: karafiel-dhanam-scheduled-payments  # pragma: allowlist secret
+      audience: dhanam-api
+      description: Machine edge (client_credentials) from Karafiel to Dhanam's scheduled-payments machine writer route (tax obligations as planned payments, RFC 0055 Phase 1.5, ruling O4). Org-bound to madfam-ecosystem, scope dhanam-scheduled-payments:write only; Dhanam's writer grant binds it to one space and the source karafiel.
+      is_confidential: true
+      organization_id: 1a6233ef-185f-43ee-9181-e2591fbb2643
+      allowed_scopes:
+        - dhanam-scheduled-payments:write
+      grant_types:
+        - client_credentials
+
+  # ---------------------------------------------------------------------------
   # Selva → Dhanam cost events (2026-11-11, RFC 0050 ruling C13). Selva's
   # nexus-api sweep (selva-office#363, nexus_api/cost_events) rolls
   # compute_token_ledger up into daily `cost.event.v1` inference events,

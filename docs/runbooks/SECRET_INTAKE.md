@@ -115,6 +115,7 @@ ESO sources: `enclii-secrets`, `janua-secrets`, `madfam-site-secrets`, `phynd-cr
 | `pravara-mes/dhanam-cost-events-client` | `secret/pravara-mes` | `pravara_cost_events_client_id`, `pravara_cost_events_client_secret`: **provisioned, never submitted** (`enclii secrets provision oidc --platform pravara-dhanam-cost-events`; same section) |
 | `karafiel/dhanam-cost-events-client` | `secret/karafiel` | `dhanam_cost_events_client_id`, `dhanam_cost_events_client_secret`: **provisioned, never submitted** (`enclii secrets provision oidc --platform karafiel-dhanam-cost-events`) |
 | `karafiel/dhanam-bank-ledger-client` | `secret/karafiel` | `dhanam_bank_ledger_client_id`, `dhanam_bank_ledger_client_secret`: **provisioned, never submitted** (`enclii secrets provision oidc --platform karafiel-dhanam-bank-ledger`; see [Karafiel bank-ledger reader and Selva cost events](#karafiel-bank-ledger-reader-and-selva-cost-events-2026-11-11)) |
+| `karafiel/dhanam-scheduled-payments-client` | `secret/karafiel` | `dhanam_scheduled_payments_client_id`, `dhanam_scheduled_payments_client_secret`: **provisioned, never submitted** (`enclii secrets provision oidc --platform karafiel-dhanam-scheduled-payments`; same section) |
 | `selva/dhanam-cost-events-client` | `secret/selva` | `dhanam_cost_events_client_id`, `dhanam_cost_events_client_secret`: **provisioned, never submitted** (`enclii secrets provision oidc --platform selva-dhanam-cost-events`; same section) |
 | `nauta/kalya-feed-tokens` | `secret/nauta` | `kalya_feed_tokens` |
 | `nauta/symbiosis-hcm-token` | `secret/nauta` | `symbiosis_hcm_token` |
@@ -501,7 +502,7 @@ sits in Vault unread. Each consumer ignores the pair until its switch is on:
 
 ### Karafiel bank-ledger reader and Selva cost events (2026-11-11)
 
-Two more Dhanam machine edges, each the shape of
+Three more Dhanam machine edges, each the shape of
 [Karafiel → Dhanam cost events](#karafiel--dhanam-cost-events-2026-11-05):
 confidential, `client_credentials` only, no redirect URIs, org-bound to
 `madfam-ecosystem` (`1a6233ef-185f-43ee-9181-e2591fbb2643`), audience
@@ -511,6 +512,7 @@ consumer's namespace.
 | Platform id | Scope | Target → Vault path | ExternalSecret | Consumer env |
 |---|---|---|---|---|
 | `karafiel-dhanam-bank-ledger` | `dhanam-bank-ledger:read` | `karafiel/dhanam-bank-ledger-client` → `secret/karafiel` | `karafiel-dhanam-bank-ledger` (namespace `karafiel`, worker only, optional) | `DHANAM_BANK_LEDGER_CLIENT_ID` / `_SECRET` |
+| `karafiel-dhanam-scheduled-payments` | `dhanam-scheduled-payments:write` | `karafiel/dhanam-scheduled-payments-client` → `secret/karafiel` | `karafiel-dhanam-scheduled-payments` (namespace `karafiel`, planned) | consumer not written yet (RFC 0055 Phase 1.5) |
 | `selva-dhanam-cost-events` | `dhanam-cost-events:write` | `selva/dhanam-cost-events-client` → `secret/selva` | `selva-dhanam-cost-events` (namespace `selva`, parked until provisioned) | `SELVA_DHANAM_COST_EVENTS_CLIENT_ID` / `_SECRET` |
 
 - **Karafiel bank ledger** (karafiel#383, dhanam#969): Karafiel's bank mirror
@@ -519,6 +521,12 @@ consumer's namespace.
   `BankLedgerReaderGrant` (`provision-bank-ledger-reader-grant`) binds the
   client id and organization to ONE live business space; any other space is
   403. Only this client may hold `dhanam-bank-ledger:read`.
+- **Karafiel scheduled payments** (RFC 0055 Phase 1.5, ruling O4): Karafiel
+  pushes tax obligations into Dhanam as planned payments through the existing
+  scheduled-payments writer route, like `symbiosis-hcm-dhanam-writer`. A
+  `ScheduledPaymentWriterGrant` (`provision-scheduled-payment-writer-grant`)
+  binds it to one space and the source system `karafiel`. Janua already
+  reserves the scope. The Karafiel pusher and its ExternalSecret come later.
 - **Selva cost events** (selva-office#363): daily inference `cost.event.v1`,
   source `selva`, `basis: estimate`. A `CostEventWriterGrant` binds it to one
   space and the source `selva`. Not a widening of any Selva read client.
@@ -536,6 +544,7 @@ consumer's namespace.
 ```bash
 enclii --profile admin secrets provision oidc --platform karafiel-dhanam-bank-ledger --intake-profile default --json --reason "karafiel bank mirror reads the company bank ledger (SAT catch-up)"
 enclii --profile admin secrets provision oidc --platform selva-dhanam-cost-events --intake-profile default --json --reason "selva inference usage to dhanam cost events (RFC 0050 C13)"
+enclii --profile admin secrets provision oidc --platform karafiel-dhanam-scheduled-payments --intake-profile default --json --reason "karafiel tax obligations to dhanam scheduled payments (RFC 0055 O4)"
 ```
 
 Until a CLI release embeds these entries, add `--registry "$REG"` with a copy

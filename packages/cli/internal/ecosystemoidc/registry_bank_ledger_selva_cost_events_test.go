@@ -1,6 +1,7 @@
 package ecosystemoidc
 
 import (
+	"sort"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -13,6 +14,8 @@ import (
 // audience dhanam-api, id not pinned until the first provision prints it):
 //   - karafiel-dhanam-bank-ledger: Karafiel's bank mirror READS one business
 //     space's bank movements (karafiel#383, dhanam#969);
+//   - karafiel-dhanam-scheduled-payments: Karafiel pushing tax obligations
+//     into Dhanam as planned payments (RFC 0055 Phase 1.5, ruling O4);
 //   - selva-dhanam-cost-events: Selva's inference cost events, source selva
 //     (selva-office#363, RFC 0050 C13).
 func TestLoadRegistry_bankLedgerAndSelvaCostEventsMachineEdges(t *testing.T) {
@@ -26,6 +29,11 @@ func TestLoadRegistry_bankLedgerAndSelvaCostEventsMachineEdges(t *testing.T) {
 			platform: "karafiel-dhanam-bank-ledger", intakeTarget: "karafiel/dhanam-bank-ledger-client",
 			scope: "dhanam-bank-ledger:read",
 			idKey: "dhanam_bank_ledger_client_id", secretKey: "dhanam_bank_ledger_client_secret",
+		},
+		{
+			platform: "karafiel-dhanam-scheduled-payments", intakeTarget: "karafiel/dhanam-scheduled-payments-client",
+			scope: "dhanam-scheduled-payments:write",
+			idKey: "dhanam_scheduled_payments_client_id", secretKey: "dhanam_scheduled_payments_client_secret",
 		},
 		{
 			platform: "selva-dhanam-cost-events", intakeTarget: "selva/dhanam-cost-events-client",
@@ -81,4 +89,20 @@ func TestLoadRegistry_bankLedgerAndSelvaCostEventsMachineEdges(t *testing.T) {
 		}
 	}
 	assert.Equal(t, []string{"karafiel-dhanam-bank-ledger"}, holders)
+
+	// Every writer of Dhanam's scheduled payments, sorted: a new writer must
+	// change this test (and gets its own ScheduledPaymentWriterGrant).
+	var spWriters []string
+	for name, p := range reg.Platforms {
+		for _, scope := range p.JanuaClient.AllowedScopes {
+			if scope == "dhanam-scheduled-payments:write" {
+				spWriters = append(spWriters, name)
+			}
+		}
+	}
+	sort.Strings(spWriters)
+	assert.Equal(t, []string{
+		"karafiel-dhanam-scheduled-payments",
+		"symbiosis-hcm-dhanam-writer",
+	}, spWriters)
 }
