@@ -434,8 +434,9 @@ make -C ~/labspace/enclii install-cli CLI_INSTALL_DIR=$HOME/.local/bin
 enclii --profile admin secrets provision oidc --platform symbiosis-hcm-karafiel --intake-profile default --rotate-secret --grace-hours 24 --json --reason "HCM reads contractor CSFs via Karafiel"
 ```
 
-Then restart HCM's API and worker once `hcm-service-clients` has synced, so
-both read the new secret inside the grace window. Until this runs, HCM's
+HCM's API and worker carry `reloader.stakater.com/match`, so they restart on
+their own when `hcm-service-clients` refreshes (every 15 min) and read the new
+secret well inside the grace window. Until this runs, HCM's
 upload answers with its own «lectura automática aún no disponible» message;
 nothing else on the edge changes.
 
