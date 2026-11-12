@@ -2060,3 +2060,23 @@ targets:
     external_secret: zavlo-api-karafiel  # pragma: allowlist secret
     keys:
       - zavlo_karafiel_hmac_secret
+
+  # telemetry (2026-11-12) — RFC 0057, owner rulings T1–T10 and direction G1.
+  # The product telemetry gate in namespace `telemetry`. `crea_map_token` is the
+  # bearer the MAP (and its rehearsal twin) presents to the gate; the twin's
+  # ExternalSecret reads the SAME property from this path, so both sides share
+  # it and nobody copies it. `postgres_password` is the gate's own Postgres.
+  # `crea_sim_kernel01_hmac_key` is the rehearsal kernel's telemetry pseudonym
+  # key: it lives on this path only because new crea-sim/ targets need a
+  # separate training-custody source review; the gate's ExternalSecret never
+  # maps it, so only the kernel's pod receives it. All with --generate.
+  telemetry-gate/runtime:
+    label: Telemetry gate runtime (product tokens, own Postgres)
+    description: Bearer token per product for the telemetry gate (crea_map_token), the gate's Postgres password, and the rehearsal kernel's telemetry pseudonym key (never mapped into the gate's pod). Generate all with --generate; the gate keeps only the token's sha256 in memory.
+    vault_path: secret/telemetry-gate
+    namespace: telemetry
+    external_secret: telemetry-gate-secrets # pragma: allowlist secret -- ExternalSecret resource name; not a credential
+    keys:
+      - crea_map_token
+      - postgres_password
+      - crea_sim_kernel01_hmac_key
