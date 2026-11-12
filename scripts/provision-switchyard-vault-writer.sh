@@ -11,7 +11,8 @@
 # Policy-only (add paths without rotating writer token):
 #   POLICY_ONLY=1 VAULT_TOKEN_FILE=... ./scripts/provision-switchyard-vault-writer.sh
 #
-# Last Updated: 2026-11-09 (exact madfam-crawler path for the per-caller API keys)
+# Last Updated: 2026-11-12 (secret/telemetry-gate for the product telemetry gate, RFC 0057)
+# Prior Update: 2026-11-09 (exact madfam-crawler path for the per-caller API keys)
 set -euo pipefail
 
 VAULT_NS="${VAULT_NS:-vault}"
@@ -167,6 +168,12 @@ path "secret/data/crea-map" {
   capabilities = ["create", "update", "patch", "read"]
 }
 path "secret/data/crea-map/*" {
+  capabilities = ["create", "update", "patch", "read"]
+}
+# telemetry-gate — added 2026-11-12 with intake target telemetry-gate/runtime
+# (RFC 0057): the product telemetry gate's per-product tokens and its own
+# Postgres password, both generated through intake.
+path "secret/data/telemetry-gate" {
   capabilities = ["create", "update", "patch", "read"]
 }
 path "secret/data/symbiosis-hcm" {
@@ -451,6 +458,9 @@ path "secret/metadata/kalya" {
   capabilities = ["read", "list"]
 }
 path "secret/metadata/kalya/*" {
+  capabilities = ["read", "list"]
+}
+path "secret/metadata/telemetry-gate" {
   capabilities = ["read", "list"]
 }
 path "secret/metadata/crea-map" {

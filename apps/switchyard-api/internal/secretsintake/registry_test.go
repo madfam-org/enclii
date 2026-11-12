@@ -38,7 +38,7 @@ func TestGetTarget(t *testing.T) {
 func TestListTargetsSorted(t *testing.T) {
 	list, err := ListTargets()
 	require.NoError(t, err)
-	require.Len(t, list, 135)
+	require.Len(t, list, 137)
 	for i := 1; i < len(list); i++ {
 		assert.Less(t, list[i-1].ID, list[i].ID, "targets should be sorted by id")
 	}
@@ -149,6 +149,7 @@ func TestListTargetsSorted(t *testing.T) {
 		"telesia/oidc-janua",
 		"telesia/runtime",
 		"telesia/web-session",
+		"telemetry-gate/runtime",
 		"tulana/commercial-ga-evidence-token",
 		"tulana/django-secret-key",
 		"tulana/product-offer-ga-evidence-token",

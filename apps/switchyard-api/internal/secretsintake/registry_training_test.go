@@ -18,6 +18,7 @@ func TestIsolatedTrainingCustodyRoutes(t *testing.T) {
 		{"crea-sim/gateway-runtime", "secret/crea-sim-gateway", "crea-sim", "crea-sim-gateway", []string{"crea_sim_ctm_org_id", "crea_sim_database_namespace", "crea_sim_portal_database_url", "crea_sim_session_key", "sim01_context_key", "sim01_control_key", "sim02_context_key", "sim02_control_key", "sim03_context_key", "sim03_control_key"}},
 		{"crea-sim/capture-runtime", "secret/crea-sim-captura", "crea-sim", "crea-sim-captura", []string{"crea_sim_database_namespace", "crea_sim_portal_database_url", "sim01_mail_key", "sim02_mail_key", "sim03_mail_key"}},
 		{"crea-sim/kernel01-runtime", "secret/crea-sim-map01", "crea-sim", "crea-sim-map01", []string{"database_url", "map_simulation_context_key", "map_simulation_control_key", "map_simulation_mail_key", "map_simulation_mcp_client_id", "map_mcp_pseudonym_key"}},
+		{"crea-sim/kernel01-telemetry", "secret/crea-sim-map01", "crea-sim", "crea-sim-map01", []string{"map_telemetry_hmac_key"}},
 		{"crea-sim/kernel02-runtime", "secret/crea-sim-map01", "crea-sim", "crea-sim-map02", []string{"map02_database_url", "map02_context_key", "map02_control_key", "map02_mail_key", "map02_mcp_pseudonym_key"}},
 		{"crea-sim/kernel03-runtime", "secret/crea-sim-map01", "crea-sim", "crea-sim-map03", []string{"map03_database_url", "map03_context_key", "map03_control_key", "map03_mail_key", "map03_mcp_pseudonym_key"}},
 		{"crea-sim/gateway-ca", "secret/crea-sim-gateway", "crea-sim", "crea-sim-gateway-ca", []string{"database_ca_pem"}},
@@ -81,6 +82,6 @@ func TestTrainingKernelsSharePathWithDisjointKeys(t *testing.T) {
 			}
 		}
 	}
-	require.Equal(t, 6, kernels, "three runtime and three CA targets")
+	require.Equal(t, 7, kernels, "three runtime, three CA and kernel 01's telemetry pseudonym key (RFC 0057)")
 	require.Equal(t, "crea-sim/kernel01-runtime", owner["map_simulation_mcp_client_id"], "the public MCP client id is filed once, by kernel 01")
 }
