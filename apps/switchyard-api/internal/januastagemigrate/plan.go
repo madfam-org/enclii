@@ -22,6 +22,7 @@ import (
 //go:embed command.py
 var Command string
 
+// #nosec G101 -- the NAME of the fixed dedicated registry-pull Secret object, not a credential value.
 const PullSecret = "janua-staging-registry" // pragma: allowlist secret -- fixed dedicated registry-pull Secret object name; not a credential
 const Container = "migrate"
 
