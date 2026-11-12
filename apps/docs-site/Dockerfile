@@ -60,10 +60,14 @@ FROM docker.io/library/nginx:alpine AS runner
 # Keep both hard floors and refresh the cached upgrade; no scan waiver.
 # https://curl.se/docs/CVE-2026-92392.html
 # https://secdb.alpinelinux.org/v3.24/main.json
-ARG APK_SECURITY_REFRESH=2026-10-26
+# 2026-11-03: CVE-2026-117610 and CVE-2026-118370 blocked the docs
+# image scan on main run 41579933604. Alpine v3.24 fixes both in
+# libexpat 2.10.0-r0; refresh the cached upgrade and require that floor.
+# https://pkgs.alpinelinux.org/package/v3.24/main/x86_64/libexpat
+ARG APK_SECURITY_REFRESH=2026-11-03
 RUN echo "apk security refresh: ${APK_SECURITY_REFRESH}" && \
     apk upgrade --no-cache && \
-    apk add --no-cache 'libexpat>=2.9.0-r0' 'pcre2>=10.49-r0' 'libuuid>=2.42.3-r0' 'libx11>=1.8.14-r0' 'curl>=8.23.0-r0' 'libcurl>=8.23.0-r0'
+    apk add --no-cache 'libexpat>=2.10.0-r0' 'pcre2>=10.49-r0' 'libuuid>=2.42.3-r0' 'libx11>=1.8.14-r0' 'curl>=8.23.0-r0' 'libcurl>=8.23.0-r0'
 
 # Copy custom nginx config (standard port 80)
 # Security headers applied at origin (defense-in-depth; Cloudflare may also set some).
