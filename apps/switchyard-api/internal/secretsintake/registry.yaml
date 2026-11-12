@@ -2066,25 +2066,17 @@ targets:
   # bearer the MAP (and its rehearsal twin) presents to the gate; the twin's
   # ExternalSecret reads the SAME property from this path, so both sides share
   # it and nobody copies it. `postgres_password` is the gate's own Postgres.
-  # Both with --generate; never typed.
+  # `crea_sim_kernel01_hmac_key` is the rehearsal kernel's telemetry pseudonym
+  # key: it lives on this path only because new crea-sim/ targets need a
+  # separate training-custody source review; the gate's ExternalSecret never
+  # maps it, so only the kernel's pod receives it. All with --generate.
   telemetry-gate/runtime:
     label: Telemetry gate runtime (product tokens, own Postgres)
-    description: Bearer token per product for the telemetry gate (crea_map_token, 48+ chars) and the gate's Postgres password. Generate both with --generate; the gate keeps only the token's sha256 in memory.
+    description: Bearer token per product for the telemetry gate (crea_map_token), the gate's Postgres password, and the rehearsal kernel's telemetry pseudonym key (never mapped into the gate's pod). Generate all with --generate; the gate keeps only the token's sha256 in memory.
     vault_path: secret/telemetry-gate
     namespace: telemetry
     external_secret: telemetry-gate-secrets # pragma: allowlist secret -- ExternalSecret resource name; not a credential
     keys:
       - crea_map_token
       - postgres_password
-
-  # The rehearsal twin's pseudonym key for product telemetry (RFC 0057 T5): an
-  # HMAC key only the product holds, so the gate never can recompute a
-  # pseudonym. Lives with the kernel's own runtime custody. --generate only.
-  crea-sim/kernel01-telemetry:
-    label: Isolated synthetic kernel telemetry pseudonym key
-    description: HMAC key the rehearsal kernel uses to pseudonymise its telemetry actor ids (32+ bytes). Generate with --generate; rotating it changes every pseudonym.
-    vault_path: secret/crea-sim-map01
-    namespace: crea-sim
-    external_secret: crea-sim-map01 # pragma: allowlist secret -- ExternalSecret resource name; not a credential
-    keys:
-      - map_telemetry_hmac_key
+      - crea_sim_kernel01_hmac_key
