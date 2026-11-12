@@ -173,10 +173,16 @@ FROM public.ecr.aws/docker/library/alpine:3.24 AS runtime-base
 # image pin. Alpine v3.24 publishes libexpat 2.10.0-r0 for both runtime
 # architectures; refresh the cached upgrade and require that fixed floor.
 # https://pkgs.alpinelinux.org/package/v3.24/main/x86_64/libexpat
-ARG APK_SECURITY_REFRESH=2026-11-03
+# 2026-11-12: CVE-2026-105437, CVE-2026-111760 and CVE-2026-114466 (git and
+# git-init-template 2.54.0-r0, fixed 2.54.1-r0) fail `Scan: switchyard-api`
+# on main from 2026-11-11, so no API image has pinned since (#963's run
+# 43328543245 included). Alpine v3.24 main publishes 2.54.1-r0; refresh the
+# cached upgrade and require that floor.
+# https://pkgs.alpinelinux.org/packages?name=git-init-template&branch=v3.24
+ARG APK_SECURITY_REFRESH=2026-11-12
 RUN echo "apk security refresh: ${APK_SECURITY_REFRESH}" && \
     apk --no-cache upgrade && \
-    apk --no-cache add ca-certificates tzdata wget git 'curl>=8.23.0-r0' 'libcurl>=8.23.0-r0' bash 'libexpat>=2.10.0-r0'
+    apk --no-cache add ca-certificates tzdata wget 'git>=2.54.1-r0' 'git-init-template>=2.54.1-r0' 'curl>=8.23.0-r0' 'libcurl>=8.23.0-r0' bash 'libexpat>=2.10.0-r0'
 
 # Copy cosign (built from source in the builder stage) so the API can verify
 # signed image digests before committing production GitOps pins from platform
