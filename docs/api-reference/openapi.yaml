@@ -142,6 +142,71 @@ tags:
     description: Provider Hub operations (Resend, Cloudflare, Porkbun)
 
 paths:
+  /v1/admin/projects/{slug}/environments/staging/network-preparation:
+    post:
+      tags: [Admin]
+      operationId: prepareJanuaStagingNetwork
+      summary: Plan or create the fixed held Janua namespace and network configuration
+      description: |
+        Requires a current platform operator with project access and a completed,
+        freshly observed held Janua authority. This single-attempt preparation
+        creates only the fixed namespace and six network policies. It never
+        executes database, credential, volume, replica or grant writes. Existing
+        claims are inspect-only; uncertain creates are never retried or adopted.
+        Configuration receipts do not qualify packet isolation, capacity, cost,
+        database admission, registry custody or staging activation.
+      parameters:
+        - name: slug
+          in: path
+          required: true
+          schema: {type: string, enum: [janua]}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/JanuaNetworkPreparationRequest'}
+      responses:
+        '200':
+          description: Read-only plan or completed native configuration receipt
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/JanuaNetworkPreparationResponse'}
+        '400': {description: Closed request or fixed route required}
+        '401': {description: Authentication required}
+        '403': {description: Platform operator required}
+        '404': {description: Project access unavailable}
+        '409': {description: Refused or unconfirmed; inspect the same operation UUID}
+        '503': {description: Native preparation adapter unavailable}
+  /v1/admin/projects/{slug}/environments/staging/network-preparation/{operation_id}:
+    get:
+      tags: [Admin]
+      operationId: inspectJanuaStagingNetwork
+      summary: Inspect retained preparation receipts without performing native writes
+      description: |
+        Requires the original current platform operator and project access.
+        Reobserves source, native UIDs and the complete fixed policy inventory.
+        A historical completion with current drift is returned with
+        configuration_present=false. No missing receipt or object is repaired.
+      parameters:
+        - name: slug
+          in: path
+          required: true
+          schema: {type: string, enum: [janua]}
+        - name: operation_id
+          in: path
+          required: true
+          schema: {type: string, format: uuid}
+      responses:
+        '200':
+          description: Retained history and current configuration observation
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/JanuaNetworkPreparationResponse'}
+        '400': {description: Exact operation UUID and empty request required}
+        '401': {description: Authentication required}
+        '403': {description: Platform operator required}
+        '404': {description: Owned current operation unavailable}
+        '503': {description: Native inspection adapter unavailable}
   # ============================================
   # HEALTH ENDPOINTS
   # ============================================
@@ -6197,6 +6262,65 @@ components:
             $ref: '#/components/schemas/Error'
 
   schemas:
+    JanuaNetworkPreparationRequest:
+      type: object
+      additionalProperties: false
+      required: [operation_id, authority_id, dry_run]
+      description: >-
+        dry_run=true permits exactly the three required properties. Apply
+        requires dry_run=false and both expect_plan_sha256 and reason. IDs
+        must use canonical lowercase UUID spelling. The server derives every
+        namespace, peer, selector and policy; uploaded evidence is not accepted.
+      properties:
+        operation_id: {type: string, format: uuid}
+        authority_id: {type: string, format: uuid}
+        dry_run: {type: boolean}
+        expect_plan_sha256: {type: string, pattern: '^[a-f0-9]{64}$'}
+        reason: {type: string, minLength: 1, maxLength: 512}
+    JanuaNetworkPreparationObject:
+      type: object
+      required: [object_key, desired_sha256]
+      properties:
+        object_key: {type: string}
+        desired_sha256: {type: string, pattern: '^[a-f0-9]{64}$'}
+    JanuaNetworkPreparationReceipt:
+      type: object
+      required: [index, object_key, uid, resource_version, observed_sha256]
+      properties:
+        index: {type: integer, minimum: 0, maximum: 6}
+        object_key: {type: string}
+        uid: {type: string}
+        resource_version: {type: string}
+        observed_sha256: {type: string, pattern: '^[a-f0-9]{64}$'}
+    JanuaNetworkPreparationResponse:
+      type: object
+      required: [schema, operation_id, authority_id, dry_run, plan_sha256, objects,
+        create_intents, receipts, completion_recorded, configuration_present,
+        packet_isolation_proven, db_apply_allowed, activation_held, unresolved_gates]
+      properties:
+        schema: {type: string, enum: [enclii-janua-network-preparation-v1]}
+        operation_id: {type: string, format: uuid}
+        authority_id: {type: string, format: uuid}
+        dry_run: {type: boolean}
+        plan_sha256: {type: string, pattern: '^[a-f0-9]{64}$'}
+        objects:
+          type: array
+          minItems: 7
+          maxItems: 7
+          items: {$ref: '#/components/schemas/JanuaNetworkPreparationObject'}
+        create_intents: {type: integer, minimum: 0, maximum: 7}
+        receipts:
+          type: array
+          maxItems: 7
+          items: {$ref: '#/components/schemas/JanuaNetworkPreparationReceipt'}
+        completion_recorded: {type: boolean}
+        configuration_present: {type: boolean}
+        packet_isolation_proven: {type: boolean, enum: [false]}
+        db_apply_allowed: {type: boolean, enum: [false]}
+        activation_held: {type: boolean, enum: [true]}
+        unresolved_gates:
+          type: array
+          items: {type: string}
     # ===== Inert Janua staging preregistration; no activation authority =====
     JanuaStagingPreregistrationUUID:
       type: string
