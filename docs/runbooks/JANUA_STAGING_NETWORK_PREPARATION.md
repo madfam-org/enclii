@@ -1,5 +1,7 @@
 # Fixed held Janua namespace and network preparation
 
+Boundary checkpoint (2026-11-12, platform engineering): public-safe source contract and synthetic fixtures only. Reviewer/owner: platform engineering. See the [public repository boundary](../PUBLIC_REPO_BOUNDARY.md).
+
 This source adapter performs one bounded platform operation before the held
 database and migration kernels. It creates an empty owned addon namespace and
 six fixed NetworkPolicies. It does not create a Secret, database, volume,

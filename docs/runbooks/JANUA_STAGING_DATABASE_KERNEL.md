@@ -1,5 +1,7 @@
 # Janua isolated staging database kernel
 
+Boundary checkpoint (2026-11-12, platform engineering): public-safe source contract and synthetic fixtures only. Reviewer/owner: platform engineering. See the [public repository boundary](../PUBLIC_REPO_BOUNDARY.md).
+
 Source preparation only. This increment does not activate staging and exposes no
 new HTTP route, CLI mutation, credential export or migration runner. The native
 identity prerequisite is the retained inert authority from migration049, outside
