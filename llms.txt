@@ -173,6 +173,19 @@ Compact LLM context index for this repository.
   Argo (`infra/k8s/production/arc/README.md`); the pin job fails red on an
   unpinned build (#787). Details: `llms-full.txt` "Stability wave".
 
+## Native MCP for the cost ledger (RFC 0051, 2026-11-06)
+
+- `POST /mcp` on switchyard-api (`api.enclii.dev`), off unless the owner sets
+  `ENCLII_MCP_ENABLED=true` (404 when off). Streamable HTTP, JSON-RPC 2.0,
+  stateless.
+- Tools (read-only): `usage_resource_daily(from, to, namespace?, cluster?)`
+  and `usage_node_daily(from, to, cluster?)`, the same reads as Waybill's
+  `GET /api/v1/resource-usage/daily` and `/nodes/daily`. Usage and requests,
+  no money.
+- Caller: a Janua machine token with the API's audience, bound to an
+  organization in `ENCLII_MCP_ORG_IDS`, scope exactly `enclii-cogs:read`.
+- Contract: `docs/operations/NATIVE_MCP.md`.
+
 ## Production operations
 
 Routine production operations are Enclii-first. Use Enclii web, API, or CLI
