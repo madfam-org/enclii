@@ -24,7 +24,7 @@ type ServiceSpec struct {
 	Label   string   // label key (default "app")
 	Port    int      // container port for ingress
 	Ingress []string // e.g. ["cloudflare-tunnel"]
-	Egress  []string // e.g. ["dns","https","postgres","redis","http","janua","selva","pgbouncer"]
+	Egress  []string // e.g. ["dns","https","postgres","redis","http","janua","selva","pgbouncer","telemetry"]
 }
 
 // CustomRule declares a custom network policy rule.
@@ -167,6 +167,9 @@ func egressCategories(svc ServiceSpec) []string {
 	if svc.hasEgress("pgbouncer") {
 		cats = append(cats, "PgBouncer")
 	}
+	if svc.hasEgress("telemetry") {
+		cats = append(cats, "Product telemetry gate")
+	}
 	return cats
 }
 
@@ -289,6 +292,24 @@ func buildEgressRules(svc ServiceSpec) []egressRule {
       ports:
         - protocol: TCP
           port: 4306`,
+		})
+	}
+
+	// RFC 0057: the product telemetry gate. Internal only; a product server
+	// forwards its users' telemetry batches there over the cluster network.
+	if svc.hasEgress("telemetry") {
+		rules = append(rules, egressRule{
+			Comment: "Product telemetry gate in telemetry namespace",
+			YAML: `    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: telemetry
+          podSelector:
+            matchLabels:
+              app.kubernetes.io/name: telemetry-gate
+      ports:
+        - protocol: TCP
+          port: 8080`,
 		})
 	}
 
