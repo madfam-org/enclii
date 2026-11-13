@@ -1777,6 +1777,24 @@ targets:
     keys:
       - map03_database_ca_pem
 
+  # Kernel 01's usage telemetry (RFC 0057) under the simulator's own custody:
+  # the kernel never reads the production gate path. `telemetry_gate_token` is
+  # the training-scoped bearer the kernel presents to the internal telemetry
+  # gate; the gate reads that one property from this path through its own
+  # ExternalSecret and accepts it only for synthetic (`sim`) events.
+  # `telemetry_hmac_key` is the kernel's pseudonym key and reaches only the
+  # kernel. Both are at least 32 characters for their consumers, so the generic
+  # generator's unpadded base64url fits: create both with --generate.
+  crea-sim/kernel01-telemetry:
+    label: Isolated synthetic kernel telemetry
+    description: Governed isolated runtime custody; no owner, provider or production credential. Training-scoped gate token and pseudonym key for kernel 01; generate both with --generate
+    vault_path: secret/crea-sim-map01
+    namespace: crea-sim
+    external_secret: crea-sim-map01 # pragma: allowlist secret -- ExternalSecret resource name; not a credential
+    keys:
+      - telemetry_gate_token
+      - telemetry_hmac_key
+
   janua-staging/runtime-crypto:
     label: Fresh isolated staging identity crypto
     description: Initialize all five fresh staging crypto keys together with --generate; matched RSA pair and padded Fernet key, no overwrite or production credential
@@ -2063,20 +2081,18 @@ targets:
 
   # telemetry (2026-11-12) — RFC 0057, owner rulings T1–T10 and direction G1.
   # The product telemetry gate in namespace `telemetry`. `crea_map_token` is the
-  # bearer the MAP (and its rehearsal twin) presents to the gate; the twin's
-  # ExternalSecret reads the SAME property from this path, so both sides share
-  # it and nobody copies it. `postgres_password` is the gate's own Postgres.
-  # `crea_sim_kernel01_hmac_key` is the rehearsal kernel's telemetry pseudonym
-  # key: it lives on this path only because new crea-sim/ targets need a
-  # separate training-custody source review; the gate's ExternalSecret never
-  # maps it, so only the kernel's pod receives it. All with --generate.
+  # bearer the MAP presents to the gate. `postgres_password` is the gate's own
+  # Postgres. Both with --generate. The training kernel no longer reads this
+  # path: its telemetry credentials are the training target
+  # crea-sim/kernel01-telemetry on the kernel's own path, and the gate reads the
+  # kernel's token from there. A property filed here earlier for the kernel is
+  # no longer accepted by this target and is mapped by nobody.
   telemetry-gate/runtime:
     label: Telemetry gate runtime (product tokens, own Postgres)
-    description: Bearer token per product for the telemetry gate (crea_map_token), the gate's Postgres password, and the rehearsal kernel's telemetry pseudonym key (never mapped into the gate's pod). Generate all with --generate; the gate keeps only the token's sha256 in memory.
+    description: Bearer token per product for the telemetry gate (crea_map_token) and the gate's Postgres password. Generate both with --generate; the gate keeps only the token's sha256 in memory.
     vault_path: secret/telemetry-gate
     namespace: telemetry
     external_secret: telemetry-gate-secrets # pragma: allowlist secret -- ExternalSecret resource name; not a credential
     keys:
       - crea_map_token
       - postgres_password
-      - crea_sim_kernel01_hmac_key
