@@ -1,6 +1,6 @@
 # Isolated training and staging custody
 
-Last Updated: 2026-10-28
+Last Updated: 2026-11-12
 
 > Boundary checkpoint (2026-10-14, platform preparation): public-safe logical
 > target names, namespaces, key names and callbacks only. Actual credentials,
@@ -50,6 +50,7 @@ the inference service.
 | `crea-sim/capture-ca` | `secret/crea-sim-captura` | `crea-sim-captura-ca` |
 | `crea-sim/kernel01-runtime` | `secret/crea-sim-map01` | `crea-sim-map01` |
 | `crea-sim/kernel01-ca` | `secret/crea-sim-map01` | `crea-sim-map01-ca` |
+| `crea-sim/kernel01-telemetry` | `secret/crea-sim-map01` | `crea-sim-map01` |
 | `crea-sim/kernel02-runtime` | `secret/crea-sim-map01` | `crea-sim-map02` |
 | `crea-sim/kernel02-ca` | `secret/crea-sim-map01` | `crea-sim-map02-ca` |
 | `crea-sim/kernel03-runtime` | `secret/crea-sim-map01` | `crea-sim-map03` |
@@ -83,6 +84,26 @@ shared property is the public MCP client identifier, filed once through
 `crea-sim/kernel01-runtime`. The gateway and capture targets carry one
 `simNN_*` key set per kernel. Intake merges into the existing path with a read
 and a write, so file the targets that share a path one at a time.
+
+Kernel 01's usage telemetry (RFC 0057) stays in training custody:
+`crea-sim/kernel01-telemetry` files `telemetry_gate_token` and
+`telemetry_hmac_key` into kernel 01's own path, and the kernel never reads the
+production gate's path. The internal telemetry gate reads only
+`telemetry_gate_token` from that path, through its own ExternalSecret, and
+accepts it only for events stamped as synthetic (`sim`). The pseudonym key
+reaches only the kernel. Both consumers take a string of at least 32
+characters, so the generic generator fits; file both with `--generate`, alone
+(the path is shared, so serially with the other kernel targets):
+
+```bash
+enclii secrets intake submit crea-sim/kernel01-telemetry \
+  --generate telemetry_gate_token,telemetry_hmac_key \
+  --reason "kernel 01 telemetry custody (RFC 0057)"
+```
+
+Generic generation merges and would replace an existing value, so run it once;
+a second run rotates both values and the gate picks up the new token on its
+next ExternalSecret refresh.
 
 Runtime database targets carry only the managed nonowner URI for the dedicated
 synthetic database. Migrator credentials stay in the separately owned CNPG
