@@ -1,0 +1,51 @@
+# Synthetic journeys — ArgoCD wrapper for infra/k8s/production/synthetics.
+#
+# Why a dedicated Application: the manifests live in their own namespace
+# (`synthetics`), and no other Application renders that path. The root
+# Application (infra/argocd/root-application.yaml) syncs every file in
+# infra/argocd/apps, so this file is adopted without an operator step; the
+# path below is rendered by kustomize, whose `resources:` list is the
+# allowlist of what is applied.
+#
+# What it runs: the S-Gate 1 synthetic buyer (a */15 CronJob buying Dhanam
+# Essentials on staging with Stripe test mode). Its alerts are rules in the
+# `monitoring` Application's prometheus-rules ConfigMap, and the pushgateway
+# ingress it needs is `pushgateway-ingress-synthetics` in
+# monitoring/network-policies.yaml.
+---
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: synthetics
+  namespace: argocd
+  labels:
+    app.kubernetes.io/name: synthetics
+    app.kubernetes.io/part-of: enclii
+    app.kubernetes.io/component: synthetics
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: default
+
+  source:
+    repoURL: https://github.com/madfam-org/enclii.git
+    targetRevision: main
+    path: infra/k8s/production/synthetics
+
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: synthetics
+
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
+      - ServerSideApply=true
+
+  info:
+    - name: "Schedule"
+      value: "Every 15 min — */15 * * * *"
+    - name: "Alerts"
+      value: "SyntheticCheckoutFailing, SyntheticJourneysNotRunning (prometheus-rules, synthetic-journeys-rules.yml)"
