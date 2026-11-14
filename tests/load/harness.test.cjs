@@ -251,7 +251,7 @@ test('stress duration/error thresholds and arrival-rate profile are unchanged', 
   assert.equal(run.exports.options.scenarios.stress_test.maxVUs, 2000);
 });
 
-test('workflow PRs stay offline, scheduled authenticated coverage remains, diagnostic is explicit manual opt-in', () => {
+test('workflow PRs stay offline, nothing runs on a schedule, production runs are manual opt-in', () => {
   const workflow = fs.readFileSync(path.resolve(directory, '../../.github/workflows/load-test.yml'), 'utf8');
   function condition(job) {
     const block = workflow.split(`\n  ${job}:\n`)[1]?.split(/\n  [a-z][a-z-]*:\n/)[0];
@@ -264,12 +264,16 @@ test('workflow PRs stay offline, scheduled authenticated coverage remains, diagn
   for (const job of ['smoke-test', 'load-test', 'stress-test', 'deep-health-diagnostic']) {
     assert.equal(allowed(job, 'pull_request', 'stress'), false, `${job} must not request production from PRs`);
   }
-  assert.equal(allowed('load-test', 'schedule'), true);
+  assert.doesNotMatch(workflow, /^\s*schedule:/m, 'no scheduled production load test');
+  assert.doesNotMatch(workflow, /^\s*-\s*cron:/m, 'no scheduled production load test');
+  assert.equal(allowed('load-test', 'schedule'), false);
   assert.equal(allowed('stress-test', 'schedule'), false);
   assert.equal(allowed('deep-health-diagnostic', 'schedule'), false);
   assert.equal(allowed('load-test', 'workflow_dispatch', 'load'), true);
   assert.equal(allowed('load-test', 'workflow_dispatch', 'stress'), true);
   assert.equal(allowed('load-test', 'workflow_dispatch', 'deep-health'), false);
+  assert.equal(allowed('load-test', 'workflow_dispatch', 'smoke'), false);
+  assert.equal(allowed('smoke-test', 'workflow_dispatch', 'smoke'), true);
   assert.equal(allowed('stress-test', 'workflow_dispatch', 'stress'), true);
   assert.equal(allowed('deep-health-diagnostic', 'workflow_dispatch', 'deep-health'), true);
   assert.match(workflow, /run: test "\$ALLOW_DEEP_HEALTH" = 'true'/);
