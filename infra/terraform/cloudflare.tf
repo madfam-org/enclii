@@ -266,7 +266,7 @@ resource "cloudflare_ruleset" "security" {
   # Block requests from sanctioned countries (customize as needed)
   rules {
     action      = "block"
-    expression  = "(ip.geoip.country in {\"KP\" \"IR\" \"CU\" \"SY\"})"
+    expression  = "(ip.geoip.country in {\"KP\" \"IR\" \"CU\"})"
     description = "Block sanctioned countries"
     enabled     = true
   }
