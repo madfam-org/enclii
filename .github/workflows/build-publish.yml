@@ -412,7 +412,7 @@ jobs:
       # when it IS configured.
       - name: Log in to Docker Hub
         if: ${{ env.DH_USER != '' && env.DH_TOKEN != '' }}
-        uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3.7.0
+        uses: docker/login-action@81c6f93d4bc991e510b342a00b419b3bb4efc5c6 # v4.7.0
         continue-on-error: true
         with:
           registry: docker.io
@@ -423,7 +423,7 @@ jobs:
           DH_TOKEN: ${{ secrets.DOCKER_TOKEN }}
 
       - name: Log in to GHCR
-        uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3.7.0
+        uses: docker/login-action@81c6f93d4bc991e510b342a00b419b3bb4efc5c6 # v4.7.0
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
@@ -636,7 +636,7 @@ jobs:
         # Private GHCR packages require registry auth for cosign verify's
         # manifest reads. Build jobs log in before push/sign; the separate pin
         # job needs its own login before verifying the signed digest.
-        uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3.7.0
+        uses: docker/login-action@81c6f93d4bc991e510b342a00b419b3bb4efc5c6 # v4.7.0
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
