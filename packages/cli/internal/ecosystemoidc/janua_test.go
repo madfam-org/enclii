@@ -234,3 +234,111 @@ func TestOrganizationBoundPublicHumanHasNoMachineCredential(t *testing.T) {
 		t.Fatal("ordinary organization binding changed a public human into a machine")
 	}
 }
+
+// machineAdminServer serves one machine client and records PATCHes to it; any
+// other mutation fails the test.
+func machineAdminServer(t *testing.T, client remoteOAuthClient, patches *[]map[string]interface{}) *JanuaClient {
+	t.Helper()
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.Method == http.MethodGet && r.URL.Path == "/api/v1/oauth/clients/admin/all":
+			_ = json.NewEncoder(w).Encode(map[string]interface{}{"clients": []remoteOAuthClient{client}, "total": 1})
+		case r.Method == http.MethodGet && (r.URL.Path == "/api/v1/oauth/clients/"+client.ID || r.URL.Path == "/api/v1/oauth/clients/internal/by-name/"+client.Name):
+			_ = json.NewEncoder(w).Encode(client)
+		case r.Method == http.MethodPatch && r.URL.Path == "/api/v1/oauth/clients/"+client.ID:
+			var body map[string]interface{}
+			_ = json.NewDecoder(r.Body).Decode(&body)
+			*patches = append(*patches, body)
+			if v, ok := body["allowed_scopes"].([]interface{}); ok {
+				client.AllowedScopes = nil
+				for _, scope := range v {
+					client.AllowedScopes = append(client.AllowedScopes, scope.(string))
+				}
+			}
+			_ = json.NewEncoder(w).Encode(client)
+		default:
+			t.Errorf("unexpected request: %s %s", r.Method, r.URL.Path)
+			w.WriteHeader(500)
+		}
+	}))
+	t.Cleanup(server.Close)
+	return &JanuaClient{BaseURL: server.URL, AdminToken: "fixture", HTTP: server.Client()}
+}
+
+func widenedMachineSpec() JanuaClientSpec {
+	spec := machineSpec()
+	spec.AllowedScopes = []string{"dhanam:merchant-read", "dhanam:fixture-added"}
+	return spec
+}
+
+// A reviewed registry change that ADDS a scope to an existing machine client
+// is applied as one PATCH carrying allowed_scopes and nothing else.
+func TestAdminPathWidensMachineScopesTheRegistryAdded(t *testing.T) {
+	var patches []map[string]interface{}
+	remote, created, err := machineAdminServer(t, machineRemote(), &patches).registerOrReconcile(context.Background(), widenedMachineSpec())
+	if err != nil || created {
+		t.Fatalf("widening failed: %v created=%t", err, created)
+	}
+	if len(patches) != 1 || len(patches[0]) != 1 {
+		t.Fatalf("expected one PATCH carrying only allowed_scopes, got %v", patches)
+	}
+	if _, ok := patches[0]["allowed_scopes"]; !ok {
+		t.Fatalf("allowed_scopes not patched: %v", patches[0])
+	}
+	if !sameStrings(remote.AllowedScopes, widenedMachineSpec().AllowedScopes) {
+		t.Fatalf("returned client still narrow: %v", remote.AllowedScopes)
+	}
+	if !sameStrings(remote.reconciled, []string{"allowed_scopes"}) {
+		t.Fatalf("reconciled fields not reported: %v", remote.reconciled)
+	}
+}
+
+// Anything but a pure, reviewed addition stays refused, with no PATCH sent.
+func TestMachineScopeWideningRefusesEverythingElse(t *testing.T) {
+	changes := map[string]func(*remoteOAuthClient){
+		"live scope the registry does not declare": func(r *remoteOAuthClient) { r.AllowedScopes = []string{"dhanam:merchant-read", "admin"} },
+		"audience drift":     func(r *remoteOAuthClient) { r.Audience = pointer("foreign-api") },
+		"grant drift":        func(r *remoteOAuthClient) { r.GrantTypes = []string{"client_credentials", "refresh_token"} },
+		"organization drift": func(r *remoteOAuthClient) { r.OrganizationID = pointer("dddddddd-dddd-4ddd-8ddd-dddddddddddd") },
+		"callback drift":     func(r *remoteOAuthClient) { r.RedirectURIs = []string{"https://example.test/callback"} },
+		"inactive client":    func(r *remoteOAuthClient) { r.IsActive = false },
+	}
+	for name, change := range changes {
+		remote := machineRemote()
+		change(&remote)
+		var patches []map[string]interface{}
+		if _, _, err := machineAdminServer(t, remote, &patches).registerOrReconcile(context.Background(), widenedMachineSpec()); err == nil {
+			t.Fatalf("%s: widening accepted", name)
+		}
+		if len(patches) != 0 {
+			t.Fatalf("%s: refused client was patched: %v", name, patches)
+		}
+	}
+}
+
+// A declaration that DROPS a live scope is not a widening: refused, unpatched.
+func TestMachineScopeNarrowingIsNotReconciled(t *testing.T) {
+	remote := machineRemote()
+	remote.AllowedScopes = widenedMachineSpec().AllowedScopes
+	var patches []map[string]interface{}
+	if _, _, err := machineAdminServer(t, remote, &patches).registerOrReconcile(context.Background(), machineSpec()); err == nil {
+		t.Fatal("narrowing accepted")
+	}
+	if len(patches) != 0 {
+		t.Fatalf("narrowed client was patched: %v", patches)
+	}
+}
+
+// The internal-key path never reconciles: a widened declaration fails closed.
+func TestInternalKeyPathNeverWidensMachineScopes(t *testing.T) {
+	var patches []map[string]interface{}
+	client := machineAdminServer(t, machineRemote(), &patches)
+	client.InternalAPIKey = "fixture-internal"
+	client.AdminToken = ""
+	if _, _, err := client.registerOrReconcile(context.Background(), widenedMachineSpec()); err == nil {
+		t.Fatal("internal-key widening accepted")
+	}
+	if len(patches) != 0 {
+		t.Fatalf("internal-key path patched: %v", patches)
+	}
+}

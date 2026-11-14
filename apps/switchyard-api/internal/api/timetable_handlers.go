@@ -53,6 +53,10 @@ type CreateOneOffJobRequest struct {
 	Image     string `json:"image,omitempty"`
 	Timeout   int    `json:"timeout,omitempty"`
 	RunAt     string `json:"run_at,omitempty"` // RFC3339
+	// NetworkIdentity opts the job pod into its service's network identity
+	// ("service"); empty keeps the default of none. Any other value is a 400.
+	// The reconciler enforces the image rule and refuses a foreign image.
+	NetworkIdentity string `json:"network_identity,omitempty"`
 }
 
 // cronExprRegex validates basic cron expressions (5-field standard cron)
@@ -429,18 +433,26 @@ func (h *Handler) CreateOneOffJob(c *gin.Context) {
 		return
 	}
 
+	switch req.NetworkIdentity {
+	case "", types.OneOffJobNetworkIdentityService:
+	default:
+		c.JSON(http.StatusBadRequest, gin.H{"error": `invalid network_identity: must be "service" or omitted`})
+		return
+	}
+
 	timeout := 300
 	if req.Timeout > 0 {
 		timeout = req.Timeout
 	}
 
 	job := &types.OneOffJob{
-		ProjectID: project.ID,
-		ServiceID: serviceID,
-		Name:      req.Name,
-		Command:   req.Command,
-		Image:     req.Image,
-		Timeout:   timeout,
+		ProjectID:       project.ID,
+		ServiceID:       serviceID,
+		Name:            req.Name,
+		Command:         req.Command,
+		Image:           req.Image,
+		Timeout:         timeout,
+		NetworkIdentity: req.NetworkIdentity,
 	}
 
 	// Parse optional run_at time
@@ -461,7 +473,8 @@ func (h *Handler) CreateOneOffJob(c *gin.Context) {
 
 	h.logger.Info(ctx, "One-off job created",
 		logging.String("name", job.Name),
-		logging.String("project", slug))
+		logging.String("project", slug),
+		logging.String("network_identity", job.NetworkIdentity))
 
 	c.JSON(http.StatusCreated, gin.H{
 		"one_off_job": job,

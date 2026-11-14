@@ -191,6 +191,7 @@ export interface PlannedTier {
 }
 
 export function PlannedLineCard({
+  id,
   icon,
   line,
   name,
@@ -199,6 +200,8 @@ export function PlannedLineCard({
   caveat,
   cta,
 }: {
+  /** In-page anchor, so other MADFAM sites can link to one line (enclii.dev/#fragua). */
+  id?: string
   icon: React.ReactNode
   line: string
   name: string
@@ -208,7 +211,10 @@ export function PlannedLineCard({
   cta: { label: string; href: string }
 }) {
   return (
-    <div className="flex flex-col bg-white dark:bg-gray-800 rounded-2xl border border-gray-200 dark:border-gray-700 p-8">
+    <div
+      id={id}
+      className="flex flex-col scroll-mt-24 bg-white dark:bg-gray-800 rounded-2xl border border-gray-200 dark:border-gray-700 p-8"
+    >
       <div className="flex items-center gap-3 mb-4">
         <div className="w-12 h-12 bg-solarpunk-green-muted text-solarpunk-green-dim dark:text-solarpunk-green rounded-xl flex items-center justify-center shrink-0">
           {icon}

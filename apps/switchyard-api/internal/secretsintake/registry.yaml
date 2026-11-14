@@ -450,7 +450,7 @@ targets:
   # symbiosis-hcm → Karafiel machine edge (2026-11-02). The client_credentials
   # pair of ecosystem-oidc platform symbiosis-hcm-karafiel (audience
   # karafiel-api; scopes legal:contractor-draft, legal:employment-draft,
-  # fiscal:invoice), written ONLY by
+  # fiscal:invoice, fiscal:csf-intake), written ONLY by
   # `enclii secrets provision oidc --platform symbiosis-hcm-karafiel`; no human
   # types either value. Same path as symbiosis-hcm/map-absence-feed
   # (secret/symbiosis-hcm, a merge), but delivered by HCM's DEDICATED
@@ -460,7 +460,7 @@ targets:
   # stores them; the ExternalSecret maps these `property:` names byte for byte.
   symbiosis-hcm/karafiel-client:
     label: Symbiosis-HCM → Karafiel service client
-    description: Janua client_credentials pair (symbiosis-hcm-karafiel; scopes legal:contractor-draft, legal:employment-draft, fiscal:invoice) HCM's API and worker use for Karafiel contract drafts and CFDI. Filed by `enclii secrets provision oidc --platform symbiosis-hcm-karafiel`.
+    description: Janua client_credentials pair (symbiosis-hcm-karafiel; scopes legal:contractor-draft, legal:employment-draft, fiscal:invoice, fiscal:csf-intake) HCM's API and worker use for Karafiel contract drafts, CFDI and constancia (CSF) intake. Filed by `enclii secrets provision oidc --platform symbiosis-hcm-karafiel`.
     vault_path: secret/symbiosis-hcm
     namespace: symbiosis-hcm
     external_secret: hcm-service-clients  # pragma: allowlist secret
@@ -488,6 +488,47 @@ targets:
     keys:
       - dhanam_writer_client_id
       - dhanam_writer_client_secret
+    generate:
+      disabled: true
+
+  # symbiosis-hcm → Nauta labor hours (2026-11-08, RFC 0050 C10). The pair of
+  # ecosystem-oidc platform symbiosis-hcm-nauta-labor-hours (audience
+  # nauta-api, scope nauta-labor-hours:read, org-bound to madfam-ecosystem),
+  # written ONLY by `enclii secrets provision oidc --platform
+  # symbiosis-hcm-nauta-labor-hours`. Its OWN planned ExternalSecret,
+  # hcm-nauta-labor-hours (symbiosis-hcm#232 declares none yet): ESO is
+  # all-or-nothing per ExternalSecret and each edge is provisioned on its own
+  # day, so one missing pair never holds another's Secret. LOWERCASE keys,
+  # mapped to NAUTA_LABOR_HOURS_CLIENT_ID / NAUTA_LABOR_HOURS_CLIENT_SECRET.
+  symbiosis-hcm/nauta-labor-hours-client:
+    label: Symbiosis-HCM → Nauta labor-hours reader client
+    description: Janua client_credentials pair (symbiosis-hcm-nauta-labor-hours, scope nauta-labor-hours:read, org-bound) HCM's worker uses to read Nauta's monthly logged hours for the labor cost close (symbiosis-hcm#232, RFC 0050 C10). Filed by `enclii secrets provision oidc --platform symbiosis-hcm-nauta-labor-hours`.
+    vault_path: secret/symbiosis-hcm
+    namespace: symbiosis-hcm
+    external_secret: hcm-nauta-labor-hours  # pragma: allowlist secret
+    keys:
+      - nauta_labor_hours_client_id
+      - nauta_labor_hours_client_secret
+    generate:
+      disabled: true
+
+  # symbiosis-hcm → Dhanam cost events (2026-11-08, RFC 0050 C10). The pair of
+  # ecosystem-oidc platform symbiosis-hcm-dhanam-cost-events (audience
+  # dhanam-api, scope dhanam-cost-events:write, org-bound to madfam-ecosystem),
+  # written ONLY by `enclii secrets provision oidc --platform
+  # symbiosis-hcm-dhanam-cost-events`. Its OWN planned ExternalSecret,
+  # hcm-dhanam-cost-events, not hcm-dhanam-writer (the scheduled-payments
+  # pair). LOWERCASE keys, mapped to DHANAM_COST_EVENTS_CLIENT_ID /
+  # DHANAM_COST_EVENTS_CLIENT_SECRET.
+  symbiosis-hcm/dhanam-cost-events-client:
+    label: Symbiosis-HCM → Dhanam cost-events writer client
+    description: Janua client_credentials pair (symbiosis-hcm-dhanam-cost-events, scope dhanam-cost-events:write, org-bound) HCM's worker uses to push the monthly labor cost.event.v1 events per engagement into Dhanam (symbiosis-hcm#232, RFC 0050 C10). Filed by `enclii secrets provision oidc --platform symbiosis-hcm-dhanam-cost-events`.
+    vault_path: secret/symbiosis-hcm
+    namespace: symbiosis-hcm
+    external_secret: hcm-dhanam-cost-events  # pragma: allowlist secret
+    keys:
+      - dhanam_cost_events_client_id
+      - dhanam_cost_events_client_secret
     generate:
       disabled: true
 
@@ -981,6 +1022,28 @@ targets:
     keys:
       - fabrication_prep_client_id
       - fabrication_prep_client_secret
+
+  # Pravara MES → Dhanam cost events (2026-11-08, RFC 0050 C12). The pair of
+  # ecosystem-oidc platform pravara-dhanam-cost-events (audience dhanam-api,
+  # scope dhanam-cost-events:write, org-bound to madfam-ecosystem), written
+  # ONLY by `enclii secrets provision oidc --platform
+  # pravara-dhanam-cost-events`. Unlike the targets above, NOT
+  # pravara-service-clients: its OWN planned ExternalSecret,
+  # pravara-dhanam-cost-events (pravara-mes#71 declares none yet), so an
+  # unprovisioned pair never holds the phygital tools' Secret, nor the other
+  # way round. LOWERCASE keys, mapped to PRAVARA_COST_EVENTS_CLIENT_ID /
+  # PRAVARA_COST_EVENTS_CLIENT_SECRET.
+  pravara-mes/dhanam-cost-events-client:
+    label: Pravara MES → Dhanam cost-events writer client
+    description: Janua client_credentials pair (pravara-dhanam-cost-events, scope dhanam-cost-events:write, org-bound) pravara-api uses to push quantity-only consumption cost.event.v1 events into Dhanam (pravara-mes#71, RFC 0050 C12). Filed by `enclii secrets provision oidc --platform pravara-dhanam-cost-events`.
+    vault_path: secret/pravara-mes
+    namespace: pravara-mes
+    external_secret: pravara-dhanam-cost-events  # pragma: allowlist secret
+    keys:
+      - pravara_cost_events_client_id
+      - pravara_cost_events_client_secret
+    generate:
+      disabled: true
 
   yantra4d/asset-shells-publisher:
     label: Yantra4D → asset-shells type publisher client
@@ -1541,6 +1604,27 @@ targets:
       - pravara_mes_client_id
       - pravara_mes_client_secret
 
+  # Selva → Dhanam cost events (2026-11-11, RFC 0050 C13). The pair of
+  # ecosystem-oidc platform selva-dhanam-cost-events (audience dhanam-api,
+  # scope dhanam-cost-events:write, org-bound to madfam-ecosystem), written
+  # ONLY by `enclii secrets provision oidc --platform selva-dhanam-cost-events`.
+  # Its OWN ExternalSecret, selva-dhanam-cost-events (selva-office#363 parks it
+  # under infra/k8s/production/optional/), NOT selva-service-clients: ESO is
+  # all-or-nothing per ExternalSecret, so this pair never holds the phygital
+  # tools' Secret. LOWERCASE keys, mapped to SELVA_DHANAM_COST_EVENTS_CLIENT_ID /
+  # SELVA_DHANAM_COST_EVENTS_CLIENT_SECRET.
+  selva/dhanam-cost-events-client:
+    label: Selva → Dhanam cost-events writer client
+    description: Janua client_credentials pair (selva-dhanam-cost-events, scope dhanam-cost-events:write, org-bound) Selva's nexus-api sweep uses to push daily inference cost.event.v1 events (basis estimate) into Dhanam (selva-office#363, RFC 0050 C13). Filed by `enclii secrets provision oidc --platform selva-dhanam-cost-events`.
+    vault_path: secret/selva
+    namespace: selva
+    external_secret: selva-dhanam-cost-events  # pragma: allowlist secret
+    keys:
+      - dhanam_cost_events_client_id
+      - dhanam_cost_events_client_secret
+    generate:
+      disabled: true
+
   # Isolated training/staging custody: values never stored in source.
   crea-sim/ui-oidc:
     label: Training UI human OAuth client
@@ -1693,6 +1777,24 @@ targets:
     keys:
       - map03_database_ca_pem
 
+  # Kernel 01's usage telemetry (RFC 0057) under the simulator's own custody:
+  # the kernel never reads the production gate path. `telemetry_gate_token` is
+  # the training-scoped bearer the kernel presents to the internal telemetry
+  # gate; the gate reads that one property from this path through its own
+  # ExternalSecret and accepts it only for synthetic (`sim`) events.
+  # `telemetry_hmac_key` is the kernel's pseudonym key and reaches only the
+  # kernel. Both are at least 32 characters for their consumers, so the generic
+  # generator's unpadded base64url fits: create both with --generate.
+  crea-sim/kernel01-telemetry:
+    label: Isolated synthetic kernel telemetry
+    description: Governed isolated runtime custody; no owner, provider or production credential. Training-scoped gate token and pseudonym key for kernel 01; generate both with --generate
+    vault_path: secret/crea-sim-map01
+    namespace: crea-sim
+    external_secret: crea-sim-map01 # pragma: allowlist secret -- ExternalSecret resource name; not a credential
+    keys:
+      - telemetry_gate_token
+      - telemetry_hmac_key
+
   janua-staging/runtime-crypto:
     label: Fresh isolated staging identity crypto
     description: Initialize all five fresh staging crypto keys together with --generate; matched RSA pair and padded Fernet key, no overwrite or production credential
@@ -1784,6 +1886,46 @@ targets:
     generate:
       disabled: true
 
+  # Karafiel → Dhanam bank ledger (2026-11-11). The pair of ecosystem-oidc
+  # platform karafiel-dhanam-bank-ledger (audience dhanam-api, scope
+  # dhanam-bank-ledger:read, org-bound to madfam-ecosystem), written ONLY by
+  # `enclii secrets provision oidc --platform karafiel-dhanam-bank-ledger`. Its
+  # OWN ExternalSecret, karafiel-dhanam-bank-ledger (karafiel#383, mounted
+  # optional on the worker only): ESO is all-or-nothing per ExternalSecret, so
+  # an unprovisioned pair never holds another Karafiel Secret. LOWERCASE keys,
+  # mapped to DHANAM_BANK_LEDGER_CLIENT_ID / DHANAM_BANK_LEDGER_CLIENT_SECRET.
+  karafiel/dhanam-bank-ledger-client:
+    label: Karafiel → Dhanam bank-ledger reader client
+    description: Janua client_credentials pair (karafiel-dhanam-bank-ledger, scope dhanam-bank-ledger:read, org-bound) Karafiel's worker uses to read one business space's bank movements from Dhanam for its bank mirror. Filed by `enclii secrets provision oidc --platform karafiel-dhanam-bank-ledger`.
+    vault_path: secret/karafiel
+    namespace: karafiel
+    external_secret: karafiel-dhanam-bank-ledger  # pragma: allowlist secret
+    keys:
+      - dhanam_bank_ledger_client_id
+      - dhanam_bank_ledger_client_secret
+    generate:
+      disabled: true
+
+  # Karafiel → Dhanam scheduled payments (2026-11-11, RFC 0055 Phase 1.5,
+  # ruling O4). The pair of ecosystem-oidc platform
+  # karafiel-dhanam-scheduled-payments (audience dhanam-api, scope
+  # dhanam-scheduled-payments:write, org-bound to madfam-ecosystem), written
+  # ONLY by `enclii secrets provision oidc --platform
+  # karafiel-dhanam-scheduled-payments`. Its OWN planned ExternalSecret,
+  # karafiel-dhanam-scheduled-payments: ESO is all-or-nothing per
+  # ExternalSecret. LOWERCASE keys.
+  karafiel/dhanam-scheduled-payments-client:
+    label: Karafiel → Dhanam scheduled-payments writer client
+    description: Janua client_credentials pair (karafiel-dhanam-scheduled-payments, scope dhanam-scheduled-payments:write, org-bound) Karafiel uses to push tax obligations into Dhanam as planned payments (RFC 0055 Phase 1.5). Filed by `enclii secrets provision oidc --platform karafiel-dhanam-scheduled-payments`.
+    vault_path: secret/karafiel
+    namespace: karafiel
+    external_secret: karafiel-dhanam-scheduled-payments  # pragma: allowlist secret
+    keys:
+      - dhanam_scheduled_payments_client_id
+      - dhanam_scheduled_payments_client_secret
+    generate:
+      disabled: true
+
   dhanam/karafiel-callback-secret:
     label: Dhanam callback key for Karafiel
     description: HMAC key Karafiel's worker signs its cfdi-issued callback to Dhanam with (X-Dhanam-Timestamp + X-Dhanam-Signature-V2) and Dhanam's api verifies, projected by dhanam-secrets-karafiel-callback. Karafiel holds a read-only copy through its own ExternalSecret karafiel-dhanam-callback-signing (namespace karafiel). Mint server-side with --generate karafiel_dhanam_signing_secret.
@@ -1804,6 +1946,21 @@ targets:
     external_secret: dhanam-billing-webhook  # pragma: allowlist secret
     keys:
       - billing_webhook_secret
+
+  # Dhanam referral reward key (2026-11-10). Until now ReferralHmacGuard fell
+  # back to BILLING_WEBHOOK_SECRET, so referral rewards shared the
+  # credit-metering key. Dhanam verifies this one, so it owns the one
+  # canonical copy, on its own sub-path secret/dhanam/referral (already
+  # writable through secret/data/dhanam/*). Generation stays ON (default
+  # entropy): no person ever handles the value.
+  dhanam/referral-webhook-secret:
+    label: Dhanam referral reward key
+    description: HMAC key for POST /v1/referral/reward (X-Referral-Signature or X-PhyndCRM-Signature, hex HMAC-SHA256 of the raw body). Dhanam's api verifies it as REFERRAL_WEBHOOK_SECRET, projected by dhanam-referral-webhook; while that is unset the guard falls back to BILLING_WEBHOOK_SECRET. A signer reads it cross-path through its own ExternalSecret; none is wired yet. Mint server-side with --generate referral_webhook_secret, ONCE; a re-run rotates it.
+    vault_path: secret/dhanam/referral
+    namespace: dhanam
+    external_secret: dhanam-referral-webhook  # pragma: allowlist secret
+    keys:
+      - referral_webhook_secret
 
   # madfam-crawler per-caller API keys (2026-11-09, verifier-owns, cross-path
   # read). madfam-crawler verifies these keys, so it owns the one canonical
@@ -1921,3 +2078,21 @@ targets:
     external_secret: zavlo-api-karafiel  # pragma: allowlist secret
     keys:
       - zavlo_karafiel_hmac_secret
+
+  # telemetry (2026-11-12) — RFC 0057, owner rulings T1–T10 and direction G1.
+  # The product telemetry gate in namespace `telemetry`. `crea_map_token` is the
+  # bearer the MAP presents to the gate. `postgres_password` is the gate's own
+  # Postgres. Both with --generate. The training kernel no longer reads this
+  # path: its telemetry credentials are the training target
+  # crea-sim/kernel01-telemetry on the kernel's own path, and the gate reads the
+  # kernel's token from there. A property filed here earlier for the kernel is
+  # no longer accepted by this target and is mapped by nobody.
+  telemetry-gate/runtime:
+    label: Telemetry gate runtime (product tokens, own Postgres)
+    description: Bearer token per product for the telemetry gate (crea_map_token) and the gate's Postgres password. Generate both with --generate; the gate keeps only the token's sha256 in memory.
+    vault_path: secret/telemetry-gate
+    namespace: telemetry
+    external_secret: telemetry-gate-secrets # pragma: allowlist secret -- ExternalSecret resource name; not a credential
+    keys:
+      - crea_map_token
+      - postgres_password

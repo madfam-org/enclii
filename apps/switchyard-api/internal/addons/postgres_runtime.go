@@ -162,3 +162,9 @@ func runtimeReconciled(status map[string]interface{}, role string) bool {
 	}
 	return false
 }
+
+// RuntimeRoleReconciled is a read-only CNPG status predicate. It grants no
+// profile, role, credential, provisioning or binding authority.
+func RuntimeRoleReconciled(status map[string]interface{}, role string) bool {
+	return runtimeReconciled(status, role)
+}

@@ -116,3 +116,47 @@ func TestDhanamBillingWebhookSecretTarget(t *testing.T) {
 	assert.NotEqual(t, callback.ExternalSecret, tgt.ExternalSecret)
 	assert.NotContains(t, callback.Keys, tgt.Keys[0])
 }
+
+// Dhanam referral reward key: its own value on its own sub-path, so referral
+// rewards stop sharing the credit-metering key through the guard's fallback.
+func TestDhanamReferralWebhookSecretTarget(t *testing.T) {
+	tgt, err := GetTarget("dhanam/referral-webhook-secret")
+	require.NoError(t, err)
+	assert.Equal(t, "secret/dhanam/referral", tgt.VaultPath)
+	assert.Equal(t, "dhanam", tgt.Namespace)
+	assert.Equal(t, "dhanam-referral-webhook", tgt.ExternalSecret)
+	assert.NotEqual(t, "dhanam-secrets", tgt.ExternalSecret,
+		"never the service's main ExternalSecret: one missing property would freeze it")
+	assert.Equal(t, []string{"referral_webhook_secret"}, tgt.Keys)
+	assert.Contains(t, tgt.Description, "--generate referral_webhook_secret")
+	assert.Contains(t, tgt.Description, "REFERRAL_WEBHOOK_SECRET")
+	assert.NotEmpty(t, tgt.Label)
+	assert.Nil(t, tgt.Generate, "default entropy: no person handles the value")
+	assert.GreaterOrEqual(t, tgt.GenerateBytes(), DefaultGenerateBytes)
+
+	// Never the metering key: a different path, ExternalSecret and property.
+	metering, err := GetTarget("dhanam/billing-webhook-secret")
+	require.NoError(t, err)
+	assert.NotEqual(t, metering.VaultPath, tgt.VaultPath)
+	assert.NotEqual(t, metering.ExternalSecret, tgt.ExternalSecret)
+	assert.NotContains(t, metering.Keys, tgt.Keys[0])
+
+	// It is the only target on its sub-path, and no other target writes its
+	// property anywhere.
+	reg, err := LoadRegistry()
+	require.NoError(t, err)
+	for name, other := range reg {
+		if name == tgt.ID {
+			continue
+		}
+		assert.NotEqual(t, tgt.VaultPath, other.VaultPath, "%s shares the referral sub-path", name)
+		assert.NotContains(t, other.Keys, "referral_webhook_secret", "%s writes the referral property", name)
+		assert.NotEqual(t, tgt.ExternalSecret, other.ExternalSecret, "%s shares the referral ExternalSecret", name)
+	}
+}
+
+// An absent target is an error, never a zero value that would write to "".
+func TestDhanamReferralWebhookSecretAbsentVariant(t *testing.T) {
+	_, err := GetTarget("dhanam/referral-secret")
+	require.Error(t, err)
+}

@@ -1,6 +1,6 @@
 # Secret Intake (chat-safe credential handoff)
 
-**Last Updated:** 2026-10-20
+**Last Updated:** 2026-11-11
 
 Isolated training and API-only Janua staging targets are documented in
 [Isolated training custody](ISOLATED_TRAINING_CUSTODY.md). These declarations
@@ -89,6 +89,7 @@ Canonical routing: `apps/switchyard-api/internal/secretsintake/registry.yaml`
 | `dhanam/karafiel-callback-secret` | `secret/dhanam` | `karafiel_dhanam_signing_secret` (generated; see [Dhanam ↔ Karafiel webhook keys](#dhanam--karafiel-webhook-keys-2026-10-14)) |
 | `karafiel/dhanam-webhook-secret` | `secret/karafiel` | `dhanam_karafiel_signing_secret` (generated; same section) |
 | `dhanam/billing-webhook-secret` | `secret/dhanam` | `billing_webhook_secret` (generated; see [Remediation wave](#remediation-wave-phynd-crm-edge-crawler-caller-keys-dhanam-metering-key-2026-11-09)) |
+| `dhanam/referral-webhook-secret` | `secret/dhanam/referral` | `referral_webhook_secret` (generated; same section) |
 | `madfam-crawler/api-key-<caller>` | `secret/madfam-crawler` | `api_key_<caller>` for forgesight, fortuna, tulana, rondelio, avala, tezca (generated; same section) |
 | `nauta/phynd-crm-oauth` | `secret/nauta` | `phynd_crm_oauth_client_id`, `phynd_crm_oauth_client_secret`: **provisioned, never submitted** (`enclii secrets provision oidc --platform nauta-phynd-crm`; same section) |
 | `platform/comms-resend-api-key` | `secret/comms` | `resend-api-key` → `resend_api_key` in Vault |
@@ -109,7 +110,13 @@ ESO sources: `enclii-secrets`, `janua-secrets`, `madfam-site-secrets`, `phynd-cr
 | `symbiosis-hcm/<portal>-absence-feed` | `secret/symbiosis-hcm` | `<portal>_absence_feed_url`, `<portal>_absence_feed_key` |
 | `symbiosis-hcm/karafiel-client` | `secret/symbiosis-hcm` | `karafiel_service_client_id`, `karafiel_service_client_secret`: **provisioned, never submitted** (`enclii secrets provision oidc --platform symbiosis-hcm-karafiel`) |
 | `symbiosis-hcm/dhanam-writer-client` | `secret/symbiosis-hcm` | `dhanam_writer_client_id`, `dhanam_writer_client_secret`: **provisioned, never submitted** (`enclii secrets provision oidc --platform symbiosis-hcm-dhanam-writer`) |
+| `symbiosis-hcm/nauta-labor-hours-client` | `secret/symbiosis-hcm` | `nauta_labor_hours_client_id`, `nauta_labor_hours_client_secret`: **provisioned, never submitted** (`enclii secrets provision oidc --platform symbiosis-hcm-nauta-labor-hours`; see [COGS writer and reader edges](#cogs-writer-and-reader-edges-hcm--nauta-hcm--dhanam-pravara--dhanam-2026-11-08)) |
+| `symbiosis-hcm/dhanam-cost-events-client` | `secret/symbiosis-hcm` | `dhanam_cost_events_client_id`, `dhanam_cost_events_client_secret`: **provisioned, never submitted** (`enclii secrets provision oidc --platform symbiosis-hcm-dhanam-cost-events`; same section) |
+| `pravara-mes/dhanam-cost-events-client` | `secret/pravara-mes` | `pravara_cost_events_client_id`, `pravara_cost_events_client_secret`: **provisioned, never submitted** (`enclii secrets provision oidc --platform pravara-dhanam-cost-events`; same section) |
 | `karafiel/dhanam-cost-events-client` | `secret/karafiel` | `dhanam_cost_events_client_id`, `dhanam_cost_events_client_secret`: **provisioned, never submitted** (`enclii secrets provision oidc --platform karafiel-dhanam-cost-events`) |
+| `karafiel/dhanam-bank-ledger-client` | `secret/karafiel` | `dhanam_bank_ledger_client_id`, `dhanam_bank_ledger_client_secret`: **provisioned, never submitted** (`enclii secrets provision oidc --platform karafiel-dhanam-bank-ledger`; see [Karafiel bank-ledger reader and Selva cost events](#karafiel-bank-ledger-reader-and-selva-cost-events-2026-11-11)) |
+| `karafiel/dhanam-scheduled-payments-client` | `secret/karafiel` | `dhanam_scheduled_payments_client_id`, `dhanam_scheduled_payments_client_secret`: **provisioned, never submitted** (`enclii secrets provision oidc --platform karafiel-dhanam-scheduled-payments`; same section) |
+| `selva/dhanam-cost-events-client` | `secret/selva` | `dhanam_cost_events_client_id`, `dhanam_cost_events_client_secret`: **provisioned, never submitted** (`enclii secrets provision oidc --platform selva-dhanam-cost-events`; same section) |
 | `nauta/kalya-feed-tokens` | `secret/nauta` | `kalya_feed_tokens` |
 | `nauta/symbiosis-hcm-token` | `secret/nauta` | `symbiosis_hcm_token` |
 | `angelia/courier-producer-keys` | `secret/angelia` | `courier_producer_key_alarms`, `courier_producer_key_enclii_ops`, `courier_producer_key_tulana`, `courier_producer_key_madfam_site` |
@@ -407,6 +414,32 @@ enclii --profile admin secrets provision oidc --platform symbiosis-hcm-karafiel 
 Then pin the printed `jnc_…` id as `janua_client.client_id` for
 `symbiosis-hcm-karafiel` in both registry copies.
 
+#### Adding `fiscal:csf-intake` to the existing client (2026-11-11)
+
+HCM's Mi ficha forwards a contractor's constancia de situación fiscal to
+Karafiel's `POST /api/v1/fiscal/csf/extract/`, which Karafiel gates on
+`fiscal:csf-intake` (already reserved in Janua). The registry now declares that
+fourth scope on the same pinned client. `provision oidc` applies a reviewed
+**widening** of a machine client: when the only difference from the live client
+is scopes the registry added, it PATCHes `allowed_scopes` and nothing else. Any
+other machine drift (a live scope the registry does not declare, audience,
+grants, organization, callbacks, inactive) is still refused unpatched. The
+secret of an existing client cannot be read back, so the run also rotates it;
+`--grace-hours` keeps the current secret valid while HCM's pods pick up the new
+one:
+
+```bash
+cd ~/labspace/enclii && git pull --ff-only
+make -C ~/labspace/enclii install-cli CLI_INSTALL_DIR=$HOME/.local/bin
+enclii --profile admin secrets provision oidc --platform symbiosis-hcm-karafiel --intake-profile default --rotate-secret --grace-hours 24 --json --reason "HCM reads contractor CSFs via Karafiel"
+```
+
+HCM's API and worker carry `reloader.stakater.com/match`, so they restart on
+their own when `hcm-service-clients` refreshes (every 15 min) and read the new
+secret well inside the grace window. Until this runs, HCM's
+upload answers with its own «lectura automática aún no disponible» message;
+nothing else on the edge changes.
+
 ### Symbiosis-HCM → Dhanam scheduled-payments writer (2026-11-02)
 
 `symbiosis-hcm-dhanam-writer` (audience `dhanam-api`, scope
@@ -428,6 +461,123 @@ enclii --profile admin secrets provision oidc --platform symbiosis-hcm-dhanam-wr
 
 Then pin the printed `jnc_…` id in both registry copies and use it as the
 grant's `clientId`.
+
+### COGS writer and reader edges: HCM → Nauta, HCM → Dhanam, Pravara → Dhanam (2026-11-08)
+
+Three RFC 0050 machine edges, each the shape of
+[Karafiel → Dhanam cost events](#karafiel--dhanam-cost-events-2026-11-05):
+confidential, `client_credentials` only, no redirect URIs, org-bound to
+`madfam-ecosystem` (`1a6233ef-185f-43ee-9181-e2591fbb2643`), exactly one scope,
+and each pair delivered by the consumer's own **dedicated, planned**
+ExternalSecret (ESO is all-or-nothing per ExternalSecret).
+
+| Platform id | Audience | Scope | Target → Vault path | ExternalSecret (planned) | Consumer env |
+|---|---|---|---|---|---|
+| `symbiosis-hcm-nauta-labor-hours` | `nauta-api` | `nauta-labor-hours:read` | `symbiosis-hcm/nauta-labor-hours-client` → `secret/symbiosis-hcm` | `hcm-nauta-labor-hours` (namespace `symbiosis-hcm`) | `NAUTA_LABOR_HOURS_CLIENT_ID` / `_SECRET` |
+| `symbiosis-hcm-dhanam-cost-events` | `dhanam-api` | `dhanam-cost-events:write` | `symbiosis-hcm/dhanam-cost-events-client` → `secret/symbiosis-hcm` | `hcm-dhanam-cost-events` (namespace `symbiosis-hcm`) | `DHANAM_COST_EVENTS_CLIENT_ID` / `_SECRET` |
+| `pravara-dhanam-cost-events` | `dhanam-api` | `dhanam-cost-events:write` | `pravara-mes/dhanam-cost-events-client` → `secret/pravara-mes` | `pravara-dhanam-cost-events` (namespace `pravara-mes`) | `PRAVARA_COST_EVENTS_CLIENT_ID` / `_SECRET` |
+
+- **HCM → Nauta** (symbiosis-hcm#232, Nauta route from nauta#359): HCM's
+  labor close reads `GET /api/internal/labor-hours?month=`. Only this client
+  may hold `nauta-labor-hours:read`, because every row names the Janua
+  subject who logged the time. Nauta admits an org-bound token only when its
+  `org_id` is `NAUTA_MADFAM_JANUA_ORG_ID`, which production does not set
+  today, and nauta's cockpit staff check (`grantsStaffAccess`) reads the same
+  variable, so setting it also admits people whose token carries that
+  `org_id`. The owner sets it once for this edge and Nauta's COGS MCP clients
+  (enclii#946).
+- **HCM → Dhanam** (symbiosis-hcm#232): monthly labor `cost.event.v1` per
+  engagement, source `symbiosis-hcm`, with `allocates` (Dhanam contract v1.1,
+  dhanam#944). Not `symbiosis-hcm-dhanam-writer`, which holds the
+  scheduled-payments scope and grant.
+- **Pravara → Dhanam** (pravara-mes#71): quantity-only `consumption` events,
+  source `pravara`. Not `pravara-service-clients`, so the phygital tools'
+  Secret never waits on this pair.
+
+The Dhanam tokens alone authorize nothing: a reviewed `CostEventWriterGrant`
+(Dhanam `apps/api/scripts/provision-cost-event-writer-grant.ts`) binds each
+client id and organization to one business space and one source
+(`symbiosis-hcm`, `pravara`).
+
+**Before the first run, in order:**
+
+1. This registry is deployed: merging it redeploys switchyard-api with the new
+   intake targets. The Vault policy needs no change (`secret/symbiosis-hcm`
+   and `secret/pravara-mes` are already writable).
+2. For `symbiosis-hcm-nauta-labor-hours` only: the Janua image that reserves
+   `nauta-labor-hours:read` in `apps/api/app/core/reserved_oauth_boundaries.py`
+   (and lists the edge in `test_ecosystem_machine_edges_reserved.py`) is
+   promoted. Janua already reserves `dhanam-cost-events:write`; the two
+   Dhanam edges still belong in that test.
+3. For the two Dhanam edges: Dhanam contract v1.1 (dhanam#944) is deployed,
+   since v1.0 refuses source `symbiosis-hcm` and HCM's `allocates`.
+
+```bash
+enclii --profile admin secrets provision oidc --platform symbiosis-hcm-nauta-labor-hours --intake-profile default --json --reason "symbiosis-hcm to nauta labor hours (RFC 0050 C10)"
+enclii --profile admin secrets provision oidc --platform symbiosis-hcm-dhanam-cost-events --intake-profile default --json --reason "symbiosis-hcm to dhanam cost events (RFC 0050 C10)"
+enclii --profile admin secrets provision oidc --platform pravara-dhanam-cost-events --intake-profile default --json --reason "pravara to dhanam cost events (RFC 0050 C12)"
+```
+
+Until a CLI release embeds these entries, add `--registry "$REG"` with a copy
+from `origin/main` (`git show origin/main:config/ecosystem-oidc-provision.yaml > "$REG"`).
+Then pin each printed `jnc_…` id in both registry copies and use the two
+Dhanam ids as the grants' `clientId`. Until each consumer repo adds its
+ExternalSecret, intake reports `external_secret_refreshed=false` and the pair
+sits in Vault unread. Each consumer ignores the pair until its switch is on:
+`HCM_LABOR_EVENTS_ENABLED`, `PRAVARA_COST_EVENTS_ENABLED` (owner-only).
+
+### Karafiel bank-ledger reader and Selva cost events (2026-11-11)
+
+Three more Dhanam machine edges, each the shape of
+[Karafiel → Dhanam cost events](#karafiel--dhanam-cost-events-2026-11-05):
+confidential, `client_credentials` only, no redirect URIs, org-bound to
+`madfam-ecosystem` (`1a6233ef-185f-43ee-9181-e2591fbb2643`), audience
+`dhanam-api`, exactly one scope, and a dedicated ExternalSecret in the
+consumer's namespace.
+
+| Platform id | Scope | Target → Vault path | ExternalSecret | Consumer env |
+|---|---|---|---|---|
+| `karafiel-dhanam-bank-ledger` | `dhanam-bank-ledger:read` | `karafiel/dhanam-bank-ledger-client` → `secret/karafiel` | `karafiel-dhanam-bank-ledger` (namespace `karafiel`, worker only, optional) | `DHANAM_BANK_LEDGER_CLIENT_ID` / `_SECRET` |
+| `karafiel-dhanam-scheduled-payments` | `dhanam-scheduled-payments:write` | `karafiel/dhanam-scheduled-payments-client` → `secret/karafiel` | `karafiel-dhanam-scheduled-payments` (namespace `karafiel`, planned) | consumer not written yet (RFC 0055 Phase 1.5) |
+| `selva-dhanam-cost-events` | `dhanam-cost-events:write` | `selva/dhanam-cost-events-client` → `secret/selva` | `selva-dhanam-cost-events` (namespace `selva`, parked until provisioned) | `SELVA_DHANAM_COST_EVENTS_CLIENT_ID` / `_SECRET` |
+
+- **Karafiel bank ledger** (karafiel#383, dhanam#969): Karafiel's bank mirror
+  reads one business space's bank movements from
+  `GET /v1/bank-ledger/spaces/:spaceId/transactions`. Read only. Dhanam's
+  `BankLedgerReaderGrant` (`provision-bank-ledger-reader-grant`) binds the
+  client id and organization to ONE live business space; any other space is
+  403. Only this client may hold `dhanam-bank-ledger:read`.
+- **Karafiel scheduled payments** (RFC 0055 Phase 1.5, ruling O4): Karafiel
+  pushes tax obligations into Dhanam as planned payments through the existing
+  scheduled-payments writer route, like `symbiosis-hcm-dhanam-writer`. A
+  `ScheduledPaymentWriterGrant` (`provision-scheduled-payment-writer-grant`)
+  binds it to one space and the source system `karafiel`. Janua already
+  reserves the scope. The Karafiel pusher and its ExternalSecret come later.
+- **Selva cost events** (selva-office#363): daily inference `cost.event.v1`,
+  source `selva`, `basis: estimate`. A `CostEventWriterGrant` binds it to one
+  space and the source `selva`. Not a widening of any Selva read client.
+
+**Before provisioning, in order:**
+
+1. This registry is deployed: merging it redeploys switchyard-api with the
+   two intake targets. The Vault policy needs no change (`secret/karafiel`
+   and `secret/selva` are already writable).
+2. For `karafiel-dhanam-bank-ledger`: the Janua image that reserves
+   `dhanam-bank-ledger:read` (`DHANAM_SCOPES` in
+   `apps/api/app/core/reserved_oauth_boundaries.py`) is promoted. Janua
+   already reserves `dhanam-cost-events:write`.
+
+```bash
+enclii --profile admin secrets provision oidc --platform karafiel-dhanam-bank-ledger --intake-profile default --json --reason "karafiel bank mirror reads the company bank ledger (SAT catch-up)"
+enclii --profile admin secrets provision oidc --platform selva-dhanam-cost-events --intake-profile default --json --reason "selva inference usage to dhanam cost events (RFC 0050 C13)"
+enclii --profile admin secrets provision oidc --platform karafiel-dhanam-scheduled-payments --intake-profile default --json --reason "karafiel tax obligations to dhanam scheduled payments (RFC 0055 O4)"
+```
+
+Until a CLI release embeds these entries, add `--registry "$REG"` with a copy
+from `origin/main`, as above. Pin each printed `jnc_…` id in both registry
+copies and use it as the Dhanam grant's `clientId`. Until the consumer merges
+its ExternalSecret, intake reports `external_secret_refreshed=false` and the
+pair sits in Vault unread.
 
 ### Karafiel → Dhanam cost events (2026-11-05)
 
@@ -853,6 +1003,7 @@ its own ExternalSecret.
 | nauta → phynd-crm machine edge (`nauta-phynd-crm`, audience `phynd-crm`, scope `phynd-crm-engagements:read`, org-bound to `madfam-ecosystem`) | `nauta/phynd-crm-oauth` | `secret/nauta` `phynd_crm_oauth_client_id` / `_secret` | `nauta-phynd-crm-oauth` (nauta) | nauta only; phynd-crm verifies the Janua token, not this pair |
 | madfam-crawler per-caller keys | `madfam-crawler/api-key-<caller>` | `secret/madfam-crawler` `api_key_<caller>` | `madfam-crawler-caller-key-<caller>` (crawler-api, `CALLER_KEY_<CALLER>`) | each caller's own ExternalSecret |
 | Dhanam credit-metering key (DHC-07) | `dhanam/billing-webhook-secret` | `secret/dhanam` `billing_webhook_secret` | `dhanam-billing-webhook` (dhanam api, `BILLING_WEBHOOK_SECRET_NEXT` first) | `karafiel-dhanam-credit-signing` (karafiel, `DHANAM_CREDIT_WEBHOOK_SECRET`) |
+| Dhanam referral reward key (added 2026-11-10) | `dhanam/referral-webhook-secret` | `secret/dhanam/referral` `referral_webhook_secret` | `dhanam-referral-webhook` (dhanam api, `REFERRAL_WEBHOOK_SECRET`; until it is set the guard falls back to the metering key) | none wired yet |
 
 Every verifier-side and reader-side ExternalSecret above is **spec only** in its
 own repo until its property exists, so until then intake reports
@@ -876,11 +1027,17 @@ enclii --profile admin secrets provision oidc --platform nauta-phynd-crm --intak
 enclii secrets intake submit madfam-crawler/api-key-forgesight --generate api_key_forgesight --reason "madfam-crawler per-caller key"
 # … the same for fortuna, tulana, rondelio, avala, tezca, one caller at a time
 enclii secrets intake submit dhanam/billing-webhook-secret --generate billing_webhook_secret --reason "DHC-07 credit metering key"
+enclii secrets intake submit dhanam/referral-webhook-secret --generate referral_webhook_secret --reason "Dhanam referral reward key"
 ```
 
 Pin the printed `jnc_…` id of `nauta-phynd-crm` in both registry copies. Run
-the Dhanam submit **once**: a re-run rotates the key, and Dhanam and Karafiel
-read the new value only when their pods restart. The caller-side moves (wire
+each Dhanam submit **once**: a re-run rotates the key, and Dhanam and Karafiel
+read the new value only when their pods restart. The referral key lives on its
+own sub-path `secret/dhanam/referral`, which the existing
+`secret/data/dhanam/*` policy block already covers. Submit it before Dhanam
+wires `REFERRAL_WEBHOOK_SECRET`; the moment that variable is set, a sender
+still signing with the metering key is rejected, so the sender must switch
+first. The caller-side moves (wire
 each ExternalSecret, restart, retire the legacy `API_KEYS` entry) are in
 madfam-crawler `docs/CALLER_KEYS.md`.
 

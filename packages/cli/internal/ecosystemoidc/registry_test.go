@@ -746,7 +746,8 @@ func TestLoadRegistry_cvHCMBenchmarksMachineEdge(t *testing.T) {
 
 // symbiosis-hcm-karafiel: HCM's API and worker calling Karafiel for contract
 // drafts (legal:contractor-draft, legal:employment-draft) and, later, CFDI
-// (fiscal:invoice). A confidential client_credentials edge with no browser
+// (fiscal:invoice), and a contractor's constancia de situación fiscal
+// (fiscal:csf-intake). A confidential client_credentials edge with no browser
 // leg, audience karafiel-api (Karafiel's JANUA_AUDIENCE), platform-admin like
 // zavlo-cfdi-emitter: Karafiel pins machine tokens to its own service RFC and
 // reads no org. The pair lands at symbiosis-hcm/karafiel-client as the two
@@ -774,7 +775,7 @@ func TestLoadRegistry_symbiosisHCMKarafielMachineEdge(t *testing.T) {
 	assert.Equal(t, "symbiosis-hcm-karafiel", jc.ClientKey)
 	assert.Equal(t, "karafiel-api", jc.Audience, "Karafiel's JANUA_AUDIENCE")
 	assert.Empty(t, jc.OrganizationID, "Karafiel reads no org from machine tokens; the edge is platform-admin")
-	assert.Equal(t, []string{"legal:contractor-draft", "legal:employment-draft", "fiscal:invoice"}, jc.AllowedScopes)
+	assert.Equal(t, []string{"legal:contractor-draft", "legal:employment-draft", "fiscal:invoice", "fiscal:csf-intake"}, jc.AllowedScopes)
 	for _, scope := range jc.AllowedScopes {
 		assert.Regexp(t, `^[a-z][a-z0-9._-]*:[a-z][a-z0-9_-]*$`, scope,
 			"Janua registers only namespace:action scopes")
@@ -886,8 +887,13 @@ func TestLoadRegistry_dhanamMachineEdgesSorted(t *testing.T) {
 	}
 	sort.Strings(names)
 	assert.Equal(t, []string{
+		"karafiel-dhanam-bank-ledger",
 		"karafiel-dhanam-cost-events",
+		"karafiel-dhanam-scheduled-payments",
+		"pravara-dhanam-cost-events",
 		"routecraft-billing-relay",
+		"selva-dhanam-cost-events",
+		"symbiosis-hcm-dhanam-cost-events",
 		"symbiosis-hcm-dhanam-writer",
 	}, names)
 }
@@ -907,8 +913,8 @@ func TestReviewedRegistryGrantKindsDoNotDependOnTenant(t *testing.T) {
 			machines++
 		}
 	}
-	require.Equal(t, 25, humans) // Includes the two isolated Karafiel staging login clients and the eight SSO wave 1 clients.
-	require.Equal(t, 20, machines)
+	require.Equal(t, 25, humans)   // Includes the two isolated Karafiel staging login clients and the eight SSO wave 1 clients.
+	require.Equal(t, 26, machines) // Includes the three RFC 0050 COGS writer/reader edges (HCM → Nauta, HCM → Dhanam, Pravara → Dhanam), Karafiel's bank-ledger reader and scheduled-payments writer, and Selva's cost-events writer.
 	p := reg.Platforms["selva-yantra4d"]
 	require.Empty(t, p.JanuaClient.OrganizationID)
 	kind, err := p.JanuaClient.kind()

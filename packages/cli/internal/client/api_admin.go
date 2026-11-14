@@ -133,6 +133,13 @@ func (c *APIClient) EnsureOnboarding(ctx context.Context, req *types.OnboardingR
 	return c.post(ctx, "/v1/admin/onboard/ensure", req, result)
 }
 
+// PlanOnboardingNetworkPolicies is the read-only dry run of the onboarding
+// network_policies step: the diff between the live NetworkPolicies and the
+// ones enclii.yaml generates, and whether the narrowing guard would refuse it.
+func (c *APIClient) PlanOnboardingNetworkPolicies(ctx context.Context, req *types.OnboardingRequest, result interface{}) error {
+	return c.post(ctx, "/v1/admin/onboard/netpolicy-plan", req, result)
+}
+
 func (c *APIClient) PreflightOnboard(ctx context.Context, req *types.OnboardingRequest, result *types.PreflightResult) error {
 	return c.post(ctx, "/v1/admin/onboard/preflight", req, result)
 }
