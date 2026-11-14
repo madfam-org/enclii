@@ -149,13 +149,19 @@ spec:
             # nothing is sent), which is exactly the behaviour before it
             # existed. Only the WORKER carries it: roundhouse-api never runs
             # a build and has no duration to report.
+            #
+            # WAYBILL_API_KEY is Waybill's own service key (intake target
+            # enclii/waybill-internal-api-key, merged into enclii-secrets by
+            # the waybill-internal-api-key ExternalSecret), not the
+            # Switchyard callback key above: each credential reaches only
+            # the service that verifies it.
             - name: WAYBILL_BASE_URL
               value: "http://waybill"
             - name: WAYBILL_API_KEY
               valueFrom:
                 secretKeyRef:
                   name: enclii-secrets
-                  key: internal-api-key
+                  key: waybill-internal-api-key
                   optional: true
             # Build settings
             - name: MAX_CONCURRENT_BUILDS

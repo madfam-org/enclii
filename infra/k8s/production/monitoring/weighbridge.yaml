@@ -107,19 +107,24 @@ roleRef:
   name: weighbridge-runner-reader
 
 ---
-# The Waybill internal API key, by NAME. No value appears in this repo.
+# The Waybill service key, by NAME. No value appears in this repo.
 #
-# Sourced through the same interim path as `enclii-internal-api-key` in
-# ../../production/: the `kubernetes-store` ClusterSecretStore reads the
-# canonical source Secret until `secret/enclii/internal_api_key` is backfilled
-# into Vault (`enclii secrets vault-backfill`), at which point this switches to
-# `vault-store` alongside the others.
+# Read from Vault: secret/enclii:waybill_internal_api_key, whose only writer is
+# the intake target `enclii/waybill-internal-api-key`
+# (docs/runbooks/SECRET_INTAKE.md). Waybill verifies that key, so this reads
+# the one copy every other caller reads too (the enclii namespace gets it
+# through the `waybill-internal-api-key` ExternalSecret); there is no second
+# copy to drift on rotation. It is Waybill's key only: Weighbridge holds no
+# credential for anything else.
 #
-# The Deployment marks the key OPTIONAL. Waybill only enforces `X-API-Key` when
-# its own `INTERNAL_API_KEY` is set, and it is not set on the running
-# Deployment today — so requiring the secret here would stop the meter from
-# starting in order to satisfy a check that is not being made. When the key is
-# turned on at the Waybill end, this ExternalSecret is already delivering it.
+# The intake submit force-syncs the enclii copy only; this one lands on its
+# own refreshInterval, or sooner with `enclii ops secrets sync-sweep`. When the
+# value changes, Reloader restarts the Deployment (annotation below).
+#
+# The Deployment marks the key OPTIONAL so a missing key surfaces where the
+# meter already reports delivery trouble — weighbridge_events_rejected_total
+# and WeighbridgeNoEventsWhileRunnersActive — instead of as a meter that never
+# starts.
 apiVersion: external-secrets.io/v1beta1
 kind: ExternalSecret
 metadata:
@@ -133,7 +138,7 @@ metadata:
 spec:
   refreshInterval: 15m
   secretStoreRef:
-    name: kubernetes-store
+    name: vault-store
     kind: ClusterSecretStore
   target:
     name: weighbridge-waybill-key
@@ -142,8 +147,8 @@ spec:
   data:
     - secretKey: WAYBILL_INTERNAL_API_KEY
       remoteRef:
-        key: enclii-internal-api-key-source
-        property: internal-api-key
+        key: secret/enclii
+        property: waybill_internal_api_key
         conversionStrategy: Default
         decodingStrategy: None
         metadataPolicy: None
@@ -248,6 +253,13 @@ metadata:
     app.kubernetes.io/component: metering
     app.kubernetes.io/part-of: enclii
     app.kubernetes.io/managed-by: enclii
+  annotations:
+    # Restart when the Waybill key changes (first delivery, rotation), so the
+    # process never keeps presenting a value Waybill no longer accepts.
+    # Reloader reads this on the Deployment, not on the pod template (see
+    # infra/k8s/base/verdaccio/deployment.yaml), and only this one Secret:
+    # `auto` would also bounce the meter for unrelated ConfigMap edits.
+    secret.reloader.stakater.com/reload: "weighbridge-waybill-key"
 spec:
   # ONE replica, and not more. Two replicas both observe every pod and both
   # POST; the idempotency key means Waybill records one event either way, but

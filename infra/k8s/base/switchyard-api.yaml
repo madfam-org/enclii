@@ -94,6 +94,18 @@ spec:
               value: "enclii"
             - name: ENCLII_WAYBILL_BASE_URL
               value: "http://waybill"
+            # Waybill's service key, sent as X-API-Key by the billing proxy, the
+            # /usage build-minutes read and the addon usage emitter. The same
+            # key Waybill verifies: intake target enclii/waybill-internal-api-key,
+            # merged into enclii-secrets by the waybill-internal-api-key
+            # ExternalSecret. Optional so a missing key can never stop the
+            # control plane from starting; Waybill answers 401 instead.
+            - name: ENCLII_WAYBILL_INTERNAL_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: enclii-secrets
+                  key: waybill-internal-api-key
+                  optional: true
             # Namespaces `enclii ops pods restart` may act in (comma-separated,
             # exact names). Unset or empty refuses every namespace; kube-* is
             # refused even if listed. Workload namespaces only: the control
