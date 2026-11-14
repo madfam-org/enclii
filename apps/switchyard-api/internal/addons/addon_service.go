@@ -74,7 +74,7 @@ type CreateAddonRequest struct {
 // plan row. Every lifecycle transition also writes a row to
 // managed_db_addon_events for audit and (Sprint 3) billing.
 func (s *AddonService) CreateAddon(ctx context.Context, req *CreateAddonRequest) (*types.DatabaseAddon, error) {
-	if req != nil && req.Name == KarafielStagingAddon {
+	if req != nil && (req.Name == KarafielStagingAddon || req.Name == JanuaStagingAddon) {
 		return nil, fmt.Errorf("reserved staging profile requires typed platform preparation")
 	}
 
@@ -533,13 +533,18 @@ func (s *AddonService) RefreshStatus(ctx context.Context, addonID uuid.UUID) (*t
 	if err != nil {
 		return nil, err
 	}
+	// CNPG Ready alone cannot establish this closed profile's migration,
+	// runtime acceptance or billable readiness. BatchB owns that transition.
+	if addon.Name == JanuaStagingAddon {
+		return addon, nil
+	}
 
 	// Converge the CNPG NetworkPolicies on every refresh of a live PostgreSQL
 	// addon, so clusters provisioned before a policy existed heal (an instance
 	// rescheduled onto a node with no API-server endpoint otherwise
 	// crash-loops; an operator on another node cannot manage the instance).
 	// Best effort: a failure is logged, never returned.
-	if pg, ok := s.provisioners[types.DatabaseAddonTypePostgres].(*PostgresProvisioner); ok && pg.k8sClient != nil && networkConvergible(addon) && !isKarafielStagingAddon(addon) {
+	if pg, ok := s.provisioners[types.DatabaseAddonTypePostgres].(*PostgresProvisioner); ok && pg.k8sClient != nil && networkConvergible(addon) && !isClosedStagingAddon(addon) {
 		if err := s.ConvergeCNPGNetworkPolicies(ctx, addon); err != nil {
 			s.logger.WithError(err).WithField("addon_id", addon.ID.String()).Warn("CNPG NetworkPolicies not converged")
 		}
