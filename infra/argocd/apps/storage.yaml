@@ -31,6 +31,10 @@ spec:
           # Keep offsite backups serialized; R2 resets were aborting long runs.
           backupConcurrentLimit: 1
           autoSalvage: true
+          # Delete (so the controller recreates) pods whose volume Longhorn
+          # re-attached; false left running pods on the dead device (Vault
+          # EIO, 2026-10-30). A recreated Vault pod starts sealed.
+          autoDeletePodWhenVolumeDetachedUnexpectedly: true
           replicaAutoBalance: best-effort
           # Right-sized from 12% (1440m) to 3% (360m) — actual usage ~91m
           guaranteedEngineManagerCPU: 3
