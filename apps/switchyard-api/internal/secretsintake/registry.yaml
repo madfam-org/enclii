@@ -977,6 +977,24 @@ targets:
       - hcm_client_id
       - hcm_client_secret
 
+  # cv → tlacuilo (2026-11-14). The client_credentials pair of ecosystem-oidc
+  # platform cv-tlacuilo (scope tlacuilo:extract, audience tlacuilo), written
+  # ONLY by `enclii secrets provision oidc --platform cv-tlacuilo`; no human
+  # types either value. Same path as the other cv targets (secret/cv, a merge)
+  # but its OWN ExternalSecret, cv-tlacuilo-client, so reading images can be
+  # absent or rotated without touching sign-in or the HCM edge. LOWERCASE
+  # keys, as Vault stores them; cv's ExternalSecret maps them to
+  # TLACUILO_CLIENT_ID / TLACUILO_CLIENT_SECRET.
+  cv/tlacuilo-client:
+    label: cv → tlacuilo client
+    description: Janua client_credentials pair (cv-tlacuilo, scope tlacuilo:extract) cv's server uses to have a page image of a job posting read by tlacuilo. Filed by `enclii secrets provision oidc --platform cv-tlacuilo`.
+    vault_path: secret/cv
+    namespace: cv
+    external_secret: cv-tlacuilo-client  # pragma: allowlist secret
+    keys:
+      - tlacuilo_client_id
+      - tlacuilo_client_secret
+
   # Digital-twins machine edges (2026-10-03). Nine client_credentials pairs,
   # each written ONLY by `enclii secrets provision oidc --platform <id>`
   # (config/ecosystem-oidc-provision.yaml); no human types either value.
