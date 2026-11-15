@@ -81,6 +81,7 @@ func TestBankLedgerAndSelvaCostEventsClientTargets(t *testing.T) {
 	sort.Strings(onSelva)
 	assert.Equal(t, []string{
 		"selva/dhanam-cost-events-client",
+		"selva/phynd-crm-pipeline-client",
 		"selva/pravara-mes-client",
 		"selva/yantra4d-client",
 	}, onSelva)

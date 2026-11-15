@@ -992,6 +992,53 @@ turned off in the dhanam and karafiel repos. Do not rotate either key after
 that flip without a deploy window: both sides read the new value only when
 their pods restart.
 
+### PhyndCRM native MCP readers (2026-11-14)
+
+Two `client_credentials` clients for PhyndCRM's read-only `POST /mcp`
+(phynd-crm#131; RFC 0051 M3: Selva's agent fleet and the ops agents, one client
+each). Audience `phynd-crm`, scope `phynd-crm-pipeline:read`, org-bound to
+`madfam-ecosystem`. Same layout as the COGS MCP consumers (enclii#946).
+
+| Platform | Target | Property | ExternalSecret | Reader |
+|---|---|---|---|---|
+| `selva-phynd-crm-pipeline` | `selva/phynd-crm-pipeline-client` | `secret/selva` `phynd_crm_pipeline_client_id` / `_secret` | `selva-phynd-crm-pipeline-client` (selva; not declared in selva-office yet) | Selva's agent fleet, once Selva has code that calls the MCP |
+| `ops-agents-phynd-crm-pipeline` | `ops-agents/phynd-crm-pipeline-client` | `secret/ops-agents` `phynd_crm_pipeline_client_id` / `_secret` | none | none in the cluster; the pair is held in Vault until the owner decides how the ops agents receive it |
+
+Until those readers exist, intake reports `external_secret_refreshed: false`
+for both, which is expected.
+
+**Before the first run, in order:**
+
+1. The Janua image that reserves `phynd-crm-pipeline:read` (janua#799,
+   `reserved_oauth_boundaries.py`) is promoted. Before that, Janua refuses the
+   scope.
+2. This registry is deployed (the merge rebuilds switchyard-api and pins its
+   digest in `infra/k8s/production`), and the CLI carries the two platforms
+   (`make -C ~/labspace/enclii install-cli` from an up-to-date `main`, or
+   `--registry config/ecosystem-oidc-provision.yaml`).
+3. For `ops-agents-phynd-crm-pipeline` only: `secret/ops-agents` is a new path
+   in the writer policy. Re-apply it first, or the run rotates the Janua secret
+   and then 403s on the Vault merge:
+
+   ```bash
+   ASSERT_PATH=ops-agents scripts/apply-switchyard-vault-policy-remote.sh
+   ```
+
+```bash
+enclii --profile admin secrets provision oidc --platform selva-phynd-crm-pipeline --intake-profile default --json --reason "Selva reads the CRM pipeline over MCP"
+```
+
+```bash
+enclii --profile admin secrets provision oidc --platform ops-agents-phynd-crm-pipeline --intake-profile default --json --reason "ops agents read the CRM pipeline over MCP"
+```
+
+Each first run creates the client and prints its `jnc_…` id. Pin it in both
+registry copies, then list it in phynd-crm's `PHYND_CRM_MCP_READ_CLIENTS`
+(`<jnc_id>@1a6233ef-185f-43ee-9181-e2591fbb2643`). A provisioned client reads
+nothing until it is listed there and `PHYND_CRM_MCP_ENABLED` is `true`; both
+are the owner's switches on the phynd-crm web deployment (phynd-crm
+`docs/NATIVE_MCP.md`).
+
 ### Remediation wave: phynd-crm edge, crawler caller keys, Dhanam metering key (2026-11-09)
 
 Three verifier-owned credentials. Each is minted or filed where it is

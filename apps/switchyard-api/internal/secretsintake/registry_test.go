@@ -13,7 +13,7 @@ import (
 func TestLoadRegistry(t *testing.T) {
 	reg, err := LoadRegistry()
 	require.NoError(t, err)
-	assert.Len(t, reg, 137)
+	assert.Len(t, reg, 139)
 	assert.Contains(t, reg, "ceq/vast-api-key")
 	assert.Contains(t, reg, "karafiel/web-oidc-janua")
 	adminSession := reg["karafiel/admin-session"]
@@ -38,7 +38,7 @@ func TestGetTarget(t *testing.T) {
 func TestListTargetsSorted(t *testing.T) {
 	list, err := ListTargets()
 	require.NoError(t, err)
-	require.Len(t, list, 137)
+	require.Len(t, list, 139)
 	for i := 1; i < len(list); i++ {
 		assert.Less(t, list[i-1].ID, list[i].ID, "targets should be sorted by id")
 	}
@@ -128,6 +128,7 @@ func TestListTargetsSorted(t *testing.T) {
 		"nauta/phynd-crm-oauth",
 		"nauta/symbiosis-hcm-oauth",
 		"nauta/symbiosis-hcm-token",
+		"ops-agents/phynd-crm-pipeline-client",
 		"phynd-crm/convergence",
 		"phynd-crm/oidc-janua",
 		"platform/comms-resend-api-key",
@@ -137,6 +138,7 @@ func TestListTargetsSorted(t *testing.T) {
 		"pravara-mes/yantra4d-step-reader",
 		"routecraft/billing-relay",
 		"selva/dhanam-cost-events-client",
+		"selva/phynd-crm-pipeline-client",
 		"selva/pravara-mes-client",
 		"selva/yantra4d-client",
 		"symbiosis-hcm/dhanam-cost-events-client",

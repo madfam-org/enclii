@@ -1625,6 +1625,49 @@ targets:
     generate:
       disabled: true
 
+  # PhyndCRM native MCP readers (2026-11-14, RFC 0051 ruling M3). The pairs of
+  # the two ecosystem-oidc platforms selva-phynd-crm-pipeline and
+  # ops-agents-phynd-crm-pipeline (audience phynd-crm, scope
+  # phynd-crm-pipeline:read, org-bound to madfam-ecosystem), written ONLY by
+  # `enclii secrets provision oidc --platform <id>`; no human types either value
+  # and nothing is generated here. LOWERCASE keys
+  # phynd_crm_pipeline_client_id / _client_secret. Same layout as the COGS MCP
+  # consumers (enclii#946).
+  #
+  # Selva: secret/selva, its own DEDICATED planned ExternalSecret
+  # selva-phynd-crm-pipeline-client in namespace selva, so the unprovisioned
+  # pair never holds another pair's Secret (ESO is all-or-nothing per
+  # ExternalSecret). selva-office does not declare it yet; until it does, intake
+  # reports external_secret_refreshed=false, which is expected.
+  #
+  # Ops agents: the path secret/ops-agents (proposed in enclii#946; the owner
+  # decides), with no namespace and no ExternalSecret, because no ops-agent
+  # runtime reads Vault today. The pair is held in Vault until the owner decides
+  # how the ops agents receive it. Re-apply the Vault policy (ASSERT_PATH=ops-agents
+  # scripts/apply-switchyard-vault-policy-remote.sh) before the first ops-agents
+  # run, or the run rotates the Janua secret and then 403s on the Vault merge.
+  selva/phynd-crm-pipeline-client:
+    label: Selva → PhyndCRM MCP read client
+    description: Janua client_credentials pair (selva-phynd-crm-pipeline, scope phynd-crm-pipeline:read, org-bound to madfam-ecosystem) Selva's agent fleet uses to read PhyndCRM's native MCP (POST /mcp, read-only pipeline tools, phynd-crm#131, RFC 0051). Filed by `enclii secrets provision oidc --platform selva-phynd-crm-pipeline`.
+    vault_path: secret/selva
+    namespace: selva
+    external_secret: selva-phynd-crm-pipeline-client  # pragma: allowlist secret
+    keys:
+      - phynd_crm_pipeline_client_id
+      - phynd_crm_pipeline_client_secret
+    generate:
+      disabled: true
+
+  ops-agents/phynd-crm-pipeline-client:
+    label: Ops agents → PhyndCRM MCP read client
+    description: Janua client_credentials pair (ops-agents-phynd-crm-pipeline, scope phynd-crm-pipeline:read, org-bound to madfam-ecosystem) the MADFAM ops agents use to read PhyndCRM's native MCP (POST /mcp, read-only pipeline tools, phynd-crm#131, RFC 0051). Filed by `enclii secrets provision oidc --platform ops-agents-phynd-crm-pipeline`.
+    vault_path: secret/ops-agents
+    keys:
+      - phynd_crm_pipeline_client_id
+      - phynd_crm_pipeline_client_secret
+    generate:
+      disabled: true
+
   # Isolated training/staging custody: values never stored in source.
   crea-sim/ui-oidc:
     label: Training UI human OAuth client
