@@ -744,6 +744,49 @@ func TestLoadRegistry_cvHCMBenchmarksMachineEdge(t *testing.T) {
 	}, buildIntakeValues(reg.Issuer, "jnc_fixture", "fixture-secret", p))
 }
 
+func TestLoadRegistry_cvTlacuiloMachineEdge(t *testing.T) {
+	reg, err := LoadRegistry("")
+	require.NoError(t, err)
+
+	p, ok := reg.Platforms["cv-tlacuilo"]
+	require.True(t, ok, "platform cv-tlacuilo missing")
+	assert.Equal(t, "cv/tlacuilo-client", p.IntakeTarget)
+	assert.Empty(t, p.SessionIntakeTarget, "a machine edge has no session secret")
+	require.Equal(t, map[string]string{
+		"tlacuilo_client_id":     "client_id",
+		"tlacuilo_client_secret": "client_secret",
+	}, p.IntakeKeyMap)
+	for k := range p.IntakeKeyMap {
+		assert.Equal(t, strings.ToLower(k), k,
+			"intake key %q must be lowercase to match cv's cv-tlacuilo-client ExternalSecret property", k)
+	}
+
+	jc := p.JanuaClient
+	assert.Equal(t, "cv-tlacuilo", jc.Name)
+	assert.Equal(t, "cv-tlacuilo", jc.ClientKey)
+	assert.Equal(t, "tlacuilo", jc.Audience, "tlacuilo's own janua_audience")
+	assert.Empty(t, jc.OrganizationID, "a reading belongs to no tenant; the edge is platform-admin")
+	assert.Empty(t, jc.ClientID, "pinned only after the first provision run")
+	assert.Equal(t, []string{"tlacuilo:extract"}, jc.AllowedScopes)
+	assert.Regexp(t, `^[a-z][a-z0-9._-]*:[a-z][a-z0-9_-]*$`, jc.AllowedScopes[0],
+		"Janua registers only namespace:action scopes")
+	assert.Equal(t, []string{"client_credentials"}, jc.GrantTypes)
+	assert.Empty(t, jc.RedirectURIs, "a client_credentials client has no browser leg")
+	require.NotNil(t, jc.IsConfidential)
+	assert.True(t, jc.confidential())
+	assert.False(t, p.publicLogin())
+	assert.NotEmpty(t, jc.Description)
+
+	kind, err := jc.kind()
+	require.NoError(t, err)
+	assert.Equal(t, machineClient, kind)
+
+	assert.Equal(t, map[string]string{
+		"tlacuilo_client_id":     "jnc_fixture",
+		"tlacuilo_client_secret": "fixture-secret",
+	}, buildIntakeValues(reg.Issuer, "jnc_fixture", "fixture-secret", p))
+}
+
 // symbiosis-hcm-karafiel: HCM's API and worker calling Karafiel for contract
 // drafts (legal:contractor-draft, legal:employment-draft) and, later, CFDI
 // (fiscal:invoice), and a contractor's constancia de situación fiscal
@@ -914,7 +957,7 @@ func TestReviewedRegistryGrantKindsDoNotDependOnTenant(t *testing.T) {
 		}
 	}
 	require.Equal(t, 25, humans)   // Includes the two isolated Karafiel staging login clients and the eight SSO wave 1 clients.
-	require.Equal(t, 26, machines) // Includes the three RFC 0050 COGS writer/reader edges (HCM → Nauta, HCM → Dhanam, Pravara → Dhanam), Karafiel's bank-ledger reader and scheduled-payments writer, and Selva's cost-events writer.
+	require.Equal(t, 27, machines) // Includes cv → tlacuilo, the three RFC 0050 COGS writer/reader edges (HCM → Nauta, HCM → Dhanam, Pravara → Dhanam), Karafiel's bank-ledger reader and scheduled-payments writer, and Selva's cost-events writer.
 	p := reg.Platforms["selva-yantra4d"]
 	require.Empty(t, p.JanuaClient.OrganizationID)
 	kind, err := p.JanuaClient.kind()

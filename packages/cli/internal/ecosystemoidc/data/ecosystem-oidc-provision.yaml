@@ -1134,6 +1134,49 @@ platforms:
         - client_credentials
 
   # ---------------------------------------------------------------------------
+  # cv → tlacuilo (2026-11-14). MADFAM CV's server sends ONE page image of a job
+  # posting at a time (a photo, a screenshot or a page of a scanned PDF that a
+  # signed-in person chose to have read) to tlacuilo's POST /v1/extractions,
+  # lane `text_document`, and gets the text lines back. Neither side keeps the
+  # image or the text. One edge, one client, one scope: client_credentials
+  # only, no browser leg.
+  #
+  # audience `tlacuilo` is tlacuilo's own janua_audience; `tlacuilo:extract` is
+  # the one role its API requires (read from the token's scope). PLATFORM-ADMIN,
+  # no organization_id: a reading belongs to no tenant, and tlacuilo uses the
+  # organization only to scope which job records a caller may read back, which
+  # this edge never does (sync mode). The scope has ONE colon because Janua
+  # registers only `namespace:action`.
+  #
+  # ORDER: Janua must have RESERVED the audience and the scope (janua#800,
+  # merged AND promoted) before this client is provisioned; until then any
+  # organization admin could register a client carrying them.
+  #
+  # The pair lands at secret/cv through cv/tlacuilo-client (LOWERCASE keys),
+  # read by cv's dedicated cv-tlacuilo-client ExternalSecret, which cv adds in
+  # its activation PR only after this client exists.
+  #
+  # NOT pinned yet: the first provision run prints the client id; pin it here
+  # (both copies) so later runs reconcile this client instead of creating a
+  # twin.
+  # ---------------------------------------------------------------------------
+  cv-tlacuilo:
+    intake_target: cv/tlacuilo-client
+    intake_key_map:
+      tlacuilo_client_id: client_id
+      tlacuilo_client_secret: client_secret  # pragma: allowlist secret
+    janua_client:
+      name: cv-tlacuilo
+      client_key: cv-tlacuilo  # pragma: allowlist secret
+      audience: tlacuilo
+      description: Machine edge (client_credentials) from MADFAM CV's server to tlacuilo's text_document lane. Platform-admin, scope tlacuilo:extract only; sends one page image of a job posting, never a person's identity or profile, and neither side stores it.
+      is_confidential: true
+      allowed_scopes:
+        - tlacuilo:extract
+      grant_types:
+        - client_credentials
+
+  # ---------------------------------------------------------------------------
   # symbiosis-hcm → Karafiel (2026-11-02). HCM's API and Celery worker ask
   # Karafiel for contract drafts as a MACHINE: contractor retainer agreements
   # (symbiosis-hcm #193, scope legal:contractor-draft, Karafiel #328) and

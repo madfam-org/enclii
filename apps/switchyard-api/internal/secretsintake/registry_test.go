@@ -13,7 +13,7 @@ import (
 func TestLoadRegistry(t *testing.T) {
 	reg, err := LoadRegistry()
 	require.NoError(t, err)
-	assert.Len(t, reg, 137)
+	assert.Len(t, reg, 138)
 	assert.Contains(t, reg, "ceq/vast-api-key")
 	assert.Contains(t, reg, "karafiel/web-oidc-janua")
 	adminSession := reg["karafiel/admin-session"]
@@ -38,7 +38,7 @@ func TestGetTarget(t *testing.T) {
 func TestListTargetsSorted(t *testing.T) {
 	list, err := ListTargets()
 	require.NoError(t, err)
-	require.Len(t, list, 137)
+	require.Len(t, list, 138)
 	for i := 1; i < len(list); i++ {
 		assert.Less(t, list[i-1].ID, list[i].ID, "targets should be sorted by id")
 	}
@@ -75,6 +75,7 @@ func TestListTargetsSorted(t *testing.T) {
 		"creator-census/web-session",
 		"creator-census/youtube-key",
 		"cv/hcm-client",
+		"cv/tlacuilo-client",
 		"cv/web-oidc",
 		"cv/web-session",
 		"data/pgbouncer-auth",
@@ -728,6 +729,28 @@ func TestCvHCMClientTarget(t *testing.T) {
 	assert.NotEqual(t, "cv-web-auth", tgt.ExternalSecret)
 	assert.NotEqual(t, "cv-secrets", tgt.ExternalSecret)
 	assert.Equal(t, []string{"hcm_client_id", "hcm_client_secret"}, tgt.Keys)
+	for _, k := range tgt.Keys {
+		assert.Equal(t, strings.ToLower(k), k, "Vault stores lowercase")
+	}
+	assert.NotEmpty(t, tgt.Label)
+	assert.NotEmpty(t, tgt.Description)
+}
+
+// cv → tlacuilo (2026-11-14): the client_credentials pair of ecosystem-oidc
+// platform cv-tlacuilo lands at secret/cv through its OWN ExternalSecret,
+// cv-tlacuilo-client, never cv-web-auth, cv-hcm-client or the onboarding Secret
+// cv-secrets. Written only by the OIDC provisioner, so the target generates
+// nothing.
+func TestCvTlacuiloClientTarget(t *testing.T) {
+	tgt, err := GetTarget("cv/tlacuilo-client")
+	require.NoError(t, err)
+	assert.Equal(t, "secret/cv", tgt.VaultPath)
+	assert.Equal(t, "cv", tgt.Namespace)
+	assert.Equal(t, "cv-tlacuilo-client", tgt.ExternalSecret)
+	assert.NotEqual(t, "cv-web-auth", tgt.ExternalSecret)
+	assert.NotEqual(t, "cv-hcm-client", tgt.ExternalSecret)
+	assert.NotEqual(t, "cv-secrets", tgt.ExternalSecret)
+	assert.Equal(t, []string{"tlacuilo_client_id", "tlacuilo_client_secret"}, tgt.Keys)
 	for _, k := range tgt.Keys {
 		assert.Equal(t, strings.ToLower(k), k, "Vault stores lowercase")
 	}
