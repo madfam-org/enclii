@@ -123,7 +123,7 @@ func (h *Handler) ProvisionSharedIntakeGroup(c *gin.Context) {
 		prop := sharedGroupProperty(t)
 		statuses[i] = sharedGroupMemberStatus{
 			TargetID: t.ID, VaultPath: t.VaultPath, Key: prop, Namespace: t.Namespace,
-			ExternalSecret: t.ExternalSecret, Result: sharedGroupMemberNotAttempted,
+			ExternalSecret: t.ExternalSecret, Result: sharedGroupMemberNotAttempted, // pragma: allowlist secret -- ExternalSecret object name; not a credential
 		}
 		current, err := vault.GetSecretData(ctx, t.VaultPath)
 		if err != nil {
@@ -217,7 +217,7 @@ func (h *Handler) ProvisionSharedIntakeGroup(c *gin.Context) {
 			"enclii.dev/secret-intake-target": t.ID,
 			"enclii.dev/secret-intake-source": "generated",
 		}, "")
-		statuses[i].ExternalSecretRefreshed = refreshErr == nil
+		statuses[i].ExternalSecretRefreshed = refreshErr == nil // pragma: allowlist secret -- boolean refresh flag; not a credential
 	}
 
 	actorSub, _ := c.Get("user_id")
