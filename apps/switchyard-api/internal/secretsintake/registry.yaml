@@ -1375,6 +1375,38 @@ targets:
     generate:
       disabled: true
 
+  # phynd-crm staff access (2026-11-16, phynd-crm#141): two configuration
+  # values, not credentials, held in Vault only so identity subjects stay out
+  # of the public repo. PHYND_BOOTSTRAP_STAFF names which identity subjects
+  # get which CRM role on sign-in; PHYND_CRM_DEFAULT_TASK_OWNER_ID owns tasks
+  # the system creates for a contact with no owner (ruling V5).
+  #
+  # Two targets and two dedicated ExternalSecrets (both mounted optional) so a
+  # missing property parks only its own Secret, never phynd-crm-secrets.
+  # Supplied-only: a random value would name nobody. After a change, wait for
+  # the sync and restart phynd-crm-web (env is read at container start).
+  phynd-crm/staff-bootstrap:
+    label: phynd-crm staff bootstrap (role per identity subject)
+    description: PHYND_BOOTSTRAP_STAFF, comma-separated role:sub:<subject> entries that link or create CRM users with that role at sign-in. Configuration, not a credential. Supplied-only.
+    vault_path: secret/phynd-crm
+    namespace: phynd-crm
+    external_secret: phynd-crm-staff-bootstrap  # pragma: allowlist secret
+    keys:
+      - bootstrap_staff
+    generate:
+      disabled: true
+
+  phynd-crm/default-task-owner:
+    label: phynd-crm default owner for system-created tasks
+    description: PHYND_CRM_DEFAULT_TASK_OWNER_ID, the CRM owner id given to tasks the system creates when the contact has no owner. Configuration, not a credential. Supplied-only.
+    vault_path: secret/phynd-crm
+    namespace: phynd-crm
+    external_secret: phynd-crm-default-task-owner  # pragma: allowlist secret
+    keys:
+      - default_task_owner_id
+    generate:
+      disabled: true
+
   converge-dash/phynd-crm-token:
     label: converge-dash phynd-crm convergence API bearer (caller copy)
     description: PHYND_CRM_API_TOKEN, the bearer converge-dash presents to phynd-crm's convergence read API. Must equal phynd-crm/convergence; supply the same value to both targets. Supplied-only.
