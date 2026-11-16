@@ -1,6 +1,6 @@
 # Secret Intake (chat-safe credential handoff)
 
-**Last Updated:** 2026-11-11
+**Last Updated:** 2026-11-15
 
 Isolated training and API-only Janua staging targets are documented in
 [Isolated training custody](ISOLATED_TRAINING_CUSTODY.md). These declarations
@@ -41,6 +41,11 @@ require separate live provisioning and readiness receipts.
 > **Boundary checkpoint (2026-10-11, platform on-call):** The Cotiza web
 > session section adds a target id, a key NAME, a Vault path and Kubernetes
 > object names only. The value is minted inside Switchyard and appears nowhere.
+>
+> **Boundary checkpoint (2026-11-15, platform on-call):** The phynd-crm
+> lead-intake section adds a shared group id, target ids, key NAMES, Vault
+> paths and Kubernetes object names only. The value is minted inside
+> Switchyard and appears nowhere.
 
 Operators supply production credentials through Enclii without pasting values into
 agent chat or git. Switchyard merges keys into Vault once; agents poll `intake_id`
@@ -92,6 +97,10 @@ Canonical routing: `apps/switchyard-api/internal/secretsintake/registry.yaml`
 | `dhanam/referral-webhook-secret` | `secret/dhanam/referral` | `referral_webhook_secret` (generated; same section) |
 | `madfam-crawler/api-key-<caller>` | `secret/madfam-crawler` | `api_key_<caller>` for forgesight, fortuna, tulana, rondelio, avala, tezca (generated; same section) |
 | `nauta/phynd-crm-oauth` | `secret/nauta` | `phynd_crm_oauth_client_id`, `phynd_crm_oauth_client_secret`: **provisioned, never submitted** (`enclii secrets provision oidc --platform nauta-phynd-crm`; same section) |
+| `phynd-crm/lead-intake` | `secret/phynd-crm` | `lead_intake_secret` (shared group `phynd-crm/lead-intake-hmac`: one generated value for the four rows; see [phynd-crm lead-intake key](#phynd-crm-lead-intake-key-2026-11-15)) |
+| `kalya/phynd-crm-lead-intake` | `secret/kalya` | `phynd_crm_lead_intake_secret` (same group and section) |
+| `madfam-site/phynd-crm-lead-intake` | `secret/madfam-site` | `phynd_crm_lead_intake_secret` (same group and section) |
+| `digifab-quoting/phynd-crm-lead-intake` | `secret/digifab-quoting` | `phynd_crm_lead_intake_secret` (same group and section) |
 | `platform/comms-resend-api-key` | `secret/comms` | `resend-api-key` → `resend_api_key` in Vault |
 
 After `platform/comms-resend-api-key` intake, fan-out to all consumers:
@@ -1041,6 +1050,66 @@ first. The caller-side moves (wire
 each ExternalSecret, restart, retire the legacy `API_KEYS` entry) are in
 madfam-crawler `docs/CALLER_KEYS.md`.
 
+### phynd-crm lead-intake key (2026-11-15)
+
+Three services sign the lead events they send to phynd-crm's
+`POST /api/webhooks/lead-intake` with one shared HMAC key, and phynd-crm
+verifies it. All four must hold the **same** value; a mismatch makes every
+delivery from that sender fail verification.
+
+| Role | Target | Property | ExternalSecret (namespace) | Env var | Restart |
+|---|---|---|---|---|---|
+| verifier | `phynd-crm/lead-intake` | `secret/phynd-crm` `lead_intake_secret` | `phynd-crm-lead-intake` (`phynd-crm`) | `PHYND_CRM_LEAD_INTAKE_SECRET` | `deployment/phynd-crm-web` |
+| sender (Kalya) | `kalya/phynd-crm-lead-intake` | `secret/kalya` `phynd_crm_lead_intake_secret` | `kalya-phynd-crm-lead-intake` (`kalya`) | `PHYND_CRM_LEAD_INTAKE_SECRET` | `deployment/kalya-web` |
+| sender (madfam-site) | `madfam-site/phynd-crm-lead-intake` | `secret/madfam-site` `phynd_crm_lead_intake_secret` | `madfam-site-phynd-crm-lead-intake` (`madfam-site`) | `PHYND_CRM_LEAD_INTAKE_SECRET` | `deployment/madfam-web` |
+| sender (Cotiza) | `digifab-quoting/phynd-crm-lead-intake` | `secret/digifab-quoting` `phynd_crm_lead_intake_secret` | `digifab-quoting-phynd-crm-lead-intake` (`digifab-quoting`) | `PHYNDCRM_LEAD_INTAKE_SECRET` | `deployment/digifab-quoting-api` |
+
+No person holds the value. The four targets form the shared group
+`phynd-crm/lead-intake-hmac`: one command makes Switchyard mint 32 random bytes
+(hex, 64 characters) and write them to all four, verifier first, each with a
+Vault compare-and-set. A member refuses a single-target `submit`, generated or
+supplied, so the copies cannot drift. Each target has its own ExternalSecret, so
+a property not yet in Vault never parks a Secret a running service already
+reads. All four paths are already in the writer policy; no policy re-apply is
+needed.
+
+**Order.** The command does not need the ExternalSecrets to exist: it writes
+Vault first and treats a missing ExternalSecret as "not refreshed"
+(`external_secret_refreshed: false`), which is not an error. So: (1) merge and
+deploy this registry change (switchyard-api digest bump) and a CLI built from
+it; (2) run the command; (3) merge each service's ExternalSecret manifest,
+which syncs on creation because the property already exists; (4) restart.
+
+```bash
+make -C ~/labspace/enclii install-cli CLI_INSTALL_DIR=$HOME/.local/bin
+enclii secrets intake group phynd-crm/lead-intake-hmac --reason "phynd-crm lead-intake HMAC key"
+# prints each member: written | unchanged | failed | not_attempted; exit 0 only when all four hold the value
+enclii secrets intake status int_<id>
+```
+
+- **A member failed** (exit nonzero, `status: partial`): fix the cause and
+  re-run the same command. It keeps the value already written and completes
+  the rest. Re-running a complete group writes nothing.
+- **Rotation** is explicit: add `--rotate`. It writes a new value to all four.
+  If a rotation is interrupted, the members hold different values; a plain run
+  then refuses (409, nothing written) and only `--rotate` converges them.
+  Deliveries signed with the old value fail between the verifier's restart and
+  each sender's.
+
+**Restart every service after its Secret syncs:** each reads the key from its
+environment at container start, so a running pod keeps the old value (or none).
+Check `enclii ops secrets external -n <namespace>` until the ExternalSecret is
+Ready, then restart phynd-crm first and the senders after it (deployments in
+the table). `enclii ops pods restart` reaches only namespaces in
+`ENCLII_OPS_RESTART_NAMESPACES`; today that covers `digifab-quoting` and not
+`phynd-crm`, `kalya` or `madfam-site`, so restart those through their own
+redeploy until the allowlist gains them (an Enclii adapter gap):
+
+```bash
+enclii ops pods restart deployment/digifab-quoting-api -n digifab-quoting
+enclii ops pods restart deployment/digifab-quoting-api -n digifab-quoting --expect-uid <reviewed-uid> \
+  --apply --reason "pick up the phynd-crm lead-intake key"
+```
 
 Add targets via PR to the registry — do not hardcode paths in runbooks. A new
 `vault_path` also needs its block in `scripts/provision-switchyard-vault-writer.sh`;
@@ -1054,8 +1123,9 @@ in-cluster against `vault-0`). A path in git but not re-applied 403s exactly lik
 a path that was never added. See
 [Vault Operations](./VAULT_OPERATIONS.md#switchyard-vault-writer-secret-intake--vault-backfill).
 
-Not every policy path has a target. `secret/kalya` is **policy-only**: nothing
-intakes it, but `enclii secrets provision kalya-feed` reads
+Not every policy path is written only by intake. `secret/kalya` has intake
+targets (`kalya/internal-api-key`, `kalya/phynd-crm-lead-intake`), and
+`enclii secrets provision kalya-feed` also reads
 `secret/kalya:internal_api_key` to authorize minting the feed token before
 writing the client portal's Vault path and `secret/nauta`. The parity check scans
 switchyard-api Go sources too, so a provisioner's Vault literal cannot drift out
@@ -1094,6 +1164,12 @@ enclii secrets intake submit symbiosis-hcm/<portal>-absence-feed \
   --reason "HCM absence feed bootstrap"
 # prompts (masked) for <portal>_absence_feed_url only
 ```
+
+One value that several targets must hold identically (one service verifies a
+key, others sign with it) is a **shared group**: `enclii secrets intake group
+<group>` mints it once and writes it to every member; see the
+[CLI reference](../cli/commands/secrets.md#group-one-value-for-several-targets)
+and [phynd-crm lead-intake key](#phynd-crm-lead-intake-key-2026-11-15).
 
 A key cannot be both generated and supplied — that is a `400`, not a silent
 preference for one of them. `--generate` rejects any key the target does not
@@ -1155,8 +1231,9 @@ Tell agents only the `intake_id` — never the secret value.
 
 | Method | Path | Notes |
 |--------|------|-------|
-| `GET` | `/v1/secrets/intake/targets` | Public-safe target metadata |
+| `GET` | `/v1/secrets/intake/targets` | Public-safe target and shared-group metadata |
 | `POST` | `/v1/secrets/intake` | Write-only; body has values once, or `generate: ["key"]` for server-side minting |
+| `POST` | `/v1/secrets/intake/groups` | `{"group","reason","rotate"}`: one generated value to every member of a shared group; 200 complete, 207 partial, 409 members out of step |
 | `GET` | `/v1/secrets/intake/:id` | Status/metadata only |
 
 Errors: `503 vault_writer_disabled` (no `vault-credentials`), `404 unknown_target`,
