@@ -8,8 +8,8 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// PhyndCRM native MCP readers (2026-11-14, RFC 0051 M3: Selva's agent fleet
-// and the ops agents, one client each). PhyndCRM's POST /mcp (phynd-crm#131)
+// PhyndCRM native MCP reader (2026-11-14, RFC 0051 M3; owner ruling V2: the
+// ops agents only, no Selva client). PhyndCRM's POST /mcp (phynd-crm#131)
 // accepts only aud `phynd-crm`, scope `phynd-crm-pipeline:read` matched
 // exactly and an org_id equal to its PHYND_CRM_MACHINE_JANUA_ORG_ID, so any
 // drift here leaves a provisioned client that phynd refuses. The scope is NOT
@@ -18,7 +18,7 @@ func TestLoadRegistry_phyndCRMMCPReaderMachineEdges(t *testing.T) {
 	reg, err := LoadRegistry("")
 	require.NoError(t, err)
 
-	for _, consumer := range []string{"selva", "ops-agents"} {
+	for _, consumer := range []string{"ops-agents"} {
 		platform := consumer + "-phynd-crm-pipeline"
 		p, ok := reg.Platforms[platform]
 		require.True(t, ok, "platform %s missing", platform)

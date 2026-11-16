@@ -1432,6 +1432,68 @@ targets:
     generate:
       disabled: true
 
+  # phynd-crm lead-intake HMAC key (2026-11-15): the one value three senders
+  # (Kalya bookings, the madfam-site contact forms, Cotiza quote requests) sign
+  # their lead events with and phynd-crm verifies on
+  # POST /api/webhooks/lead-intake. phynd-crm's copy is secret/phynd-crm
+  # lead_intake_secret, projected by the dedicated ExternalSecret
+  # phynd-crm-lead-intake as PHYND_CRM_LEAD_INTAKE_SECRET; each sender holds the
+  # SAME value at its own path, property phynd_crm_lead_intake_secret, through
+  # its own dedicated ExternalSecret.
+  #
+  # Four targets because intake writes one Vault path per target, and four
+  # dedicated ExternalSecrets because ESO is all-or-nothing: a property missing
+  # from Vault would otherwise park a Secret a running service already reads.
+  # No human holds the value: the shared group phynd-crm/lead-intake-hmac
+  # (groups: at the end of this file) mints it once and writes it to all four
+  # (`enclii secrets intake group phynd-crm/lead-intake-hmac`). Each member
+  # refuses a single-target submit, generated or supplied, so the copies cannot
+  # drift. Rotation is the same command with --rotate, then a restart of every
+  # service (env is read at container start).
+  phynd-crm/lead-intake:
+    label: phynd-crm lead-intake HMAC key (verifier copy)
+    description: PHYND_CRM_LEAD_INTAKE_SECRET, the HMAC key phynd-crm checks on POST /api/webhooks/lead-intake. Holds the same value as kalya/phynd-crm-lead-intake, madfam-site/phynd-crm-lead-intake and digifab-quoting/phynd-crm-lead-intake; written only by the shared group phynd-crm/lead-intake-hmac (`enclii secrets intake group phynd-crm/lead-intake-hmac`), never by a single-target submit.
+    vault_path: secret/phynd-crm
+    namespace: phynd-crm
+    external_secret: phynd-crm-lead-intake  # pragma: allowlist secret
+    keys:
+      - lead_intake_secret
+    generate:
+      group: phynd-crm/lead-intake-hmac
+
+  kalya/phynd-crm-lead-intake:
+    label: Kalya phynd-crm lead-intake HMAC key (sender copy)
+    description: PHYND_CRM_LEAD_INTAKE_SECRET, the HMAC key Kalya signs its lead events to phynd-crm with. Holds the same value as phynd-crm/lead-intake, madfam-site/phynd-crm-lead-intake and digifab-quoting/phynd-crm-lead-intake; written only by the shared group phynd-crm/lead-intake-hmac (`enclii secrets intake group phynd-crm/lead-intake-hmac`), never by a single-target submit.
+    vault_path: secret/kalya
+    namespace: kalya
+    external_secret: kalya-phynd-crm-lead-intake  # pragma: allowlist secret
+    keys:
+      - phynd_crm_lead_intake_secret
+    generate:
+      group: phynd-crm/lead-intake-hmac
+
+  madfam-site/phynd-crm-lead-intake:
+    label: madfam-site phynd-crm lead-intake HMAC key (sender copy)
+    description: PHYND_CRM_LEAD_INTAKE_SECRET, the HMAC key the madfam-site contact forms sign their lead events to phynd-crm with. Holds the same value as phynd-crm/lead-intake, kalya/phynd-crm-lead-intake and digifab-quoting/phynd-crm-lead-intake; written only by the shared group phynd-crm/lead-intake-hmac (`enclii secrets intake group phynd-crm/lead-intake-hmac`), never by a single-target submit.
+    vault_path: secret/madfam-site
+    namespace: madfam-site
+    external_secret: madfam-site-phynd-crm-lead-intake  # pragma: allowlist secret
+    keys:
+      - phynd_crm_lead_intake_secret
+    generate:
+      group: phynd-crm/lead-intake-hmac
+
+  digifab-quoting/phynd-crm-lead-intake:
+    label: Cotiza phynd-crm lead-intake HMAC key (sender copy)
+    description: PHYNDCRM_LEAD_INTAKE_SECRET, the HMAC key Cotiza signs its quote-request lead events to phynd-crm with. Holds the same value as phynd-crm/lead-intake, kalya/phynd-crm-lead-intake and madfam-site/phynd-crm-lead-intake; written only by the shared group phynd-crm/lead-intake-hmac (`enclii secrets intake group phynd-crm/lead-intake-hmac`), never by a single-target submit.
+    vault_path: secret/digifab-quoting
+    namespace: digifab-quoting
+    external_secret: digifab-quoting-phynd-crm-lead-intake  # pragma: allowlist secret
+    keys:
+      - phynd_crm_lead_intake_secret
+    generate:
+      group: phynd-crm/lead-intake-hmac
+
   # Avala Janua client (SSO wave 1, 2026-10-27): the confidential pair of
   # ecosystem-oidc platform avala. Avala still reads its pair from a hand-made
   # Secret; this target writes secret/avala for the PLANNED avala-janua-oidc
@@ -1625,20 +1687,14 @@ targets:
     generate:
       disabled: true
 
-  # PhyndCRM native MCP readers (2026-11-14, RFC 0051 ruling M3). The pairs of
-  # the two ecosystem-oidc platforms selva-phynd-crm-pipeline and
-  # ops-agents-phynd-crm-pipeline (audience phynd-crm, scope
-  # phynd-crm-pipeline:read, org-bound to madfam-ecosystem), written ONLY by
-  # `enclii secrets provision oidc --platform <id>`; no human types either value
-  # and nothing is generated here. LOWERCASE keys
+  # PhyndCRM native MCP reader (2026-11-14, RFC 0051 ruling M3; owner ruling V2:
+  # ops agents only, Selva gets no client until it has a concrete need). The pair
+  # of the ecosystem-oidc platform ops-agents-phynd-crm-pipeline (audience
+  # phynd-crm, scope phynd-crm-pipeline:read, org-bound to madfam-ecosystem),
+  # written ONLY by `enclii secrets provision oidc --platform <id>`; no human
+  # types either value and nothing is generated here. LOWERCASE keys
   # phynd_crm_pipeline_client_id / _client_secret. Same layout as the COGS MCP
   # consumers (enclii#946).
-  #
-  # Selva: secret/selva, its own DEDICATED planned ExternalSecret
-  # selva-phynd-crm-pipeline-client in namespace selva, so the unprovisioned
-  # pair never holds another pair's Secret (ESO is all-or-nothing per
-  # ExternalSecret). selva-office does not declare it yet; until it does, intake
-  # reports external_secret_refreshed=false, which is expected.
   #
   # Ops agents: the path secret/ops-agents (proposed in enclii#946; the owner
   # decides), with no namespace and no ExternalSecret, because no ops-agent
@@ -1646,18 +1702,6 @@ targets:
   # how the ops agents receive it. Re-apply the Vault policy (ASSERT_PATH=ops-agents
   # scripts/apply-switchyard-vault-policy-remote.sh) before the first ops-agents
   # run, or the run rotates the Janua secret and then 403s on the Vault merge.
-  selva/phynd-crm-pipeline-client:
-    label: Selva → PhyndCRM MCP read client
-    description: Janua client_credentials pair (selva-phynd-crm-pipeline, scope phynd-crm-pipeline:read, org-bound to madfam-ecosystem) Selva's agent fleet uses to read PhyndCRM's native MCP (POST /mcp, read-only pipeline tools, phynd-crm#131, RFC 0051). Filed by `enclii secrets provision oidc --platform selva-phynd-crm-pipeline`.
-    vault_path: secret/selva
-    namespace: selva
-    external_secret: selva-phynd-crm-pipeline-client  # pragma: allowlist secret
-    keys:
-      - phynd_crm_pipeline_client_id
-      - phynd_crm_pipeline_client_secret
-    generate:
-      disabled: true
-
   ops-agents/phynd-crm-pipeline-client:
     label: Ops agents → PhyndCRM MCP read client
     description: Janua client_credentials pair (ops-agents-phynd-crm-pipeline, scope phynd-crm-pipeline:read, org-bound to madfam-ecosystem) the MADFAM ops agents use to read PhyndCRM's native MCP (POST /mcp, read-only pipeline tools, phynd-crm#131, RFC 0051). Filed by `enclii secrets provision oidc --platform ops-agents-phynd-crm-pipeline`.
@@ -2139,3 +2183,19 @@ targets:
     keys:
       - crea_map_token
       - postgres_password
+
+# Shared groups: one server-generated value that several targets must hold
+# identically. `enclii secrets intake group <id>` mints it once (crypto/rand,
+# hex-encoded, never returned) and writes it to every member with a
+# compare-and-set per path; a re-run keeps the value, --rotate replaces it on
+# every member. See docs/runbooks/SECRET_INTAKE.md ("Shared groups").
+groups:
+  phynd-crm/lead-intake-hmac:
+    label: phynd-crm lead-intake HMAC key
+    description: The HMAC key phynd-crm verifies on POST /api/webhooks/lead-intake and Kalya, madfam-site and Cotiza sign their lead events with. Restart phynd-crm-web, kalya-web, madfam-web and digifab-quoting-api after it is written or rotated.
+    bytes: 32
+    members:
+      - phynd-crm/lead-intake
+      - kalya/phynd-crm-lead-intake
+      - madfam-site/phynd-crm-lead-intake
+      - digifab-quoting/phynd-crm-lead-intake

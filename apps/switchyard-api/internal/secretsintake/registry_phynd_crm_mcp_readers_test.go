@@ -8,8 +8,8 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// PhyndCRM native MCP readers (2026-11-14, RFC 0051 M3: Selva's agent fleet
-// and the ops agents, one client each). Pinned end to end because each link
+// PhyndCRM native MCP reader (2026-11-14, RFC 0051 M3; owner ruling V2: the
+// ops agents only, no Selva client). Pinned end to end because each link
 // fails silently: a wrong Vault path is a write nothing reads, a wrong key is
 // an ExternalSecret that syncs nothing, and a shared ExternalSecret would hold
 // another edge's Secret until this pair exists.
@@ -18,10 +18,6 @@ func TestPhyndCRMMCPReaderClientTargets(t *testing.T) {
 	cases := []struct {
 		id, platform, vaultPath, namespace, externalSecret string
 	}{
-		{
-			id: "selva/phynd-crm-pipeline-client", platform: "selva-phynd-crm-pipeline",
-			vaultPath: "secret/selva", namespace: "selva", externalSecret: "selva-phynd-crm-pipeline-client",
-		},
 		{
 			// No ops-agent runtime reads Vault today: no namespace, no
 			// ExternalSecret; the pair is held until the owner decides.

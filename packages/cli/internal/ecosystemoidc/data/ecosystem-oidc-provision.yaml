@@ -400,9 +400,9 @@ platforms:
         - client_credentials
 
   # ---------------------------------------------------------------------------
-  # PhyndCRM native MCP readers (2026-11-14, RFC 0051 ruling M3: Selva's agent
-  # fleet and the ops agents, ONE client each). Same shape and naming as the
-  # COGS MCP consumers (<consumer>-<scope namespace>): one edge, one client, one
+  # PhyndCRM native MCP reader (2026-11-14, RFC 0051 ruling M3; owner ruling V2:
+  # the ops agents ONLY, Selva gets no client until it has a concrete need). Same shape and naming as
+  # the COGS MCP consumers (<consumer>-<scope namespace>): one edge, one client, one
   # scope, client_credentials only.
   #
   # PhyndCRM's `POST /mcp` (phynd-crm#131, apps/web/src/lib/mcp/) is read-only:
@@ -411,7 +411,7 @@ platforms:
   #   - scope `phynd-crm-pipeline:read`, matched exactly. It is a different
   #     scope from nauta's `phynd-crm-engagements:read` on purpose: neither
   #     opens the other's surface, so never add one to the other's client;
-  #   - org_id = PHYND_CRM_MACHINE_JANUA_ORG_ID, so each client MUST be
+  #   - org_id = PHYND_CRM_MACHINE_JANUA_ORG_ID, so the client MUST be
   #     org-bound to that organization (madfam-ecosystem);
   #   - the client id is listed as `client-id@org-id` in phynd-crm's
   #     PHYND_CRM_MCP_READ_CLIENTS, and PHYND_CRM_MCP_ENABLED is exactly `true`.
@@ -421,13 +421,6 @@ platforms:
   # Janua reserves the audience and, from janua#799, the scope
   # (reserved_oauth_boundaries.py, PHYND_CRM_SCOPES). Provision only after the
   # Janua image that reserves `phynd-crm-pipeline:read` is promoted.
-  #
-  # Selva: the pair lands at secret/selva through
-  # selva/phynd-crm-pipeline-client (LOWERCASE keys), for a DEDICATED
-  # selva-phynd-crm-pipeline-client ExternalSecret in the selva namespace (ESO
-  # is all-or-nothing per ExternalSecret). selva-office does not declare it yet,
-  # nor has code that calls this MCP; until it does, intake reports
-  # external_secret_refreshed=false, which is expected.
   #
   # Ops agents: the pair lands at the path secret/ops-agents (proposed with the
   # COGS consumers in enclii#946; the owner decides), with no namespace and no
@@ -440,23 +433,6 @@ platforms:
   # prints its jnc_… id; pin it here (both copies) and use the same id in
   # PHYND_CRM_MCP_READ_CLIENTS.
   # ---------------------------------------------------------------------------
-  selva-phynd-crm-pipeline:
-    intake_target: selva/phynd-crm-pipeline-client
-    intake_key_map:
-      phynd_crm_pipeline_client_id: client_id
-      phynd_crm_pipeline_client_secret: client_secret  # pragma: allowlist secret
-    janua_client:
-      name: selva-phynd-crm-pipeline
-      client_key: selva-phynd-crm-pipeline  # pragma: allowlist secret
-      audience: phynd-crm
-      description: Machine client (client_credentials) for Selva's agent fleet to read PhyndCRM's native MCP (POST /mcp, phynd-crm#131), read-only tools contacts_search, contacts_get, leads_list, tasks_list_open, deals_list and pipelines_list (RFC 0051 M3). Org-bound to madfam-ecosystem, scope phynd-crm-pipeline:read only. Reads nothing until phynd-crm lists the client in PHYND_CRM_MCP_READ_CLIENTS. Never a browser login.
-      is_confidential: true
-      organization_id: 1a6233ef-185f-43ee-9181-e2591fbb2643
-      allowed_scopes:
-        - phynd-crm-pipeline:read
-      grant_types:
-        - client_credentials
-
   ops-agents-phynd-crm-pipeline:
     intake_target: ops-agents/phynd-crm-pipeline-client
     intake_key_map:

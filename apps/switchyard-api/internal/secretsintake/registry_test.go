@@ -13,7 +13,7 @@ import (
 func TestLoadRegistry(t *testing.T) {
 	reg, err := LoadRegistry()
 	require.NoError(t, err)
-	assert.Len(t, reg, 139)
+	assert.Len(t, reg, 142)
 	assert.Contains(t, reg, "ceq/vast-api-key")
 	assert.Contains(t, reg, "karafiel/web-oidc-janua")
 	adminSession := reg["karafiel/admin-session"]
@@ -38,7 +38,7 @@ func TestGetTarget(t *testing.T) {
 func TestListTargetsSorted(t *testing.T) {
 	list, err := ListTargets()
 	require.NoError(t, err)
-	require.Len(t, list, 139)
+	require.Len(t, list, 142)
 	for i := 1; i < len(list); i++ {
 		assert.Less(t, list[i-1].ID, list[i].ID, "targets should be sorted by id")
 	}
@@ -87,6 +87,7 @@ func TestListTargetsSorted(t *testing.T) {
 		"dhanam/referral-webhook-secret",
 		"dhanam/session-auth",
 		"dhanam/stripe-mx-live",
+		"digifab-quoting/phynd-crm-lead-intake",
 		"digifab-quoting/pravara-intake",
 		"digifab-quoting/web-oidc",
 		"digifab-quoting/web-session",
@@ -99,6 +100,7 @@ func TestListTargetsSorted(t *testing.T) {
 		"forj/pravara-intake",
 		"janua/internal-api-key",
 		"kalya/internal-api-key",
+		"kalya/phynd-crm-lead-intake",
 		"karafiel-staging/admin-oidc",
 		"karafiel-staging/admin-session",
 		"karafiel-staging/core",
@@ -119,6 +121,7 @@ func TestListTargetsSorted(t *testing.T) {
 		"madfam-crawler/api-key-rondelio",
 		"madfam-crawler/api-key-tezca",
 		"madfam-crawler/api-key-tulana",
+		"madfam-site/phynd-crm-lead-intake",
 		"monitoring/alertmanager-smtp",
 		"monitoring/grafana-admin",
 		"nauta/internal-probe-key",
@@ -130,6 +133,7 @@ func TestListTargetsSorted(t *testing.T) {
 		"nauta/symbiosis-hcm-token",
 		"ops-agents/phynd-crm-pipeline-client",
 		"phynd-crm/convergence",
+		"phynd-crm/lead-intake",
 		"phynd-crm/oidc-janua",
 		"platform/comms-resend-api-key",
 		"pravara-mes/asset-shells-publisher-madfam-ecosystem",
@@ -138,7 +142,6 @@ func TestListTargetsSorted(t *testing.T) {
 		"pravara-mes/yantra4d-step-reader",
 		"routecraft/billing-relay",
 		"selva/dhanam-cost-events-client",
-		"selva/phynd-crm-pipeline-client",
 		"selva/pravara-mes-client",
 		"selva/yantra4d-client",
 		"symbiosis-hcm/dhanam-cost-events-client",
