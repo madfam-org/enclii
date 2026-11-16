@@ -1077,6 +1077,25 @@ targets:
       - pravara_intake_client_id
       - pravara_intake_client_secret
 
+  # Forj web Janua login client (2026-11-16). forj.design's /auth/login and
+  # /auth/callback route handlers read JANUA_CLIENT_ID / JANUA_CLIENT_SECRET at
+  # runtime (forj apps/web/src/lib/janua-oidc.ts). forj-secrets is the
+  # onboarding Secret, out of the intake's reach, and forj-service-clients
+  # carries the Pravara intake pair, so the login pair gets its own
+  # ExternalSecret, forj-web-oidc, in forj's infra/k8s/production (property
+  # janua_client_id -> JANUA_CLIENT_ID, janua_client_secret ->
+  # JANUA_CLIENT_SECRET). Written only by `enclii secrets provision oidc
+  # --platform forj-web`; no human types either value.
+  forj/web-oidc:
+    label: Forj web Janua OAuth client
+    description: Forj web (forj.design) Janua confidential client id + secret, filed by `enclii secrets provision oidc --platform forj-web`. No human types either value.
+    vault_path: secret/forj
+    namespace: forj
+    external_secret: forj-web-oidc  # pragma: allowlist secret
+    keys:
+      - janua_client_id
+      - janua_client_secret
+
   # Cotiza's repository and namespace are both digifab-quoting.
   digifab-quoting/pravara-intake:
     label: Cotiza → Pravara MES job intake client (madfam-ecosystem)

@@ -13,7 +13,7 @@ import (
 func TestLoadRegistry(t *testing.T) {
 	reg, err := LoadRegistry()
 	require.NoError(t, err)
-	assert.Len(t, reg, 142)
+	assert.Len(t, reg, 143)
 	assert.Contains(t, reg, "ceq/vast-api-key")
 	assert.Contains(t, reg, "karafiel/web-oidc-janua")
 	adminSession := reg["karafiel/admin-session"]
@@ -38,7 +38,7 @@ func TestGetTarget(t *testing.T) {
 func TestListTargetsSorted(t *testing.T) {
 	list, err := ListTargets()
 	require.NoError(t, err)
-	require.Len(t, list, 142)
+	require.Len(t, list, 143)
 	for i := 1; i < len(list); i++ {
 		assert.Less(t, list[i-1].ID, list[i].ID, "targets should be sorted by id")
 	}
@@ -98,6 +98,7 @@ func TestListTargetsSorted(t *testing.T) {
 		"family-history/web-session",
 		"fashion-cabinet/asset-shells-publisher",
 		"forj/pravara-intake",
+		"forj/web-oidc",
 		"janua/internal-api-key",
 		"kalya/internal-api-key",
 		"kalya/phynd-crm-lead-intake",
@@ -974,6 +975,30 @@ func TestDigifabQuotingWebOIDCTarget(t *testing.T) {
 	}
 	assert.NotEmpty(t, tgt.Label)
 	assert.Contains(t, tgt.Description, "--platform cotiza-web")
+}
+
+// Forj web Janua login client (2026-11-16). Written only by
+// `enclii secrets provision oidc --platform forj-web`, into a DEDICATED
+// ExternalSecret: never forj-secrets (the onboarding Secret; intake cannot
+// reach it) and never forj-service-clients (the Pravara intake pair; ESO syncs
+// all of an ExternalSecret's keys or none, so an unprovisioned login client
+// would hold it). Lowercase, byte for byte what forj-web-oidc maps.
+func TestForjWebOIDCTarget(t *testing.T) {
+	tgt, err := GetTarget("forj/web-oidc")
+	require.NoError(t, err)
+	assert.Equal(t, "secret/forj", tgt.VaultPath)
+	assert.Equal(t, "forj", tgt.Namespace)
+	assert.Equal(t, "forj-web-oidc", tgt.ExternalSecret)
+	assert.NotEqual(t, "forj-secrets", tgt.ExternalSecret,
+		"forj-secrets is the onboarding Secret; intake cannot reach it")
+	assert.NotEqual(t, "forj-service-clients", tgt.ExternalSecret,
+		"the login pair must not gate the Pravara intake pair's ExternalSecret")
+	assert.Equal(t, []string{"janua_client_id", "janua_client_secret"}, tgt.Keys)
+	for _, k := range tgt.Keys {
+		assert.Equal(t, strings.ToLower(k), k, "Vault stores lowercase; an upper-case key would never match the ExternalSecret property")
+	}
+	assert.NotEmpty(t, tgt.Label)
+	assert.Contains(t, tgt.Description, "--platform forj-web")
 }
 
 // Dhanam <-> Karafiel webhook signing keys (owner ruling 2026-10-14): one
