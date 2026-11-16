@@ -12,5 +12,6 @@ import (
 func (h *Handler) registerSecretIntakeRoutes(protected *gin.RouterGroup) {
 	protected.GET("/secrets/intake/targets", h.auth.RequireRole(string(types.RoleAdmin)), h.RequirePlatformAdmin(), h.RequirePlatformOperator(), h.ListSecretIntakeTargets)
 	protected.POST("/secrets/intake", h.auth.RequireRole(string(types.RoleAdmin)), h.RequirePlatformAdmin(), h.RequirePlatformOperator(), h.SubmitSecretIntake)
+	protected.POST("/secrets/intake/groups", h.auth.RequireRole(string(types.RoleAdmin)), h.RequirePlatformAdmin(), h.RequirePlatformOperator(), h.ProvisionSharedIntakeGroup)
 	protected.GET("/secrets/intake/:id", h.auth.RequireRole(string(types.RoleAdmin)), h.RequirePlatformAdmin(), h.RequirePlatformOperator(), h.GetSecretIntakeStatus)
 }

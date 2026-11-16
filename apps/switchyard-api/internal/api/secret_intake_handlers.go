@@ -42,6 +42,10 @@ type secretIntakeStatus struct {
 	CreatedAt               time.Time `json:"created_at"`
 	ExpiresAt               time.Time `json:"expires_at"`
 	Message                 string    `json:"message,omitempty"`
+	// Shared-group runs only: whether the value was generated, kept or
+	// rotated, and what happened at each member. Never the value itself.
+	ValueSource string                    `json:"value_source,omitempty"`
+	Members     []sharedGroupMemberStatus `json:"members,omitempty"`
 }
 
 type secretIntakeSubmitRequest struct {
@@ -72,6 +76,11 @@ func (h *Handler) ListSecretIntakeTargets(c *gin.Context) {
 		Keys        []string                      `json:"keys"`
 		Generation  *secretsintake.GeneratePolicy `json:"generation,omitempty"`
 	}
+	groups, err := secretsintake.ListGroups()
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to load intake registry"})
+		return
+	}
 	out := make([]row, 0, len(targets))
 	for _, t := range targets {
 		out = append(out, row{
@@ -84,7 +93,7 @@ func (h *Handler) ListSecretIntakeTargets(c *gin.Context) {
 			Generation:  t.Generate,
 		})
 	}
-	c.JSON(http.StatusOK, gin.H{"targets": out})
+	c.JSON(http.StatusOK, gin.H{"targets": out, "groups": groups})
 }
 
 // SubmitSecretIntake POST /v1/secrets/intake — write-only; values never returned.
@@ -120,6 +129,16 @@ func (h *Handler) SubmitSecretIntake(c *gin.Context) {
 	target, err := secretsintake.GetTarget(req.Target)
 	if err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": "unknown_target", "message": err.Error()})
+		return
+	}
+
+	// A shared-group member holds the value its group minted for every member;
+	// a single-target write, generated or supplied, would split the copies.
+	if target.Generate != nil && target.Generate.Group != "" {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"error":   "shared_group_member",
+			"message": fmt.Sprintf("target %q is written only by its shared group: enclii secrets intake group %s", target.ID, target.Generate.Group),
+		})
 		return
 	}
 

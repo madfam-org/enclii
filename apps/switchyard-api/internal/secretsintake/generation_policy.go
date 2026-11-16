@@ -15,6 +15,11 @@ const (
 // Typed profiles are deliberately scoped to the isolated staging destination.
 // A copied policy must not silently turn into a production key generator.
 func validateGenerationPolicy(t Target) error {
+	// A shared-group member is generated only by its group, so it carries no
+	// policy of its own that could mint or refuse a value independently.
+	if g := t.Generate; g != nil && g.Group != "" && (g.Disabled || g.Profile != "" || g.Bytes != 0) {
+		return fmt.Errorf("target %q has conflicting generation policy", t.ID)
+	}
 	// Identity authority comes from reviewed operator evidence, never entropy.
 	// Keep these supplied-only destinations fixed just like staging OIDC groups.
 	for _, fixed := range []Target{
