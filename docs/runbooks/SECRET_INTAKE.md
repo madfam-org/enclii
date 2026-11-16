@@ -1,6 +1,6 @@
 # Secret Intake (chat-safe credential handoff)
 
-**Last Updated:** 2026-11-15
+**Last Updated:** 2026-11-16
 
 Isolated training and API-only Janua staging targets are documented in
 [Isolated training custody](ISOLATED_TRAINING_CUSTODY.md). These declarations
@@ -146,6 +146,7 @@ ESO sources: `enclii-secrets`, `janua-secrets`, `madfam-site-secrets`, `phynd-cr
 | `yantra4d/asset-shells-publisher` | `secret/yantra4d` | `asset_shells_publisher_client_id`, `asset_shells_publisher_client_secret` |
 | `fashion-cabinet/asset-shells-publisher` | `secret/fashion-cabinet` | `asset_shells_publisher_client_id`, `asset_shells_publisher_client_secret` |
 | `forj/pravara-intake` | `secret/forj` | `pravara_intake_client_id`, `pravara_intake_client_secret` |
+| `forj/web-oidc` | `secret/forj` | `janua_client_id`, `janua_client_secret`: **provisioned, never submitted** (`enclii secrets provision oidc --platform forj-web`; see [Forj web Janua login client](#forj-web-janua-login-client-2026-11-16)) |
 | `digifab-quoting/pravara-intake` | `secret/digifab-quoting` | `pravara_intake_client_id`, `pravara_intake_client_secret` |
 | `digifab-quoting/web-oidc` | `secret/digifab-quoting` | `janua_client_id`, `janua_client_secret` |
 | `digifab-quoting/web-session` | `secret/digifab-quoting` | `nextauth_secret` |
@@ -725,6 +726,51 @@ Then pin the printed `jnc_…` id as `janua_client.client_id` for `cotiza-web`
 (both copies) so later runs reconcile instead of creating a second client.
 Until the digifab-quoting ExternalSecret exists, intake reports
 `external_secret_refreshed: false`, which is expected.
+
+### Forj web Janua login client (2026-11-16)
+
+Forj (`forj.design`) signs in through its own Next.js route handlers,
+`/auth/login` and `/auth/callback` (authorization code + PKCE S256, client
+secret sent server-side), which read `JANUA_CLIENT_ID` and
+`JANUA_CLIENT_SECRET` at runtime. No Janua client existed for them. The
+platform `forj-web` declares the confidential client `forj-web` (audience
+`forj`, which forj's API verifies; one callback,
+`https://forj.design/auth/callback`), and the provisioner files the id and the
+secret into a dedicated ExternalSecret.
+
+| Property in `secret/forj` | Target | Written by | ExternalSecret | Env var |
+|---|---|---|---|---|
+| `janua_client_id` | `forj/web-oidc` | `enclii secrets provision oidc --platform forj-web` | `forj-web-oidc` | `JANUA_CLIENT_ID` |
+| `janua_client_secret` | `forj/web-oidc` | `enclii secrets provision oidc --platform forj-web` | `forj-web-oidc` | `JANUA_CLIENT_SECRET` |
+
+Not `forj-secrets` (the onboarding Secret, out of the intake's reach) and not
+`forj-service-clients` (the Pravara intake pair), so an unprovisioned client
+holds no other Secret's sync. The Vault writer policy already covers
+`secret/forj`.
+
+Owner sequence, after the registry change is deployed (the merge rebuilds
+switchyard-api and pins its digest in `infra/k8s/production`) and the CLI
+carries the platform (`make -C ~/labspace/enclii install-cli` from an
+up-to-date `main`, or `--registry config/ecosystem-oidc-provision.yaml`):
+
+```bash
+export ENCLII_API_ENDPOINT=https://api.enclii.dev
+# Creating a Janua client that lists madfam:silent_auth needs a Janua platform
+# admin (`--profile admin`); the Vault intake needs the platform_admin operator.
+enclii --profile admin secrets provision oidc --platform forj-web \
+  --intake-profile default --reason "forj web sign-in" --dry-run
+enclii --profile admin secrets provision oidc --platform forj-web \
+  --intake-profile default --reason "forj web sign-in"
+# prints: ✓ forj-web client_id=jnc_… created=true intake=int_…
+enclii secrets intake status int_<id>
+```
+
+Then pin the printed `jnc_…` id as `janua_client.client_id` for `forj-web`
+(both copies) so later runs reconcile instead of creating a second client.
+Until forj's `forj-web-oidc` ExternalSecret exists, intake reports
+`external_secret_refreshed: false`, which is expected. The web reads both
+values at container start: restart `forj-web` once after the Secret first
+syncs, and after any `--rotate-secret`.
 
 ### Alertmanager SMTP credential (2026-10-05)
 

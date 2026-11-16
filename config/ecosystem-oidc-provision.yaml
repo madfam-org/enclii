@@ -1,6 +1,6 @@
 # MADFAM ecosystem OIDC auto-provision registry
 # Consumed by: enclii secrets provision oidc
-# Last Updated: 2026-11-02
+# Last Updated: 2026-11-16
 #
 # TWO COPIES, ONE CONTENT. The CLI embeds
 # packages/cli/internal/ecosystemoidc/data/ecosystem-oidc-provision.yaml (go:embed
@@ -834,6 +834,66 @@ platforms:
         - profile
         - email
         - offline_access
+        - madfam:silent_auth
+      grant_types:
+        - authorization_code
+        - refresh_token
+
+  # ---------------------------------------------------------------------------
+  # forj-web — the Forj storefront at forj.design (API api.forj.design,
+  # repository and namespace forj). A CONFIDENTIAL login client: the Next.js
+  # route handlers /auth/login and /auth/callback (forj apps/web/src/lib/
+  # janua-oidc.ts) run authorization_code + PKCE (S256) server-side and send
+  # the secret as client_secret_post, so browsers never see it. PKCE is a
+  # per-request property of the flow, not a client field, so nothing here
+  # declares it. refresh_token is granted because the callback keeps Janua's
+  # refresh token in an httpOnly cookie.
+  #
+  # ONE redirect URI, exact byte for byte (Janua compares scheme, host, port
+  # and path): `${FORJ_PUBLIC_URL}/auth/callback` on the production origin.
+  # Deliberately NO localhost callback (the family-history-web rule): local
+  # development registers its own client.
+  #
+  # audience `forj` is what forj's API verifies (apps/api/src/lib/janua.ts,
+  # JANUA_AUDIENCE default `forj`): Janua stamps the client's audience as
+  # `aud` on the authorization-code tokens, and the web hands the access token
+  # to api.forj.design as the `session_token` cookie.
+  #
+  # allowed_scopes is the web's request, `openid profile email`, plus the
+  # first-party silent-SSO scope (owner decision D2).
+  #
+  # BOTH the id and the secret go to Vault (target forj/web-oidc, lowercase,
+  # as Vault stores them), cotiza-web-style: the forj-web-oidc ExternalSecret
+  # maps `property: janua_client_id` -> JANUA_CLIENT_ID and
+  # `property: janua_client_secret` -> JANUA_CLIENT_SECRET, both read by the
+  # web server at runtime. A dedicated ExternalSecret, not forj-secrets (the
+  # onboarding Secret, out of the intake's reach) and not forj-service-clients
+  # (the Pravara intake pair), so an unprovisioned client holds nothing else's
+  # sync.
+  #
+  # NOT pinned with a client_id: the client does not exist yet, so the first
+  # run CREATES it, as a Janua admin (`--profile admin`). Pin the printed jnc_…
+  # id here (both copies) after that run so later runs reconcile instead of
+  # creating a duplicate.
+  # ---------------------------------------------------------------------------
+  forj-web:
+    intake_target: forj/web-oidc
+    intake_key_map:
+      janua_client_id: client_id
+      janua_client_secret: client_secret  # pragma: allowlist secret
+    janua_client:
+      name: forj-web
+      client_key: forj-web  # pragma: allowlist secret
+      audience: forj
+      description: Forj storefront (forj.design) — confidential OIDC authorization-code + PKCE client for the Next.js route handlers
+      is_confidential: true
+      website_url: https://forj.design
+      redirect_uris:
+        - https://forj.design/auth/callback
+      allowed_scopes:
+        - openid
+        - profile
+        - email
         - madfam:silent_auth
       grant_types:
         - authorization_code
