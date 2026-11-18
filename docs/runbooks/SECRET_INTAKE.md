@@ -126,6 +126,7 @@ ESO sources: `enclii-secrets`, `janua-secrets`, `madfam-site-secrets`, `phynd-cr
 | `karafiel/dhanam-bank-ledger-client` | `secret/karafiel` | `dhanam_bank_ledger_client_id`, `dhanam_bank_ledger_client_secret`: **provisioned, never submitted** (`enclii secrets provision oidc --platform karafiel-dhanam-bank-ledger`; see [Karafiel bank-ledger reader and Selva cost events](#karafiel-bank-ledger-reader-and-selva-cost-events-2026-11-11)) |
 | `karafiel/dhanam-scheduled-payments-client` | `secret/karafiel` | `dhanam_scheduled_payments_client_id`, `dhanam_scheduled_payments_client_secret`: **provisioned, never submitted** (`enclii secrets provision oidc --platform karafiel-dhanam-scheduled-payments`; same section) |
 | `selva/dhanam-cost-events-client` | `secret/selva` | `dhanam_cost_events_client_id`, `dhanam_cost_events_client_secret`: **provisioned, never submitted** (`enclii secrets provision oidc --platform selva-dhanam-cost-events`; same section) |
+| `tulana/dhanam-cogs-client` | `secret/tulana` | `dhanam_cogs_client_id`, `dhanam_cogs_client_secret`: **provisioned, never submitted** (`enclii secrets provision oidc --platform tulana-dhanam-cogs`; see [Tulana → Dhanam COGS MCP reader](#tulana--dhanam-cogs-mcp-reader-2026-11-17)) |
 | `nauta/kalya-feed-tokens` | `secret/nauta` | `kalya_feed_tokens` |
 | `nauta/symbiosis-hcm-token` | `secret/nauta` | `symbiosis_hcm_token` |
 | `angelia/courier-producer-keys` | `secret/angelia` | `courier_producer_key_alarms`, `courier_producer_key_enclii_ops`, `courier_producer_key_tulana`, `courier_producer_key_madfam_site` |
@@ -1088,6 +1089,51 @@ registry copies, then list it in phynd-crm's `PHYND_CRM_MCP_READ_CLIENTS`
 nothing until it is listed there and `PHYND_CRM_MCP_ENABLED` is `true`; both
 are the owner's switches on the phynd-crm web deployment (phynd-crm
 `docs/NATIVE_MCP.md`).
+
+### Tulana → Dhanam COGS MCP reader (2026-11-17)
+
+One `client_credentials` client for Tulana's API to read Dhanam's native COGS
+MCP (`POST /mcp` on Dhanam's API, tool `cogs_sku_floors`), the measured cost
+per offer for Tulana's internal catalogue (tulana#151, dhanam#1002). Read only:
+one edge, one client, one scope. Confidential, no redirect URIs, org-bound to
+`madfam-ecosystem` (`1a6233ef-185f-43ee-9181-e2591fbb2643`). Never widen it
+into a writer: `dhanam-cogs:read` never reaches `cogs_submit_cost_events`.
+
+| Platform id | Audience | Scope | Target → Vault path | ExternalSecret | Consumer env |
+|---|---|---|---|---|---|
+| `tulana-dhanam-cogs` | `dhanam-api` | `dhanam-cogs:read` | `tulana/dhanam-cogs-client` → `secret/tulana` | `tulana-dhanam-cogs-client` (namespace `tulana`, parked outside tulana's kustomization until provisioned) | `DHANAM_COGS_CLIENT_ID` / `_SECRET`, ignored until `TULANA_LEDGER_COSTS_ENABLED=true` |
+
+The pair has its own ExternalSecret, not `tulana-secrets`: ESO syncs each
+ExternalSecret all-or-nothing, so an unprovisioned pair never freezes tulana's
+other secrets. Until tulana applies it, intake reports
+`external_secret_refreshed=false`, which is expected.
+
+**Before the first run, in order:**
+
+1. This registry is deployed: merging it redeploys switchyard-api with the
+   new intake target. The Vault policy needs no change (`secret/tulana` is
+   already writable).
+2. The Janua image that reserves `dhanam-cogs:read`
+   (`apps/api/app/core/reserved_oauth_boundaries.py`) is promoted, and lists
+   `tulana-dhanam-cogs` among the machine edges in
+   `tests/unit/core/test_ecosystem_machine_edges_reserved.py`.
+3. Dhanam's MCP is deployed with its switch off.
+
+```bash
+enclii --profile admin secrets provision oidc --platform tulana-dhanam-cogs --intake-profile default --json --reason "tulana internal catalogue reads dhanam cogs sku floors"
+```
+
+Until a CLI release embeds this entry, pass the registry from `origin/main`:
+`REG="$(mktemp)" && git -C <enclii checkout> fetch -q origin && git -C <enclii checkout> show origin/main:config/ecosystem-oidc-provision.yaml > "$REG"`,
+then add `--registry "$REG"`. The first run creates the client and prints its
+`jnc_…` id. Pin it in both registry copies, then (owner-run):
+
+1. `DHANAM_MCP_READ_CLIENTS` on dhanam-api gains
+   `<client_id>@1a6233ef-185f-43ee-9181-e2591fbb2643`; a provisioned client
+   reads nothing until it is listed there and `DHANAM_MCP_ENABLED=true`.
+2. tulana adds `dhanam-cogs-external-secret.yaml` to its kustomization and
+   confirms the ExternalSecret reports `SecretSynced`.
+3. tulana sets `TULANA_LEDGER_COSTS_ENABLED` to `"true"`.
 
 ### Remediation wave: phynd-crm edge, crawler caller keys, Dhanam metering key (2026-11-09)
 

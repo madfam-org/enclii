@@ -1668,6 +1668,58 @@ platforms:
         - client_credentials
 
   # ---------------------------------------------------------------------------
+  # Tulana → Dhanam COGS MCP reader (2026-11-17, tulana#151, dhanam#1002).
+  # Tulana's API reads Dhanam's native COGS MCP (POST /mcp on Dhanam's API),
+  # tool `cogs_sku_floors`, for the internal catalogue's measured cost per
+  # offer. READ ONLY: one edge, one client, one scope, client_credentials
+  # only, no browser leg. Never widen this client into a writer: a Tulana
+  # write to Dhanam is a separate client with its own scope and grant.
+  #
+  # audience `dhanam-api`, what the MCP's machine strategy checks (the
+  # audience every Dhanam machine edge here holds). ORG-BOUND to
+  # madfam-ecosystem: Dhanam refuses a token without org_id, and Janua stamps
+  # org_id only on an org-bound client. The token alone reads nothing: Dhanam
+  # also requires `<client_id>@<organization_id>` in DHANAM_MCP_READ_CLIENTS
+  # on dhanam-api (owner-run, after the first provision).
+  #
+  # SCOPE `dhanam-cogs:read`, ONE colon (Janua registers only
+  # `namespace:action`). It never reaches cogs_submit_cost_events, which
+  # needs dhanam-cost-events:write and a CostEventWriterGrant. Provision only
+  # after the Janua image that RESERVES the scope is promoted (janua
+  # apps/api/app/core/reserved_oauth_boundaries.py): until then any
+  # organization admin may register a client carrying it.
+  #
+  # The pair lands at secret/tulana through tulana/dhanam-cogs-client
+  # (LOWERCASE keys), read by Tulana's DEDICATED, planned
+  # tulana-dhanam-cogs-client ExternalSecret (namespace tulana; tulana's
+  # infra/k8s/production/dhanam-cogs-external-secret.yaml, parked outside its
+  # kustomization until this pair exists), which maps them to
+  # DHANAM_COGS_CLIENT_ID / DHANAM_COGS_CLIENT_SECRET. Not tulana-secrets:
+  # ESO is all-or-nothing per ExternalSecret. Tulana ignores the pair until
+  # TULANA_LEDGER_COSTS_ENABLED=true.
+  #
+  # NOT pinned yet: the first provision run CREATES the client and prints its
+  # jnc_… id; pin it here (both copies) and use the same id in
+  # DHANAM_MCP_READ_CLIENTS.
+  # ---------------------------------------------------------------------------
+  tulana-dhanam-cogs:
+    intake_target: tulana/dhanam-cogs-client
+    intake_key_map:
+      dhanam_cogs_client_id: client_id
+      dhanam_cogs_client_secret: client_secret  # pragma: allowlist secret
+    janua_client:
+      name: tulana-dhanam-cogs
+      client_key: tulana-dhanam-cogs  # pragma: allowlist secret
+      audience: dhanam-api
+      description: Machine client (client_credentials) for Tulana's API to read Dhanam's native COGS MCP (POST /mcp on Dhanam's API), tool cogs_sku_floors, the measured cost per offer for Tulana's internal catalogue (tulana#151, dhanam#1002). Read only, scope dhanam-cogs:read only, so never cogs_submit_cost_events. Org-bound to madfam-ecosystem; Dhanam also requires this client@org in DHANAM_MCP_READ_CLIENTS.
+      is_confidential: true
+      organization_id: 1a6233ef-185f-43ee-9181-e2591fbb2643
+      allowed_scopes:
+        - dhanam-cogs:read
+      grant_types:
+        - client_credentials
+
+  # ---------------------------------------------------------------------------
   # converge-dash → Selva convergence feed (2026-11-04, RFC 0049). converge-dash's
   # worker reads GET /api/v1/convergence/ai-tasks on Selva's nexus-api, which
   # only accepts a Janua JWT whose `aud` contains `selva-office` (the audience
