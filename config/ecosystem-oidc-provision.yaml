@@ -31,9 +31,14 @@
 # client as first-party when it is active, confidential and either carries
 # that scope or has a `selva-office*` / `madfam-*` name; a first-party client
 # may use `prompt=none` against the shared Janua session and skips the consent
-# screen. Janua ignores the scope on a PUBLIC client (no secret, so no silent
-# issuance), so public clients do not list it. Machine clients, the isolated
-# staging clients and crea-sim-mcp do not list it either.
+# screen. On a PUBLIC client (no secret) Janua honours the scope only since
+# janua#833 (owner decision 2026-11-18), and only when the row was registered
+# by a platform admin, the request states PKCE S256, the redirect_uri equals a
+# registered one exactly and every requested scope is registered. So a public
+# client lists it only when the owner has approved it for that client and every
+# registered redirect_uri is an HTTPS page on the app's own host (dhanam-web is
+# the first). Machine clients, the isolated staging clients and crea-sim-mcp do
+# not list it.
 #
 # APPLYING IT. `madfam:silent_auth` is a reserved Janua scope: adding it, and
 # every later edit or secret rotation of a client that holds it, needs a Janua
@@ -57,8 +62,11 @@ platforms:
   # PUBLIC client. This entry used to say confidential `Dhanam`; Janua's legacy
   # seeds call the same pinned id `dhanam-web`, non-confidential.
   #
-  # Public means Dhanam cannot use silent SSO until its exchange moves to a
-  # server-side (confidential) callback. The pin makes a wrong name or
+  # Silent SSO (owner, 2026-11-18): the live row carries `madfam:silent_auth`
+  # (granted through Janua's internal scope route) and no longer registers the
+  # localhost callback, because a marked public client must only return to the
+  # app's own HTTPS pages (janua docs/architecture/SILENT_SSO_SESSION.md, B8).
+  # Local development signs in against a non-production Janua. The pin makes a wrong name or
   # confidentiality fail closed: the provisioner refuses before any PATCH.
   # Inspect the live row first. Do NOT run a provision for this platform
   # without review: session_intake_target re-mints SESSION_SECRET and
@@ -78,12 +86,12 @@ platforms:
       redirect_uris:
         - https://app.dhan.am/auth/callback
         - https://admin.dhan.am/auth/callback
-        - http://localhost:3000/auth/callback
       allowed_scopes:
         - openid
         - profile
         - email
         - offline_access
+        - madfam:silent_auth
       grant_types:
         - authorization_code
         - refresh_token
