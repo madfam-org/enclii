@@ -939,6 +939,7 @@ func TestLoadRegistry_dhanamMachineEdgesSorted(t *testing.T) {
 		"selva-dhanam-cost-events",
 		"symbiosis-hcm-dhanam-cost-events",
 		"symbiosis-hcm-dhanam-writer",
+		"tulana-dhanam-cogs",
 	}, names)
 }
 
@@ -958,7 +959,7 @@ func TestReviewedRegistryGrantKindsDoNotDependOnTenant(t *testing.T) {
 		}
 	}
 	require.Equal(t, 26, humans)   // Includes the two isolated Karafiel staging login clients, the eight SSO wave 1 clients and forj-web.
-	require.Equal(t, 27, machines) // Includes the three RFC 0050 COGS writer/reader edges (HCM → Nauta, HCM → Dhanam, Pravara → Dhanam), Karafiel's bank-ledger reader and scheduled-payments writer, Selva's cost-events writer, and the two PhyndCRM native MCP readers (Selva, ops agents).
+	require.Equal(t, 28, machines) // Includes the three RFC 0050 COGS writer/reader edges (HCM → Nauta, HCM → Dhanam, Pravara → Dhanam), Karafiel's bank-ledger reader and scheduled-payments writer, Selva's cost-events writer, the two PhyndCRM native MCP readers (Selva, ops agents) and Tulana's Dhanam COGS MCP reader.
 	p := reg.Platforms["selva-yantra4d"]
 	require.Empty(t, p.JanuaClient.OrganizationID)
 	kind, err := p.JanuaClient.kind()

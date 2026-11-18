@@ -1302,6 +1302,30 @@ targets:
     keys:
       - tulana_selva_webhook_secret
 
+  # Tulana → Dhanam COGS MCP reader (2026-11-17, tulana#151, dhanam#1002). The
+  # pair of ecosystem-oidc platform tulana-dhanam-cogs (audience dhanam-api,
+  # scope dhanam-cogs:read, org-bound to madfam-ecosystem), written ONLY by
+  # `enclii secrets provision oidc --platform tulana-dhanam-cogs`; no human
+  # types either value and nothing is generated here, so this target is NOT
+  # one of the self-generated keys above. Its OWN ExternalSecret,
+  # tulana-dhanam-cogs-client (tulana parks it outside its kustomization until
+  # this pair exists), NOT tulana-secrets: ESO is all-or-nothing per
+  # ExternalSecret, so an unprovisioned pair never freezes tulana's other
+  # secrets. LOWERCASE keys, mapped to DHANAM_COGS_CLIENT_ID /
+  # DHANAM_COGS_CLIENT_SECRET. Until that ExternalSecret is applied, intake
+  # reports external_secret_refreshed=false, which is expected.
+  tulana/dhanam-cogs-client:
+    label: Tulana → Dhanam COGS MCP read client
+    description: Janua client_credentials pair (tulana-dhanam-cogs, scope dhanam-cogs:read, org-bound to madfam-ecosystem) Tulana's API uses to read Dhanam's native COGS MCP (POST /mcp, tool cogs_sku_floors, tulana#151, dhanam#1002) for the internal catalogue's measured cost per offer. Filed by `enclii secrets provision oidc --platform tulana-dhanam-cogs`.
+    vault_path: secret/tulana
+    namespace: tulana
+    external_secret: tulana-dhanam-cogs-client  # pragma: allowlist secret
+    keys:
+      - dhanam_cogs_client_id
+      - dhanam_cogs_client_secret
+    generate:
+      disabled: true
+
   # converge-dash (2026-10-05) — the two values converge-dash both mints and
   # verifies, at secret/converge-dash, projected by the ExternalSecret
   # converge-dash-secrets (converge-dash repo,
