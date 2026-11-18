@@ -1698,9 +1698,8 @@ platforms:
   # ESO is all-or-nothing per ExternalSecret. Tulana ignores the pair until
   # TULANA_LEDGER_COSTS_ENABLED=true.
   #
-  # NOT pinned yet: the first provision run CREATES the client and prints its
-  # jnc_… id; pin it here (both copies) and use the same id in
-  # DHANAM_MCP_READ_CLIENTS.
+  # PINNED 2026-11-18: the first provision run created the client; the same
+  # id goes in Dhanam's DHANAM_MCP_READ_CLIENTS.
   # ---------------------------------------------------------------------------
   tulana-dhanam-cogs:
     intake_target: tulana/dhanam-cogs-client
@@ -1711,6 +1710,7 @@ platforms:
       name: tulana-dhanam-cogs
       client_key: tulana-dhanam-cogs  # pragma: allowlist secret
       audience: dhanam-api
+      client_id: jnc_HDYec_mSjLSSt1VIcuZuSAqw3-mTVQuR
       description: Machine client (client_credentials) for Tulana's API to read Dhanam's native COGS MCP (POST /mcp on Dhanam's API), tool cogs_sku_floors, the measured cost per offer for Tulana's internal catalogue (tulana#151, dhanam#1002). Read only, scope dhanam-cogs:read only, so never cogs_submit_cost_events. Org-bound to madfam-ecosystem; Dhanam also requires this client@org in DHANAM_MCP_READ_CLIENTS.
       is_confidential: true
       organization_id: 1a6233ef-185f-43ee-9181-e2591fbb2643

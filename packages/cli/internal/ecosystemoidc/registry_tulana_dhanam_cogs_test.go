@@ -13,8 +13,8 @@ import (
 // Dhanam's native COGS MCP (tool cogs_sku_floors) for the internal catalogue's
 // measured cost per offer. Read only: org-bound to madfam-ecosystem (Dhanam
 // refuses a token without org_id), exactly dhanam-cogs:read on audience
-// dhanam-api, client_credentials only, not pinned until the first provision
-// prints its id. Never a writer: a write scope here would let the catalogue
+// dhanam-api, client_credentials only, pinned to the id the first provision
+// printed (2026-11-18). Never a writer: a write scope here would let the catalogue
 // reach cogs_submit_cost_events.
 func TestLoadRegistry_tulanaDhanamCogsReaderMachineEdge(t *testing.T) {
 	reg, err := LoadRegistry("")
@@ -35,7 +35,7 @@ func TestLoadRegistry_tulanaDhanamCogsReaderMachineEdge(t *testing.T) {
 	jc := p.JanuaClient
 	assert.Equal(t, "tulana-dhanam-cogs", jc.Name)
 	assert.Equal(t, "tulana-dhanam-cogs", jc.ClientKey)
-	assert.Empty(t, jc.ClientID, "not pinned until the first provision prints it")
+	assert.Equal(t, "jnc_HDYec_mSjLSSt1VIcuZuSAqw3-mTVQuR", jc.ClientID, "pinned 2026-11-18 from the first provision")
 	assert.Equal(t, "dhanam-api", jc.Audience, "what Dhanam's MCP machine strategy checks")
 	assert.Equal(t, "1a6233ef-185f-43ee-9181-e2591fbb2643", jc.OrganizationID,
 		"Dhanam's MCP refuses a token without org_id; Janua sets it only for org-bound clients")
