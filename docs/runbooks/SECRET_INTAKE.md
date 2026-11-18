@@ -590,6 +590,10 @@ copies and use it as the Dhanam grant's `clientId`. Until the consumer merges
 its ExternalSecret, intake reports `external_secret_refreshed=false` and the
 pair sits in Vault unread.
 
+`karafiel-dhanam-bank-ledger` is pinned since 2026-11-18. Read a client's id back
+at any time with `enclii secrets provision oidc inspect --platform <id>` (public
+metadata only, no credential access).
+
 ### Karafiel → Dhanam cost events (2026-11-05)
 
 `karafiel-dhanam-cost-events` (audience `dhanam-api`, scope
