@@ -59,6 +59,18 @@ targets:
     keys:
       - JANUA_CLIENT_SECRET
 
+  ceq/cpu-worker-oauth:
+    label: CEQ CPU worker OAuth client (client_credentials)
+    description: Id+secret pair of the machine client (audience ceq-api, scope ceq:worker) the in-cluster CPU worker mints lease tokens with; written by `enclii secrets provision oidc --platform ceq-cpu-worker`
+    vault_path: secret/ceq
+    namespace: ceq
+    external_secret: ceq-cpu-worker-credentials  # pragma: allowlist secret -- Kubernetes ExternalSecret object name; not a credential
+    keys:
+      - cpu_worker_client_id
+      - cpu_worker_client_secret
+    generate:
+      disabled: true
+
   lexidrop/oidc-janua:
     label: LexiDrop Janua OAuth client
     description: LexiDrop dashboard (ld-app.madfam.io) OIDC confidential client — id + secret for the api-side callback
