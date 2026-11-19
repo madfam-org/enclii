@@ -1,6 +1,6 @@
 # MADFAM ecosystem OIDC auto-provision registry
 # Consumed by: enclii secrets provision oidc
-# Last Updated: 2026-11-16
+# Last Updated: 2026-11-18
 #
 # TWO COPIES, ONE CONTENT. The CLI embeds
 # packages/cli/internal/ecosystemoidc/data/ecosystem-oidc-provision.yaml (go:embed
@@ -396,6 +396,51 @@ platforms:
       organization_id: 1a6233ef-185f-43ee-9181-e2591fbb2643
       allowed_scopes:
         - phynd-crm-engagements:read
+      grant_types:
+        - client_credentials
+
+  # ---------------------------------------------------------------------------
+  # nauta → Dhanam merchant payment projection (2026-11-18). Nauta's /finanzas
+  # page reads one month of a client workspace's stored payment obligations
+  # from Dhanam's machine-only route GET /v1/payment-projections/monthly
+  # (dhanam payment-projection.strategy.ts, nauta packages/integrations
+  # dhanam-merchant.ts). Read only: one edge, one client, one scope,
+  # client_credentials only, no browser leg.
+  #
+  # audience `dhanam-api`; ORG-BOUND to the client workspace's own Janua
+  # organization (the same organization nauta-symbiosis-hcm is bound to): the
+  # strategy refuses a token without org_id, and Janua sets org_id only on an
+  # org-bound client. The token alone reads nothing: Dhanam's operator-reviewed
+  # PaymentProjectionGrant (apps/api/scripts/provision-payment-projection-grant.ts)
+  # binds THIS client id and THIS organization to ONE business space and the
+  # nauta source workspace. Janua already reserves the audience and the scope
+  # (reserved_oauth_boundaries.py, DHANAM_SCOPES).
+  #
+  # The provision writes ONLY the pair. The target nauta/dhanam-merchant-oauth
+  # also declares dhanam_merchant_workspace_id, _organization_id and _space_id,
+  # which the operator files with `enclii secrets intake submit ... --stdin`:
+  # those tenant identifiers stay out of this public registry. Nauta's
+  # DEDICATED nauta-merchant-oauth ExternalSecret reads all five and is wired
+  # into nauta's kustomization only after all five are in Vault.
+  #
+  # NOT pinned yet: the first provision run CREATES the client and prints its
+  # jnc_… id; pin it here (both copies) and use the same id as the Dhanam
+  # grant's clientId.
+  # ---------------------------------------------------------------------------
+  nauta-dhanam-merchant:
+    intake_target: nauta/dhanam-merchant-oauth
+    intake_key_map:
+      dhanam_merchant_client_id: client_id
+      dhanam_merchant_client_secret: client_secret  # pragma: allowlist secret
+    janua_client:
+      name: nauta-dhanam-merchant
+      client_key: nauta-dhanam-merchant  # pragma: allowlist secret
+      audience: dhanam-api
+      description: Machine edge (client_credentials) from nauta's /finanzas page to Dhanam's merchant payment projection (one month of stored obligations). Org-bound to the client workspace's organization, scope dhanam:merchant-read only; Dhanam's projection grant binds it to one space.
+      is_confidential: true
+      organization_id: e6cbd51d-8329-4c4e-8c74-aba643ab4575
+      allowed_scopes:
+        - dhanam:merchant-read
       grant_types:
         - client_credentials
 
