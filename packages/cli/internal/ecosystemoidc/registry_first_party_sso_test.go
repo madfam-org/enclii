@@ -3,6 +3,7 @@ package ecosystemoidc
 import (
 	"bytes"
 	"os"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -12,10 +13,12 @@ import (
 
 // First-party silent SSO (owner decisions D2 and D5, 2026-10-27).
 //
-// Janua lets a client use prompt=none and skip consent only when it is active,
+// Janua lets a client use prompt=none and skip consent when it is active,
 // CONFIDENTIAL and either carries madfam:silent_auth or has a selva-office* /
-// madfam-* name (janua oauth_provider.py _is_silent_auth_allowed). The registry
-// is the canonical declaration, so the set of clients that may sign a person in
+// madfam-* name (janua oauth_provider.py _is_silent_auth_allowed). Since
+// janua#833 a PUBLIC client qualifies too, through the scope only and under
+// strict request conditions (see markedPublicBrowserClients). The registry is
+// the canonical declaration, so the set of clients that may sign a person in
 // silently is decided here, and these tests pin it.
 
 // firstPartyBrowserClients are the confidential first-party login clients that
@@ -64,7 +67,7 @@ func TestFirstPartyBrowserClientsCarrySilentAuth(t *testing.T) {
 			require.NoError(t, err)
 			require.Equal(t, humanClient, kind)
 			require.True(t, p.JanuaClient.confidential(),
-				"Janua refuses prompt=none for a public client; silent SSO needs a confidential client")
+				"this list holds confidential clients; a public one belongs in markedPublicBrowserClients")
 			assert.Contains(t, p.JanuaClient.AllowedScopes, simSilentScope)
 			assert.Empty(t, p.JanuaClient.OrganizationID)
 		})
@@ -97,10 +100,24 @@ func TestEveryConfidentialLoginClientHasADecidedSilentSSOStatus(t *testing.T) {
 	}
 }
 
-// The scope means nothing on a public client (Janua never issues silently to a
-// client without a secret) and it is reserved, so listing it on one would only
-// make every later edit of that client platform-admin-only. On a machine client
-// it has no browser to act on.
+// markedPublicBrowserClients are the PUBLIC login clients the owner approved
+// for silent SSO. Since janua#833 (owner decision 2026-11-18, live in
+// production by hotfix image since 2026-11-18) Janua honours madfam:silent_auth
+// on a public client, but only on a row a platform admin registered and only
+// for a request with explicit PKCE S256, an exactly registered redirect_uri and
+// registered scopes (janua docs/architecture/SILENT_SSO_SESSION.md, B8).
+// Listing the scope on any other public client fails
+// TestSilentAuthOnlyOnConfidentialLoginClients.
+var markedPublicBrowserClients = []string{
+	"dhanam",
+}
+
+// On a machine client the scope has no browser to act on. On a public client it
+// is honoured only under janua#833's conditions, so it is listed only where the
+// owner approved it, and then every registered redirect_uri must be an HTTPS
+// page: the exact-match rule delivers the code only to a registered string, and
+// a loopback callback would let any local program on a signed-in person's
+// computer receive one silently.
 func TestSilentAuthOnlyOnConfidentialLoginClients(t *testing.T) {
 	reg, err := LoadRegistry("")
 	require.NoError(t, err)
@@ -116,8 +133,21 @@ func TestSilentAuthOnlyOnConfidentialLoginClients(t *testing.T) {
 		}
 		if has {
 			assert.Equal(t, humanClient, kind, "platform %q: silent auth on a machine client", id)
-			assert.True(t, p.JanuaClient.confidential(), "platform %q: silent auth on a public client", id)
+			if !p.JanuaClient.confidential() {
+				assert.True(t, contains(markedPublicBrowserClients, id),
+					"platform %q: silent auth on a public client the owner has not approved (markedPublicBrowserClients)", id)
+				for _, uri := range p.JanuaClient.RedirectURIs {
+					assert.True(t, strings.HasPrefix(uri, "https://"),
+						"platform %q: a marked public client must only return to HTTPS pages, got %q", id, uri)
+				}
+			}
 		}
+	}
+	for _, id := range markedPublicBrowserClients {
+		p, ok := reg.Platforms[id]
+		require.True(t, ok, "platform %q missing", id)
+		assert.False(t, p.JanuaClient.confidential(), "platform %q is listed as a marked PUBLIC client", id)
+		assert.Contains(t, p.JanuaClient.AllowedScopes, simSilentScope, "platform %q", id)
 	}
 }
 
@@ -149,6 +179,8 @@ func TestEveryRegistryPlatformPassesLocalValidation(t *testing.T) {
 
 // Dhanam's web exchanges the code in the browser without a secret, and Janua
 // refuses a confidential client that sends none, so the pinned row is public.
+// It is the first public client marked for silent SSO (owner, 2026-11-18): the
+// live row carries madfam:silent_auth and its localhost callback was removed.
 func TestDhanamReconciledAsPublicBrowserClient(t *testing.T) {
 	reg, err := LoadRegistry("")
 	require.NoError(t, err)
@@ -158,7 +190,10 @@ func TestDhanamReconciledAsPublicBrowserClient(t *testing.T) {
 	assert.Equal(t, "jnc_uE2zp9ume_Fd6jMl1elL6wqjiECM711t", jc.ClientID, "the id dhanam's web ships")
 	assert.False(t, jc.confidential())
 	assert.True(t, p.publicLogin())
-	assert.NotContains(t, jc.AllowedScopes, simSilentScope)
+	assert.Contains(t, jc.AllowedScopes, simSilentScope)
+	for _, uri := range jc.RedirectURIs {
+		assert.False(t, strings.HasPrefix(uri, "http://"), "no loopback or plain-HTTP callback on a marked public client: %q", uri)
+	}
 	assert.Equal(t, "dhanam-api", jc.Audience)
 	// A public client never has a secret written for it.
 	values := buildIntakeValues(reg.Issuer, "jnc_fixture", "never-written", p)

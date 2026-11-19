@@ -434,8 +434,13 @@ Dhanam ExternalSecrets — see [SECRET_INTAKE runbook](../../runbooks/SECRET_INT
 the one declaration of every MADFAM product client (owner decision D5). Each
 confidential first-party browser client lists Janua's `madfam:silent_auth` scope
 (owner decision D2), which lets it use `prompt=none` against the shared Janua
-session and skip the consent screen. Public clients cannot: Janua issues
-silently only to confidential clients. What a run does to an existing client:
+session and skip the consent screen. A public client may list it only when the
+owner approved it for that client: since janua#833 (2026-11-18) Janua honours
+the scope on a public client only on a row a platform admin registered and only
+for a request with explicit PKCE S256, an exactly registered `redirect_uri` and
+registered scopes, so every callback of such a client must be an HTTPS page on
+the app's own host (`dhanam` is the first; the tests pin the list). What a run
+does to an existing client:
 
 - The admin path PATCHes `redirect_uris`, `allowed_scopes`, `grant_types` and
   `audience` **wholesale** to the declaration. A scope granted in Janua but not
