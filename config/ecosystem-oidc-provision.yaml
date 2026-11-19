@@ -1,6 +1,6 @@
 # MADFAM ecosystem OIDC auto-provision registry
 # Consumed by: enclii secrets provision oidc
-# Last Updated: 2026-11-16
+# Last Updated: 2026-11-19
 #
 # TWO COPIES, ONE CONTENT. The CLI embeds
 # packages/cli/internal/ecosystemoidc/data/ecosystem-oidc-provision.yaml (go:embed
@@ -314,6 +314,46 @@ platforms:
       grant_types:
         - authorization_code
         - refresh_token
+
+  # ---------------------------------------------------------------------------
+  # CEQ CPU worker (2026-11-19, RFC 0061 wave 1; owner: "proceed with
+  # provisioning the worker's Janua client"). The machine identity of the
+  # in-cluster pod that leases `capture.page` and `export` jobs from ceq-api
+  # over HTTPS (`POST /v1/worker/*`). One edge, one client, one scope.
+  #
+  # ceq-api accepts a worker token only when it is a client_credentials token
+  # with aud `ceq-api` and scope `ceq:worker` (ceq apps/api
+  # src/ceq_api/auth/janua.py, get_worker_principal). `ceq:worker` is a
+  # different capability from `ceq:render` (submit) and `ceq:produce` (submit a
+  # production): this client holds neither.
+  #
+  # Org-bound to madfam-ecosystem, like every other MADFAM machine edge: a
+  # machine identity with no tenant is platform authority in Janua.
+  #
+  # NOT pinned with a client_id: the first provision run CREATES the client and
+  # prints its jnc_… id; pin it here (both copies) so later runs reconcile.
+  #
+  # The pair lands at Vault secret/ceq through ceq/cpu-worker-oauth (LOWERCASE
+  # keys, a MERGE alongside ceq's other properties), read by ceq's DEDICATED
+  # `ceq-cpu-worker-credentials` ExternalSecret. That pod opens web pages, so it
+  # mounts this one Secret and nothing else of ceq's.
+  # ---------------------------------------------------------------------------
+  ceq-cpu-worker:
+    intake_target: ceq/cpu-worker-oauth
+    intake_key_map:
+      cpu_worker_client_id: client_id
+      cpu_worker_client_secret: client_secret  # pragma: allowlist secret
+    janua_client:
+      name: CEQ CPU worker (service)
+      client_key: ceq-cpu-worker  # pragma: allowlist secret
+      audience: ceq-api
+      description: Machine identity (client_credentials) of CEQ's in-cluster CPU worker, which leases capture and export jobs from ceq-api. Org-bound to madfam-ecosystem, scope ceq:worker only. Holds neither ceq:render nor ceq:produce. Never a browser login.
+      is_confidential: true
+      organization_id: 1a6233ef-185f-43ee-9181-e2591fbb2643
+      allowed_scopes:
+        - ceq:worker
+      grant_types:
+        - client_credentials
 
   # ---------------------------------------------------------------------------
   # Nauta → Symbiosis-HCM (service). The ecosystem's FIRST client_credentials
