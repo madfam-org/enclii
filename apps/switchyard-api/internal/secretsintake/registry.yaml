@@ -608,6 +608,30 @@ targets:
     generate:
       disabled: true
 
+  # nauta → Dhanam merchant payment projection (2026-11-18): the custody nauta's
+  # /finanzas read needs, all five read by nauta's DEDICATED nauta-merchant-oauth
+  # ExternalSecret (nauta infra/k8s/production, wired only after all five
+  # exist, so ESO's all-or-nothing sync never blocks another nauta Secret).
+  # The client_credentials pair is written ONLY by
+  # `enclii secrets provision oidc --platform nauta-dhanam-merchant`; the three
+  # identifiers (nauta workspace, Janua organization, Dhanam space) are supplied
+  # by the operator with `enclii secrets intake submit` so they never sit in the
+  # public registry. Generation stays off: none of the five is a random value.
+  nauta/dhanam-merchant-oauth:
+    label: Nauta cliente OAuth de Dhanam (proyección de cobros, client_credentials)
+    description: Par id+secreto del cliente máquina org-bound (audience dhanam-api, scope dhanam:merchant-read) con el que nauta lee la proyección mensual de cobros, más los identificadores de espacio de trabajo, organización y espacio de Dhanam; el par lo escribe `enclii secrets provision oidc --platform nauta-dhanam-merchant`
+    vault_path: secret/nauta
+    namespace: nauta
+    external_secret: nauta-merchant-oauth  # pragma: allowlist secret -- Kubernetes ExternalSecret object name; not a credential
+    keys:
+      - dhanam_merchant_client_id
+      - dhanam_merchant_client_secret
+      - dhanam_merchant_workspace_id
+      - dhanam_merchant_organization_id
+      - dhanam_merchant_space_id
+    generate:
+      disabled: true
+
   janua/internal-api-key:
     label: Janua internal API key
     description: Shared internal key for service-to-service calls into janua-api (peer of enclii/internal-api-key)

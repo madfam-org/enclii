@@ -1,6 +1,6 @@
 # Secret Intake (chat-safe credential handoff)
 
-**Last Updated:** 2026-11-16
+**Last Updated:** 2026-11-18
 
 Isolated training and API-only Janua staging targets are documented in
 [Isolated training custody](ISOLATED_TRAINING_CUSTODY.md). These declarations
@@ -97,6 +97,7 @@ Canonical routing: `apps/switchyard-api/internal/secretsintake/registry.yaml`
 | `dhanam/referral-webhook-secret` | `secret/dhanam/referral` | `referral_webhook_secret` (generated; same section) |
 | `madfam-crawler/api-key-<caller>` | `secret/madfam-crawler` | `api_key_<caller>` for forgesight, fortuna, tulana, rondelio, avala, tezca (generated; same section) |
 | `nauta/phynd-crm-oauth` | `secret/nauta` | `phynd_crm_oauth_client_id`, `phynd_crm_oauth_client_secret`: **provisioned, never submitted** (`enclii secrets provision oidc --platform nauta-phynd-crm`; same section) |
+| `nauta/dhanam-merchant-oauth` | `secret/nauta` | `dhanam_merchant_client_id`, `dhanam_merchant_client_secret`: **provisioned, never submitted** (`enclii secrets provision oidc --platform nauta-dhanam-merchant`); `dhanam_merchant_workspace_id`, `dhanam_merchant_organization_id`, `dhanam_merchant_space_id`: submitted by the operator (see [Nauta → Dhanam merchant payment projection](#nauta--dhanam-merchant-payment-projection-2026-11-18)) |
 | `phynd-crm/lead-intake` | `secret/phynd-crm` | `lead_intake_secret` (shared group `phynd-crm/lead-intake-hmac`: one generated value for the four rows; see [phynd-crm lead-intake key](#phynd-crm-lead-intake-key-2026-11-15)) |
 | `kalya/phynd-crm-lead-intake` | `secret/kalya` | `phynd_crm_lead_intake_secret` (same group and section) |
 | `madfam-site/phynd-crm-lead-intake` | `secret/madfam-site` | `phynd_crm_lead_intake_secret` (same group and section) |
@@ -1134,6 +1135,49 @@ then add `--registry "$REG"`. The first run creates the client and prints its
 2. tulana adds `dhanam-cogs-external-secret.yaml` to its kustomization and
    confirms the ExternalSecret reports `SecretSynced`.
 3. tulana sets `TULANA_LEDGER_COSTS_ENABLED` to `"true"`.
+
+### Nauta → Dhanam merchant payment projection (2026-11-18)
+
+One `client_credentials` client for Nauta's `/finanzas` page to read one month
+of a client workspace's stored payment obligations from Dhanam's machine-only
+route `GET /v1/payment-projections/monthly`. Read only: one edge, one client,
+one scope. Confidential, no redirect URIs, audience `dhanam-api`, scope
+`dhanam:merchant-read` (both already reserved in Janua's `DHANAM_SCOPES`).
+Unlike the other Dhanam readers it is org-bound to the CLIENT workspace's
+organization, not `madfam-ecosystem`: Dhanam's `PaymentProjectionGrant` pairs
+the client id with the token's `org_id` and one business space.
+
+| Platform id | Audience | Scope | Target → Vault path | ExternalSecret | Consumer env |
+|---|---|---|---|---|---|
+| `nauta-dhanam-merchant` | `dhanam-api` | `dhanam:merchant-read` | `nauta/dhanam-merchant-oauth` → `secret/nauta` | `nauta-merchant-oauth` (namespace `nauta`, staged outside nauta's kustomization until all five keys exist) | `DHANAM_MERCHANT_CLIENT_ID` / `_SECRET` / `_WORKSPACE_ID` / `_ORGANIZATION_ID` / `_SPACE_ID` |
+
+The target declares five keys. The provision files only the pair; the three
+identifiers (Nauta workspace, Janua organization, Dhanam space) are filed by
+the operator with `enclii secrets intake submit nauta/dhanam-merchant-oauth
+--stdin`, so they never sit in this public repository. Until nauta wires its
+ExternalSecret, intake reports `external_secret_refreshed=false`, which is
+expected.
+
+**Before the first run, in order:**
+
+1. This registry is deployed: merging it redeploys switchyard-api with the
+   new intake target. The Vault policy needs no change (`secret/nauta` is
+   already writable).
+2. Nauta's workspace holds its `ExternalRef(dhanam, merchant_space)` binding
+   (nauta `scripts/bind-merchant-space.ts`).
+
+```bash
+enclii --profile admin secrets provision oidc --platform nauta-dhanam-merchant --dry-run --json --reason "nauta finanzas reads the dhanam merchant projection"
+enclii --profile admin secrets provision oidc --platform nauta-dhanam-merchant --intake-profile default --json --reason "nauta finanzas reads the dhanam merchant projection"
+```
+
+Until a CLI release embeds this entry, add `--registry "$REG"` with a copy
+from `origin/main`, as above. Pin the printed `jnc_…` id in both registry
+copies and use it as the `clientId` of Dhanam's projection grant
+(`provision-payment-projection-grant`). Then file the three identifiers,
+read back the five key names with `enclii secrets intake status <intake_id>`,
+and only then let nauta wire `web-merchant-oauth-external-secret.yaml`
+(merging that rolls nauta production).
 
 ### Remediation wave: phynd-crm edge, crawler caller keys, Dhanam metering key (2026-11-09)
 
