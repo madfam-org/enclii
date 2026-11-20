@@ -47,7 +47,10 @@ const calls = [];
 const failed = [];
 const notices = [];
 const rec = (name, fn) => async (p) => { calls.push({name, params: p}); return fn ? fn(p) : {data: {}}; };
-const github = {
+class FakeOctokit {
+  constructor(opts) { if (opts) { calls.push({name: 'newOctokit', params: opts}); return fusionador; } }
+}
+const github = Object.assign(new FakeOctokit(), {
   paginate: async (fn, p) => (await fn(p)).data,
   rest: {
     issues: {
@@ -74,7 +77,7 @@ const github = {
       listForRef: rec('listChecks', p => ({data: (st.checks || {})[p.ref] || []})),
     },
   },
-};
+});
 const fusionador = {rest: {pulls: {merge: async (p) => {
   calls.push({name: 'merge', params: p});
   if (st.mergeError) { const e = new Error(st.mergeError.message); e.status = st.mergeError.status; throw e; }
@@ -85,10 +88,9 @@ const core = {
   notice: m => notices.push(m),
   setFailed: m => failed.push(m),
 };
-const fakeRequire = (name) => {
-  if (name !== '@actions/github') throw new Error('unexpected require ' + name);
-  return {getOctokit: (token) => { calls.push({name: 'getOctokit', params: {token}}); return fusionador; }};
-};
+// github-script@v7 resolves `require` from the workspace, where @actions/github
+// is not installed (run 44682476852 died on it): any require is a failure here.
+const fakeRequire = (name) => { throw new Error('Cannot find module ' + name); };
 const context = {
   repo: {owner: 'madfam-org', repo: 'enclii'},
   eventName: input.event.name,
@@ -203,6 +205,15 @@ def test_script_prefers_the_app_token_over_the_legacy_pat() -> None:
     assert "process.env.FUSIONADOR_APP_TOKEN || process.env.FUSIONADOR_TOKEN" in _script_step()["with"]["script"]
 
 
+def test_merge_client_does_not_require_actions_github() -> None:
+    # github-script@v7 has no `getOctokit` in scope and its `require` cannot
+    # load @actions/github; run 44682476852 (2026-11-20) failed on exactly that
+    # the first time an App token existed.
+    script = _script_step()["with"]["script"]
+    assert "require(" not in script
+    assert "new github.constructor({auth: token})" in script
+
+
 def test_missing_identity_is_not_a_quiet_notice() -> None:
     assert "no se fusiona nada" not in _script_step()["with"]["script"]
 
@@ -235,7 +246,7 @@ def test_approved_head_without_identity_goes_red_with_one_comment(node: str, tmp
     assert "El tren no puede fusionar: falta" in body
     assert "FUSIONADOR_APP_ID" in body and "FUSIONADOR_APP_PRIVATE_KEY" in body and "FUSIONADOR_TOKEN" in body
     assert f"<!-- fusionar/tren:sin-identidad:{HEAD} -->" in body
-    assert not _named(r, "getOctokit") and not _named(r, "merge")
+    assert not _named(r, "newOctokit") and not _named(r, "merge")
 
 
 def test_cron_does_not_repeat_the_comment_or_the_status(node: str, tmp_path: Path) -> None:
@@ -264,14 +275,14 @@ def test_no_approved_pr_means_no_red_run(node: str, tmp_path: Path) -> None:
 @pytest.mark.parametrize("env_key", ["FUSIONADOR_APP_TOKEN", "FUSIONADOR_TOKEN"])
 def test_green_approved_head_merges_squash_bound_to_head(node: str, tmp_path: Path, env_key: str) -> None:
     r = _run(node, tmp_path, event=SCHEDULE, state=_green_state(), env={env_key: "tok"})
-    assert _named(r, "getOctokit") == [{"token": "tok"}]
+    assert _named(r, "newOctokit") == [{"auth": "tok"}]
     assert _named(r, "merge") == [{"owner": "madfam-org", "repo": "enclii", "pull_number": 980, "sha": HEAD, "merge_method": "squash"}]
     assert not r["failed"] and not _named(r, "createComment")
 
 
 def test_app_token_wins_over_the_pat(node: str, tmp_path: Path) -> None:
     r = _run(node, tmp_path, event=SCHEDULE, state=_green_state(), env={"FUSIONADOR_APP_TOKEN": "app", "FUSIONADOR_TOKEN": "pat"})
-    assert _named(r, "getOctokit") == [{"token": "app"}]
+    assert _named(r, "newOctokit") == [{"auth": "app"}]
 
 
 def test_own_red_status_does_not_block_a_later_merge(node: str, tmp_path: Path) -> None:
