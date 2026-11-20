@@ -50,7 +50,7 @@ func TestInitialMAPKernel01ProfileIsUnchanged(t *testing.T) {
 		VaultPath:       "secret/crea-sim-map01",
 		// Admission only: which producer pins may name the image. Retained
 		// intents and receipts carry none of it.
-		PinHistory: bootstrapPinHistory{Revisions: 30, MaxAge: 14 * 24 * time.Hour},
+		PinHistory: bootstrapPinHistory{Revisions: 60, MaxAge: 14 * 24 * time.Hour},
 	}, p)
 	portal, err := isolatedBootstrapProfileFor("portal-sim-initial")
 	require.NoError(t, err)

@@ -50,12 +50,15 @@ func (h bootstrapPinHistory) enabled() bool { return h.Revisions > 0 && h.MaxAge
 // main in the eight days to 2026-10-14, up to 22 in one day), while crea-sim
 // moves its MAP pin only by its own reviewed change, so a kernel's held image
 // trails crea-map's current pin within hours. The MAP kernels therefore also
-// accept a digest crea-map pinned on main within its last 30 pin revisions
-// and 14 days: one to four days of deploys at that cadence, and never an
-// image pinned more than two weeks ago. The image still passes every
-// registry, OCI, CI and signature check that follows the pin.
+// accept a digest crea-map pinned on main within its last 60 pin revisions
+// and 14 days: never an image pinned more than two weeks ago, which stays the
+// real bound. The window was 30 until 2026-11-19, when seven merges in one
+// afternoon pushed kernel 01's 2026-11-15 pin to revision 31 and its reset
+// stopped at the fence read («original kernel producer not accredited»). The
+// GitHub page (max 100) still reads the whole window in one request. The image
+// still passes every registry, OCI, CI and signature check that follows the pin.
 const (
-	mapPinHistoryRevisions = 30
+	mapPinHistoryRevisions = 60
 	mapPinHistoryMaxAge    = 14 * 24 * time.Hour
 )
 
