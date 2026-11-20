@@ -2271,6 +2271,21 @@ targets:
       - crea_map_token
       - postgres_password
 
+  # RFC 0057 ruling T1 check (2026-11-20): an internal-only Umami in namespace
+  # `telemetry` (telemetry-gate repo, infra/k8s/production/umami.yaml) whose
+  # database is dumped to prove no visitor IP is kept. Same Vault path as the
+  # gate, disjoint keys, its own ExternalSecret, so a generate here can never
+  # touch the gate's token or password. Both values with --generate (hex).
+  telemetry-gate/umami:
+    label: Umami T1 check (own Postgres, app secret)
+    description: The internal Umami instance's Postgres password (umami_postgres_password) and APP_SECRET (umami_app_secret), which salts Umami's session hash. Generate both with --generate; nobody needs to see either.
+    vault_path: secret/telemetry-gate
+    namespace: telemetry
+    external_secret: umami-secrets # pragma: allowlist secret -- ExternalSecret resource name; not a credential
+    keys:
+      - umami_postgres_password
+      - umami_app_secret
+
 # Shared groups: one server-generated value that several targets must hold
 # identically. `enclii secrets intake group <id>` mints it once (crypto/rand,
 # hex-encoded, never returned) and writes it to every member with a

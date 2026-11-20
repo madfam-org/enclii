@@ -105,3 +105,33 @@ func TestKernelTelemetryStaysInTrainingCustody(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, []string{"crea_map_token", "postgres_password"}, gate.Keys)
 }
+
+// RFC 0057 ruling T1 check (2026-11-20): the internal Umami shares the gate's
+// Vault path, so the two targets must file disjoint keys. A shared property
+// would let `--generate` for one rotate the other's credential.
+func TestUmamiCheckSharesTheGatePathWithDisjointKeys(t *testing.T) {
+	umami, err := GetTarget("telemetry-gate/umami")
+	require.NoError(t, err)
+	require.Equal(t, "secret/telemetry-gate", umami.VaultPath)
+	require.Equal(t, "telemetry", umami.Namespace)
+	require.Equal(t, "umami-secrets", umami.ExternalSecret)
+	require.Equal(t, []string{"umami_postgres_password", "umami_app_secret"}, umami.Keys)
+	require.Nil(t, umami.Generate, "generic generation: hex values are URL-safe inside DATABASE_URL")
+	registry, err := LoadRegistry()
+	require.NoError(t, err)
+	owner := map[string]string{}
+	for id, target := range registry {
+		if target.VaultPath != "secret/telemetry-gate" {
+			continue
+		}
+		require.True(t, strings.HasPrefix(id, "telemetry-gate/"), "only telemetry targets file into the gate path: %s", id)
+		for _, key := range target.Keys {
+			previous, taken := owner[key]
+			require.False(t, taken, "%s files %s, already filed by %s", id, key, previous)
+			owner[key] = id
+			require.Equal(t, strings.ToLower(key), key)
+		}
+	}
+	require.Equal(t, "telemetry-gate/runtime", owner["postgres_password"])
+	require.Equal(t, "telemetry-gate/umami", owner["umami_postgres_password"])
+}
