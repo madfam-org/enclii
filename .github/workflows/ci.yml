@@ -317,11 +317,18 @@ jobs:
         with:
           python-version: '3.11'
 
-      - name: Install PyYAML
-        run: pip install pyyaml
+      - name: Install PyYAML and pytest
+        run: pip install pyyaml pytest
 
       - name: Run Dependabot secret-trap lint
         run: python3 scripts/check-dependabot-secret-traps.py .github/workflows/
+
+      # The label merge train runs its github-script body under node against an
+      # in-memory GitHub. It must merge with the App token (or the legacy PAT),
+      # and with neither it must go red and comment instead of a quiet notice
+      # (enclii#980/#981 sat approved and unmerged on 2026-11-19).
+      - name: Run merge-train tests (fusionar-aprobado.yml)
+        run: pytest tests/scripts/test_fusionar_aprobado_train.py -v
 
   externalsecret-writer-lint:
     name: ExternalSecret multi-writer policy
