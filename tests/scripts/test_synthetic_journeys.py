@@ -257,7 +257,7 @@ def test_the_cluster_guards_admit_the_portless_runner():
     for key in ("containers", "=(initContainers)", "=(ephemeralContainers)"):
         (element,) = pattern[key]
         assert list(element) == ["=(ports)"], f"{key}: ports must be a conditional anchor"
-        assert element["=(ports)"] == [{"hostPort": "!*"}], f"{key}: hostPort stays forbidden"
+        assert element["=(ports)"] == [{"=(hostPort)": 0}], f"{key}: a set hostPort must be 0 (none)"
     assert policy["spec"]["validationFailureAction"] == "Enforce"
 
 

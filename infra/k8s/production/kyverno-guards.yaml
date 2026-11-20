@@ -39,27 +39,28 @@ spec:
         message: >-
           hostPort is forbidden. Use ClusterIP services for internal communication.
           Law 1: All databases MUST bind to 127.0.0.1 or ClusterIP only.
-        # `=(ports)` is a conditional anchor: a container that declares no
-        # ports cannot hold a hostPort, so it passes; a container that declares
-        # any port must not set hostPort. Until 2026-11-20 the key was bare
-        # (`- ports:`), which REQUIRED a ports list on every container and so
-        # refused every portless CronJob/Job/initContainer outside the
-        # enclii.dev/type namespaces with the misleading "hostPort is forbidden"
-        # (enclii-builds in January; the synthetics CronJob from 2026-11-14,
-        # "failed at path .../containers/0/ports/"). Same shape as Kyverno's
-        # upstream disallow-host-ports policy. Tested by
-        # tests/kyverno/block-host-ports/.
+        # Both keys are conditional anchors: a container may omit `ports`, a
+        # port may omit `hostPort`, and a hostPort that is set must be 0 (the
+        # API's "none"). Same shape as Kyverno's upstream disallow-host-ports.
+        # Until 2026-11-20 the pattern was `- ports: - hostPort: "!*"` with
+        # bare keys, which Kyverno reads as REQUIRED: a container without ports
+        # failed on the missing `ports`, and a port without hostPort failed on
+        # the missing `hostPort`. So it refused every pod outside the
+        # enclii.dev/type namespaces, under the misleading "hostPort is
+        # forbidden" (enclii-builds in January; the synthetics CronJob from
+        # 2026-11-14, "failed at path .../containers/0/ports/"; CLI v1.11.4
+        # confirms both cases). Tested by tests/kyverno/block-host-ports/.
         pattern:
           spec:
             containers:
               - =(ports):
-                  - hostPort: "!*"
+                  - =(hostPort): 0
             =(initContainers):
               - =(ports):
-                  - hostPort: "!*"
+                  - =(hostPort): 0
             =(ephemeralContainers):
               - =(ports):
-                  - hostPort: "!*"
+                  - =(hostPort): 0
 
 ---
 apiVersion: kyverno.io/v1

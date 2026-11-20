@@ -2,9 +2,10 @@
 # infra/k8s/production/kyverno-guards.yaml. Run: kyverno test tests/kyverno/
 # (CLI v1.11.4, the chart's Kyverno version; CI job "Kyverno policy tests").
 #
-# The guard forbids hostPort. It must NOT require a ports list: until
-# 2026-11-20 it did, and refused the portless synthetics CronJob
-# (journeys-dhanam-staging-checkout) with "hostPort is forbidden".
+# The guard forbids hostPort. It must NOT require a ports list, nor a hostPort
+# on each port: until 2026-11-20 it required both (bare keys), and refused the
+# portless synthetics CronJob (journeys-dhanam-staging-checkout) and every pod
+# with an ordinary containerPort with "hostPort is forbidden".
 apiVersion: cli.kyverno.io/v1alpha1
 kind: Test
 metadata:
@@ -15,7 +16,7 @@ resources:
   - resources.yaml
 variables: values.yaml
 results:
-  # Portless containers and init containers hold no hostPort: admitted.
+  # No ports, or ports without hostPort, in containers and init containers: admitted.
   - policy: block-host-ports
     rule: deny-host-ports
     kind: Pod
