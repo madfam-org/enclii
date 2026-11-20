@@ -44,7 +44,7 @@ func TestInitialMAPKernel01ProfileIsUnchanged(t *testing.T) {
 		Image: "ghcr.io/madfam-org/crea-map/crea-map-web",
 		// Admission only, like PinHistory: the signer is checked at the dry-run
 		// and is not carried in intents or receipts.
-		SignerIdentity:  `^(https://github\.com/madfam-org/enclii/\.github/workflows/build-publish\.yml@refs/tags/v1\.0\.0-alpha\.(8|14)|https://github\.com/madfam-org/crea-map/\.github/workflows/build-deploy\.yml@refs/heads/main)$`,
+		SignerIdentity:  `^(https://github\.com/madfam-org/enclii/\.github/workflows/build-publish\.yml@refs/tags/v1\.0\.0-alpha\.(8|14)|https://github\.com/madfam-org/enclii/\.github/workflows/build-publish\.yml@9aca7f980961cb177a838a9ed0f5417b1445e469|https://github\.com/madfam-org/crea-map/\.github/workflows/build-deploy\.yml@refs/heads/main)$`,
 		RequiredChecks:  []string{"Instalar dependencias (caché)", "Seguridad de dependencias", "Compuertas de esquema y copy", "Lint + typecheck", "Pruebas unitarias", "Clinical RLS (presence gate)", "Compilación (next build)", "verify-ok", "Móvil + a11y (e2e) 1/6", "Móvil + a11y (e2e) 2/6", "Móvil + a11y (e2e) 3/6", "Móvil + a11y (e2e) 4/6", "Móvil + a11y (e2e) 5/6", "Móvil + a11y (e2e) 6/6", "e2e-ok"},
 		EnvironmentKeys: []string{"MAP_SIMULATION_ENABLED", "MAP_SIMULATION_KERNEL_ID", "APP_ORIGIN", "JANUA_AUDIENCE", "JANUA_ISSUER_URL", "JANUA_JWKS_URL", "RLS_POR_CASO", "MAP_SIMULATION_CONTEXT_KEY", "MAP_SIMULATION_CONTROL_KEY", "MAP_SIMULATION_MAIL_KEY", "MAP_SIMULATION_MCP_CLIENT_ID", "MAP_MCP_PSEUDONYM_KEY"},
 		VaultPath:       "secret/crea-sim-map01",
@@ -353,5 +353,32 @@ func TestInitialMAPKernelSignerAdmitsCurrentPublisher(t *testing.T) {
 		"https://github.com/madfam-org/crea-sim/.github/workflows/build-deploy.yml@refs/heads/main",
 	} {
 		require.False(t, signer.MatchString(other), other)
+	}
+}
+
+// crea-map#1248 (2026-11-18) calls build-publish at the exact commit 9aca7f98, so
+// the keyless certificate's SAN names that SHA. Only the full SHA is accepted;
+// a prefix, another commit, a branch or another repository's workflow is not.
+func TestMAPKernelSignerAcceptsOnlyThePinnedBuildPublishCommit(t *testing.T) {
+	p, err := isolatedBootstrapProfileFor("map02-sim-initial")
+	if err != nil {
+		t.Fatalf("map02-sim-initial profile: %v", err)
+	}
+	signer := regexp.MustCompile(p.SignerIdentity)
+	base := "https://github.com/madfam-org/enclii/.github/workflows/build-publish.yml@"
+	for identity, want := range map[string]bool{
+		base + "9aca7f980961cb177a838a9ed0f5417b1445e469":  true,
+		base + "refs/tags/v1.0.0-alpha.14":                 true,
+		base + "refs/tags/v1.0.0-alpha.8":                  true,
+		base + "9aca7f98":                                  false,
+		base + "9aca7f980961cb177a838a9ed0f5417b1445e46":   false,
+		base + "9aca7f980961cb177a838a9ed0f5417b1445e4690": false,
+		base + "0000000000000000000000000000000000000000":  false,
+		base + "refs/heads/main":                           false,
+		"https://github.com/evil/enclii/.github/workflows/build-publish.yml@9aca7f980961cb177a838a9ed0f5417b1445e469": false,
+	} {
+		if got := signer.MatchString(identity); got != want {
+			t.Errorf("signer %q: got %v, want %v", identity, got, want)
+		}
 	}
 }
