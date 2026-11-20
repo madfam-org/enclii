@@ -39,16 +39,26 @@ spec:
         message: >-
           hostPort is forbidden. Use ClusterIP services for internal communication.
           Law 1: All databases MUST bind to 127.0.0.1 or ClusterIP only.
+        # `=(ports)` is a conditional anchor: a container that declares no
+        # ports cannot hold a hostPort, so it passes; a container that declares
+        # any port must not set hostPort. Until 2026-11-20 the key was bare
+        # (`- ports:`), which REQUIRED a ports list on every container and so
+        # refused every portless CronJob/Job/initContainer outside the
+        # enclii.dev/type namespaces with the misleading "hostPort is forbidden"
+        # (enclii-builds in January; the synthetics CronJob from 2026-11-14,
+        # "failed at path .../containers/0/ports/"). Same shape as Kyverno's
+        # upstream disallow-host-ports policy. Tested by
+        # tests/kyverno/block-host-ports/.
         pattern:
           spec:
             containers:
-              - ports:
+              - =(ports):
                   - hostPort: "!*"
             =(initContainers):
-              - ports:
+              - =(ports):
                   - hostPort: "!*"
             =(ephemeralContainers):
-              - ports:
+              - =(ports):
                   - hostPort: "!*"
 
 ---

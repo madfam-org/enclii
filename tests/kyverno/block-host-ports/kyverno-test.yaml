@@ -1,0 +1,47 @@
+# Kyverno CLI test for the block-host-ports policy in
+# infra/k8s/production/kyverno-guards.yaml. Run: kyverno test tests/kyverno/
+# (CLI v1.11.4, the chart's Kyverno version; CI job "Kyverno policy tests").
+#
+# The guard forbids hostPort. It must NOT require a ports list: until
+# 2026-11-20 it did, and refused the portless synthetics CronJob
+# (journeys-dhanam-staging-checkout) with "hostPort is forbidden".
+apiVersion: cli.kyverno.io/v1alpha1
+kind: Test
+metadata:
+  name: block-host-ports
+policies:
+  - ../../../infra/k8s/production/kyverno-guards.yaml
+resources:
+  - resources.yaml
+variables: values.yaml
+results:
+  # Portless containers and init containers hold no hostPort: admitted.
+  - policy: block-host-ports
+    rule: deny-host-ports
+    kind: Pod
+    resources: [portless-pod, ports-without-hostport-pod, portless-init-pod]
+    result: pass
+  # Any hostPort, in a container, an init container or an ephemeral one: refused.
+  - policy: block-host-ports
+    rule: deny-host-ports
+    kind: Pod
+    resources: [hostport-pod, hostport-init-pod, hostport-ephemeral-pod]
+    result: fail
+  # Platform namespaces (enclii.dev/type) are excluded, as before.
+  - policy: block-host-ports
+    rule: deny-host-ports
+    kind: Pod
+    resources: [infra-hostport-pod]
+    result: skip
+  # The autogen rule Argo hit on 2026-11-14: the synthetics CronJob's shape
+  # (one portless container) passes; the same CronJob with a hostPort fails.
+  - policy: block-host-ports
+    rule: autogen-cronjob-deny-host-ports
+    kind: CronJob
+    resources: [portless-cronjob]
+    result: pass
+  - policy: block-host-ports
+    rule: autogen-cronjob-deny-host-ports
+    kind: CronJob
+    resources: [hostport-cronjob]
+    result: fail

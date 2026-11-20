@@ -230,12 +230,35 @@ def test_cronjob_pod_is_non_root_read_only_and_tokenless():
     assert psc["runAsNonRoot"] is True and psc["runAsUser"] == 1001
     assert psc["seccompProfile"] == {"type": "RuntimeDefault"}
     csc = _container()["securityContext"]
+    assert csc["privileged"] is False, "disallow-privileged-containers requires the field"
     assert csc["readOnlyRootFilesystem"] is True
     assert csc["allowPrivilegeEscalation"] is False
     assert csc["capabilities"]["drop"] == ["ALL"]
     mounts = {m["mountPath"] for m in _container()["volumeMounts"]}
     assert mounts == {"/tmp", "/app/out", "/dev/shm"}
     assert {"name": "ghcr-credentials"} in pod["imagePullSecrets"]
+
+
+def test_the_cluster_guards_admit_the_portless_runner():
+    """The CronJob declares no ports (nothing listens), and the synthetics
+    namespace carries no enclii.dev/type label, so every Kyverno guard applies
+    to it. block-host-ports must therefore treat `ports` as optional
+    (`=(ports)`): with a bare `ports` key it refused this CronJob from
+    2026-11-14 ("failed at path .../containers/0/ports/"). The policy itself
+    is exercised by `kyverno test tests/kyverno/` (block-host-ports)."""
+    assert "ports" not in _container()
+    ns = _one(SYNTHETICS / "namespace.yaml", "Namespace", "synthetics")
+    assert "enclii.dev/type" not in ns["metadata"].get("labels", {}), (
+        "exempting the namespace would switch off every guard, not just the broken one"
+    )
+    policy = _one(REPO_ROOT / "infra" / "k8s" / "production" / "kyverno-guards.yaml", "ClusterPolicy", "block-host-ports")
+    (rule,) = policy["spec"]["rules"]
+    pattern = rule["validate"]["pattern"]["spec"]
+    for key in ("containers", "=(initContainers)", "=(ephemeralContainers)"):
+        (element,) = pattern[key]
+        assert list(element) == ["=(ports)"], f"{key}: ports must be a conditional anchor"
+        assert element["=(ports)"] == [{"hostPort": "!*"}], f"{key}: hostPort stays forbidden"
+    assert policy["spec"]["validationFailureAction"] == "Enforce"
 
 
 def _qty_cpu(v: str) -> float:

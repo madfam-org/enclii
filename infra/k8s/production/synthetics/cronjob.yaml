@@ -25,6 +25,11 @@
 # run before the next schedule; backoffLimit 0 because a retry would hide a
 # failure from the streak and buy a second test subscription.
 #
+# No `ports:` on the container: nothing listens. Kyverno's block-host-ports
+# (kyverno-guards.yaml) refused this CronJob from 2026-11-14 until its ports
+# key became a conditional anchor (2026-11-20); this namespace stays under
+# every guard (no enclii.dev/type label).
+#
 # Verified locally against the image built from tools/journeys/Dockerfile:
 # runs as uid/gid 1001 (`pwuser`) with a read-only root filesystem, every
 # capability dropped and /tmp, /app/out and /dev/shm as the only writable
@@ -71,7 +76,11 @@ spec:
             - name: journeys
               image: journeys
               imagePullPolicy: IfNotPresent
+              # privileged: false is spelled out: the cluster's
+              # disallow-privileged-containers policy requires the field, and
+              # it would refuse this pod at Job time, not at sync.
               securityContext:
+                privileged: false
                 allowPrivilegeEscalation: false
                 readOnlyRootFilesystem: true
                 capabilities:
