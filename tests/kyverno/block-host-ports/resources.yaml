@@ -1,0 +1,132 @@
+# Fixtures for tests/kyverno/block-host-ports/kyverno-test.yaml. One object per
+# case; the names say which case.
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: portless-pod
+  namespace: tenant-a
+spec:
+  containers:
+    - name: main
+      image: busybox
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: ports-without-hostport-pod
+  namespace: tenant-a
+spec:
+  containers:
+    - name: main
+      image: busybox
+      ports:
+        - containerPort: 8080
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: portless-init-pod
+  namespace: tenant-a
+spec:
+  initContainers:
+    - name: init
+      image: busybox
+  containers:
+    - name: main
+      image: busybox
+      ports:
+        - containerPort: 8080
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: hostport-pod
+  namespace: tenant-a
+spec:
+  containers:
+    - name: main
+      image: busybox
+      ports:
+        - containerPort: 8080
+          hostPort: 8080
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: hostport-init-pod
+  namespace: tenant-a
+spec:
+  initContainers:
+    - name: init
+      image: busybox
+      ports:
+        - containerPort: 9000
+          hostPort: 9000
+  containers:
+    - name: main
+      image: busybox
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: hostport-ephemeral-pod
+  namespace: tenant-a
+spec:
+  containers:
+    - name: main
+      image: busybox
+  ephemeralContainers:
+    - name: debug
+      image: busybox
+      ports:
+        - containerPort: 9100
+          hostPort: 9100
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: infra-hostport-pod
+  namespace: infra-ns
+spec:
+  containers:
+    - name: main
+      image: busybox
+      ports:
+        - containerPort: 8080
+          hostPort: 8080
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: portless-cronjob
+  namespace: tenant-a
+spec:
+  schedule: "*/15 * * * *"
+  jobTemplate:
+    spec:
+      template:
+        spec:
+          restartPolicy: Never
+          containers:
+            - name: journeys
+              image: busybox
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: hostport-cronjob
+  namespace: tenant-a
+spec:
+  schedule: "*/15 * * * *"
+  jobTemplate:
+    spec:
+      template:
+        spec:
+          restartPolicy: Never
+          containers:
+            - name: journeys
+              image: busybox
+              ports:
+                - containerPort: 8080
+                  hostPort: 8080
