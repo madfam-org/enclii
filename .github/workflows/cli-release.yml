@@ -107,7 +107,7 @@ jobs:
           tar -C dist -czf "dist/${archive_base}.tar.gz" "$archive_base"
 
       - name: Upload archive
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           name: cli-${{ matrix.goos }}-${{ matrix.goarch }}
           path: dist/*.tar.gz
