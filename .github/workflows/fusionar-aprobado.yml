@@ -104,7 +104,10 @@ jobs:
 
             // 2. Fusionar lo aprobado que ya esté verde.
             const token = process.env.FUSIONADOR_APP_TOKEN || process.env.FUSIONADOR_TOKEN;
-            const fusionador = token ? require('@actions/github').getOctokit(token) : null;
+            // github-script@v7 resuelve `require` desde el workspace (no trae
+            // @actions/github) y no inyecta getOctokit: el cliente de fusión es la
+            // misma clase de Octokit que `github`, con el token de la identidad.
+            const fusionador = token ? new github.constructor({auth: token}) : null;
             const FALTA = 'la identidad de fusión: ni la GitHub App (variable FUSIONADOR_APP_ID + secreto FUSIONADOR_APP_PRIVATE_KEY) ni el secreto FUSIONADOR_TOKEN';
             const fallas = [];
 
