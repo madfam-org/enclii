@@ -153,6 +153,11 @@ func (h *Handler) handleOperatorOperation(c *gin.Context, prefix, domain, action
 		h.writeOperatorResult(c, status, resp)
 		return
 	}
+	if prefix == "ops" && domain == "addons" && action == "delete-retired" {
+		resp, status := h.handleOpsAddonsDeleteRetired(c.Request.Context(), req, opsActorFromContext(c))
+		h.writeOperatorResult(c, status, resp)
+		return
+	}
 	if prefix == "ops" && domain == "addons" && action == "cpu-request" {
 		resp, status := h.handleOpsAddonsCPURequest(c.Request.Context(), req, opsActorFromContext(c))
 		h.writeOperatorResult(c, status, resp)
