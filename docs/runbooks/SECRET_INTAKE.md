@@ -1,6 +1,6 @@
 # Secret Intake (chat-safe credential handoff)
 
-**Last Updated:** 2026-11-08
+**Last Updated:** 2026-11-16
 
 Isolated training and API-only Janua staging targets are documented in
 [Isolated training custody](ISOLATED_TRAINING_CUSTODY.md). These declarations
@@ -41,6 +41,11 @@ require separate live provisioning and readiness receipts.
 > **Boundary checkpoint (2026-10-11, platform on-call):** The Cotiza web
 > session section adds a target id, a key NAME, a Vault path and Kubernetes
 > object names only. The value is minted inside Switchyard and appears nowhere.
+>
+> **Boundary checkpoint (2026-11-15, platform on-call):** The phynd-crm
+> lead-intake section adds a shared group id, target ids, key NAMES, Vault
+> paths and Kubernetes object names only. The value is minted inside
+> Switchyard and appears nowhere.
 
 Operators supply production credentials through Enclii without pasting values into
 agent chat or git. Switchyard merges keys into Vault once; agents poll `intake_id`
@@ -89,8 +94,13 @@ Canonical routing: `apps/switchyard-api/internal/secretsintake/registry.yaml`
 | `dhanam/karafiel-callback-secret` | `secret/dhanam` | `karafiel_dhanam_signing_secret` (generated; see [Dhanam ↔ Karafiel webhook keys](#dhanam--karafiel-webhook-keys-2026-10-14)) |
 | `karafiel/dhanam-webhook-secret` | `secret/karafiel` | `dhanam_karafiel_signing_secret` (generated; same section) |
 | `dhanam/billing-webhook-secret` | `secret/dhanam` | `billing_webhook_secret` (generated; see [Remediation wave](#remediation-wave-phynd-crm-edge-crawler-caller-keys-dhanam-metering-key-2026-11-09)) |
+| `dhanam/referral-webhook-secret` | `secret/dhanam/referral` | `referral_webhook_secret` (generated; same section) |
 | `madfam-crawler/api-key-<caller>` | `secret/madfam-crawler` | `api_key_<caller>` for forgesight, fortuna, tulana, rondelio, avala, tezca (generated; same section) |
 | `nauta/phynd-crm-oauth` | `secret/nauta` | `phynd_crm_oauth_client_id`, `phynd_crm_oauth_client_secret`: **provisioned, never submitted** (`enclii secrets provision oidc --platform nauta-phynd-crm`; same section) |
+| `phynd-crm/lead-intake` | `secret/phynd-crm` | `lead_intake_secret` (shared group `phynd-crm/lead-intake-hmac`: one generated value for the four rows; see [phynd-crm lead-intake key](#phynd-crm-lead-intake-key-2026-11-15)) |
+| `kalya/phynd-crm-lead-intake` | `secret/kalya` | `phynd_crm_lead_intake_secret` (same group and section) |
+| `madfam-site/phynd-crm-lead-intake` | `secret/madfam-site` | `phynd_crm_lead_intake_secret` (same group and section) |
+| `digifab-quoting/phynd-crm-lead-intake` | `secret/digifab-quoting` | `phynd_crm_lead_intake_secret` (same group and section) |
 | `platform/comms-resend-api-key` | `secret/comms` | `resend-api-key` → `resend_api_key` in Vault |
 
 After `platform/comms-resend-api-key` intake, fan-out to all consumers:
@@ -115,6 +125,10 @@ ESO sources: `enclii-secrets`, `janua-secrets`, `madfam-site-secrets`, `phynd-cr
 | `karafiel/dhanam-cost-events-client` | `secret/karafiel` | `dhanam_cost_events_client_id`, `dhanam_cost_events_client_secret`: **provisioned, never submitted** (`enclii secrets provision oidc --platform karafiel-dhanam-cost-events`) |
 | `selva/<platform>-cogs-client` (six: `converge-dash`, `dhanam`, `enclii`, `karafiel`, `nauta`, `pravara`) | `secret/selva` | `<platform>_cogs_client_id`, `<platform>_cogs_client_secret` (`converge-dash` → `converge_dash_…`): **provisioned, never submitted** (`enclii secrets provision oidc --platform selva-<platform>-cogs`; see [COGS MCP consumer clients](#cogs-mcp-consumer-clients-2026-11-06)) |
 | `ops-agents/<platform>-cogs-client` (the same six, plus `selva`) | `secret/ops-agents` | the same keys (`selva` → `selva_cogs_client_id`, `selva_cogs_client_secret`): **provisioned, never submitted** (`enclii secrets provision oidc --platform ops-agents-<platform>-cogs`; same section) |
+| `karafiel/dhanam-bank-ledger-client` | `secret/karafiel` | `dhanam_bank_ledger_client_id`, `dhanam_bank_ledger_client_secret`: **provisioned, never submitted** (`enclii secrets provision oidc --platform karafiel-dhanam-bank-ledger`; see [Karafiel bank-ledger reader and Selva cost events](#karafiel-bank-ledger-reader-and-selva-cost-events-2026-11-11)) |
+| `karafiel/dhanam-scheduled-payments-client` | `secret/karafiel` | `dhanam_scheduled_payments_client_id`, `dhanam_scheduled_payments_client_secret`: **provisioned, never submitted** (`enclii secrets provision oidc --platform karafiel-dhanam-scheduled-payments`; same section) |
+| `selva/dhanam-cost-events-client` | `secret/selva` | `dhanam_cost_events_client_id`, `dhanam_cost_events_client_secret`: **provisioned, never submitted** (`enclii secrets provision oidc --platform selva-dhanam-cost-events`; same section) |
+| `tulana/dhanam-cogs-client` | `secret/tulana` | `dhanam_cogs_client_id`, `dhanam_cogs_client_secret`: **provisioned, never submitted** (`enclii secrets provision oidc --platform tulana-dhanam-cogs`; see [Tulana → Dhanam COGS MCP reader](#tulana--dhanam-cogs-mcp-reader-2026-11-17)) |
 | `nauta/kalya-feed-tokens` | `secret/nauta` | `kalya_feed_tokens` |
 | `nauta/symbiosis-hcm-token` | `secret/nauta` | `symbiosis_hcm_token` |
 | `angelia/courier-producer-keys` | `secret/angelia` | `courier_producer_key_alarms`, `courier_producer_key_enclii_ops`, `courier_producer_key_tulana`, `courier_producer_key_madfam_site` |
@@ -135,6 +149,7 @@ ESO sources: `enclii-secrets`, `janua-secrets`, `madfam-site-secrets`, `phynd-cr
 | `yantra4d/asset-shells-publisher` | `secret/yantra4d` | `asset_shells_publisher_client_id`, `asset_shells_publisher_client_secret` |
 | `fashion-cabinet/asset-shells-publisher` | `secret/fashion-cabinet` | `asset_shells_publisher_client_id`, `asset_shells_publisher_client_secret` |
 | `forj/pravara-intake` | `secret/forj` | `pravara_intake_client_id`, `pravara_intake_client_secret` |
+| `forj/web-oidc` | `secret/forj` | `janua_client_id`, `janua_client_secret`: **provisioned, never submitted** (`enclii secrets provision oidc --platform forj-web`; see [Forj web Janua login client](#forj-web-janua-login-client-2026-11-16)) |
 | `digifab-quoting/pravara-intake` | `secret/digifab-quoting` | `pravara_intake_client_id`, `pravara_intake_client_secret` |
 | `digifab-quoting/web-oidc` | `secret/digifab-quoting` | `janua_client_id`, `janua_client_secret` |
 | `digifab-quoting/web-session` | `secret/digifab-quoting` | `nextauth_secret` |
@@ -412,6 +427,32 @@ enclii --profile admin secrets provision oidc --platform symbiosis-hcm-karafiel 
 Then pin the printed `jnc_…` id as `janua_client.client_id` for
 `symbiosis-hcm-karafiel` in both registry copies.
 
+#### Adding `fiscal:csf-intake` to the existing client (2026-11-11)
+
+HCM's Mi ficha forwards a contractor's constancia de situación fiscal to
+Karafiel's `POST /api/v1/fiscal/csf/extract/`, which Karafiel gates on
+`fiscal:csf-intake` (already reserved in Janua). The registry now declares that
+fourth scope on the same pinned client. `provision oidc` applies a reviewed
+**widening** of a machine client: when the only difference from the live client
+is scopes the registry added, it PATCHes `allowed_scopes` and nothing else. Any
+other machine drift (a live scope the registry does not declare, audience,
+grants, organization, callbacks, inactive) is still refused unpatched. The
+secret of an existing client cannot be read back, so the run also rotates it;
+`--grace-hours` keeps the current secret valid while HCM's pods pick up the new
+one:
+
+```bash
+cd ~/labspace/enclii && git pull --ff-only
+make -C ~/labspace/enclii install-cli CLI_INSTALL_DIR=$HOME/.local/bin
+enclii --profile admin secrets provision oidc --platform symbiosis-hcm-karafiel --intake-profile default --rotate-secret --grace-hours 24 --json --reason "HCM reads contractor CSFs via Karafiel"
+```
+
+HCM's API and worker carry `reloader.stakater.com/match`, so they restart on
+their own when `hcm-service-clients` refreshes (every 15 min) and read the new
+secret well inside the grace window. Until this runs, HCM's
+upload answers with its own «lectura automática aún no disponible» message;
+nothing else on the edge changes.
+
 ### Symbiosis-HCM → Dhanam scheduled-payments writer (2026-11-02)
 
 `symbiosis-hcm-dhanam-writer` (audience `dhanam-api`, scope
@@ -498,6 +539,59 @@ ExternalSecret, intake reports `external_secret_refreshed=false` and the pair
 sits in Vault unread. Each consumer ignores the pair until its switch is on:
 `HCM_LABOR_EVENTS_ENABLED`, `PRAVARA_COST_EVENTS_ENABLED` (owner-only).
 
+### Karafiel bank-ledger reader and Selva cost events (2026-11-11)
+
+Three more Dhanam machine edges, each the shape of
+[Karafiel → Dhanam cost events](#karafiel--dhanam-cost-events-2026-11-05):
+confidential, `client_credentials` only, no redirect URIs, org-bound to
+`madfam-ecosystem` (`1a6233ef-185f-43ee-9181-e2591fbb2643`), audience
+`dhanam-api`, exactly one scope, and a dedicated ExternalSecret in the
+consumer's namespace.
+
+| Platform id | Scope | Target → Vault path | ExternalSecret | Consumer env |
+|---|---|---|---|---|
+| `karafiel-dhanam-bank-ledger` | `dhanam-bank-ledger:read` | `karafiel/dhanam-bank-ledger-client` → `secret/karafiel` | `karafiel-dhanam-bank-ledger` (namespace `karafiel`, worker only, optional) | `DHANAM_BANK_LEDGER_CLIENT_ID` / `_SECRET` |
+| `karafiel-dhanam-scheduled-payments` | `dhanam-scheduled-payments:write` | `karafiel/dhanam-scheduled-payments-client` → `secret/karafiel` | `karafiel-dhanam-scheduled-payments` (namespace `karafiel`, planned) | consumer not written yet (RFC 0055 Phase 1.5) |
+| `selva-dhanam-cost-events` | `dhanam-cost-events:write` | `selva/dhanam-cost-events-client` → `secret/selva` | `selva-dhanam-cost-events` (namespace `selva`, parked until provisioned) | `SELVA_DHANAM_COST_EVENTS_CLIENT_ID` / `_SECRET` |
+
+- **Karafiel bank ledger** (karafiel#383, dhanam#969): Karafiel's bank mirror
+  reads one business space's bank movements from
+  `GET /v1/bank-ledger/spaces/:spaceId/transactions`. Read only. Dhanam's
+  `BankLedgerReaderGrant` (`provision-bank-ledger-reader-grant`) binds the
+  client id and organization to ONE live business space; any other space is
+  403. Only this client may hold `dhanam-bank-ledger:read`.
+- **Karafiel scheduled payments** (RFC 0055 Phase 1.5, ruling O4): Karafiel
+  pushes tax obligations into Dhanam as planned payments through the existing
+  scheduled-payments writer route, like `symbiosis-hcm-dhanam-writer`. A
+  `ScheduledPaymentWriterGrant` (`provision-scheduled-payment-writer-grant`)
+  binds it to one space and the source system `karafiel`. Janua already
+  reserves the scope. The Karafiel pusher and its ExternalSecret come later.
+- **Selva cost events** (selva-office#363): daily inference `cost.event.v1`,
+  source `selva`, `basis: estimate`. A `CostEventWriterGrant` binds it to one
+  space and the source `selva`. Not a widening of any Selva read client.
+
+**Before provisioning, in order:**
+
+1. This registry is deployed: merging it redeploys switchyard-api with the
+   two intake targets. The Vault policy needs no change (`secret/karafiel`
+   and `secret/selva` are already writable).
+2. For `karafiel-dhanam-bank-ledger`: the Janua image that reserves
+   `dhanam-bank-ledger:read` (`DHANAM_SCOPES` in
+   `apps/api/app/core/reserved_oauth_boundaries.py`) is promoted. Janua
+   already reserves `dhanam-cost-events:write`.
+
+```bash
+enclii --profile admin secrets provision oidc --platform karafiel-dhanam-bank-ledger --intake-profile default --json --reason "karafiel bank mirror reads the company bank ledger (SAT catch-up)"
+enclii --profile admin secrets provision oidc --platform selva-dhanam-cost-events --intake-profile default --json --reason "selva inference usage to dhanam cost events (RFC 0050 C13)"
+enclii --profile admin secrets provision oidc --platform karafiel-dhanam-scheduled-payments --intake-profile default --json --reason "karafiel tax obligations to dhanam scheduled payments (RFC 0055 O4)"
+```
+
+Until a CLI release embeds these entries, add `--registry "$REG"` with a copy
+from `origin/main`, as above. Pin each printed `jnc_…` id in both registry
+copies and use it as the Dhanam grant's `clientId`. Until the consumer merges
+its ExternalSecret, intake reports `external_secret_refreshed=false` and the
+pair sits in Vault unread.
+
 ### Karafiel → Dhanam cost events (2026-11-05)
 
 `karafiel-dhanam-cost-events` (audience `dhanam-api`, scope
@@ -536,9 +630,9 @@ protected resource, `invalid_target`).
 | Platform id | Audience | Scope | Target → Vault path | ExternalSecret |
 |---|---|---|---|---|
 | `selva-dhanam-cogs` | `dhanam-api` | `dhanam-cogs:read` | `selva/dhanam-cogs-client` → `secret/selva` | `selva-dhanam-cogs-client` (planned, selva-office) |
-| `ops-agents-dhanam-cogs` | `dhanam-api` | `dhanam-cogs:read` | `ops-agents/dhanam-cogs-client` → `secret/ops-agents` | none (owner decision) |
+| `ops-agents-dhanam-cogs` | `dhanam-api` | `dhanam-cogs:read` | `ops-agents/dhanam-cogs-client` → `secret/ops-agents` | none: the ops agents' Mac Keychain (owner ruling 2026-11-22) |
 | `selva-karafiel-cogs` | `karafiel-api` | `karafiel-cogs:read` | `selva/karafiel-cogs-client` → `secret/selva` | `selva-karafiel-cogs-client` (planned, selva-office) |
-| `ops-agents-karafiel-cogs` | `karafiel-api` | `karafiel-cogs:read` | `ops-agents/karafiel-cogs-client` → `secret/ops-agents` | none (owner decision) |
+| `ops-agents-karafiel-cogs` | `karafiel-api` | `karafiel-cogs:read` | `ops-agents/karafiel-cogs-client` → `secret/ops-agents` | none: the ops agents' Mac Keychain (owner ruling 2026-11-22) |
 | `selva-converge-dash-cogs` | `converge-dash` | `converge-dash-cogs:read` | `selva/converge-dash-cogs-client` → `secret/selva` | `selva-converge-dash-cogs-client` (planned, selva-office) |
 | `ops-agents-converge-dash-cogs` | `converge-dash` | `converge-dash-cogs:read` | `ops-agents/converge-dash-cogs-client` → `secret/ops-agents` | none (owner decision) |
 | `selva-pravara-cogs` | `pravara-api` | `pravara-cogs:read` | `selva/pravara-cogs-client` → `secret/selva` | `selva-pravara-cogs-client` (planned, selva-office) |
@@ -563,13 +657,18 @@ isolate the MCP, not the audience (enclii#945, «Audience caveat»).
    `apps/api/app/core/reserved_oauth_boundaries.py`, and lists these thirteen
    edges in `tests/unit/core/test_ecosystem_machine_edges_reserved.py`, is
    promoted. Until then any organization admin may register a client
-   carrying them. On 2026-11-08 Janua's main reserves none of the seven.
+   carrying them. Met since 2026-11-11: janua#781 reserves the seven and
+   lists the thirteen edges, and production carries it from hotfix row 1
+   (janua#789); on 2026-11-22 production's row 15 (janua#859) still ships
+   `reserved_oauth_boundaries.py` with all seven.
 3. The platform's MCP is deployed with its switch off.
 4. For the `ops-agents-*` clients: the Vault policy is re-applied so
    Switchyard may write `secret/ops-agents`
    (`ASSERT_PATH=ops-agents bash scripts/apply-switchyard-vault-policy-remote.sh`).
    Without it the run reconciles the Janua client, rotates its secret and
-   then 403s on the Vault merge.
+   then 403s on the Vault merge. The path has been in the policy file since
+   enclii#967 ([PhyndCRM native MCP reader](#phyndcrm-native-mcp-reader-2026-11-14));
+   one re-apply serves both, and re-applying is harmless.
 
 **Provision** one platform at a time, as its wave is enabled. Until a CLI
 release embeds these entries, pass the registry from `origin/main`:
@@ -600,7 +699,10 @@ later runs reconcile the client instead of creating a twin, and use the same
 id in the platform binding below.
 
 **Bind, then switch on** (per platform, owner-run; agents never flip a
-switch, M6):
+switch, M6, except where the owner amends it: on 2026-11-22 he let the agents
+set `KARAFIEL_MCP_ENABLED` and `DHANAM_MCP_ENABLED` to `true` once the
+ops-agents bindings exist, internal-devops
+`decisions/2026-11-22-ops-agents-ecosystem-mcp-access.md`):
 
 | Platform | Binding per client, after provisioning | Switch |
 |---|---|---|
@@ -618,9 +720,12 @@ ExternalSecret all-or-nothing and the platforms arrive wave by wave. Those
 ExternalSecrets, and the fleet's MCP client that uses the pairs, are a
 selva-office change that does not exist yet; until it lands the intake reports
 `external_secret_refreshed=false` and the pair sits in Vault unread. The ops
-agents' pairs sit at `secret/ops-agents` with no ExternalSecret: no ops-agent
-runtime reads Vault today, and where the ops agents run and how they receive
-the pair is the owner's decision.
+agents' pairs sit at `secret/ops-agents` with no ExternalSecret, because no
+ops-agent runtime runs in the cluster. Owner ruling 2026-11-22: the ops agents
+run on the owner's Mac, and the `ops-agents-karafiel-cogs` and
+`ops-agents-dhanam-cogs` pairs go from `secret/ops-agents` to that Mac's
+Keychain, never through chat, a repository or a log. The other ops-agents
+pairs wait for their own ruling.
 
 ### Voxa web session and API runtime (2026-10-04)
 
@@ -737,6 +842,51 @@ Then pin the printed `jnc_…` id as `janua_client.client_id` for `cotiza-web`
 (both copies) so later runs reconcile instead of creating a second client.
 Until the digifab-quoting ExternalSecret exists, intake reports
 `external_secret_refreshed: false`, which is expected.
+
+### Forj web Janua login client (2026-11-16)
+
+Forj (`forj.design`) signs in through its own Next.js route handlers,
+`/auth/login` and `/auth/callback` (authorization code + PKCE S256, client
+secret sent server-side), which read `JANUA_CLIENT_ID` and
+`JANUA_CLIENT_SECRET` at runtime. No Janua client existed for them. The
+platform `forj-web` declares the confidential client `forj-web` (audience
+`forj`, which forj's API verifies; one callback,
+`https://forj.design/auth/callback`), and the provisioner files the id and the
+secret into a dedicated ExternalSecret.
+
+| Property in `secret/forj` | Target | Written by | ExternalSecret | Env var |
+|---|---|---|---|---|
+| `janua_client_id` | `forj/web-oidc` | `enclii secrets provision oidc --platform forj-web` | `forj-web-oidc` | `JANUA_CLIENT_ID` |
+| `janua_client_secret` | `forj/web-oidc` | `enclii secrets provision oidc --platform forj-web` | `forj-web-oidc` | `JANUA_CLIENT_SECRET` |
+
+Not `forj-secrets` (the onboarding Secret, out of the intake's reach) and not
+`forj-service-clients` (the Pravara intake pair), so an unprovisioned client
+holds no other Secret's sync. The Vault writer policy already covers
+`secret/forj`.
+
+Owner sequence, after the registry change is deployed (the merge rebuilds
+switchyard-api and pins its digest in `infra/k8s/production`) and the CLI
+carries the platform (`make -C ~/labspace/enclii install-cli` from an
+up-to-date `main`, or `--registry config/ecosystem-oidc-provision.yaml`):
+
+```bash
+export ENCLII_API_ENDPOINT=https://api.enclii.dev
+# Creating a Janua client that lists madfam:silent_auth needs a Janua platform
+# admin (`--profile admin`); the Vault intake needs the platform_admin operator.
+enclii --profile admin secrets provision oidc --platform forj-web \
+  --intake-profile default --reason "forj web sign-in" --dry-run
+enclii --profile admin secrets provision oidc --platform forj-web \
+  --intake-profile default --reason "forj web sign-in"
+# prints: ✓ forj-web client_id=jnc_… created=true intake=int_…
+enclii secrets intake status int_<id>
+```
+
+Then pin the printed `jnc_…` id as `janua_client.client_id` for `forj-web`
+(both copies) so later runs reconcile instead of creating a second client.
+Until forj's `forj-web-oidc` ExternalSecret exists, intake reports
+`external_secret_refreshed: false`, which is expected. The web reads both
+values at container start: restart `forj-web` once after the Secret first
+syncs, and after any `--rotate-secret`.
 
 ### Alertmanager SMTP credential (2026-10-05)
 
@@ -1013,6 +1163,93 @@ turned off in the dhanam and karafiel repos. Do not rotate either key after
 that flip without a deploy window: both sides read the new value only when
 their pods restart.
 
+### PhyndCRM native MCP reader (2026-11-14)
+
+One `client_credentials` client for PhyndCRM's read-only `POST /mcp`
+(phynd-crm#131; RFC 0051 M3; owner ruling V2: the ops agents only, Selva gets no
+client until it has a concrete need). Audience `phynd-crm`, scope `phynd-crm-pipeline:read`, org-bound to
+`madfam-ecosystem`. Same layout as the COGS MCP consumers (enclii#946).
+
+| Platform | Target | Property | ExternalSecret | Reader |
+|---|---|---|---|---|
+| `ops-agents-phynd-crm-pipeline` | `ops-agents/phynd-crm-pipeline-client` | `secret/ops-agents` `phynd_crm_pipeline_client_id` / `_secret` | none | none in the cluster; the pair is held in Vault until the owner decides how the ops agents receive it |
+
+Until a reader exists, intake reports `external_secret_refreshed: false`, which
+is expected.
+
+**Before the first run, in order:**
+
+1. The Janua image that reserves `phynd-crm-pipeline:read` (janua#799,
+   `reserved_oauth_boundaries.py`) is promoted. Before that, Janua refuses the
+   scope.
+2. This registry is deployed (the merge rebuilds switchyard-api and pins its
+   digest in `infra/k8s/production`), and the CLI carries the platform
+   (`make -C ~/labspace/enclii install-cli` from an up-to-date `main`, or
+   `--registry config/ecosystem-oidc-provision.yaml`).
+3. `secret/ops-agents` is a new path
+   in the writer policy. Re-apply it first, or the run rotates the Janua secret
+   and then 403s on the Vault merge:
+
+   ```bash
+   ASSERT_PATH=ops-agents scripts/apply-switchyard-vault-policy-remote.sh
+   ```
+
+```bash
+enclii --profile admin secrets provision oidc --platform ops-agents-phynd-crm-pipeline --intake-profile default --json --reason "ops agents read the CRM pipeline over MCP"
+```
+
+Each first run creates the client and prints its `jnc_…` id. Pin it in both
+registry copies, then list it in phynd-crm's `PHYND_CRM_MCP_READ_CLIENTS`
+(`<jnc_id>@1a6233ef-185f-43ee-9181-e2591fbb2643`). A provisioned client reads
+nothing until it is listed there and `PHYND_CRM_MCP_ENABLED` is `true`; both
+are the owner's switches on the phynd-crm web deployment (phynd-crm
+`docs/NATIVE_MCP.md`).
+
+### Tulana → Dhanam COGS MCP reader (2026-11-17)
+
+One `client_credentials` client for Tulana's API to read Dhanam's native COGS
+MCP (`POST /mcp` on Dhanam's API, tool `cogs_sku_floors`), the measured cost
+per offer for Tulana's internal catalogue (tulana#151, dhanam#1002). Read only:
+one edge, one client, one scope. Confidential, no redirect URIs, org-bound to
+`madfam-ecosystem` (`1a6233ef-185f-43ee-9181-e2591fbb2643`). Never widen it
+into a writer: `dhanam-cogs:read` never reaches `cogs_submit_cost_events`.
+
+| Platform id | Audience | Scope | Target → Vault path | ExternalSecret | Consumer env |
+|---|---|---|---|---|---|
+| `tulana-dhanam-cogs` | `dhanam-api` | `dhanam-cogs:read` | `tulana/dhanam-cogs-client` → `secret/tulana` | `tulana-dhanam-cogs-client` (namespace `tulana`, parked outside tulana's kustomization until provisioned) | `DHANAM_COGS_CLIENT_ID` / `_SECRET`, ignored until `TULANA_LEDGER_COSTS_ENABLED=true` |
+
+The pair has its own ExternalSecret, not `tulana-secrets`: ESO syncs each
+ExternalSecret all-or-nothing, so an unprovisioned pair never freezes tulana's
+other secrets. Until tulana applies it, intake reports
+`external_secret_refreshed=false`, which is expected.
+
+**Before the first run, in order:**
+
+1. This registry is deployed: merging it redeploys switchyard-api with the
+   new intake target. The Vault policy needs no change (`secret/tulana` is
+   already writable).
+2. The Janua image that reserves `dhanam-cogs:read`
+   (`apps/api/app/core/reserved_oauth_boundaries.py`) is promoted, and lists
+   `tulana-dhanam-cogs` among the machine edges in
+   `tests/unit/core/test_ecosystem_machine_edges_reserved.py`.
+3. Dhanam's MCP is deployed with its switch off.
+
+```bash
+enclii --profile admin secrets provision oidc --platform tulana-dhanam-cogs --intake-profile default --json --reason "tulana internal catalogue reads dhanam cogs sku floors"
+```
+
+Until a CLI release embeds this entry, pass the registry from `origin/main`:
+`REG="$(mktemp)" && git -C <enclii checkout> fetch -q origin && git -C <enclii checkout> show origin/main:config/ecosystem-oidc-provision.yaml > "$REG"`,
+then add `--registry "$REG"`. The first run creates the client and prints its
+`jnc_…` id. Pin it in both registry copies, then (owner-run):
+
+1. `DHANAM_MCP_READ_CLIENTS` on dhanam-api gains
+   `<client_id>@1a6233ef-185f-43ee-9181-e2591fbb2643`; a provisioned client
+   reads nothing until it is listed there and `DHANAM_MCP_ENABLED=true`.
+2. tulana adds `dhanam-cogs-external-secret.yaml` to its kustomization and
+   confirms the ExternalSecret reports `SecretSynced`.
+3. tulana sets `TULANA_LEDGER_COSTS_ENABLED` to `"true"`.
+
 ### Remediation wave: phynd-crm edge, crawler caller keys, Dhanam metering key (2026-11-09)
 
 Three verifier-owned credentials. Each is minted or filed where it is
@@ -1024,6 +1261,7 @@ its own ExternalSecret.
 | nauta → phynd-crm machine edge (`nauta-phynd-crm`, audience `phynd-crm`, scope `phynd-crm-engagements:read`, org-bound to `madfam-ecosystem`) | `nauta/phynd-crm-oauth` | `secret/nauta` `phynd_crm_oauth_client_id` / `_secret` | `nauta-phynd-crm-oauth` (nauta) | nauta only; phynd-crm verifies the Janua token, not this pair |
 | madfam-crawler per-caller keys | `madfam-crawler/api-key-<caller>` | `secret/madfam-crawler` `api_key_<caller>` | `madfam-crawler-caller-key-<caller>` (crawler-api, `CALLER_KEY_<CALLER>`) | each caller's own ExternalSecret |
 | Dhanam credit-metering key (DHC-07) | `dhanam/billing-webhook-secret` | `secret/dhanam` `billing_webhook_secret` | `dhanam-billing-webhook` (dhanam api, `BILLING_WEBHOOK_SECRET_NEXT` first) | `karafiel-dhanam-credit-signing` (karafiel, `DHANAM_CREDIT_WEBHOOK_SECRET`) |
+| Dhanam referral reward key (added 2026-11-10) | `dhanam/referral-webhook-secret` | `secret/dhanam/referral` `referral_webhook_secret` | `dhanam-referral-webhook` (dhanam api, `REFERRAL_WEBHOOK_SECRET`; until it is set the guard falls back to the metering key) | none wired yet |
 
 Every verifier-side and reader-side ExternalSecret above is **spec only** in its
 own repo until its property exists, so until then intake reports
@@ -1047,14 +1285,80 @@ enclii --profile admin secrets provision oidc --platform nauta-phynd-crm --intak
 enclii secrets intake submit madfam-crawler/api-key-forgesight --generate api_key_forgesight --reason "madfam-crawler per-caller key"
 # … the same for fortuna, tulana, rondelio, avala, tezca, one caller at a time
 enclii secrets intake submit dhanam/billing-webhook-secret --generate billing_webhook_secret --reason "DHC-07 credit metering key"
+enclii secrets intake submit dhanam/referral-webhook-secret --generate referral_webhook_secret --reason "Dhanam referral reward key"
 ```
 
 Pin the printed `jnc_…` id of `nauta-phynd-crm` in both registry copies. Run
-the Dhanam submit **once**: a re-run rotates the key, and Dhanam and Karafiel
-read the new value only when their pods restart. The caller-side moves (wire
+each Dhanam submit **once**: a re-run rotates the key, and Dhanam and Karafiel
+read the new value only when their pods restart. The referral key lives on its
+own sub-path `secret/dhanam/referral`, which the existing
+`secret/data/dhanam/*` policy block already covers. Submit it before Dhanam
+wires `REFERRAL_WEBHOOK_SECRET`; the moment that variable is set, a sender
+still signing with the metering key is rejected, so the sender must switch
+first. The caller-side moves (wire
 each ExternalSecret, restart, retire the legacy `API_KEYS` entry) are in
 madfam-crawler `docs/CALLER_KEYS.md`.
 
+### phynd-crm lead-intake key (2026-11-15)
+
+Three services sign the lead events they send to phynd-crm's
+`POST /api/webhooks/lead-intake` with one shared HMAC key, and phynd-crm
+verifies it. All four must hold the **same** value; a mismatch makes every
+delivery from that sender fail verification.
+
+| Role | Target | Property | ExternalSecret (namespace) | Env var | Restart |
+|---|---|---|---|---|---|
+| verifier | `phynd-crm/lead-intake` | `secret/phynd-crm` `lead_intake_secret` | `phynd-crm-lead-intake` (`phynd-crm`) | `PHYND_CRM_LEAD_INTAKE_SECRET` | `deployment/phynd-crm-web` |
+| sender (Kalya) | `kalya/phynd-crm-lead-intake` | `secret/kalya` `phynd_crm_lead_intake_secret` | `kalya-phynd-crm-lead-intake` (`kalya`) | `PHYND_CRM_LEAD_INTAKE_SECRET` | `deployment/kalya-web` |
+| sender (madfam-site) | `madfam-site/phynd-crm-lead-intake` | `secret/madfam-site` `phynd_crm_lead_intake_secret` | `madfam-site-phynd-crm-lead-intake` (`madfam-site`) | `PHYND_CRM_LEAD_INTAKE_SECRET` | `deployment/madfam-web` |
+| sender (Cotiza) | `digifab-quoting/phynd-crm-lead-intake` | `secret/digifab-quoting` `phynd_crm_lead_intake_secret` | `digifab-quoting-phynd-crm-lead-intake` (`digifab-quoting`) | `PHYNDCRM_LEAD_INTAKE_SECRET` | `deployment/digifab-quoting-api` |
+
+No person holds the value. The four targets form the shared group
+`phynd-crm/lead-intake-hmac`: one command makes Switchyard mint 32 random bytes
+(hex, 64 characters) and write them to all four, verifier first, each with a
+Vault compare-and-set. A member refuses a single-target `submit`, generated or
+supplied, so the copies cannot drift. Each target has its own ExternalSecret, so
+a property not yet in Vault never parks a Secret a running service already
+reads. All four paths are already in the writer policy; no policy re-apply is
+needed.
+
+**Order.** The command does not need the ExternalSecrets to exist: it writes
+Vault first and treats a missing ExternalSecret as "not refreshed"
+(`external_secret_refreshed: false`), which is not an error. So: (1) merge and
+deploy this registry change (switchyard-api digest bump) and a CLI built from
+it; (2) run the command; (3) merge each service's ExternalSecret manifest,
+which syncs on creation because the property already exists; (4) restart.
+
+```bash
+make -C ~/labspace/enclii install-cli CLI_INSTALL_DIR=$HOME/.local/bin
+enclii secrets intake group phynd-crm/lead-intake-hmac --reason "phynd-crm lead-intake HMAC key"
+# prints each member: written | unchanged | failed | not_attempted; exit 0 only when all four hold the value
+enclii secrets intake status int_<id>
+```
+
+- **A member failed** (exit nonzero, `status: partial`): fix the cause and
+  re-run the same command. It keeps the value already written and completes
+  the rest. Re-running a complete group writes nothing.
+- **Rotation** is explicit: add `--rotate`. It writes a new value to all four.
+  If a rotation is interrupted, the members hold different values; a plain run
+  then refuses (409, nothing written) and only `--rotate` converges them.
+  Deliveries signed with the old value fail between the verifier's restart and
+  each sender's.
+
+**Restart every service after its Secret syncs:** each reads the key from its
+environment at container start, so a running pod keeps the old value (or none).
+Check `enclii ops secrets external -n <namespace>` until the ExternalSecret is
+Ready, then restart phynd-crm first and the senders after it (deployments in
+the table). `enclii ops pods restart` reaches only namespaces in
+`ENCLII_OPS_RESTART_NAMESPACES`; today that covers `digifab-quoting` and not
+`phynd-crm`, `kalya` or `madfam-site`, so restart those through their own
+redeploy until the allowlist gains them (an Enclii adapter gap):
+
+```bash
+enclii ops pods restart deployment/digifab-quoting-api -n digifab-quoting
+enclii ops pods restart deployment/digifab-quoting-api -n digifab-quoting --expect-uid <reviewed-uid> \
+  --apply --reason "pick up the phynd-crm lead-intake key"
+```
 
 Add targets via PR to the registry — do not hardcode paths in runbooks. A new
 `vault_path` also needs its block in `scripts/provision-switchyard-vault-writer.sh`;
@@ -1068,8 +1372,9 @@ in-cluster against `vault-0`). A path in git but not re-applied 403s exactly lik
 a path that was never added. See
 [Vault Operations](./VAULT_OPERATIONS.md#switchyard-vault-writer-secret-intake--vault-backfill).
 
-Not every policy path has a target. `secret/kalya` is **policy-only**: nothing
-intakes it, but `enclii secrets provision kalya-feed` reads
+Not every policy path is written only by intake. `secret/kalya` has intake
+targets (`kalya/internal-api-key`, `kalya/phynd-crm-lead-intake`), and
+`enclii secrets provision kalya-feed` also reads
 `secret/kalya:internal_api_key` to authorize minting the feed token before
 writing the client portal's Vault path and `secret/nauta`. The parity check scans
 switchyard-api Go sources too, so a provisioner's Vault literal cannot drift out
@@ -1108,6 +1413,12 @@ enclii secrets intake submit symbiosis-hcm/<portal>-absence-feed \
   --reason "HCM absence feed bootstrap"
 # prompts (masked) for <portal>_absence_feed_url only
 ```
+
+One value that several targets must hold identically (one service verifies a
+key, others sign with it) is a **shared group**: `enclii secrets intake group
+<group>` mints it once and writes it to every member; see the
+[CLI reference](../cli/commands/secrets.md#group-one-value-for-several-targets)
+and [phynd-crm lead-intake key](#phynd-crm-lead-intake-key-2026-11-15).
 
 A key cannot be both generated and supplied — that is a `400`, not a silent
 preference for one of them. `--generate` rejects any key the target does not
@@ -1169,8 +1480,9 @@ Tell agents only the `intake_id` — never the secret value.
 
 | Method | Path | Notes |
 |--------|------|-------|
-| `GET` | `/v1/secrets/intake/targets` | Public-safe target metadata |
+| `GET` | `/v1/secrets/intake/targets` | Public-safe target and shared-group metadata |
 | `POST` | `/v1/secrets/intake` | Write-only; body has values once, or `generate: ["key"]` for server-side minting |
+| `POST` | `/v1/secrets/intake/groups` | `{"group","reason","rotate"}`: one generated value to every member of a shared group; 200 complete, 207 partial, 409 members out of step |
 | `GET` | `/v1/secrets/intake/:id` | Status/metadata only |
 
 Errors: `503 vault_writer_disabled` (no `vault-credentials`), `404 unknown_target`,

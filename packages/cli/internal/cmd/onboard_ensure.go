@@ -22,6 +22,8 @@ func NewOnboardEnsureCommand(cfg *config.Config) *cobra.Command {
 		secretName   string
 		dbName       string
 		dbExtensions string
+		allowNarrow  bool
+		dryRun       bool
 		gen          generatedCredentialFlags
 	)
 
@@ -39,7 +41,15 @@ Use this to repair partial runtime state without raw kubectl:
 It also converges generated credentials (see 'enclii onboard'): with
 --generate-db-password, --app-role or --generate-secret, existing roles and
 values are KEPT, missing ones are generated, and only --rotate-* replaces a
-value. Nothing generated is printed. A partial or failed result exits non-zero.`,
+value. Nothing generated is printed. A partial or failed result exits non-zero.
+
+NetworkPolicies are diffed against the live namespace before they are
+applied, and the diff is printed. A change that narrows live access (a
+podSelector {} made app-specific, an allowed port or peer a workload loses, a
+new namespace-wide deny) is refused and nothing is applied; declare the access
+in enclii.yaml, or pass --allow-netpol-narrowing after reviewing the diff.
+--dry-run prints that diff and changes nothing; it previews only the
+network_policies step.`,
 		Example: `  enclii onboard ensure --repo madfam-org/coupler \
     --project coupler \
     --manifest-path k8s/overlays/production \
@@ -48,7 +58,10 @@ value. Nothing generated is printed. A partial or failed result exits non-zero.`
   # Add a runtime app role to an existing project (generated password)
   enclii onboard ensure --repo madfam-org/pravara-mes --project pravara-mes \
     --secret-name pravara-secrets --db-name pravara \
-    --app-role pravara_app --app-role-connection-limit 10`,
+    --app-role pravara_app --app-role-connection-limit 10
+
+  # Preview the NetworkPolicy diff without changing anything
+  enclii onboard ensure --repo madfam-org/crea-map --project crea-map --dry-run`,
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			repo, _ := cmd.Flags().GetString("repo")
@@ -64,6 +77,8 @@ value. Nothing generated is printed. A partial or failed result exits non-zero.`
 				secretName:   secretName, // pragma: allowlist secret -- flag/field names, not a value
 				dbName:       dbName,
 				dbExtensions: dbExtensions,
+				allowNarrow:  allowNarrow,
+				dryRun:       dryRun,
 				gen:          gen,
 			})
 		},
@@ -77,6 +92,8 @@ value. Nothing generated is printed. A partial or failed result exits non-zero.`
 	cmd.Flags().StringVar(&secretName, "secret-name", "", "K8s Secret name (default: <project>-credentials)")
 	cmd.Flags().StringVar(&dbName, "db-name", "", "Postgres database (with --generate-db-password: provisioned; with --app-role: the role's database)") // pragma: allowlist secret -- flag/field names, not a value
 	cmd.Flags().StringVar(&dbExtensions, "db-extensions", "", "Comma-separated Postgres extensions (with --generate-db-password)")
+	cmd.Flags().BoolVar(&allowNarrow, "allow-netpol-narrowing", false, allowNetpolNarrowingUsage)
+	cmd.Flags().BoolVar(&dryRun, "dry-run", false, "Print the NetworkPolicy diff the network_policies step would apply, and change nothing")
 	gen.register(cmd.Flags())
 	_ = cmd.MarkFlagRequired("repo")
 
@@ -92,6 +109,8 @@ type onboardEnsureOpts struct {
 	secretName   string
 	dbName       string
 	dbExtensions string
+	allowNarrow  bool
+	dryRun       bool
 	gen          generatedCredentialFlags
 }
 
@@ -120,6 +139,8 @@ func runOnboardEnsure(cfg *config.Config, opts onboardEnsureOpts) error {
 		Namespace:    opts.namespace,
 		ManifestPath: opts.manifestPath,
 		SecretName:   opts.secretName, // pragma: allowlist secret -- flag/field names, not a value
+
+		AllowNetpolNarrowing: opts.allowNarrow,
 	}
 	if opts.branch != "" {
 		req.Branch = &opts.branch
@@ -136,9 +157,13 @@ func runOnboardEnsure(cfg *config.Config, opts onboardEnsureOpts) error {
 		return err
 	}
 
+	apiClient := client.NewAPIClient(cfg.APIEndpoint, cfg.APIToken)
+	if opts.dryRun {
+		return runOnboardEnsureDryRun(ctx, apiClient, &req)
+	}
+
 	fmt.Printf("Ensuring onboarding for %s (project %q, namespace %q)...\n", opts.repo, opts.project, opts.namespace)
 
-	apiClient := client.NewAPIClient(cfg.APIEndpoint, cfg.APIToken)
 	var result map[string]interface{}
 	if err := apiClient.EnsureOnboarding(ctx, &req, &result); err != nil {
 		return fmt.Errorf("onboard ensure failed: %w", err)
@@ -198,6 +223,7 @@ func printOnboardEnsureResult(result map[string]interface{}) bool {
 	}
 
 	printGeneratedCredentials(os.Stdout, result)
+	printNetworkPolicyPlan(os.Stdout, result)
 
 	status := fmt.Sprintf("%v", result["status"])
 	return status == "completed" || status == "<nil>"

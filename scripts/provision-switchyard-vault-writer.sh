@@ -11,7 +11,8 @@
 # Policy-only (add paths without rotating writer token):
 #   POLICY_ONLY=1 VAULT_TOKEN_FILE=... ./scripts/provision-switchyard-vault-writer.sh
 #
-# Last Updated: 2026-11-09 (exact madfam-crawler path for the per-caller API keys)
+# Last Updated: 2026-11-12 (secret/telemetry-gate for the product telemetry gate, RFC 0057)
+# Prior Update: 2026-11-09 (exact madfam-crawler path for the per-caller API keys)
 set -euo pipefail
 
 VAULT_NS="${VAULT_NS:-vault}"
@@ -167,6 +168,12 @@ path "secret/data/crea-map" {
   capabilities = ["create", "update", "patch", "read"]
 }
 path "secret/data/crea-map/*" {
+  capabilities = ["create", "update", "patch", "read"]
+}
+# telemetry-gate — added 2026-11-12 with intake target telemetry-gate/runtime
+# (RFC 0057): the product telemetry gate's per-product tokens and its own
+# Postgres password, both generated through intake.
+path "secret/data/telemetry-gate" {
   capabilities = ["create", "update", "patch", "read"]
 }
 path "secret/data/symbiosis-hcm" {
@@ -453,6 +460,9 @@ path "secret/metadata/kalya" {
 path "secret/metadata/kalya/*" {
   capabilities = ["read", "list"]
 }
+path "secret/metadata/telemetry-gate" {
+  capabilities = ["read", "list"]
+}
 path "secret/metadata/crea-map" {
   capabilities = ["read", "list"]
 }
@@ -630,9 +640,11 @@ path "secret/data/avala" {
 path "secret/metadata/avala" {
   capabilities = ["read", "list"]
 }
-# ops-agents — added 2026-11-06 with the ops-agents/<platform>-cogs-client
-# intake targets (RFC 0051 M3: the ops agents' COGS MCP read clients), written
-# only by `enclii secrets provision oidc --platform ops-agents-<platform>-cogs`.
+# ops-agents — the ops agents' MCP read clients (RFC 0051 M3): the
+# ops-agents/<name>-client intake targets, written only by
+# `enclii secrets provision oidc --platform ops-agents-<name>`. Added 2026-11-14
+# with ops-agents/phynd-crm-pipeline-client; the ops-agents/<platform>-cogs-client
+# targets (enclii#946) share it.
 # Exact path only. Merged in git is not applied in Vault: re-apply this policy
 # (ASSERT_PATH=ops-agents scripts/apply-switchyard-vault-policy-remote.sh)
 # before the first run, or the run rotates the Janua secret and then 403s on

@@ -86,6 +86,17 @@ redirect and should not become the source of truth again.
   same dependency floors; a bump in the repo's `go.mod` does not reach them.
   `tests/scripts/test_bundled_cosign_floors.py` fails on drift or on a floor
   below its advisory's fixed version.
+- **The label merge train (`fusionar-aprobado.yml`) merges as the GitHub App
+  `madfam-fusionador`** (installed on this repo only; Contents and Pull
+  requests write, no Workflows), minting a per-run token from
+  `vars.FUSIONADOR_APP_ID` + `secrets.FUSIONADOR_APP_PRIVATE_KEY`. It goes red
+  when it cannot merge an owner-approved PR (no identity, or a merge GitHub
+  refused, e.g. a PR that changes `.github/workflows/`): a red `fusionar/tren`
+  status and one comment per head; the PR stays approved. Agents never add
+  `aprobado-para-fusionar` and never merge. github-script@v7 cannot
+  `require('@actions/github')`; build extra clients with
+  `new github.constructor({auth})`. Tested by
+  `tests/scripts/test_fusionar_aprobado_train.py`.
 - **`packages/sdk-py` models** are generated from `docs/api/openapi.yaml` with
   `datamodel-code-generator==0.83.0`; CI fails on drift. Regenerate in the
   same PR as a spec change.

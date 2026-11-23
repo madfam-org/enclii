@@ -13,7 +13,7 @@ import (
 func TestLoadRegistry(t *testing.T) {
 	reg, err := LoadRegistry()
 	require.NoError(t, err)
-	assert.Len(t, reg, 144)
+	assert.Len(t, reg, 160)
 	assert.Contains(t, reg, "ceq/vast-api-key")
 	assert.Contains(t, reg, "karafiel/web-oidc-janua")
 	adminSession := reg["karafiel/admin-session"]
@@ -38,7 +38,7 @@ func TestGetTarget(t *testing.T) {
 func TestListTargetsSorted(t *testing.T) {
 	list, err := ListTargets()
 	require.NoError(t, err)
-	require.Len(t, list, 144)
+	require.Len(t, list, 160)
 	for i := 1; i < len(list); i++ {
 		assert.Less(t, list[i-1].ID, list[i].ID, "targets should be sorted by id")
 	}
@@ -53,6 +53,7 @@ func TestListTargetsSorted(t *testing.T) {
 		"angelia/courier-producer-keys",
 		"angelia/courier-webhook-signing-keys",
 		"avala/oidc-janua",
+		"ceq/cpu-worker-oauth",
 		"ceq/janua-client-secret",
 		"ceq/vast-api-key",
 		"converge-dash/dhanam-token",
@@ -84,8 +85,10 @@ func TestListTargetsSorted(t *testing.T) {
 		"dhanam/convergence",
 		"dhanam/karafiel-callback-secret",
 		"dhanam/oidc-janua",
+		"dhanam/referral-webhook-secret",
 		"dhanam/session-auth",
 		"dhanam/stripe-mx-live",
+		"digifab-quoting/phynd-crm-lead-intake",
 		"digifab-quoting/pravara-intake",
 		"digifab-quoting/web-oidc",
 		"digifab-quoting/web-session",
@@ -96,15 +99,19 @@ func TestListTargetsSorted(t *testing.T) {
 		"family-history/web-session",
 		"fashion-cabinet/asset-shells-publisher",
 		"forj/pravara-intake",
+		"forj/web-oidc",
 		"janua/internal-api-key",
 		"kalya/internal-api-key",
+		"kalya/phynd-crm-lead-intake",
 		"karafiel-staging/admin-oidc",
 		"karafiel-staging/admin-session",
 		"karafiel-staging/core",
 		"karafiel-staging/web-oidc",
 		"karafiel/admin-oidc-janua",
 		"karafiel/admin-session",
+		"karafiel/dhanam-bank-ledger-client",
 		"karafiel/dhanam-cost-events-client",
+		"karafiel/dhanam-scheduled-payments-client",
 		"karafiel/dhanam-webhook-secret",
 		"karafiel/hcm-signing-bindings",
 		"karafiel/web-oidc-janua",
@@ -116,6 +123,7 @@ func TestListTargetsSorted(t *testing.T) {
 		"madfam-crawler/api-key-rondelio",
 		"madfam-crawler/api-key-tezca",
 		"madfam-crawler/api-key-tulana",
+		"madfam-site/phynd-crm-lead-intake",
 		"monitoring/alertmanager-smtp",
 		"monitoring/grafana-admin",
 		"nauta/internal-probe-key",
@@ -130,10 +138,14 @@ func TestListTargetsSorted(t *testing.T) {
 		"ops-agents/enclii-cogs-client",
 		"ops-agents/karafiel-cogs-client",
 		"ops-agents/nauta-cogs-client",
+		"ops-agents/phynd-crm-pipeline-client",
 		"ops-agents/pravara-cogs-client",
 		"ops-agents/selva-cogs-client",
 		"phynd-crm/convergence",
+		"phynd-crm/default-task-owner",
+		"phynd-crm/lead-intake",
 		"phynd-crm/oidc-janua",
+		"phynd-crm/staff-bootstrap",
 		"platform/comms-resend-api-key",
 		"pravara-mes/asset-shells-publisher-madfam-ecosystem",
 		"pravara-mes/dhanam-cost-events-client",
@@ -142,6 +154,7 @@ func TestListTargetsSorted(t *testing.T) {
 		"routecraft/billing-relay",
 		"selva/converge-dash-cogs-client",
 		"selva/dhanam-cogs-client",
+		"selva/dhanam-cost-events-client",
 		"selva/enclii-cogs-client",
 		"selva/karafiel-cogs-client",
 		"selva/nauta-cogs-client",
@@ -155,10 +168,12 @@ func TestListTargetsSorted(t *testing.T) {
 		"symbiosis-hcm/nauta-labor-hours-client",
 		"symbiosis-hcm/signing-bindings",
 		"synthetics/dhanam-staging-checkout",
+		"telemetry-gate/runtime",
 		"telesia/oidc-janua",
 		"telesia/runtime",
 		"telesia/web-session",
 		"tulana/commercial-ga-evidence-token",
+		"tulana/dhanam-cogs-client",
 		"tulana/django-secret-key",
 		"tulana/product-offer-ga-evidence-token",
 		"tulana/selva-webhook-secret",
@@ -979,6 +994,30 @@ func TestDigifabQuotingWebOIDCTarget(t *testing.T) {
 	assert.Contains(t, tgt.Description, "--platform cotiza-web")
 }
 
+// Forj web Janua login client (2026-11-16). Written only by
+// `enclii secrets provision oidc --platform forj-web`, into a DEDICATED
+// ExternalSecret: never forj-secrets (the onboarding Secret; intake cannot
+// reach it) and never forj-service-clients (the Pravara intake pair; ESO syncs
+// all of an ExternalSecret's keys or none, so an unprovisioned login client
+// would hold it). Lowercase, byte for byte what forj-web-oidc maps.
+func TestForjWebOIDCTarget(t *testing.T) {
+	tgt, err := GetTarget("forj/web-oidc")
+	require.NoError(t, err)
+	assert.Equal(t, "secret/forj", tgt.VaultPath)
+	assert.Equal(t, "forj", tgt.Namespace)
+	assert.Equal(t, "forj-web-oidc", tgt.ExternalSecret)
+	assert.NotEqual(t, "forj-secrets", tgt.ExternalSecret,
+		"forj-secrets is the onboarding Secret; intake cannot reach it")
+	assert.NotEqual(t, "forj-service-clients", tgt.ExternalSecret,
+		"the login pair must not gate the Pravara intake pair's ExternalSecret")
+	assert.Equal(t, []string{"janua_client_id", "janua_client_secret"}, tgt.Keys)
+	for _, k := range tgt.Keys {
+		assert.Equal(t, strings.ToLower(k), k, "Vault stores lowercase; an upper-case key would never match the ExternalSecret property")
+	}
+	assert.NotEmpty(t, tgt.Label)
+	assert.Contains(t, tgt.Description, "--platform forj-web")
+}
+
 // Dhanam <-> Karafiel webhook signing keys (owner ruling 2026-10-14): one
 // dedicated HMAC key per direction, minted where it is verified and read by the
 // signer through its own read-only ExternalSecret. Pinned end to end because
@@ -1181,7 +1220,9 @@ func TestKarafielDhanamCostEventsClientTarget(t *testing.T) {
 	assert.Equal(t, []string{
 		"karafiel/admin-oidc-janua",
 		"karafiel/admin-session",
+		"karafiel/dhanam-bank-ledger-client",
 		"karafiel/dhanam-cost-events-client",
+		"karafiel/dhanam-scheduled-payments-client",
 		"karafiel/dhanam-webhook-secret",
 		"karafiel/hcm-signing-bindings",
 		"karafiel/web-oidc-janua",
@@ -1281,6 +1322,7 @@ func TestCogsMCPConsumerClientTargets(t *testing.T) {
 	assert.Equal(t, []string{
 		"selva/converge-dash-cogs-client",
 		"selva/dhanam-cogs-client",
+		"selva/dhanam-cost-events-client",
 		"selva/enclii-cogs-client",
 		"selva/karafiel-cogs-client",
 		"selva/nauta-cogs-client",
@@ -1294,6 +1336,7 @@ func TestCogsMCPConsumerClientTargets(t *testing.T) {
 		"ops-agents/enclii-cogs-client",
 		"ops-agents/karafiel-cogs-client",
 		"ops-agents/nauta-cogs-client",
+		"ops-agents/phynd-crm-pipeline-client",
 		"ops-agents/pravara-cogs-client",
 		"ops-agents/selva-cogs-client",
 	}, onPath["secret/ops-agents"])

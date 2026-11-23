@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"encoding/json"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -25,6 +26,7 @@ func TestNewSecretsCommand_IncludesIntake(t *testing.T) {
 	assert.Contains(t, names, "targets")
 	assert.Contains(t, names, "submit")
 	assert.Contains(t, names, "status")
+	assert.Contains(t, names, "group")
 
 	provision := findSubcommand(cmd, "provision")
 	require.NotNil(t, provision)
@@ -137,4 +139,65 @@ func TestSecretsIntakeSubmit_HasGenerateFlag(t *testing.T) {
 	require.NotNil(t, flag, "submit must expose --generate")
 	assert.Equal(t, "", flag.DefValue)
 	assert.Contains(t, submit.Long, "--generate")
+}
+
+func TestSharedGroupMemberRefusedBeforePromptOrRead(t *testing.T) {
+	requests := 0
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requests++
+		require.Equal(t, http.MethodGet, r.Method)
+		require.NoError(t, json.NewEncoder(w).Encode(map[string]interface{}{
+			"targets": []interface{}{map[string]interface{}{
+				"id": "kalya/phynd-crm-lead-intake", "keys": []string{"phynd_crm_lead_intake_secret"},
+				"generation": map[string]interface{}{"group": "phynd-crm/lead-intake-hmac"},
+			}},
+		}))
+	}))
+	defer server.Close()
+	// A value file that does not exist proves the refusal precedes any read.
+	_, err := collectIntakeValues(&config.Config{APIEndpoint: server.URL}, "kalya/phynd-crm-lead-intake", "/nonexistent/value-file", false, nil)
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "enclii secrets intake group phynd-crm/lead-intake-hmac")
+	require.Equal(t, 1, requests)
+}
+
+func TestSecretsIntakeGroupPostsGroupAndRotate(t *testing.T) {
+	for _, rotate := range []bool{false, true} {
+		var got map[string]interface{}
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			require.Equal(t, http.MethodPost, r.Method)
+			require.Equal(t, "/v1/secrets/intake/groups", r.URL.Path)
+			raw, _ := io.ReadAll(r.Body)
+			require.NoError(t, json.Unmarshal(raw, &got))
+			_, _ = w.Write([]byte(`{"intake_id":"int_1","status":"ready","value_source":"generated","members":[{"target_id":"a/x","result":"written"}]}`))
+		}))
+		cmd := newSecretsIntakeGroupCommand(&config.Config{APIEndpoint: server.URL, APIToken: "tok"})
+		args := []string{"phynd-crm/lead-intake-hmac", "--reason", "test"}
+		if rotate {
+			args = append(args, "--rotate")
+		}
+		cmd.SetArgs(args)
+		require.NoError(t, cmd.Execute())
+		server.Close()
+		assert.Equal(t, "phynd-crm/lead-intake-hmac", got["group"])
+		assert.Equal(t, "test", got["reason"])
+		if rotate {
+			assert.Equal(t, true, got["rotate"])
+		} else {
+			assert.NotContains(t, got, "rotate", "rotation is never the default")
+		}
+	}
+}
+
+func TestSecretsIntakeGroupPartialFails(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusMultiStatus)
+		_, _ = w.Write([]byte(`{"intake_id":"int_1","status":"partial","message":"writing b/y failed","members":[{"target_id":"a/x","result":"written"},{"target_id":"b/y","result":"failed"}]}`))
+	}))
+	defer server.Close()
+	cmd := newSecretsIntakeGroupCommand(&config.Config{APIEndpoint: server.URL, APIToken: "tok"})
+	cmd.SetArgs([]string{"g/one", "--reason", "test"})
+	err := cmd.Execute()
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "writing b/y failed")
 }
