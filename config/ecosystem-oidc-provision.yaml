@@ -1847,6 +1847,7 @@ platforms:
       name: ops-agents-dhanam-cogs
       client_key: ops-agents-dhanam-cogs  # pragma: allowlist secret
       audience: dhanam-api
+      client_id: jnc_UKr7YJz_XitxYTrSyQKEeAOUjUch636d
       description: Machine client (client_credentials) for the MADFAM ops agents to read Dhanam's native COGS MCP (POST /mcp on Dhanam's API), tools cogs_ledger_summary, cogs_reconciliation, cogs_cost_events, cogs_unclassified_spend and cogs_by_engagement over the ledger spaces. Scope dhanam-cogs:read only, so never cogs_submit_cost_events. Org-bound to madfam-ecosystem; Dhanam also requires this client@org in DHANAM_MCP_READ_CLIENTS.
       is_confidential: true
       organization_id: 1a6233ef-185f-43ee-9181-e2591fbb2643
@@ -1891,6 +1892,7 @@ platforms:
       name: ops-agents-karafiel-cogs
       client_key: ops-agents-karafiel-cogs  # pragma: allowlist secret
       audience: karafiel-api
+      client_id: jnc_j9jqWOJfi7nzQYv2QY-4xAJVu7eWNN4I
       description: Machine client (client_credentials) for the MADFAM ops agents to read Karafiel's native COGS MCP (POST /mcp on api.karafiel.mx), tools cfdi_received_totals, cogs_emission_status, cogs_preview (dry run), fiscal_credential_status (types and expiry, never material), sat_download_status and fiscal_tenant_identity (the bound tenant's own fiscal identity, karafiel#466). Read only, scope karafiel-cogs:read only. Org-bound to madfam-ecosystem; the tenant is Karafiel's legacy LEGAL_SERVICE_RFC pin (MADFAM's own RFC) until its SERVICE_CLIENT_RFC_BINDINGS cutover, then this client's reviewed binding (an unbound client gets 403); the cost tools answer only for CFDI_EMISOR_RFC.
       is_confidential: true
       organization_id: 1a6233ef-185f-43ee-9181-e2591fbb2643

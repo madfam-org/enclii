@@ -978,7 +978,17 @@ func TestLoadRegistry_cogsMCPConsumerClients(t *testing.T) {
 			jc := p.JanuaClient
 			assert.Equal(t, id, jc.Name)
 			assert.Equal(t, id, jc.ClientKey)
-			assert.Empty(t, jc.ClientID, "%s: not pinned until the first provision prints it", id)
+			// Pinned after the first provision run (2026-11-22); every other
+			// consumer stays unpinned until its own provision prints its id.
+			if pinned, ok := map[string]string{
+				"ops-agents-karafiel-cogs": "jnc_j9jqWOJfi7nzQYv2QY-4xAJVu7eWNN4I",
+				"ops-agents-dhanam-cogs":   "jnc_UKr7YJz_XitxYTrSyQKEeAOUjUch636d",
+			}[id]; ok {
+				assert.Equal(t, pinned, jc.ClientID,
+					"%s: pinned after the first provision; an unpinned re-run registers a duplicate", id)
+			} else {
+				assert.Empty(t, jc.ClientID, "%s: not pinned until the first provision prints it", id)
+			}
 			assert.Equal(t, audience, jc.Audience, id)
 			assert.Equal(t, "1a6233ef-185f-43ee-9181-e2591fbb2643", jc.OrganizationID,
 				"%s: org-bound to madfam-ecosystem so the token carries org_id and tenant_id", id)
