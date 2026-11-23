@@ -358,6 +358,57 @@ POST /v1/ops/addons/hibernate
   addon's status.
 - **Reverse:** remove the annotation; CNPG recreates the instance from its PVC.
 
+## `ops.addons.delete-retired` (API only)
+
+Offers a **retired** (hibernated, unbound) managed-Postgres addon to the
+existing retention-hold delete. It is the closed form of `DELETE /v1/addons/:id`
+for automated callers: that endpoint takes no reason, no reviewed plan and no
+idempotency key, does not refuse an addon a service still reads, and its
+records are best-effort or written after the change. First caller: crea-sim's
+fleet reconciler, which deletes a retired kernel database 14 days after it
+hibernated it (owner ruling, 2026-11-21). There is no CLI verb yet; call the API.
+
+```
+POST /v1/ops/addons/delete-retired
+{"dry_run":true,"scope":{"project":"<slug>"},"args":{"target":"<addon uuid>"}}
+→ status ready_to_apply, data.plan_hash
+  (or succeeded: already pending_deletion; or 409 blocked: the Cluster is not hibernated)
+
+{"dry_run":false,"reason":"…","idempotency_key":"…","scope":{"project":"<slug>"},
+ "args":{"target":"<addon uuid>","expected_plan":"<plan_hash>"}}
+→ status succeeded, audit_id, data.deletion_scheduled_at
+```
+
+- **Who:** platform rank only.
+- **Refused** (both dry run and apply): another project (404); not managed
+  Postgres, or no provisioned cluster the hold can keep, e.g.
+  `shared-discovered` (422: a plain delete would remove it at once); any
+  binding that is not `deleted` (409); a status other than `ready` (409).
+- **Blocked** (HTTP 409, `status: blocked`, nothing changed) when the Cluster
+  does not carry `cnpg.io/hibernation=on`: "retired" means hibernated, so a
+  running database is never offered. Hibernate it first with
+  [`ops.addons.hibernate`](#opsaddonshibernate-api-only).
+- **Already scheduled:** an addon in `pending_deletion` answers `succeeded`
+  with its `deletion_scheduled_at` and writes nothing, so a retry is safe.
+- **Plan fields:** `addon_id`, `name`, `project`, `namespace`, `cluster`,
+  `cluster_uid`, `status`, `hibernated` (annotation on),
+  `hibernation_confirmed` (CNPG's condition; informational, not hashed),
+  `bindings` (all `deleted`) and `retention_hours`. A live state that no
+  longer hashes to `expected_plan` is a 409 and nothing is written.
+- **Apply:** an audit row (with reason, idempotency key and plan hash) before
+  the delete (no row, no delete), then the non-forced
+  `DeleteAddonWithOptions`: the addon becomes `pending_deletion`; its Cluster,
+  PVCs and backups stay for the retention hold (7 days); then the addon
+  reconciler tears the Cluster down (`FinalizeExpiredDeletion`). A result row
+  records success or failure. **Never forces.**
+- **After the hold:** CNPG deletes the PVCs with the Cluster; managed-DB PVCs
+  use the `Retain` class, so the volume becomes Released and only
+  `enclii ops storage prune-detached` reclaims it.
+- **Reverse:** there is no API that cancels a retention hold today; during
+  the 7 days the Cluster and PVCs still exist, so recovery is a platform
+  break-glass step (record the gap). After the hold the Released volume
+  remains until pruned.
+
 ## `ops addons cpu-request`
 
 Since 2026-11-04 a new managed-Postgres addon's CloudNativePG Cluster requests
