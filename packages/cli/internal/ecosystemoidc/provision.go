@@ -6,6 +6,7 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"regexp"
 	"strings"
@@ -70,22 +71,38 @@ type ProvisionResult struct {
 	// KeychainItems names the login Keychain items this run wrote, as
 	// <service>/<account>. Names only; never a value.
 	KeychainItems []string `json:"keychain_items,omitempty"`
+	// KeychainState, set only when the Keychain write failed after the intake,
+	// maps <service>/<account> to what that item holds now (one of the
+	// KeychainState* values). Names and states only; never a value.
+	KeychainState map[string]string `json:"keychain_state,omitempty"`
 }
 
 // KeychainDeliveryError is a run whose Vault intake succeeded and whose
-// Keychain write did not: the pair is in Vault only.
+// Keychain write did not. Vault holds the complete new pair; the Keychain
+// holds what Err's states say.
 type KeychainDeliveryError struct {
 	PlatformID   string
 	IntakeID     string
 	IntakeTarget string
 	Err          error
+	// Grace is the grace check's failure on the same run, if any.
+	Grace error
 }
 
 func (e *KeychainDeliveryError) Error() string {
-	return fmt.Sprintf("vault intake succeeded (intake %s, target %s) but the macOS Keychain write failed: %v; "+
-		"the pair is in Vault only. Recover with the owner-run scripts/deliver-ops-agents-keychain.sh %s, "+
-		"or re-run with --rotate-secret --keychain (this rotates the client secret)",
-		e.IntakeID, e.IntakeTarget, e.Err, e.PlatformID)
+	var b strings.Builder
+	fmt.Fprintf(&b, "vault intake succeeded (intake %s, target %s): Vault holds the complete new pair. "+
+		"The macOS Keychain write did not complete: %v. ", e.IntakeID, e.IntakeTarget, e.Err)
+	var writeErr *KeychainWriteError
+	if !errors.As(e.Err, &writeErr) || len(writeErr.States) == 0 {
+		b.WriteString("What the Keychain holds was not checked. ")
+	}
+	fmt.Fprintf(&b, "Recover with the owner-run scripts/deliver-ops-agents-keychain.sh %s (it overwrites both items), "+
+		"or re-run with --rotate-secret --keychain (this rotates the client secret)", e.PlatformID)
+	if e.Grace != nil {
+		fmt.Fprintf(&b, ". Also: %v", e.Grace)
+	}
+	return b.String()
 }
 
 func (e *KeychainDeliveryError) Unwrap() error { return e.Err }
@@ -165,6 +182,13 @@ func ProvisionPlatform(
 		}
 		return result, nil
 	}
+	// A locked or unwritable Keychain is found before anything changes, not
+	// after Janua minted a secret the run then cannot deliver.
+	if opts.Keychain != nil {
+		if err := opts.Keychain.Preflight(ctx, platform.LocalDelivery.MacOSKeychain); err != nil {
+			return ProvisionResult{}, fmt.Errorf("--keychain refused before any Janua change: %w", err)
+		}
+	}
 	if strings.TrimSpace(platform.IntakeTarget) != "" {
 		if pre, ok := submitter.(IntakePreflighter); ok {
 			targets := []string{platform.IntakeTarget}
@@ -223,7 +247,16 @@ func ProvisionPlatform(
 		service := platform.LocalDelivery.MacOSKeychain
 		items := []KeychainItem{{Account: "client_id", Value: remote.ClientID}, {Account: "client_secret", Value: secret}}
 		if err := opts.Keychain.WriteItems(ctx, service, items); err != nil {
-			return result, &KeychainDeliveryError{PlatformID: opts.PlatformID, IntakeID: intakeID, IntakeTarget: platform.IntakeTarget, Err: err}
+			delivery := &KeychainDeliveryError{PlatformID: opts.PlatformID, IntakeID: intakeID, IntakeTarget: platform.IntakeTarget, Err: err}
+			var writeErr *KeychainWriteError
+			if errors.As(err, &writeErr) && len(writeErr.States) > 0 {
+				result.KeychainState = map[string]string{}
+				for account, state := range writeErr.States {
+					result.KeychainState[service+"/"+account] = state
+				}
+			}
+			delivery.Grace = checkGraceApplied(rotation)
+			return result, delivery
 		}
 		result.KeychainItems = []string{service + "/client_id", service + "/client_secret"}
 	}

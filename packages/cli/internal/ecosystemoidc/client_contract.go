@@ -299,8 +299,8 @@ func validateLocalDelivery(id string, p Platform) error {
 		return fmt.Errorf("platform %q: local_delivery.macos_keychain must be %q", id, want)
 	}
 	kind, err := p.JanuaClient.kind()
-	if err != nil || kind != machineClient || !p.JanuaClient.confidential() || !boundedText(p.IntakeTarget, 255) {
-		return fmt.Errorf("platform %q: local_delivery needs a confidential machine client with a Vault intake target", id)
+	if err != nil || kind != machineClient || !p.JanuaClient.confidential() || !boundedText(p.IntakeTarget, 255) || p.SessionIntakeTarget != "" {
+		return fmt.Errorf("platform %q: local_delivery needs a confidential machine client with one Vault intake target", id)
 	}
 	return nil
 }

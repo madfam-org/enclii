@@ -16,6 +16,14 @@ import (
 	"github.com/madfam-org/enclii/packages/cli/internal/ecosystemoidc"
 )
 
+// keychainGOOS and newKeychainWriter are what --keychain uses: runtime.GOOS
+// and the login Keychain through /usr/bin/security. Only tests assign them, to
+// reach the refusals after the macOS check and to fake the Keychain.
+var (
+	keychainGOOS      = runtime.GOOS
+	newKeychainWriter = ecosystemoidc.NewMacOSKeychain
+)
+
 func newSecretsProvisionCommand(cfg *config.Config) *cobra.Command {
 	var (
 		platform        string
@@ -78,7 +86,7 @@ exits non-zero, and the error names the recovery.`,
 				if dryRun {
 					return fmt.Errorf("--keychain is refused with --dry-run: a plan files nothing")
 				}
-				if err := ecosystemoidc.KeychainSupported(runtime.GOOS); err != nil {
+				if err := ecosystemoidc.KeychainSupported(keychainGOOS); err != nil {
 					return err
 				}
 			}
@@ -140,7 +148,7 @@ exits non-zero, and the error names the recovery.`,
 			}
 			var keychainWriter ecosystemoidc.KeychainWriter
 			if keychain {
-				keychainWriter = ecosystemoidc.NewMacOSKeychain()
+				keychainWriter = newKeychainWriter()
 			}
 
 			// Validate the complete chosen set before the first provider effect.
@@ -162,7 +170,12 @@ exits non-zero, and the error names the recovery.`,
 				if err != nil {
 					var keychainErr *ecosystemoidc.KeychainDeliveryError
 					if errors.As(err, &keychainErr) {
-						// The intake was filed, not held: the error says so and names the recovery.
+						// The intake was filed, not held: the error says so, says
+						// what the Keychain holds, and names the recovery. --json
+						// still gets the run's result (intake id, keychain_state).
+						if jsonOut {
+							fmt.Println(ecosystemoidc.FormatResultsJSON(append(results, result)))
+						}
 						return fmt.Errorf("%s: %w", id, err)
 					}
 					if result.IntakeID != "" {

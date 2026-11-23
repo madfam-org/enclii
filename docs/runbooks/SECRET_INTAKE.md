@@ -700,8 +700,12 @@ id in the platform binding below.
 
 **`--keychain` (the ops agents' Karafiel and Dhanam pairs only).** Owner
 ruling 2026-11-22: these two pairs also go to the ops agents' macOS login
-Keychain. Run their two commands on that workstation, with a CLI built from
-`main` that has the flag. After the Vault intake succeeds, the CLI files
+Keychain. Run their two commands on that workstation, in its logged-in user
+session, with a CLI built from `main` that has the flag. Before Janua is
+touched, the CLI writes, reads back and deletes a throwaway item
+(`<service>-preflight`) to prove the login Keychain is unlocked and writable;
+a locked Keychain (for example from an SSH session: "User interaction is not
+allowed") refuses the run with nothing changed. After the Vault intake succeeds, the CLI files
 `client_id` and `client_secret` as generic passwords under the service
 `madfam-ops-agents-<platform>-cogs` (from the entry's
 `local_delivery.macos_keychain`), through `/usr/bin/security` on stdin, reads
@@ -712,15 +716,20 @@ declare `local_delivery.macos_keychain`; the registry itself refuses that
 field on any other platform.
 
 **If the Keychain write fails**, the command exits non-zero and says the Vault
-intake succeeded: the pair is in Vault only. Recover without rotating, owner-run
-(the Vault admin token and the SSH bastion, as for the policy re-apply):
+intake succeeded (Vault holds the complete new pair) and what each Keychain
+item holds now: `new value`, `different value` (for example an older one),
+`absent` or `unknown`. With `--json` the result still prints, with
+`keychain_state`. Recover without rotating, owner-run (the Vault admin token
+and the SSH bastion, as for the policy re-apply):
 
 ```bash
 bash scripts/deliver-ops-agents-keychain.sh ops-agents-karafiel-cogs ops-agents-dhanam-cogs < ~/.config/madfam/vault-admin.token
 ```
 
 It reads only those platforms' keys from `secret/ops-agents`, writes the same
-Keychain items, reads them back, and prints item names and lengths only. The
+Keychain items, reads them back, and prints item names and lengths only. Where
+the token goes is fixed (it refuses `SSH_HOST`, `KCTL`, `VAULT_NS`, `VAULT_POD`
+or `VAULT_ADDR` set to anything else) and printed before the token is read. The
 same script restores the items on a new or wiped workstation. The other way
 out, re-running the provision with `--rotate-secret --keychain`, rotates the
 client secret.
