@@ -2080,7 +2080,7 @@ targets:
   # and no ExternalSecret, because no ops-agent runtime runs in the cluster.
   # Owner ruling 2026-11-22 (internal-devops decisions/2026-11-22-ops-agents-
   # ecosystem-mcp-access.md): the Karafiel and Dhanam pairs go to the ops
-  # agents' Mac Keychain, never through chat, a repository or a log. Re-apply
+  # agents' macOS Keychain, never through chat, a repository or a log. Re-apply
   # the Vault policy (ASSERT_PATH=ops-agents
   # scripts/apply-switchyard-vault-policy-remote.sh) before the first ops-agents
   # run, or the run rotates the Janua secret and then 403s on the Vault merge.

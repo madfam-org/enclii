@@ -990,6 +990,12 @@ func TestLoadRegistry_cogsMCPConsumerClients(t *testing.T) {
 			require.NotNil(t, jc.IsConfidential, id)
 			assert.True(t, jc.confidential(), id)
 			assert.Contains(t, jc.Description, platform+"-cogs:read only", id)
+			// RFC 0051 §6 as amended 2026-11-22: only the ops agents' Karafiel
+			// client lists the bound tenant's fiscal identity tool.
+			assert.Equal(t, id == "ops-agents-karafiel-cogs", strings.Contains(jc.Description, "fiscal_tenant_identity"), id)
+			if platform == "karafiel" {
+				assert.Contains(t, jc.Description, "LEGAL_SERVICE_RFC", "%s: production resolves the tenant from the legacy pin until the bindings cutover", id)
+			}
 			require.NoError(t, validatePlatform(p), id)
 
 			assert.Equal(t, map[string]string{

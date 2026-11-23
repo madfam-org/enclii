@@ -1804,7 +1804,7 @@ platforms:
   # ops-agents/<platform>-cogs-client, with no ExternalSecret: no ops-agent
   # runtime runs in the cluster. Owner ruling 2026-11-22 (internal-devops
   # decisions/2026-11-22-ops-agents-ecosystem-mcp-access.md): the Karafiel and
-  # Dhanam pairs go to the ops agents' Mac Keychain, never through chat, a
+  # Dhanam pairs go to the ops agents' macOS Keychain, never through chat, a
   # repository or a log. LOWERCASE keys
   # `<platform>_cogs_client_id` / `<platform>_cogs_client_secret`.
   #
@@ -1853,8 +1853,10 @@ platforms:
 
   # Karafiel (karafiel#356, merged). Audience karafiel-api, Karafiel's
   # JANUA_AUDIENCE (default karafiel-api; the audience symbiosis-hcm-karafiel
-  # already holds). The tenant is never the token's org: it is the client's
-  # reviewed SERVICE_CLIENT_RFC_BINDINGS entry, so an unbound client gets 403.
+  # already holds). The tenant is never the token's org. Until Karafiel's
+  # SERVICE_CLIENT_RFC_BINDINGS cutover it is the legacy LEGAL_SERVICE_RFC pin,
+  # MADFAM's own RFC, for every machine client; after it, it is the client's
+  # reviewed binding, and an unbound client gets 403.
   selva-karafiel-cogs:
     intake_target: selva/karafiel-cogs-client
     intake_key_map:
@@ -1864,7 +1866,7 @@ platforms:
       name: selva-karafiel-cogs
       client_key: selva-karafiel-cogs  # pragma: allowlist secret
       audience: karafiel-api
-      description: Machine client (client_credentials) for Selva's agent fleet to read Karafiel's native COGS MCP (POST /mcp on api.karafiel.mx), tools cfdi_received_totals, cogs_emission_status, cogs_preview (dry run), fiscal_credential_status (types and expiry, never material) and sat_download_status. Read only, scope karafiel-cogs:read only. Org-bound to madfam-ecosystem; the tenant is this client's SERVICE_CLIENT_RFC_BINDINGS entry and the cost tools answer only for CFDI_EMISOR_RFC.
+      description: Machine client (client_credentials) for Selva's agent fleet to read Karafiel's native COGS MCP (POST /mcp on api.karafiel.mx), tools cfdi_received_totals, cogs_emission_status, cogs_preview (dry run), fiscal_credential_status (types and expiry, never material) and sat_download_status. Read only, scope karafiel-cogs:read only. Org-bound to madfam-ecosystem; the tenant is Karafiel's legacy LEGAL_SERVICE_RFC pin (MADFAM's own RFC) until its SERVICE_CLIENT_RFC_BINDINGS cutover, then this client's reviewed binding (an unbound client gets 403); the cost tools answer only for CFDI_EMISOR_RFC.
       is_confidential: true
       organization_id: 1a6233ef-185f-43ee-9181-e2591fbb2643
       allowed_scopes:
@@ -1881,7 +1883,7 @@ platforms:
       name: ops-agents-karafiel-cogs
       client_key: ops-agents-karafiel-cogs  # pragma: allowlist secret
       audience: karafiel-api
-      description: Machine client (client_credentials) for the MADFAM ops agents to read Karafiel's native COGS MCP (POST /mcp on api.karafiel.mx), tools cfdi_received_totals, cogs_emission_status, cogs_preview (dry run), fiscal_credential_status (types and expiry, never material) and sat_download_status. Read only, scope karafiel-cogs:read only. Org-bound to madfam-ecosystem; the tenant is this client's SERVICE_CLIENT_RFC_BINDINGS entry and the cost tools answer only for CFDI_EMISOR_RFC.
+      description: Machine client (client_credentials) for the MADFAM ops agents to read Karafiel's native COGS MCP (POST /mcp on api.karafiel.mx), tools cfdi_received_totals, cogs_emission_status, cogs_preview (dry run), fiscal_credential_status (types and expiry, never material), sat_download_status and fiscal_tenant_identity (the bound tenant's own fiscal identity, karafiel#466). Read only, scope karafiel-cogs:read only. Org-bound to madfam-ecosystem; the tenant is Karafiel's legacy LEGAL_SERVICE_RFC pin (MADFAM's own RFC) until its SERVICE_CLIENT_RFC_BINDINGS cutover, then this client's reviewed binding (an unbound client gets 403); the cost tools answer only for CFDI_EMISOR_RFC.
       is_confidential: true
       organization_id: 1a6233ef-185f-43ee-9181-e2591fbb2643
       allowed_scopes:

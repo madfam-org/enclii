@@ -630,9 +630,9 @@ protected resource, `invalid_target`).
 | Platform id | Audience | Scope | Target → Vault path | ExternalSecret |
 |---|---|---|---|---|
 | `selva-dhanam-cogs` | `dhanam-api` | `dhanam-cogs:read` | `selva/dhanam-cogs-client` → `secret/selva` | `selva-dhanam-cogs-client` (planned, selva-office) |
-| `ops-agents-dhanam-cogs` | `dhanam-api` | `dhanam-cogs:read` | `ops-agents/dhanam-cogs-client` → `secret/ops-agents` | none: the ops agents' Mac Keychain (owner ruling 2026-11-22) |
+| `ops-agents-dhanam-cogs` | `dhanam-api` | `dhanam-cogs:read` | `ops-agents/dhanam-cogs-client` → `secret/ops-agents` | none: the ops agents' macOS Keychain (owner ruling 2026-11-22) |
 | `selva-karafiel-cogs` | `karafiel-api` | `karafiel-cogs:read` | `selva/karafiel-cogs-client` → `secret/selva` | `selva-karafiel-cogs-client` (planned, selva-office) |
-| `ops-agents-karafiel-cogs` | `karafiel-api` | `karafiel-cogs:read` | `ops-agents/karafiel-cogs-client` → `secret/ops-agents` | none: the ops agents' Mac Keychain (owner ruling 2026-11-22) |
+| `ops-agents-karafiel-cogs` | `karafiel-api` | `karafiel-cogs:read` | `ops-agents/karafiel-cogs-client` → `secret/ops-agents` | none: the ops agents' macOS Keychain (owner ruling 2026-11-22) |
 | `selva-converge-dash-cogs` | `converge-dash` | `converge-dash-cogs:read` | `selva/converge-dash-cogs-client` → `secret/selva` | `selva-converge-dash-cogs-client` (planned, selva-office) |
 | `ops-agents-converge-dash-cogs` | `converge-dash` | `converge-dash-cogs:read` | `ops-agents/converge-dash-cogs-client` → `secret/ops-agents` | none (owner decision) |
 | `selva-pravara-cogs` | `pravara-api` | `pravara-cogs:read` | `selva/pravara-cogs-client` → `secret/selva` | `selva-pravara-cogs-client` (planned, selva-office) |
@@ -722,8 +722,8 @@ selva-office change that does not exist yet; until it lands the intake reports
 `external_secret_refreshed=false` and the pair sits in Vault unread. The ops
 agents' pairs sit at `secret/ops-agents` with no ExternalSecret, because no
 ops-agent runtime runs in the cluster. Owner ruling 2026-11-22: the ops agents
-run on the owner's Mac, and the `ops-agents-karafiel-cogs` and
-`ops-agents-dhanam-cogs` pairs go from `secret/ops-agents` to that Mac's
+run on a macOS workstation, and the `ops-agents-karafiel-cogs` and
+`ops-agents-dhanam-cogs` pairs go from `secret/ops-agents` to its login
 Keychain, never through chat, a repository or a log. The other ops-agents
 pairs wait for their own ruling.
 
