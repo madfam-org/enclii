@@ -643,8 +643,8 @@ path "secret/metadata/avala" {
 # ops-agents — the ops agents' MCP read clients (RFC 0051 M3): the
 # ops-agents/<name>-client intake targets, written only by
 # `enclii secrets provision oidc --platform ops-agents-<name>`. Added 2026-11-14
-# with ops-agents/phynd-crm-pipeline-client; enclii#946 proposes the same path
-# for the COGS clients (whichever merges second drops its copy of this block).
+# with ops-agents/phynd-crm-pipeline-client; the ops-agents/<platform>-cogs-client
+# targets (enclii#946) share it.
 # Exact path only. Merged in git is not applied in Vault: re-apply this policy
 # (ASSERT_PATH=ops-agents scripts/apply-switchyard-vault-policy-remote.sh)
 # before the first run, or the run rotates the Janua secret and then 403s on

@@ -72,5 +72,9 @@ func TestLoadRegistry_tulanaDhanamCogsReaderMachineEdge(t *testing.T) {
 		}
 	}
 	sort.Strings(readers)
-	assert.Equal(t, []string{"tulana-dhanam-cogs"}, readers)
+	assert.Equal(t, []string{
+		"ops-agents-dhanam-cogs",
+		"selva-dhanam-cogs",
+		"tulana-dhanam-cogs",
+	}, readers)
 }

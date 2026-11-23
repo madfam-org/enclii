@@ -80,7 +80,13 @@ func TestBankLedgerAndSelvaCostEventsClientTargets(t *testing.T) {
 	}
 	sort.Strings(onSelva)
 	assert.Equal(t, []string{
+		"selva/converge-dash-cogs-client",
+		"selva/dhanam-cogs-client",
 		"selva/dhanam-cost-events-client",
+		"selva/enclii-cogs-client",
+		"selva/karafiel-cogs-client",
+		"selva/nauta-cogs-client",
+		"selva/pravara-cogs-client",
 		"selva/pravara-mes-client",
 		"selva/yantra4d-client",
 	}, onSelva)
