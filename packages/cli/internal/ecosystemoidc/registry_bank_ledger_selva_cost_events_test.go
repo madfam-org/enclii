@@ -24,11 +24,15 @@ func TestLoadRegistry_bankLedgerAndSelvaCostEventsMachineEdges(t *testing.T) {
 
 	cases := []struct {
 		platform, intakeTarget, scope, idKey, secretKey string
+		// clientID is the pinned Janua id once the first provision created
+		// the client; empty until then.
+		clientID string
 	}{
 		{
 			platform: "karafiel-dhanam-bank-ledger", intakeTarget: "karafiel/dhanam-bank-ledger-client",
 			scope: "dhanam-bank-ledger:read",
 			idKey: "dhanam_bank_ledger_client_id", secretKey: "dhanam_bank_ledger_client_secret",
+			clientID: "jnc_LK7DND8wUNGTsgFCy5i-345fnxWn4BUd",
 		},
 		{
 			platform: "karafiel-dhanam-scheduled-payments", intakeTarget: "karafiel/dhanam-scheduled-payments-client",
@@ -54,7 +58,7 @@ func TestLoadRegistry_bankLedgerAndSelvaCostEventsMachineEdges(t *testing.T) {
 		jc := p.JanuaClient
 		assert.Equal(t, c.platform, jc.Name)
 		assert.Equal(t, c.platform, jc.ClientKey)
-		assert.Empty(t, jc.ClientID, "%s: not pinned until the first provision prints it", c.platform)
+		assert.Equal(t, c.clientID, jc.ClientID, "%s: pinned only once the first provision printed it", c.platform)
 		assert.Equal(t, "dhanam-api", jc.Audience, c.platform)
 		assert.Equal(t, "1a6233ef-185f-43ee-9181-e2591fbb2643", jc.OrganizationID,
 			"%s: Dhanam's machine strategies require org_id; Janua sets it only for org-bound clients", c.platform)

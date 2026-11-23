@@ -1602,9 +1602,9 @@ platforms:
   # DHANAM_BANK_LEDGER_CLIENT_ID / DHANAM_BANK_LEDGER_CLIENT_SECRET. Without
   # the pair Karafiel keeps its legacy route.
   #
-  # NOT pinned yet: the first provision run CREATES the client and prints its
-  # jnc_… id; pin it here (both copies) and use the same id in the Dhanam
-  # reader grant.
+  # PINNED 2026-11-18: the client was created by the first provision run on
+  # 2026-11-11 (read back with `secrets provision oidc inspect`). The same id is
+  # the `clientId` of the Dhanam reader grant.
   # ---------------------------------------------------------------------------
   karafiel-dhanam-bank-ledger:
     intake_target: karafiel/dhanam-bank-ledger-client
@@ -1615,6 +1615,7 @@ platforms:
       name: karafiel-dhanam-bank-ledger
       client_key: karafiel-dhanam-bank-ledger  # pragma: allowlist secret
       audience: dhanam-api
+      client_id: jnc_LK7DND8wUNGTsgFCy5i-345fnxWn4BUd
       description: Machine edge (client_credentials) from Karafiel's worker to Dhanam's bank-ledger read route (one business space's bank movements for the bank mirror, karafiel#383, dhanam#969). Org-bound to madfam-ecosystem, scope dhanam-bank-ledger:read only; Dhanam's reader grant binds it to one space.
       is_confidential: true
       organization_id: 1a6233ef-185f-43ee-9181-e2591fbb2643
