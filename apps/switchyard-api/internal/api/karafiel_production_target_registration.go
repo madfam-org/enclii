@@ -120,7 +120,8 @@ func (h *Handler) applyKarafielProductionTargetEnrollment(c *gin.Context, actor 
 	scoped := *h
 	scoped.repos = h.repos.InTransaction(session.Tx())
 	scoped.workloadTargetSession = session
-	snapshots, err := scoped.readKarafielProductionTargetSnapshots(ctx)
+	source := newKarafielProductionSourceReader()
+	snapshots, err := scoped.readKarafielProductionTargetSnapshotsWithSource(ctx, nil, source)
 	if err != nil {
 		h.targetPlanRefusal(c, err)
 		return
@@ -129,7 +130,7 @@ func (h *Handler) applyKarafielProductionTargetEnrollment(c *gin.Context, actor 
 		h.targetPlanRefusal(c, err)
 		return
 	}
-	snapshots, err = scoped.readKarafielProductionTargetSnapshots(ctx)
+	snapshots, err = scoped.readKarafielProductionTargetSnapshotsWithSource(ctx, nil, source)
 	if err != nil {
 		h.targetPlanRefusal(c, err)
 		return
