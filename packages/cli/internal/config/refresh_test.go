@@ -126,8 +126,8 @@ func TestReloadCredentials_RefreshRefusedIsReported(t *testing.T) {
 	if strings.Count(out, "\n") != 1 {
 		t.Errorf("want exactly one line, got %q", out)
 	}
-	for _, secret := range []string{access, refresh} {
-		if strings.Contains(out, secret) || strings.Contains(cfg.RefreshError.Error(), secret) {
+	for _, value := range []string{access, refresh} {
+		if strings.Contains(out, value) || strings.Contains(cfg.RefreshError.Error(), value) {
 			t.Error("a token value reached the warning")
 		}
 	}

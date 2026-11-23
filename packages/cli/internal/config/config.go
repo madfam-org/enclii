@@ -293,7 +293,7 @@ const maxRefreshReason = 200
 // refreshRefusal describes a non-2xx answer from the token endpoint: the
 // status and, when the body carries one, the provider's stated reason
 // (FastAPI `detail`, or OAuth `error` / `error_description`, RFC 6749 §5.2).
-func refreshRefusal(status int, body []byte, secrets ...string) error {
+func refreshRefusal(status int, body []byte, redact ...string) error {
 	var parsed struct {
 		Detail           json.RawMessage `json:"detail"`
 		Error            string          `json:"error"`
@@ -313,9 +313,9 @@ func refreshRefusal(status int, body []byte, secrets ...string) error {
 		}
 	}
 	reason = strings.Join(strings.Fields(reason), " ")
-	for _, secret := range secrets {
-		if secret != "" {
-			reason = strings.ReplaceAll(reason, secret, "[redacted]")
+	for _, value := range redact {
+		if value != "" {
+			reason = strings.ReplaceAll(reason, value, "[redacted]")
 		}
 	}
 	if runes := []rune(reason); len(runes) > maxRefreshReason {
