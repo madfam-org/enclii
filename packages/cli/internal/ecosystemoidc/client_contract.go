@@ -273,3 +273,34 @@ func decodeProviderJSON(data []byte, out interface{}) error {
 	}
 	return nil
 }
+
+// localDeliveryPlatforms is the reviewed set of platforms that may declare
+// local_delivery, with the one Keychain service each may write. Owner ruling
+// 2026-11-22: the ops agents' Karafiel and Dhanam COGS pairs also go to the
+// ops agents' macOS Keychain. A new entry needs its own ruling. Tests may add
+// a fixture here (and restore it); nothing at run time changes it.
+var localDeliveryPlatforms = map[string]string{
+	"ops-agents-dhanam-cogs":   "madfam-ops-agents-dhanam-cogs",
+	"ops-agents-karafiel-cogs": "madfam-ops-agents-karafiel-cogs",
+}
+
+// validateLocalDelivery refuses local_delivery anywhere but a reviewed
+// platform, with any service but its reviewed one, or on a client that is not
+// a confidential machine client delivered through Vault intake.
+func validateLocalDelivery(id string, p Platform) error {
+	if p.LocalDelivery == nil {
+		return nil
+	}
+	want, ok := localDeliveryPlatforms[id]
+	if !ok {
+		return fmt.Errorf("platform %q: local_delivery is reserved for reviewed ops-agents clients", id)
+	}
+	if p.LocalDelivery.MacOSKeychain != want {
+		return fmt.Errorf("platform %q: local_delivery.macos_keychain must be %q", id, want)
+	}
+	kind, err := p.JanuaClient.kind()
+	if err != nil || kind != machineClient || !p.JanuaClient.confidential() || !boundedText(p.IntakeTarget, 255) {
+		return fmt.Errorf("platform %q: local_delivery needs a confidential machine client with a Vault intake target", id)
+	}
+	return nil
+}

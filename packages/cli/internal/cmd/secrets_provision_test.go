@@ -104,3 +104,21 @@ func TestAllContractsAreValidatedBeforeFirstProviderEffect(t *testing.T) {
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "grants")
 }
+
+// --keychain is refused locally, before any Janua or Vault call, unless it
+// names exactly one platform, is not a plan, and runs on macOS against a
+// platform whose registry entry declares local_delivery.macos_keychain.
+func TestProvisionOIDCKeychainRefusalsStayLocal(t *testing.T) {
+	for _, args := range [][]string{
+		{"--all", "--keychain"},
+		{"--keychain"},
+		{"--platform", "ops-agents-karafiel-cogs", "--keychain", "--dry-run"},
+		{"--platform", "ops-agents-dhanam-cogs", "--keychain", "--dry-run", "--json"},
+		{"--platform", "zavlo-cfdi-emitter", "--keychain"},
+		{"--platform", "ops-agents-nauta-cogs", "--keychain"},
+	} {
+		err := provisionOIDC(t, append(args, "--reason", "synthetic keychain refusal")...)
+		require.Error(t, err, "%v accepted", args)
+		assert.Contains(t, err.Error(), "keychain", "%v", args)
+	}
+}

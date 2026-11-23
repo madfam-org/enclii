@@ -840,6 +840,21 @@ jobs:
       - name: Run intake/policy parity check
         run: ./scripts/check-intake-policy-parity.sh
 
+      # The owner-run Vault -> Keychain recovery for `provision oidc
+      # --keychain`, against fake ssh, kubectl, vault and security: no network,
+      # no cluster. Also keeps its platform list equal to the registry's
+      # local_delivery entries.
+      - name: Set up Python
+        uses: actions/setup-python@v7
+        with:
+          python-version: '3.11'
+
+      - name: Install deps
+        run: pip install --quiet pyyaml pytest
+
+      - name: Run ops-agents Keychain delivery self-tests (stubbed, no network)
+        run: pytest tests/scripts/test_deliver_ops_agents_keychain.py -v
+
   status-configmap-drift:
     name: Status Configmap Drift (ST-3)
     runs-on: ubuntu-24.04

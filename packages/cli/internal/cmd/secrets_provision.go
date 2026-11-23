@@ -3,8 +3,10 @@ package cmd
 import (
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"os"
+	"runtime"
 	"strings"
 
 	"github.com/spf13/cobra"
@@ -26,6 +28,7 @@ func newSecretsProvisionCommand(cfg *config.Config) *cobra.Command {
 		jsonOut         bool
 		graceHours      int
 		intakeProfile   string
+		keychain        bool
 	)
 
 	cmd := &cobra.Command{
@@ -49,7 +52,16 @@ Examples:
   enclii secrets provision oidc --all --reason "ecosystem oidc sweep"
   enclii secrets provision oidc --platform dhanam --dry-run
   enclii secrets provision oidc --platform zavlo-cfdi-emitter --grace-hours 0 --reason "rotate"
-  enclii --profile admin secrets provision oidc --platform cv-app --intake-profile default --reason "cv-app login"`,
+  enclii --profile admin secrets provision oidc --platform cv-app --intake-profile default --reason "cv-app login"
+  enclii --profile admin secrets provision oidc --platform ops-agents-karafiel-cogs --keychain --intake-profile default --reason "ops agents read karafiel cogs mcp"
+
+--keychain (macOS, one --platform whose registry entry declares
+local_delivery.macos_keychain) also files the client_id and client_secret in
+this Mac's login Keychain after the Vault intake succeeds: generic-password
+items <service>/client_id and <service>/client_secret, written through
+/usr/bin/security on stdin and read back to verify. Only item names are
+printed. If the Keychain write fails the pair is still in Vault, the command
+exits non-zero, and the error names the recovery.`,
 	}
 
 	oidc := &cobra.Command{
@@ -58,6 +70,17 @@ Examples:
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if strings.TrimSpace(reason) == "" {
 				return fmt.Errorf("--reason is required")
+			}
+			if keychain {
+				if all || strings.TrimSpace(platform) == "" {
+					return fmt.Errorf("--keychain needs exactly one --platform")
+				}
+				if dryRun {
+					return fmt.Errorf("--keychain is refused with --dry-run: a plan files nothing")
+				}
+				if err := ecosystemoidc.KeychainSupported(runtime.GOOS); err != nil {
+					return err
+				}
 			}
 			if !all && strings.TrimSpace(platform) == "" {
 				return fmt.Errorf("specify --platform NAME or --all")
@@ -115,10 +138,14 @@ Examples:
 			if all {
 				targets = reg.PlatformIDs()
 			}
+			var keychainWriter ecosystemoidc.KeychainWriter
+			if keychain {
+				keychainWriter = ecosystemoidc.NewMacOSKeychain()
+			}
 
 			// Validate the complete chosen set before the first provider effect.
 			for _, id := range targets {
-				if _, err := ecosystemoidc.ValidateProvision(reg, ecosystemoidc.ProvisionOptions{PlatformID: id, Reason: reason, DryRun: dryRun, GraceHours: grace}); err != nil {
+				if _, err := ecosystemoidc.ValidateProvision(reg, ecosystemoidc.ProvisionOptions{PlatformID: id, Reason: reason, DryRun: dryRun, GraceHours: grace, Keychain: keychainWriter}); err != nil {
 					return err
 				}
 			}
@@ -130,8 +157,14 @@ Examples:
 					RotateIfMissing: rotateIfMissing,
 					DryRun:          dryRun,
 					GraceHours:      grace,
+					Keychain:        keychainWriter,
 				})
 				if err != nil {
+					var keychainErr *ecosystemoidc.KeychainDeliveryError
+					if errors.As(err, &keychainErr) {
+						// The intake was filed, not held: the error says so and names the recovery.
+						return fmt.Errorf("%s: %w", id, err)
+					}
 					if result.IntakeID != "" {
 						fmt.Fprintf(os.Stderr, "held intake_id=%s; no automatic retry\n", result.IntakeID)
 					}
@@ -154,6 +187,9 @@ Examples:
 				}
 				if result.SessionIntakeID != "" {
 					fmt.Fprintf(os.Stderr, " session_intake=%s", result.SessionIntakeID)
+				}
+				if len(result.KeychainItems) > 0 {
+					fmt.Fprintf(os.Stderr, " keychain=%s", strings.Join(result.KeychainItems, ","))
 				}
 				fmt.Fprint(os.Stderr, rotationSummary(result))
 				fmt.Fprintln(os.Stderr)
@@ -190,6 +226,7 @@ Examples:
 	oidc.Flags().BoolVar(&dryRun, "dry-run", false, "Plan Janua reconcile without Vault intake")
 	oidc.Flags().BoolVar(&jsonOut, "json", false, "JSON output (no secret values)")
 	oidc.Flags().StringVar(&intakeProfile, "intake-profile", "", "Stored login that submits the Vault intake (the platform_admin operator, ADR-003); the active profile keeps the Janua calls. Unset uses the active profile")
+	oidc.Flags().BoolVar(&keychain, "keychain", false, "Also file the client_id and client_secret in this Mac's login Keychain after the Vault intake (one --platform declaring local_delivery.macos_keychain; macOS only; never with --dry-run)")
 	oidc.Flags().IntVar(&graceHours, "grace-hours", 0, fmt.Sprintf("Grace period (0-%d hours) for previous secrets when a secret is rotated; 0 retires them immediately. Unset keeps Janua's default", ecosystemoidc.MaxGraceHours))
 	oidc.AddCommand(newOIDCInspectCommand(cfg))
 	oidc.AddCommand(newOIDCSIMSSOCommand(cfg))

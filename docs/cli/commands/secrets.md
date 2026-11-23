@@ -1,6 +1,6 @@
 # enclii secrets
 
-Last Updated: 2026-10-20
+Last Updated: 2026-11-22
 
 Manage service secrets and environment variables.
 
@@ -409,6 +409,7 @@ enclii secrets provision oidc --all --dry-run --reason "ecosystem sweep"
 | `--json` | JSON output (no secret values) |
 | `--grace-hours` | Grace period, `0`–`168` hours, for the previous secrets when a secret is rotated. Unset keeps Janua's default (24 h) |
 | `--intake-profile` | Stored login that submits the Vault intake (the `platform_admin` operator under ADR-003). The active profile keeps the Janua calls. Unset uses the active profile |
+| `--keychain` | macOS only, one `--platform` whose registry entry declares `local_delivery.macos_keychain`, never with `--dry-run`. After the Vault intake succeeds, also files `client_id` and `client_secret` in the login Keychain under that service (through `/usr/bin/security` on stdin, read back to verify) and lists the item names as `keychain_items`. A failed Keychain write exits non-zero and says the pair is in Vault only; see the [SECRET_INTAKE runbook](../../runbooks/SECRET_INTAKE.md#cogs-mcp-consumer-clients-2026-11-06) for the recovery |
 
 **Two identities since ADR-003 (2026-10-17).** The Vault intake routes accept only
 the `platform_admin` operator, so a tenant administrator such as `admin@madfam.io`

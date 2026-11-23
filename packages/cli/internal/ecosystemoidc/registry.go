@@ -24,6 +24,18 @@ type Platform struct {
 	SessionIntakeTarget string            `yaml:"session_intake_target,omitempty"`
 	JanuaClient         JanuaClientSpec   `yaml:"janua_client"`
 	IntakeKeyMap        map[string]string `yaml:"intake_key_map,omitempty"`
+	// LocalDelivery declares a second sink for the pair, on the machine that
+	// runs the provision. Vault stays the source of truth: the local copy is
+	// written only after the intake succeeds. Only the reviewed platforms in
+	// localDeliveryPlatforms may declare it (see validateLocalDelivery).
+	LocalDelivery *LocalDelivery `yaml:"local_delivery,omitempty"`
+}
+
+// LocalDelivery names where `provision oidc --keychain` files the pair.
+type LocalDelivery struct {
+	// MacOSKeychain is the generic-password service name in the login
+	// Keychain; the accounts are client_id and client_secret.
+	MacOSKeychain string `yaml:"macos_keychain,omitempty"`
 }
 
 // JanuaClientSpec is sent to Janua register/create APIs.
@@ -84,6 +96,11 @@ func LoadRegistry(path string) (*Registry, error) {
 	}
 	if len(reg.Platforms) == 0 {
 		return nil, fmt.Errorf("ecosystem OIDC registry has no platforms")
+	}
+	for _, id := range reg.PlatformIDs() {
+		if err := validateLocalDelivery(id, reg.Platforms[id]); err != nil {
+			return nil, err
+		}
 	}
 	return &reg, nil
 }

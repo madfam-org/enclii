@@ -1839,6 +1839,10 @@ platforms:
     intake_key_map:
       dhanam_cogs_client_id: client_id
       dhanam_cogs_client_secret: client_secret  # pragma: allowlist secret
+    # Owner ruling 2026-11-22: `provision oidc --keychain` also files the pair
+    # in the ops agents' macOS login Keychain, after the Vault intake.
+    local_delivery:
+      macos_keychain: madfam-ops-agents-dhanam-cogs
     janua_client:
       name: ops-agents-dhanam-cogs
       client_key: ops-agents-dhanam-cogs  # pragma: allowlist secret
@@ -1879,6 +1883,10 @@ platforms:
     intake_key_map:
       karafiel_cogs_client_id: client_id
       karafiel_cogs_client_secret: client_secret  # pragma: allowlist secret
+    # Owner ruling 2026-11-22: `provision oidc --keychain` also files the pair
+    # in the ops agents' macOS login Keychain, after the Vault intake.
+    local_delivery:
+      macos_keychain: madfam-ops-agents-karafiel-cogs
     janua_client:
       name: ops-agents-karafiel-cogs
       client_key: ops-agents-karafiel-cogs  # pragma: allowlist secret
