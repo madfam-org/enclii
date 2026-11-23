@@ -34,6 +34,10 @@ VALUES = {
     "karafiel_cogs_client_secret": "jns_" + "fixture-karafiel-secret-01",  # pragma: allowlist secret
     "dhanam_cogs_client_id": "jnc_fixtureDhanamClient02",
     "dhanam_cogs_client_secret": "jns_" + "fixture-dhanam-secret-02",  # pragma: allowlist secret
+    "converge_dash_cogs_client_id": "jnc_fixtureDashClient03",
+    "converge_dash_cogs_client_secret": "jns_" + "fixture-dash-secret-03",  # pragma: allowlist secret
+    "phynd_crm_pipeline_client_id": "jnc_fixturePhyndClient04",
+    "phynd_crm_pipeline_client_secret": "jns_" + "fixture-phynd-secret-04",  # pragma: allowlist secret
 }
 
 FAKE_SSH = """#!/bin/sh
@@ -169,6 +173,23 @@ def test_delivers_both_pairs_and_leaks_nothing(fakes: Path) -> None:
     assert_nothing_leaked(fakes, result)
 
 
+def test_dashed_and_non_cogs_platforms_map_to_their_vault_keys(fakes: Path) -> None:
+    # ops-agents-converge-dash-cogs -> converge_dash_cogs_*; ops-agents-phynd-crm-pipeline
+    # -> phynd_crm_pipeline_* (the registry's intake_key_map); service = "madfam-" + platform id.
+    result = run(fakes, "ops-agents-converge-dash-cogs", "ops-agents-phynd-crm-pipeline")
+    assert result.returncode == 0, result.stderr
+    store = (fakes / "store").read_text().splitlines()
+    assert sorted(store) == sorted(
+        [
+            f"madfam-ops-agents-converge-dash-cogs|client_id|{VALUES['converge_dash_cogs_client_id']}",
+            f"madfam-ops-agents-converge-dash-cogs|client_secret|{VALUES['converge_dash_cogs_client_secret']}",
+            f"madfam-ops-agents-phynd-crm-pipeline|client_id|{VALUES['phynd_crm_pipeline_client_id']}",
+            f"madfam-ops-agents-phynd-crm-pipeline|client_secret|{VALUES['phynd_crm_pipeline_client_secret']}",
+        ]
+    )
+    assert_nothing_leaked(fakes, result)
+
+
 def test_refused_token_reads_nothing(fakes: Path) -> None:
     result = run(fakes, "ops-agents-karafiel-cogs", token="wrong-token")
     assert result.returncode != 0
@@ -188,7 +209,7 @@ def test_missing_pair_names_the_key_only(fakes: Path) -> None:
     assert_nothing_leaked(fakes, result)
 
 
-@pytest.mark.parametrize("platform", ["ops-agents-nauta-cogs", "selva-karafiel-cogs", "karafiel"])
+@pytest.mark.parametrize("platform", ["ops-agents-selva-cogs", "selva-karafiel-cogs", "karafiel"])
 def test_platform_without_local_delivery_is_refused_before_the_token(fakes: Path, platform: str) -> None:
     result = run(fakes, platform)
     assert result.returncode == 2

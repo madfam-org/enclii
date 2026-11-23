@@ -27,7 +27,7 @@
 # read from stdin INSIDE the pod) -> kubectl exec stdout -> the SSH channel ->
 # a pipe into python3 -I -> a pipe into `security -i` (commands on stdin, never
 # argv). The terminal shows key names, the client id's first 8 characters and
-# lengths, nothing else. Items: service madfam-ops-agents-<platform>-cogs,
+# lengths, nothing else. Items: service madfam-<platform id>,
 # accounts client_id and client_secret (-U updates them in place), each read
 # back and compared in memory.
 #
@@ -52,7 +52,7 @@ SECURITY_BIN=/usr/bin/security
 PYTHON_BIN=/usr/bin/python3
 
 # The platforms that declare local_delivery.macos_keychain in the registry.
-LOCAL_DELIVERY_PLATFORMS="ops-agents-dhanam-cogs ops-agents-karafiel-cogs"
+LOCAL_DELIVERY_PLATFORMS="ops-agents-converge-dash-cogs ops-agents-dhanam-cogs ops-agents-karafiel-cogs ops-agents-nauta-cogs ops-agents-phynd-crm-pipeline ops-agents-pravara-cogs"
 
 refuse() { echo "[FAIL] $*" >&2; exit 2; }
 
@@ -95,13 +95,19 @@ VAULT_ADDR=$FIXED_VAULT_ADDR
 
 [ "$#" -ge 1 ] || { echo "usage: deliver-ops-agents-keychain.sh <platform>... (one of: $LOCAL_DELIVERY_PLATFORMS)" >&2; exit 2; }
 SHORT_NAMES=""
+PLATFORM_IDS=""
 for platform in "$@"; do
   case " $LOCAL_DELIVERY_PLATFORMS " in
     *" $platform "*) ;;
     *) echo "[FAIL] $platform declares no local_delivery.macos_keychain" >&2; exit 2 ;;
   esac
+  # The Vault keys are the platform id without "ops-agents-", dashes as
+  # underscores (the registry's intake_key_map): ops-agents-converge-dash-cogs
+  # -> converge_dash_cogs_client_id, ops-agents-phynd-crm-pipeline ->
+  # phynd_crm_pipeline_client_id.
   short="${platform#ops-agents-}"
-  SHORT_NAMES="$SHORT_NAMES ${short%-cogs}"
+  SHORT_NAMES="$SHORT_NAMES $(printf '%s' "$short" | tr '-' '_')"
+  PLATFORM_IDS="$PLATFORM_IDS $platform"
 done
 
 echo "[INFO] the token goes to: ssh $SSH_HOST -> $KCTL exec -n $VAULT_NS $VAULT_POD -> vault $VAULT_ADDR" >&2
@@ -145,9 +151,11 @@ sec = sys.argv[1]
 platforms = sys.argv[2:]
 token = re.compile(r"[A-Za-z0-9][A-Za-z0-9._~-]{0,1023}")
 want = {}
+def prefix(pid):
+    return pid[len("ops-agents-"):].replace("-", "_")
 for p in platforms:
-    want[p + "_cogs_client_id"] = (p, "client_id")
-    want[p + "_cogs_client_secret"] = (p, "client_secret")
+    want[prefix(p) + "_client_id"] = (p, "client_id")
+    want[prefix(p) + "_client_secret"] = (p, "client_secret")
 got = {}
 for raw in sys.stdin:
     line = raw.rstrip("\n")
@@ -165,9 +173,9 @@ missing = sorted(set(want) - set(got))
 if missing:
     sys.exit("[FAIL] no value for " + ", ".join(missing))
 for p in platforms:
-    svc = "madfam-ops-agents-" + p + "-cogs"
+    svc = "madfam-" + p
     for acct in ("client_id", "client_secret"):
-        val = got[p + "_cogs_" + acct]
+        val = got[prefix(p) + "_" + acct]
         cmd = "add-generic-password -U -s " + svc + " -a " + acct + " -l " + svc + "-" + acct + " -w " + val + "\n"
         r = subprocess.run([sec, "-i"], input=cmd, text=True, capture_output=True)
         if r.returncode != 0:
@@ -175,15 +183,15 @@ for p in platforms:
         r = subprocess.run([sec, "find-generic-password", "-s", svc, "-a", acct, "-w"], text=True, capture_output=True)
         if r.returncode != 0 or r.stdout.rstrip("\n") != val:
             sys.exit("[FAIL] keychain read-back " + svc + "/" + acct + " does not match")
-    cid = got[p + "_cogs_client_id"]
+    cid = got[prefix(p) + "_client_id"]
     print("[OK] %s: client_id %s... (%d chars), client_secret stored (%d chars)"
-          % (svc, cid[:8], len(cid), len(got[p + "_cogs_client_secret"])))
+          % (svc, cid[:8], len(cid), len(got[prefix(p) + "_client_secret"])))
 '
 
 KEYS=""
 for short in $SHORT_NAMES; do
-  KEYS="$KEYS${short}_cogs_client_id
-${short}_cogs_client_secret
+  KEYS="$KEYS${short}_client_id
+${short}_client_secret
 "
 done
 
@@ -193,4 +201,4 @@ echo "[INFO] reading $(printf '%s' "$KEYS" | grep -c .) key(s) from secret/ops-a
   printf '%s\n' "$VAULT_ADMIN_TOKEN"
   printf '%s' "$KEYS"
 } | ssh "$SSH_HOST" "$KCTL exec -i -n '$VAULT_NS' '$VAULT_POD' -- sh -c '$REMOTE_SH' sh '$VAULT_ADDR'" \
-  | "$PYTHON_BIN" -I -c "$WRITER_PY" "$SECURITY_BIN" $SHORT_NAMES
+  | "$PYTHON_BIN" -I -c "$WRITER_PY" "$SECURITY_BIN" $PLATFORM_IDS
