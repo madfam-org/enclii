@@ -70,8 +70,12 @@ func TestLocalDeliveryDeclaredOnlyOnTheRuledPlatforms(t *testing.T) {
 		}
 	}
 	assert.Equal(t, map[string]string{
-		"ops-agents-dhanam-cogs":   "madfam-ops-agents-dhanam-cogs",
-		"ops-agents-karafiel-cogs": "madfam-ops-agents-karafiel-cogs",
+		"ops-agents-converge-dash-cogs": "madfam-ops-agents-converge-dash-cogs",
+		"ops-agents-dhanam-cogs":        "madfam-ops-agents-dhanam-cogs",
+		"ops-agents-karafiel-cogs":      "madfam-ops-agents-karafiel-cogs",
+		"ops-agents-nauta-cogs":         "madfam-ops-agents-nauta-cogs",
+		"ops-agents-phynd-crm-pipeline": "madfam-ops-agents-phynd-crm-pipeline",
+		"ops-agents-pravara-cogs":       "madfam-ops-agents-pravara-cogs",
 	}, got)
 	assert.Equal(t, localDeliveryPlatforms, got, "the reviewed allowlist and the registry agree")
 }
@@ -146,13 +150,13 @@ func TestKeychainRefusedForDryRunsAndUndeclaredPlatforms(t *testing.T) {
 	_, err := ValidateProvision(reg, ProvisionOptions{PlatformID: "ops-agents-karafiel-cogs", Reason: "test", DryRun: true, Keychain: keychain})
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "--dry-run")
-	for _, id := range []string{"ops-agents-nauta-cogs", "selva-karafiel-cogs", "tulana-dhanam-cogs"} {
+	for _, id := range []string{"ops-agents-selva-cogs", "ops-agents-enclii-cogs", "selva-karafiel-cogs", "tulana-dhanam-cogs"} {
 		_, err := ProvisionPlatform(context.Background(), reg, nil, nil, ProvisionOptions{PlatformID: id, Reason: "test", Keychain: keychain})
 		require.Error(t, err, id)
 		assert.Contains(t, err.Error(), "declares no local_delivery.macos_keychain", id)
 	}
 	assert.Empty(t, events, "nothing was written")
-	for _, id := range []string{"ops-agents-karafiel-cogs", "ops-agents-dhanam-cogs"} {
+	for _, id := range []string{"ops-agents-karafiel-cogs", "ops-agents-dhanam-cogs", "ops-agents-converge-dash-cogs", "ops-agents-pravara-cogs", "ops-agents-nauta-cogs", "ops-agents-phynd-crm-pipeline"} {
 		_, err := ValidateProvision(reg, ProvisionOptions{PlatformID: id, Reason: "test", Keychain: keychain})
 		require.NoError(t, err, id)
 	}

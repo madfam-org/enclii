@@ -277,11 +277,17 @@ func decodeProviderJSON(data []byte, out interface{}) error {
 // localDeliveryPlatforms is the reviewed set of platforms that may declare
 // local_delivery, with the one Keychain service each may write. Owner ruling
 // 2026-11-22: the ops agents' Karafiel and Dhanam COGS pairs also go to the
-// ops agents' macOS Keychain. A new entry needs its own ruling. Tests may add
-// a fixture here (and restore it); nothing at run time changes it.
+// ops agents' macOS Keychain; owner ruling 2026-11-23 (wave 2) adds the ops
+// agents' converge-dash, Pravara, Nauta and PhyndCRM (masked) pairs. A new
+// entry needs its own ruling. Tests may add a fixture here (and restore it);
+// nothing at run time changes it.
 var localDeliveryPlatforms = map[string]string{
-	"ops-agents-dhanam-cogs":   "madfam-ops-agents-dhanam-cogs",
-	"ops-agents-karafiel-cogs": "madfam-ops-agents-karafiel-cogs",
+	"ops-agents-converge-dash-cogs": "madfam-ops-agents-converge-dash-cogs",
+	"ops-agents-dhanam-cogs":        "madfam-ops-agents-dhanam-cogs",
+	"ops-agents-karafiel-cogs":      "madfam-ops-agents-karafiel-cogs",
+	"ops-agents-nauta-cogs":         "madfam-ops-agents-nauta-cogs",
+	"ops-agents-phynd-crm-pipeline": "madfam-ops-agents-phynd-crm-pipeline",
+	"ops-agents-pravara-cogs":       "madfam-ops-agents-pravara-cogs",
 }
 
 // validateLocalDelivery refuses local_delivery anywhere but a reviewed
