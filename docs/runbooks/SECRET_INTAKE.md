@@ -1,6 +1,6 @@
 # Secret Intake (chat-safe credential handoff)
 
-**Last Updated:** 2026-11-16
+**Last Updated:** 2026-11-22
 
 Isolated training and API-only Janua staging targets are documented in
 [Isolated training custody](ISOLATED_TRAINING_CUSTODY.md). These declarations
@@ -677,9 +677,9 @@ release embeds these entries, pass the registry from `origin/main`:
 export ENCLII_API_ENDPOINT=https://api.enclii.dev
 REG="$(mktemp)" && git -C <enclii checkout> fetch -q origin && git -C <enclii checkout> show origin/main:config/ecosystem-oidc-provision.yaml > "$REG"
 enclii --profile admin secrets provision oidc --platform selva-dhanam-cogs --registry "$REG" --intake-profile default --json --reason "selva agent fleet to dhanam cogs mcp (RFC 0051 M3)"
-enclii --profile admin secrets provision oidc --platform ops-agents-dhanam-cogs --registry "$REG" --intake-profile default --json --reason "ops agents to dhanam cogs mcp (RFC 0051 M3)"
+enclii --profile admin secrets provision oidc --platform ops-agents-dhanam-cogs --keychain --registry "$REG" --intake-profile default --json --reason "ops agents to dhanam cogs mcp (RFC 0051 M3)"
 enclii --profile admin secrets provision oidc --platform selva-karafiel-cogs --registry "$REG" --intake-profile default --json --reason "selva agent fleet to karafiel cogs mcp (RFC 0051 M3)"
-enclii --profile admin secrets provision oidc --platform ops-agents-karafiel-cogs --registry "$REG" --intake-profile default --json --reason "ops agents to karafiel cogs mcp (RFC 0051 M3)"
+enclii --profile admin secrets provision oidc --platform ops-agents-karafiel-cogs --keychain --registry "$REG" --intake-profile default --json --reason "ops agents to karafiel cogs mcp (RFC 0051 M3)"
 enclii --profile admin secrets provision oidc --platform selva-converge-dash-cogs --registry "$REG" --intake-profile default --json --reason "selva agent fleet to converge-dash cogs mcp (RFC 0051 M3)"
 enclii --profile admin secrets provision oidc --platform ops-agents-converge-dash-cogs --registry "$REG" --intake-profile default --json --reason "ops agents to converge-dash cogs mcp (RFC 0051 M3)"
 enclii --profile admin secrets provision oidc --platform selva-pravara-cogs --registry "$REG" --intake-profile default --json --reason "selva agent fleet to pravara cogs mcp (RFC 0051 M3)"
@@ -697,6 +697,42 @@ printed id as `janua_client.client_id` of its platform in both registry copies
 `packages/cli/internal/ecosystemoidc/data/ecosystem-oidc-provision.yaml`), so
 later runs reconcile the client instead of creating a twin, and use the same
 id in the platform binding below.
+
+**`--keychain` (the ops agents' Karafiel and Dhanam pairs only).** Owner
+ruling 2026-11-22: these two pairs also go to the ops agents' macOS login
+Keychain. Run their two commands on that workstation, in its logged-in user
+session, with a CLI built from `main` that has the flag. Before Janua is
+touched, the CLI writes, reads back and deletes a throwaway item
+(`<service>-preflight`) to prove the login Keychain is unlocked and writable;
+a locked Keychain (for example from an SSH session: "User interaction is not
+allowed") refuses the run with nothing changed. After the Vault intake succeeds, the CLI files
+`client_id` and `client_secret` as generic passwords under the service
+`madfam-ops-agents-<platform>-cogs` (from the entry's
+`local_delivery.macos_keychain`), through `/usr/bin/security` on stdin, reads
+each one back to compare, and adds `keychain_items` (names only) to the
+result. No value is printed or passed as an argument. The flag is refused with
+`--all`, with `--dry-run`, off macOS, and for any platform whose entry does not
+declare `local_delivery.macos_keychain`; the registry itself refuses that
+field on any other platform.
+
+**If the Keychain write fails**, the command exits non-zero and says the Vault
+intake succeeded (Vault holds the complete new pair) and what each Keychain
+item holds now: `new value`, `different value` (for example an older one),
+`absent` or `unknown`. With `--json` the result still prints, with
+`keychain_state`. Recover without rotating, owner-run (the Vault admin token
+and the SSH bastion, as for the policy re-apply):
+
+```bash
+bash scripts/deliver-ops-agents-keychain.sh ops-agents-karafiel-cogs ops-agents-dhanam-cogs < ~/.config/madfam/vault-admin.token
+```
+
+It reads only those platforms' keys from `secret/ops-agents`, writes the same
+Keychain items, reads them back, and prints item names and lengths only. Where
+the token goes is fixed (it refuses `SSH_HOST`, `KCTL`, `VAULT_NS`, `VAULT_POD`
+or `VAULT_ADDR` set to anything else) and printed before the token is read. The
+same script restores the items on a new or wiped workstation. The other way
+out, re-running the provision with `--rotate-secret --keychain`, rotates the
+client secret.
 
 **Bind, then switch on** (per platform, owner-run; agents never flip a
 switch, M6, except where the owner amends it: on 2026-11-22 he let the agents
@@ -724,7 +760,8 @@ agents' pairs sit at `secret/ops-agents` with no ExternalSecret, because no
 ops-agent runtime runs in the cluster. Owner ruling 2026-11-22: the ops agents
 run on a macOS workstation, and the `ops-agents-karafiel-cogs` and
 `ops-agents-dhanam-cogs` pairs go from `secret/ops-agents` to its login
-Keychain, never through chat, a repository or a log. The other ops-agents
+Keychain, never through chat, a repository or a log: `--keychain` at
+provision time, `scripts/deliver-ops-agents-keychain.sh` to recover. The other ops-agents
 pairs wait for their own ruling.
 
 ### Voxa web session and API runtime (2026-10-04)
