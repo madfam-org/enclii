@@ -1,13 +1,13 @@
 name: Load Tests
 
+# No schedule: production is load-tested only on an operator's dispatch. A
+# GitHub-hosted runner's round trip to production alone exceeds the smoke
+# p(95)<200 ms threshold, so the weekly run failed every week from June 2026 on.
 on:
   pull_request:
     paths:
       - '.github/workflows/load-test.yml'
       - 'tests/load/**'
-  schedule:
-    # Weekly: Sunday 11 PM UTC
-    - cron: '0 23 * * 0'
   workflow_dispatch:
     inputs:
       test_level:
@@ -82,7 +82,7 @@ jobs:
   load-test:
     name: Load Test (Authenticated API)
     needs: smoke-test
-    if: github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && (inputs.test_level == 'load' || inputs.test_level == 'stress'))
+    if: github.event_name == 'workflow_dispatch' && (inputs.test_level == 'load' || inputs.test_level == 'stress')
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v7
