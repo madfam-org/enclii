@@ -420,6 +420,14 @@ spec:
                     "arc_pool_health_breach_streak $streak" \
                     "# TYPE arc_pool_health_alerts_firing gauge" \
                     "arc_pool_health_alerts_firing $alert_count")"
+                  # $(...) strips the trailing newline, and the text exposition
+                  # format requires one after the last sample. Without it the
+                  # pushgateway answers 400 ("unexpected end of input stream"),
+                  # the heartbeat never lands, ARCPoolHealthDetectorMissing
+                  # fires forever and the Stale/OutdatedGauge rules stay dead
+                  # (seen in every run's log until 2026-11-04).
+                  metrics="$metrics
+                  "
                   pg_code="$(curl -sS -o /dev/null -w '%{http_code}' --max-time 15 \
                              --data-binary "$metrics" \
                              "$PUSHGATEWAY_URL/metrics/job/arc_pool_health/scale_set/$SCALE_SET" 2>/dev/null || true)"

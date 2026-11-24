@@ -11,9 +11,20 @@
 #
 # Sólo cuentan las etiquetas de las cuentas en `vars.APROBADORES_FUSION`
 # (por omisión, «aldoruizluna»). Los agentes nunca ponen esta etiqueta.
-# La fusión usa el secreto FUSIONADOR_TOKEN (PAT del dueño): un push hecho con
-# GITHUB_TOKEN no dispara el CI ni el despliegue de main. Sin ese secreto, este
-# workflow no fusiona nada.
+#
+# Identidad de fusión. Un push hecho con GITHUB_TOKEN no dispara el CI ni el
+# despliegue de main, así que la fusión necesita otra identidad, en este orden:
+#   1. La GitHub App de primera parte de la organización: variable
+#      `FUSIONADOR_APP_ID` y secreto `FUSIONADOR_APP_PRIVATE_KEY`. Cada corrida
+#      acuña un token de corta vida sólo para este repo, con contents y
+#      pull-requests de escritura (internal-devops,
+#      access/github-actions-credentials.md, «The mechanism to build»).
+#   2. El secreto heredado `FUSIONADOR_TOKEN` (un PAT).
+# Sin ninguna de las dos, el tren NO fusiona y lo dice fuerte: por cada PR
+# aprobado deja el estado «fusionar/tren» en rojo sobre el head, un comentario
+# «el tren no puede fusionar: falta …» (uno por head) y la corrida en rojo. Una
+# fusión que GitHub rechaza se reporta igual. Sin PRs aprobados, nada se pone
+# rojo.
 name: Fusionar lo aprobado
 
 on:
@@ -43,16 +54,29 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     steps:
-      - uses: actions/github-script@v7
+      # Sin `owner` ni `repositories`, el token queda limitado a este repo.
+      - name: Acuñar la identidad de fusión (GitHub App)
+        id: app
+        if: vars.FUSIONADOR_APP_ID != ''
+        uses: actions/create-github-app-token@v2
+        with:
+          app-id: ${{ vars.FUSIONADOR_APP_ID }}
+          private-key: ${{ secrets.FUSIONADOR_APP_PRIVATE_KEY }}
+          permission-contents: write
+          permission-pull-requests: write
+
+      - name: Registrar aprobaciones y fusionar lo verde
+        uses: actions/github-script@v7
         env:
           ETIQUETA: aprobado-para-fusionar
           APROBADORES: ${{ vars.APROBADORES_FUSION || 'aldoruizluna' }}
+          FUSIONADOR_APP_TOKEN: ${{ steps.app.outputs.token }}
           FUSIONADOR_TOKEN: ${{ secrets.FUSIONADOR_TOKEN }}
           ESTE_WORKFLOW: Fusionar lo aprobado
         with:
           script: |
             const {owner, repo} = context.repo;
-            const ETIQUETA = process.env.ETIQUETA, CONTEXTO = 'fusionar/aprobado';
+            const ETIQUETA = process.env.ETIQUETA, CONTEXTO = 'fusionar/aprobado', TREN = 'fusionar/tren';
             const aprobadores = process.env.APROBADORES.split(',').map(s => s.trim().toLowerCase()).filter(Boolean);
             const BOT = 'github-actions[bot]';
 
@@ -79,8 +103,30 @@ jobs:
             }
 
             // 2. Fusionar lo aprobado que ya esté verde.
-            if (!process.env.FUSIONADOR_TOKEN) { core.notice('Falta el secreto FUSIONADOR_TOKEN: no se fusiona nada.'); return; }
-            const fusionador = require('@actions/github').getOctokit(process.env.FUSIONADOR_TOKEN);
+            const token = process.env.FUSIONADOR_APP_TOKEN || process.env.FUSIONADOR_TOKEN;
+            // github-script@v7 resuelve `require` desde el workspace (no trae
+            // @actions/github) y no inyecta getOctokit: el cliente de fusión es la
+            // misma clase de Octokit que `github`, con el token de la identidad.
+            const fusionador = token ? new github.constructor({auth: token}) : null;
+            const FALTA = 'la identidad de fusión: ni la GitHub App (variable FUSIONADOR_APP_ID + secreto FUSIONADOR_APP_PRIVATE_KEY) ni el secreto FUSIONADOR_TOKEN';
+            const fallas = [];
+
+            // Un fallo del tren queda en rojo en el head (estado «fusionar/tren»)
+            // y en un comentario, sin repetirlos en cada corrida del cron.
+            async function avisar(n, head, estados, motivo, resumen, cuerpo) {
+              fallas.push(`#${n}: ${resumen}`);
+              const descripcion = resumen.slice(0, 140);
+              const previo = estados.find(s => s.context === TREN);
+              if (!(previo && previo.state === 'failure' && previo.description === descripcion)) {
+                await github.rest.repos.createCommitStatus({owner, repo, sha: head, state: 'failure', context: TREN, description: descripcion});
+              }
+              const marca = `<!-- ${TREN}:${motivo}:${head} -->`;
+              const comentarios = await github.paginate(github.rest.issues.listComments, {owner, repo, issue_number: n, per_page: 100});
+              if (!comentarios.some(c => c.user?.login === BOT && (c.body || '').includes(marca))) {
+                await github.rest.issues.createComment({owner, repo, issue_number: n, body: `${marca}\n${cuerpo}`});
+              }
+            }
+
             const abiertos = await github.paginate(github.rest.pulls.list, {owner, repo, state: 'open', per_page: 100});
             for (const resumen of abiertos.filter(p => p.labels.some(l => l.name === ETIQUETA))) {
               const n = resumen.number;
@@ -92,7 +138,15 @@ jobs:
               if (!aprobacion || aprobacion.state !== 'success' || aprobacion.creator?.login !== BOT) {
                 core.info(`#${n}: el head ${head.slice(0, 8)} no tiene la aprobación de este workflow.`); continue;
               }
-              const otros = estados.filter(s => s.context !== CONTEXTO);
+              if (!fusionador) {
+                await avisar(n, head, estados, 'sin-identidad', 'El tren no puede fusionar: falta la identidad de fusión',
+                  `**El tren no puede fusionar: falta ${FALTA}.**\n\n` +
+                  `La aprobación de ${head.slice(0, 8)} sigue registrada, pero este workflow no tiene con qué fusionar. ` +
+                  `Fusiona este PR a mano, o da al tren su identidad: la GitHub App de primera parte de la organización ` +
+                  `(internal-devops, access/github-actions-credentials.md). En cuanto exista, el tren fusiona lo aprobado sin volver a etiquetar.`);
+                continue;
+              }
+              const otros = estados.filter(s => s.context !== CONTEXTO && s.context !== TREN);
               const ultimoPorContexto = new Map();
               for (const s of otros) if (!ultimoPorContexto.has(s.context)) ultimoPorContexto.set(s.context, s);
               if ([...ultimoPorContexto.values()].some(s => s.state !== 'success')) { core.info(`#${n}: hay estados de commit sin verde.`); continue; }
@@ -112,6 +166,10 @@ jobs:
                 const {data: r} = await fusionador.rest.pulls.merge({owner, repo, pull_number: n, sha: head, merge_method: 'squash'});
                 core.notice(`#${n} fusionado: ${r.sha}`);
               } catch (e) {
-                core.warning(`#${n}: no se fusionó (${e.status}): ${e.message}`);
+                await avisar(n, head, estados, `fusion-${e.status}`, `El tren no pudo fusionar (${e.status})`,
+                  `**El tren no pudo fusionar ${head.slice(0, 8)}: GitHub respondió ${e.status}.**\n\n> ${e.message}\n\n` +
+                  `La aprobación sigue registrada; el tren lo reintenta en la próxima corrida. ` +
+                  `Si el PR cambia \`.github/workflows/\`, la identidad de fusión necesita además permiso de workflows.`);
               }
             }
+            if (fallas.length) core.setFailed(`El tren no pudo fusionar: ${fallas.join('; ')}`);

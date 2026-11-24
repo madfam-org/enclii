@@ -1,12 +1,12 @@
 # Build stage
-FROM public.ecr.aws/docker/library/golang:1.26.10-alpine AS builder
+FROM public.ecr.aws/docker/library/golang:1.26.11-alpine AS builder
 
 WORKDIR /app
 
 # Install git for go mod download
 RUN apk add --no-cache git
 
-# Build cosign from source with the pinned CI Go toolchain (1.26.10).
+# Build cosign from source with the pinned CI Go toolchain (1.26.11).
 # The official release binaries are compiled with an older Go stdlib that
 # carries HIGH CVEs, so building here keeps the runtime image free of known
 # HIGH/CRITICAL findings while pinning the cosign version.
@@ -62,9 +62,25 @@ ENV COSIGN_VERSION=v3.1.3
 # GHSA-mgcc-cww5-fp2q (HIGH: unbounded RSA JWK validation CPU use). The
 # switchyard-api scan in run 40664640944 found v4.1.4 in BOTH runtime binaries;
 # the API module and this independent cosign build must both carry the fix.
+# 2026-11-09: x/net floor raised v0.60.0 -> v0.62.0 for CVE-2026-78661 (HIGH:
+# golang.org/x/net/html DoS via crafted HTML). The switchyard-api scan of
+# enclii#949's push build found x/net v0.60.0 in BOTH runtime binaries, so the
+# digest carrying #949 was never pinned. x/net v0.62.0 requires x/text >=
+# v0.43.0 (and x/crypto v0.58.0, x/sys v0.49.0, x/term v0.47.0, which `go get`
+# raises on its own), so the x/text floor moves 0.42 -> 0.43; x/text v0.43.0
+# still requires x/mod v0.41.0, so that floor is unchanged. Verified locally:
+# go get + go mod tidy + go build of cosign v3.1.3 succeed, and `go version -m`
+# shows x/net v0.62.0, x/text v0.43.0, x/mod v0.41.0, grpc v1.83.2,
+# compress v1.18.7, go-jose/v4 v4.1.6.
+# 2026-11-09: klauspost/compress floor raised v1.18.7 -> v1.20.2 for
+# GO-2026-6865 (fixed 1.20.2). enclii#942 raised the API module to 1.20.2,
+# but this independent cosign build still carried v1.18.7. compress v1.20.2
+# needs Go >= 1.25 and raises no other floor. apps/roundhouse/Dockerfile
+# carries the same floor set; tests/scripts/test_bundled_cosign_floors.py
+# fails CI when the two drift or a floor drops below its fixed version.
 RUN git clone --depth 1 -b "${COSIGN_VERSION}" https://github.com/sigstore/cosign /tmp/cosign-src && \
     cd /tmp/cosign-src && \
-    go get golang.org/x/text@v0.42.0 google.golang.org/grpc@v1.83.2 golang.org/x/mod@v0.41.0 golang.org/x/net@v0.60.0 github.com/klauspost/compress@v1.18.7 github.com/go-jose/go-jose/v4@v4.1.6 && \
+    go get golang.org/x/text@v0.43.0 google.golang.org/grpc@v1.83.2 golang.org/x/mod@v0.41.0 golang.org/x/net@v0.62.0 github.com/klauspost/compress@v1.20.2 github.com/go-jose/go-jose/v4@v4.1.6 && \
     go mod tidy && \
     CGO_ENABLED=0 go build -o /usr/local/bin/cosign ./cmd/cosign && \
     rm -rf /tmp/cosign-src
@@ -145,7 +161,7 @@ FROM public.ecr.aws/docker/library/alpine:3.24 AS runtime-base
 # `Scan: switchyard-api` from run 33843611930 onward. The value is now echoed
 # into the command so it genuinely participates in the cache key.
 #
-# The `libexpat>=2.9.0-r0` constraint is a belt-and-braces assertion: if the
+# The `libexpat>=2.10.0-r0` constraint is a belt-and-braces assertion: if the
 # mirror ever serves a package set older than the fix, the build fails loudly
 # here instead of silently producing an image the scan gate later rejects.
 # 2026-10-26: CVE-2026-92392 affected curl/libcurl 8.22.0-r0 in both
@@ -153,10 +169,20 @@ FROM public.ecr.aws/docker/library/alpine:3.24 AS runtime-base
 # Keep both hard floors and refresh the cached upgrade; no scan waiver.
 # https://curl.se/docs/CVE-2026-92392.html
 # https://secdb.alpinelinux.org/v3.24/main.json
-ARG APK_SECURITY_REFRESH=2026-10-26
+# 2026-11-03: CVE-2026-117610 and CVE-2026-118370 blocked the #902 API
+# image pin. Alpine v3.24 publishes libexpat 2.10.0-r0 for both runtime
+# architectures; refresh the cached upgrade and require that fixed floor.
+# https://pkgs.alpinelinux.org/package/v3.24/main/x86_64/libexpat
+# 2026-11-12: CVE-2026-105437, CVE-2026-111760 and CVE-2026-114466 (git and
+# git-init-template 2.54.0-r0, fixed 2.54.1-r0) fail `Scan: switchyard-api`
+# on main from 2026-11-11, so no API image has pinned since (#963's run
+# 43328543245 included). Alpine v3.24 main publishes 2.54.1-r0; refresh the
+# cached upgrade and require that floor.
+# https://pkgs.alpinelinux.org/packages?name=git-init-template&branch=v3.24
+ARG APK_SECURITY_REFRESH=2026-11-12
 RUN echo "apk security refresh: ${APK_SECURITY_REFRESH}" && \
     apk --no-cache upgrade && \
-    apk --no-cache add ca-certificates tzdata wget git 'curl>=8.23.0-r0' 'libcurl>=8.23.0-r0' bash 'libexpat>=2.9.0-r0'
+    apk --no-cache add ca-certificates tzdata wget 'git>=2.54.1-r0' 'git-init-template>=2.54.1-r0' 'curl>=8.23.0-r0' 'libcurl>=8.23.0-r0' bash 'libexpat>=2.10.0-r0'
 
 # Copy cosign (built from source in the builder stage) so the API can verify
 # signed image digests before committing production GitOps pins from platform

@@ -123,14 +123,17 @@ func TestDistinctProjectIDs(t *testing.T) {
 	assert.ElementsMatch(t, []uuid.UUID{a, b}, got)
 }
 
-func TestBuildMinutesMetric_KnownReadingIsCharged(t *testing.T) {
-	m := buildMinutesMetric(buildMinutesResult{Minutes: includedBuild + 100, Known: true})
+// A measured reading is reported as measured and never priced: there is no
+// price list or plan allowance to apply (usagePricingNote).
+func TestBuildMinutesMetric_KnownReadingIsReportedNotPriced(t *testing.T) {
+	m := buildMinutesMetric(buildMinutesResult{Minutes: 600, Known: true})
 
 	assert.False(t, m.Unavailable)
 	assert.Empty(t, m.Note)
 	assert.Equal(t, "waybill", m.Source)
-	assert.InDelta(t, includedBuild+100, m.Used, 1e-9)
-	assert.InDelta(t, 100*buildPerMinute, m.Cost, 1e-9)
+	assert.InDelta(t, 600, m.Used, 1e-9)
+	assert.Zero(t, m.Cost)
+	assert.Equal(t, -1.0, m.Included)
 }
 
 // An unread meter is flagged, carries no usage claim, and — critically — is

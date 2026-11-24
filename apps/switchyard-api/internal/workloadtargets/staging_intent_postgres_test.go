@@ -258,7 +258,7 @@ func TestNativeTargetHeldStagingIntentIsImmutableInertAndIdempotent(t *testing.T
 	if owner.QueryRowContext(ctx, `SELECT k8s_namespace FROM services WHERE project_id=$1 AND name='janua-api'`, project).Scan(&namespace) != nil || namespace != "production-fixture" {
 		t.Fatal("production registration was retargeted")
 	}
-	for _, statement := range []string{`UPDATE janua_staging_preregistration_intents SET reason='changed'`, `DELETE FROM janua_staging_preregistration_intents`, `TRUNCATE janua_staging_preregistration_intents`} {
+	for _, statement := range []string{`UPDATE janua_staging_preregistration_intents SET reason='changed'`, `DELETE FROM janua_staging_preregistration_intents`, `TRUNCATE janua_staging_preregistration_intents CASCADE`} {
 		_, err := owner.ExecContext(ctx, statement)
 		nativeState(t, err, "P0001")
 	}

@@ -25,6 +25,7 @@ func TestIsolatedTrainingCustodyRoutes(t *testing.T) {
 		{"crea-sim/kernel01-ca", "secret/crea-sim-map01", "crea-sim", "crea-sim-map01-ca", []string{"database_ca_pem"}},
 		{"crea-sim/kernel02-ca", "secret/crea-sim-map01", "crea-sim", "crea-sim-map02-ca", []string{"map02_database_ca_pem"}},
 		{"crea-sim/kernel03-ca", "secret/crea-sim-map01", "crea-sim", "crea-sim-map03-ca", []string{"map03_database_ca_pem"}},
+		{"crea-sim/kernel01-telemetry", "secret/crea-sim-map01", "crea-sim", "crea-sim-map01", []string{"telemetry_gate_token", "telemetry_hmac_key"}},
 		{"janua-staging/runtime-crypto", "secret/janua-staging", "janua-staging", "janua-staging-secrets", []string{"jwt_private_key", "jwt_public_key", "jwt_secret_key", "secret_key", "field_encryption_key"}},
 		{"janua-staging/database", "secret/janua-staging", "janua-staging", "janua-staging-secrets", []string{"database_url"}},
 		{"janua-staging/database-ca", "secret/janua-staging", "janua-staging", "janua-staging-ca", []string{"database_ca"}},
@@ -81,6 +82,26 @@ func TestTrainingKernelsSharePathWithDisjointKeys(t *testing.T) {
 			}
 		}
 	}
-	require.Equal(t, 6, kernels, "three runtime and three CA targets")
+	require.Equal(t, 7, kernels, "three runtime, three CA and kernel 01's telemetry targets")
 	require.Equal(t, "crea-sim/kernel01-runtime", owner["map_simulation_mcp_client_id"], "the public MCP client id is filed once, by kernel 01")
+}
+
+// RFC 0057, owner ruling 2026-11-12: the training kernel's telemetry custody
+// lives on the kernel's own path. No training target files into the production
+// gate's path, and the gate's target no longer accepts a training key.
+func TestKernelTelemetryStaysInTrainingCustody(t *testing.T) {
+	registry, err := LoadRegistry()
+	require.NoError(t, err)
+	for id, target := range registry {
+		if strings.HasPrefix(id, "crea-sim/") {
+			require.NotEqual(t, "secret/telemetry-gate", target.VaultPath, id)
+			require.Equal(t, "crea-sim", target.Namespace, id)
+		}
+	}
+	telemetry, err := GetTarget("crea-sim/kernel01-telemetry")
+	require.NoError(t, err)
+	require.Nil(t, telemetry.Generate, "generic generation: both consumers take a string of at least 32 characters")
+	gate, err := GetTarget("telemetry-gate/runtime")
+	require.NoError(t, err)
+	require.Equal(t, []string{"crea_map_token", "postgres_password"}, gate.Keys)
 }

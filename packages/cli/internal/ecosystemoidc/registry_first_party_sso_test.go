@@ -32,6 +32,7 @@ var firstPartyBrowserClients = []string{
 	"creator-census-web",
 	"cv-app",
 	"family-history-web",
+	"forj-web",
 	"karafiel",
 	"karafiel-admin",
 	"lexidrop",

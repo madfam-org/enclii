@@ -34,6 +34,7 @@ encouraging direct `kubectl`.
 | `enclii ops storage volumes|pvc|longhorn|repair-plan|settings-apply|prune-detached|storageclass-apply|r2-audit` | PVC/PV/Longhorn inspection, repair planning, CPU settings (O-5), orphan prune (O-4), StorageClass reconcile, R2 credential audit (incomplete, shared, or mismatched buckets) |
 | `enclii ops secrets external|vault|refresh|sync|sync-sweep|rotate|vault-backfill` | ExternalSecrets and Vault readiness workflows |
 | `enclii ops addons backup-credential` | Server-side provisioning of the addon backup bucket and its bucket-scoped R2 credential into Vault; no human holds it ([below](#ops-addons-backup-credential)) |
+| `enclii ops addons cpu-request` | Lower one existing managed-Postgres addon's CPU request to the 100m default, keeping its plan CPU as the limit; CNPG restarts the instance ([below](#ops-addons-cpu-request)) |
 | `enclii ops secrets provision-kalya-feed` | Server-side kalya standing-feed credential provisioning ([below](#ops-secrets-provision-kalya-feed)) |
 | `enclii ops domains reconcile` | Declared-vs-live hostname reconcile for a service ([below](#ops-domains-reconcile)) |
 | `enclii secrets intake` | Chat-safe operator credential handoff into Vault ([secrets.md](./secrets.md#enclii-secrets-intake)) |
@@ -357,6 +358,48 @@ POST /v1/ops/addons/hibernate
   addon's status.
 - **Reverse:** remove the annotation; CNPG recreates the instance from its PVC.
 
+## `ops addons cpu-request`
+
+Since 2026-11-04 a new managed-Postgres addon's CloudNativePG Cluster requests
+`100m` CPU and keeps its plan CPU as the **limit**, so it still bursts to
+what its plan sells; memory keeps request = limit. Before that the plan CPU
+was both, so a `standard-1` addon reserved 500m on its node while idle. This
+moves one addon created earlier to the new shape (owner decision,
+2026-11-04).
+
+```bash
+enclii ops addons cpu-request <addon-uuid> --project <slug>
+enclii ops addons cpu-request <addon-uuid> --project <slug> --apply \
+  --expect-plan <plan_hash> --idempotency-key <key> \
+  --reason "addon CPU request default (2026-11-04)"
+```
+
+- **Restart:** CNPG restarts the instance when its resources change. A
+  single-instance addon is **unavailable until the new pod is Ready**; with
+  replicas CNPG rolls them and switches over; with
+  `primaryUpdateStrategy: supervised` it waits for an operator; a hibernated
+  cluster changes nothing until it is woken. The dry run's `restart` field
+  says which. Run it per addon, at a quiet time for that project.
+- **Who:** platform rank only.
+- **Refused** unless the addon is managed Postgres, `ready` and in the project.
+  Bound addons are allowed; a live database is the point.
+- **Blocked** (HTTP 409, nothing changed) when the Cluster lacks Enclii's labels
+  for this addon, sets no CPU request, or is not in `Cluster in healthy state`
+  while it still needs a change.
+- **Apply:** sets `spec.resources.requests.cpu` to the default (or keeps a
+  smaller one) and `spec.resources.limits.cpu` to the current limit, or to
+  the old request when there was no limit. It is an Update carrying the
+  reviewed resourceVersion, so a Cluster changed since the plan is a 409.
+  Nothing else changes: not memory, not the addon row (its `config.cpu` is the
+  plan CPU, now the limit, so usage metering is unchanged).
+- **Done:** a Cluster already at the default reports `succeeded` and an apply
+  writes nothing. Take the dry run again to follow CNPG's `phase` back to
+  healthy.
+- **Audit:** a row before the mutation (no row, no mutation) and a result row
+  with the CPU before and after.
+- **Reverse:** set the request back on the Cluster (break-glass); new addons
+  keep the default.
+
 ## `ops addons backup-credential`
 
 Provisions the object-store credential every managed-Postgres addon backs up
@@ -382,6 +425,13 @@ enclii ops addons backup-credential --rotate              # plan a rotation
 - A Cloudflare refusal is `blocked` (HTTP 424) and names the permission the
   switchyard-api token lacks; nothing is written to Vault.
 - A failed Vault write revokes the newly minted token.
+- Running instances pick up the new credential within one backup sweep
+  (about 10 minutes): the sweep replaces each addon namespace's copy and
+  annotates the Cluster `enclii.dev/backup-credential-version`, because CNPG
+  reloads the credential only when its Cluster changes.
+- A Backup the old credential left in `walArchivingFailing` blocks its
+  schedule. The sweep deletes it, with an audit row, once the Cluster
+  reports `ContinuousArchiving=True`, and the schedule catches up.
 
 Runbook: [ADDON_BACKUPS.md](../../runbooks/ADDON_BACKUPS.md#provisioning-the-credential-one-time-no-human-holds-it).
 
@@ -529,10 +579,33 @@ restart.
   a generic `planned` response (`adapter execution is not wired in this build`)
   and `--apply` with HTTP 501 `adapter_required`. A wired build answers with
   the live object, its UID and the patch.
-- `apps retire` deletes only the Argo Application by default and uses orphan
-  propagation so live resources are not pruned during routine legacy-app
-  retirement. Destructive cascade retirement must be explicitly requested by
-  API callers.
+- `apps retire` deletes only the Argo Application by default; the resources it
+  deployed keep running, unmanaged. Argo CD decides cascade from the
+  Application's own finalizers, not from the Kubernetes propagation policy:
+  while `metadata.finalizers` holds `resources-finalizer.argocd.argoproj.io`
+  (or its `/foreground` or `/background` variant), deleting the Application
+  deletes every resource it manages, and orphan propagation protects none of
+  them because they carry no ownerReference to it. So the default first
+  removes those finalizers with a JSON patch that tests the resourceVersion
+  and finalizers it read, keeps every other finalizer (such as
+  `post-delete-finalizer.argocd.argoproj.io`), and then deletes the
+  Application with orphan propagation and a UID and resourceVersion
+  precondition. This is what `argocd app delete --cascade=false` does. If the
+  Application changed in between, nothing is deleted (`conflict`, HTTP 409);
+  rerun. The response lists `finalizersRemoved`.
+- Destructive cascade retirement keeps those finalizers, so Argo CD deletes
+  every managed resource. API callers must request it explicitly with
+  `args.cascade=true`; the CLI does not send it.
+- `apps retire` refuses (`refused`, HTTP 409), in either mode, an Application
+  generated by an ApplicationSet: the ApplicationSet recreates it within
+  minutes with its template's finalizer. Retire a project from
+  `infra/argocd/projects/<name>/config.json` with
+  `"lifecycle": "retired"` in that file instead ([`infra/argocd/README.md`,
+  "Retiring a project"](../../../infra/argocd/README.md#retiring-a-project)).
+  It also refuses an Application that is already being deleted
+  (`already_deleting`), and warns when another Argo Application tracks the
+  target (app-of-apps): while that parent still renders it and auto-syncs, it
+  recreates it with the finalizers its manifest declares.
 - `jobs trigger` creates a Kubernetes Job from the existing CronJob
   `jobTemplate`; it does not edit the CronJob schedule, image, command, env, or
   secret references.

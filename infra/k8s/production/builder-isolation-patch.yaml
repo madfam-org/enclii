@@ -145,3 +145,20 @@ spec:
                     operator: NotIn
                     values:
                       - builder
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: waybill-aggregator
+spec:
+  template:
+    spec:
+      affinity:
+        nodeAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            nodeSelectorTerms:
+              - matchExpressions:
+                  - key: role
+                    operator: NotIn
+                    values:
+                      - builder

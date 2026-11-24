@@ -2,7 +2,6 @@ package api
 
 import (
 	"context"
-	"fmt"
 	"net/http"
 	"sync"
 	"time"
@@ -11,6 +10,7 @@ import (
 	"github.com/google/uuid"
 	"golang.org/x/sync/errgroup"
 
+	"github.com/madfam-org/enclii/apps/switchyard-api/internal/k8s"
 	"github.com/madfam-org/enclii/apps/switchyard-api/internal/logging"
 	"github.com/madfam-org/enclii/packages/sdk-go/pkg/types"
 )
@@ -73,7 +73,11 @@ type UsageSummary struct {
 	PeriodStart string        `json:"period_start"`
 	PeriodEnd   string        `json:"period_end"`
 	Metrics     []UsageMetric `json:"metrics"`
-	TotalCost   float64       `json:"total_cost"`
+	// TotalCost is always 0 and Priced always false: Enclii has no price list
+	// to multiply usage by (see usagePricingNote). Kept for response shape.
+	TotalCost   float64 `json:"total_cost"`
+	Priced      bool    `json:"priced"`
+	PricingNote string  `json:"pricing_note,omitempty"`
 }
 
 // CostCategory represents a cost breakdown category
@@ -90,22 +94,31 @@ type CostBreakdown struct {
 	PeriodEnd   string         `json:"period_end"`
 	Categories  []CostCategory `json:"categories"`
 	TotalUsage  float64        `json:"total_usage"`
+	Priced      bool           `json:"priced"`
+	PricingNote string         `json:"pricing_note,omitempty"`
 }
 
-// Infrastructure cost metering rates. Customer billing handled by Dhanam.
-const (
-	computePerGBHour = 0.05
-	buildPerMinute   = 0.01
-	storagePerGB     = 0.25
-	bandwidthPerGB   = 0.10
-)
+// THERE IS NO PRICE LIST AND NO PLAN ALLOWANCE HERE (RFC 0049 Phase 1).
+//
+// This file used to multiply usage by $0.05/GB-hour, $0.01/minute,
+// $0.25/GB and $0.10/GB over "included" allowances of 500 GB-hours, 500
+// minutes, 10 GB and 500 GB. None of those numbers came from a contract, an
+// invoice or a plan: they were literals, and the compute and storage figures
+// they priced were themselves guesses (5 GB-hours per service per day, 0.5 GB
+// per service, 10 GB of bandwidth per service per month). The page showed
+// the product as "Infrastructure Cost", and the alerts tab raised "over plan
+// limit" pages from it. Every metric now reports Included = -1 (no allowance
+// applies) and Cost = 0, and a metric nobody measures says so.
+const usagePricingNote = "Not priced. Enclii has no price list for platform usage; customer billing is handled by Dhanam, and infrastructure cost comes from the provider's invoice."
 
-// Resource allocation baselines for usage tracking
+// Notes for the metrics that have no meter yet. Month-to-date figures need a
+// history Enclii does not keep; the Waybill daily ledger (RFC 0049 Phase 2)
+// is where they will come from.
 const (
-	includedCompute   = 500.0 // GB-hours
-	includedBuild     = 500.0 // minutes
-	includedStorage   = 10.0  // GB
-	includedBandwidth = 500.0 // GB
+	computeNotMeasuredNote   = "Month-to-date GB-hours are not measured yet. Live CPU and memory are in /v1/usage/realtime; daily history arrives with the Waybill ledger."
+	storageNotMeasuredNote   = "Not measured yet: there is no per-project volume or image-size meter."
+	bandwidthNotMeasuredNote = "Not measured yet: there is no ingress or egress meter."
+	domainsScopeNote         = "Domains recorded in Enclii. Domains routed outside Enclii are not counted."
 )
 
 // GetUsageSummary returns the current usage metrics for billing
@@ -239,153 +252,60 @@ func (h *Handler) calculateUsage(ctx context.Context, periodStart, periodEnd tim
 	// that requires a reconcile pass from cloudflare_tunnels routes back
 	// into custom_domains, tracked as a separate data-integrity workstream.
 	totalDomains := 0
+	domainsRead := false
 	if _, count, err := h.repos.CustomDomains.ListAll(ctx, nil, 1, 0); err == nil {
 		totalDomains = count
+		domainsRead = true
 	}
 
-	// Calculate compute usage from real K8s metrics
-	computeUsed := h.calculateRealComputeUsage(ctx, services, periodStart)
-
-	// Calculate storage from actual container images
-	storageUsed := h.calculateRealStorageUsage(ctx, services)
-
-	// Bandwidth estimation (would need ingress metrics for real data)
-	daysInPeriod := time.Since(periodStart).Hours() / 24
-	if daysInPeriod < 1 {
-		daysInPeriod = 1
-	}
-	bandwidthUsed := float64(len(services)) * 10.0 * (daysInPeriod / 30.0)
-
-	// Calculate overage costs
-	computeCost := calculateOverage(computeUsed, includedCompute, computePerGBHour)
-	storageCost := calculateOverage(storageUsed, includedStorage, storagePerGB)
-	bandwidthCost := calculateOverage(bandwidthUsed, includedBandwidth, bandwidthPerGB)
-
-	// buildMetric carries its own cost, which is zero when the meter could not
-	// be read. Charging an unread meter is the failure this whole change is
-	// about, so the cost comes from the same place as the flag.
+	// Compute, storage and bandwidth have no month-to-date meter. They used to
+	// be estimates priced at invented rates (see usagePricingNote); now they
+	// say what is missing instead of showing a number.
 	buildMetric := buildMinutesMetric(buildMinutes)
 
-	totalCost := computeCost + buildMetric.Cost + storageCost + bandwidthCost
+	domainsMetric := UsageMetric{
+		Type:     "domains",
+		Label:    "Custom Domains",
+		Used:     float64(totalDomains),
+		Included: -1,
+		Unit:     "domains",
+		Note:     domainsScopeNote,
+		Source:   "enclii",
+	}
+	if !domainsRead {
+		// A failed count is not zero domains.
+		domainsMetric = notMeasuredMetric("domains", "Custom Domains", "domains", "The domain count could not be read.")
+	}
 
 	metrics := []UsageMetric{
-		{
-			Type:     "compute",
-			Label:    "Compute",
-			Used:     roundToTwoDecimals(computeUsed),
-			Included: includedCompute,
-			Unit:     "GB-hours",
-			Cost:     roundToTwoDecimals(computeCost),
-		},
+		notMeasuredMetric("compute", "Compute", "GB-hours", computeNotMeasuredNote),
 		buildMetric,
-		{
-			Type:     "storage",
-			Label:    "Storage",
-			Used:     roundToTwoDecimals(storageUsed),
-			Included: includedStorage,
-			Unit:     "GB",
-			Cost:     roundToTwoDecimals(storageCost),
-		},
-		{
-			Type:     "bandwidth",
-			Label:    "Bandwidth",
-			Used:     roundToTwoDecimals(bandwidthUsed),
-			Included: includedBandwidth,
-			Unit:     "GB",
-			Cost:     roundToTwoDecimals(bandwidthCost),
-		},
-		{
-			Type:     "domains",
-			Label:    "Custom Domains",
-			Used:     float64(totalDomains),
-			Included: -1, // Unlimited
-			Unit:     "domains",
-			Cost:     0,
-		},
+		notMeasuredMetric("storage", "Storage", "GB", storageNotMeasuredNote),
+		notMeasuredMetric("bandwidth", "Bandwidth", "GB", bandwidthNotMeasuredNote),
+		domainsMetric,
 	}
 
 	return &UsageSummary{
 		PeriodStart: periodStart.Format("2006-01-02"),
 		PeriodEnd:   periodEnd.Format("2006-01-02"),
 		Metrics:     metrics,
-		TotalCost:   roundToTwoDecimals(totalCost),
+		TotalCost:   0,
+		Priced:      false,
+		PricingNote: usagePricingNote,
 	}, nil
 }
 
-// calculateRealComputeUsage calculates compute usage from real K8s metrics.
-//
-// When metrics-server isn't installed in the cluster (current state per
-// /v1/usage/realtime returning `metrics_enabled: false`), every per-service
-// `GetServiceMetrics` call hits a guaranteed timeout; sequentially looping
-// 88 of those is what was hanging the dashboard. Cheap probe-once at the
-// top: ask for cluster metrics, and if we can't reach them, fall straight
-// to the size-based estimate without N more roundtrips.
-//
-// When metrics-server IS available, fan out the per-service probes with a
-// concurrency cap so the wall-clock cost is bounded.
-func (h *Handler) calculateRealComputeUsage(ctx context.Context, services []*types.Service, periodStart time.Time) float64 {
-	daysInPeriod := time.Since(periodStart).Hours() / 24
-	if daysInPeriod < 1 {
-		daysInPeriod = 1
+// notMeasuredMetric is a metric with no meter behind it: Used 0 that MEANS
+// NOTHING, flagged Unavailable with the reason, never priced, no allowance.
+func notMeasuredMetric(metricType, label, unit, note string) UsageMetric {
+	return UsageMetric{
+		Type:        metricType,
+		Label:       label,
+		Included:    -1,
+		Unit:        unit,
+		Unavailable: true,
+		Note:        note,
 	}
-	estimate := float64(len(services)) * 5.0 * daysInPeriod
-
-	if h.k8sClient == nil {
-		return estimate
-	}
-
-	// Probe metrics-server availability cheaply via the cluster-wide
-	// endpoint. If it's not reachable, don't bother fanning out per-service
-	// — return the estimate so the handler stays fast.
-	probeCtx, probeCancel := context.WithTimeout(ctx, 1500*time.Millisecond)
-	defer probeCancel()
-	cluster, err := h.k8sClient.GetClusterMetrics(probeCtx)
-	if err != nil || cluster == nil || !cluster.MetricsEnabled {
-		return estimate
-	}
-
-	hoursActive := time.Since(periodStart).Hours()
-	if hoursActive < 0 {
-		hoursActive = 0
-	}
-
-	var (
-		mu                  sync.Mutex
-		totalComputeGBHours float64
-	)
-	g, gCtx := errgroup.WithContext(ctx)
-	g.SetLimit(usageFanoutConcurrency)
-	for _, svc := range services {
-		svc := svc
-		g.Go(func() error {
-			if gCtx.Err() != nil {
-				return nil
-			}
-			ns := h.resolveK8sNamespace(gCtx, svc)
-			metrics, err := h.k8sClient.GetServiceMetrics(gCtx, ns, svc.Name)
-			if err != nil || metrics == nil {
-				mu.Lock()
-				totalComputeGBHours += 5.0 * daysInPeriod
-				mu.Unlock()
-				return nil
-			}
-			memoryGB := float64(metrics.TotalMemory) / (1024 * 1024 * 1024)
-			mu.Lock()
-			totalComputeGBHours += memoryGB * hoursActive
-			mu.Unlock()
-			return nil
-		})
-	}
-	_ = g.Wait()
-	return totalComputeGBHours
-}
-
-// calculateRealStorageUsage calculates storage from actual deployments
-func (h *Handler) calculateRealStorageUsage(ctx context.Context, services []*types.Service) float64 {
-	// For now, estimate based on service count
-	// Real implementation would check container image sizes from registry
-	// Each service typically has ~0.5 GB of image layers
-	return float64(len(services)) * 0.5
 }
 
 // resolveK8sNamespace determines the actual K8s namespace for a service.
@@ -412,18 +332,6 @@ func (h *Handler) resolveK8sNamespace(ctx context.Context, svc *types.Service) s
 	return "default"
 }
 
-// getServiceNamespace is the legacy heuristic still consumed by older
-// helpers in this file. New code should use h.resolveK8sNamespace.
-func getServiceNamespace(svc *types.Service) string {
-	if svc.K8sNamespace != nil && *svc.K8sNamespace != "" {
-		return *svc.K8sNamespace
-	}
-	if svc.ProjectID != uuid.Nil {
-		return fmt.Sprintf("proj-%s", svc.ProjectID.String()[:8])
-	}
-	return "default"
-}
-
 // ServiceMetrics represents real-time metrics for a service
 type ServiceMetrics struct {
 	ServiceID   string  `json:"service_id"`
@@ -445,12 +353,22 @@ type ClusterMetricsResponse struct {
 	CollectedAt    string           `json:"collected_at"`
 }
 
-// GetRealTimeMetrics returns current resource usage from K8s
-// GET /v1/usage/realtime
-func (h *Handler) GetRealTimeMetrics(c *gin.Context) {
-	ctx := c.Request.Context()
+// realtimeBudget bounds /v1/usage/realtime, which the usage page polls every
+// 30 seconds.
+const realtimeBudget = 20 * time.Second
 
-	// Check if K8s client is available
+// GetRealTimeMetrics returns current resource usage from metrics-server.
+// GET /v1/usage/realtime
+//
+// The totals are the whole cluster: every pod metrics-server reports, in every
+// namespace, so they match `kubectl top pods -A` summed. The per-service rows
+// are the subset that belongs to Enclii services, attributed by namespace and
+// the `app=<service>` pod label. Cost: one metrics read plus one pod list per
+// namespace that holds a service, rather than two API calls per service.
+func (h *Handler) GetRealTimeMetrics(c *gin.Context) {
+	ctx, cancel := context.WithTimeout(c.Request.Context(), realtimeBudget)
+	defer cancel()
+
 	if h.k8sClient == nil {
 		c.JSON(http.StatusOK, ClusterMetricsResponse{
 			MetricsEnabled: false,
@@ -460,7 +378,6 @@ func (h *Handler) GetRealTimeMetrics(c *gin.Context) {
 		return
 	}
 
-	// Get all services
 	services, err := h.repos.Services.ListAll(ctx)
 	if err != nil {
 		h.logger.Error(ctx, "Failed to list services", logging.Error("error", err))
@@ -468,7 +385,6 @@ func (h *Handler) GetRealTimeMetrics(c *gin.Context) {
 		return
 	}
 
-	// Try to get cluster-wide metrics
 	clusterMetrics, err := h.k8sClient.GetClusterMetrics(ctx)
 	if err != nil {
 		h.logger.Warn(ctx, "Failed to get cluster metrics", logging.Error("error", err))
@@ -479,39 +395,101 @@ func (h *Handler) GetRealTimeMetrics(c *gin.Context) {
 		Services:       make([]ServiceMetrics, 0, len(services)),
 		CollectedAt:    time.Now().Format(time.RFC3339),
 	}
-
 	if clusterMetrics != nil {
 		response.TotalCPU = float64(clusterMetrics.TotalCPU)
-		response.TotalMemory = float64(clusterMetrics.TotalMemory) / (1024 * 1024) // Convert to MB
+		response.TotalMemory = float64(clusterMetrics.TotalMemory) / (1024 * 1024)
 		response.TotalPods = clusterMetrics.TotalPods
 	}
 
-	// Get metrics for each service
+	namespaceOf := make(map[uuid.UUID]string, len(services))
 	for _, svc := range services {
-		namespace := getServiceNamespace(svc)
+		namespaceOf[svc.ID] = h.resolveK8sNamespace(ctx, svc)
+	}
+
+	podApps := map[string]map[string]string{}
+	if response.MetricsEnabled {
+		podApps = h.podAppLabels(ctx, namespaceOf)
+	}
+	response.Services = attributeServiceMetrics(services, namespaceOf, podApps, clusterMetrics)
+
+	c.JSON(http.StatusOK, response)
+}
+
+// podAppLabels lists the pods of each namespace once and maps pod name to its
+// `app` label. A namespace whose list fails is absent from the map, and its
+// services read as "unknown" rather than as zero usage.
+func (h *Handler) podAppLabels(ctx context.Context, namespaceOf map[uuid.UUID]string) map[string]map[string]string {
+	namespaces := map[string]struct{}{}
+	for _, ns := range namespaceOf {
+		namespaces[ns] = struct{}{}
+	}
+	var mu sync.Mutex
+	out := make(map[string]map[string]string, len(namespaces))
+	g, gCtx := errgroup.WithContext(ctx)
+	g.SetLimit(usageFanoutConcurrency)
+	for ns := range namespaces {
+		ns := ns
+		g.Go(func() error {
+			pods, err := h.k8sClient.ListPods(gCtx, ns, "")
+			if err != nil || pods == nil {
+				return nil
+			}
+			apps := make(map[string]string, len(pods.Items))
+			for _, pod := range pods.Items {
+				apps[pod.Name] = pod.Labels["app"]
+			}
+			mu.Lock()
+			out[ns] = apps
+			mu.Unlock()
+			return nil
+		})
+	}
+	_ = g.Wait()
+	return out
+}
+
+// attributeServiceMetrics builds the per-service rows from one cluster-wide
+// metrics read. A service is "running" with its pods' summed usage, "stopped"
+// when its namespace was listed and no pod carries its app label, and
+// "unknown" when metrics or the pod list could not be read.
+func attributeServiceMetrics(
+	services []*types.Service,
+	namespaceOf map[uuid.UUID]string,
+	podApps map[string]map[string]string,
+	cluster *k8s.ClusterMetrics,
+) []ServiceMetrics {
+	out := make([]ServiceMetrics, 0, len(services))
+	for _, svc := range services {
+		ns := namespaceOf[svc.ID]
 		sm := ServiceMetrics{
 			ServiceID:   svc.ID.String(),
 			ServiceName: svc.Name,
-			Namespace:   namespace,
-			Status:      "running",
+			Namespace:   ns,
+			Status:      "unknown",
 		}
-
-		// Try to get service-specific metrics
-		if h.k8sClient != nil && clusterMetrics != nil && clusterMetrics.MetricsEnabled {
-			serviceMetrics, err := h.k8sClient.GetServiceMetrics(ctx, namespace, svc.Name)
-			if err == nil && serviceMetrics != nil {
-				sm.PodCount = serviceMetrics.PodCount
-				sm.CPUUsage = float64(serviceMetrics.TotalCPU)
-				sm.MemoryUsage = float64(serviceMetrics.TotalMemory) / (1024 * 1024) // Convert to MB
-			} else {
-				sm.Status = "unknown"
+		apps, listed := podApps[ns]
+		if cluster == nil || !cluster.MetricsEnabled || !listed {
+			out = append(out, sm)
+			continue
+		}
+		if nsMetrics, ok := cluster.Namespaces[ns]; ok {
+			for _, pm := range nsMetrics.Pods {
+				if apps[pm.PodName] != svc.Name {
+					continue
+				}
+				sm.PodCount++
+				sm.CPUUsage += float64(pm.TotalCPU)
+				sm.MemoryUsage += float64(pm.TotalMemory) / (1024 * 1024)
 			}
 		}
-
-		response.Services = append(response.Services, sm)
+		if sm.PodCount > 0 {
+			sm.Status = "running"
+		} else {
+			sm.Status = "stopped"
+		}
+		out = append(out, sm)
 	}
-
-	c.JSON(http.StatusOK, response)
+	return out
 }
 
 // GetServiceResourceMetrics returns metrics for a specific service
@@ -530,7 +508,7 @@ func (h *Handler) GetServiceResourceMetrics(c *gin.Context) {
 		return
 	}
 
-	namespace := getServiceNamespace(svc)
+	namespace := h.resolveK8sNamespace(ctx, svc)
 	response := ServiceMetrics{
 		ServiceID:   svc.ID.String(),
 		ServiceName: svc.Name,
@@ -558,34 +536,17 @@ func (h *Handler) GetServiceResourceMetrics(c *gin.Context) {
 	c.JSON(http.StatusOK, response)
 }
 
-// calculateCostBreakdown computes cost breakdown from actual data
-func (h *Handler) calculateCostBreakdown(ctx context.Context, periodStart, periodEnd time.Time) (*CostBreakdown, error) {
-	usage, err := h.calculateUsage(ctx, periodStart, periodEnd)
-	if err != nil {
-		return nil, err
-	}
-
-	categories := []CostCategory{
-		{Name: "Compute", Value: usage.Metrics[0].Cost, Color: "#3b82f6"},
-		{Name: "Build", Value: usage.Metrics[1].Cost, Color: "#22c55e"},
-		{Name: "Storage", Value: usage.Metrics[2].Cost, Color: "#f59e0b"},
-		{Name: "Bandwidth", Value: usage.Metrics[3].Cost, Color: "#8b5cf6"},
-	}
-
+// calculateCostBreakdown reports that nothing is priced. It used to split
+// the invented overage costs into a pie; see usagePricingNote.
+func (h *Handler) calculateCostBreakdown(_ context.Context, periodStart, periodEnd time.Time) (*CostBreakdown, error) {
 	return &CostBreakdown{
-		PeriodStart: usage.PeriodStart,
-		PeriodEnd:   usage.PeriodEnd,
-		Categories:  categories,
-		TotalUsage:  usage.TotalCost,
+		PeriodStart: periodStart.Format("2006-01-02"),
+		PeriodEnd:   periodEnd.Format("2006-01-02"),
+		Categories:  []CostCategory{},
+		TotalUsage:  0,
+		Priced:      false,
+		PricingNote: usagePricingNote,
 	}, nil
-}
-
-// calculateOverage calculates overage cost
-func calculateOverage(used, included, pricePerUnit float64) float64 {
-	if used <= included {
-		return 0
-	}
-	return (used - included) * pricePerUnit
 }
 
 // roundToTwoDecimals rounds a float to 2 decimal places

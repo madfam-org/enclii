@@ -83,8 +83,10 @@ services:
   # PostgreSQL
   postgres:
     image: postgres:15-alpine
+    # Loopback only: the dev credentials are in this file, so the port must
+    # not be reachable from the LAN.
     ports:
-      - "5436:5432"
+      - "127.0.0.1:5436:5432"
     environment:
       - POSTGRES_USER=enclii
       - POSTGRES_PASSWORD=enclii_dev
@@ -102,8 +104,9 @@ services:
   # Redis
   redis:
     image: redis:7-alpine
+    # Loopback only: no password is configured.
     ports:
-      - "6383:6379"
+      - "127.0.0.1:6383:6379"
     volumes:
       - redis_data:/data
     healthcheck:
@@ -114,11 +117,15 @@ services:
     networks:
       - enclii-network
 
-  # Local Docker Registry
+  # Local Docker Registry (development only).
+  # api and build-worker reach it as http://registry:5000 on enclii-network;
+  # the host port is bound to loopback so this unauthenticated registry is
+  # never published on a shared interface. Deployed images come from GHCR,
+  # never from a registry on a node.
   registry:
     image: registry:2
     ports:
-      - "5000:5000"
+      - "127.0.0.1:5000:5000"
     volumes:
       - registry_data:/var/lib/registry
     networks:
@@ -127,10 +134,12 @@ services:
   # Traefik (for local routing)
   traefik:
     image: traefik:v2.10
+    # Loopback only: --api.insecure serves the dashboard/API unauthenticated
+    # on 8080, and the entrypoints are for local routing only.
     ports:
-      - "80:80"
-      - "443:443"
-      - "8081:8080" # Dashboard
+      - "127.0.0.1:80:80"
+      - "127.0.0.1:443:443"
+      - "127.0.0.1:8081:8080" # Dashboard (insecure API)
     command:
       - "--api.insecure=true"
       - "--providers.docker=true"

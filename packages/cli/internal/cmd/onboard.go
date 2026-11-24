@@ -33,6 +33,7 @@ func NewOnboardCommand(cfg *config.Config) *cobra.Command {
 		skipPostgres bool
 		skipSecrets  bool
 		skipR2       bool
+		allowNarrow  bool
 		gen          generatedCredentialFlags
 	)
 
@@ -94,6 +95,7 @@ values; the --rotate-* flags replace them.`,
 				skipPostgres: skipPostgres,
 				skipSecrets:  skipSecrets,
 				skipR2:       skipR2,
+				allowNarrow:  allowNarrow,
 				gen:          gen,
 			})
 		},
@@ -114,6 +116,7 @@ values; the --rotate-* flags replace them.`,
 	cmd.Flags().BoolVar(&skipPostgres, "skip-postgres", false, "Skip Postgres provisioning")
 	cmd.Flags().BoolVar(&skipSecrets, "skip-secrets", false, "Skip secrets provisioning")
 	cmd.Flags().BoolVar(&skipR2, "skip-r2", false, "Skip R2 provisioning")
+	cmd.Flags().BoolVar(&allowNarrow, "allow-netpol-narrowing", false, allowNetpolNarrowingUsage)
 	gen.register(cmd.Flags())
 
 	_ = cmd.MarkFlagRequired("repo")
@@ -139,6 +142,7 @@ type onboardOpts struct {
 	skipPostgres bool
 	skipSecrets  bool
 	skipR2       bool
+	allowNarrow  bool
 	gen          generatedCredentialFlags
 }
 
@@ -167,6 +171,8 @@ func runOnboard(cfg *config.Config, opts onboardOpts) error {
 		ProjectName:  opts.project,
 		ManifestPath: opts.manifestPath,
 		SecretName:   opts.secretName,
+
+		AllowNetpolNarrowing: opts.allowNarrow,
 	}
 	if opts.branch != "" {
 		req.Branch = &opts.branch
@@ -399,6 +405,7 @@ func printOnboardResult(result map[string]interface{}) bool {
 	}
 
 	printGeneratedCredentials(os.Stdout, result)
+	printNetworkPolicyPlan(os.Stdout, result)
 
 	if warnings, ok := result["provision_warnings"]; ok {
 		if warnList, ok := warnings.([]interface{}); ok && len(warnList) > 0 {

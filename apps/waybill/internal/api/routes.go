@@ -11,7 +11,14 @@ type Server struct {
 	router       *gin.Engine
 	handlers     *Handlers
 	costHandlers *CostHandlers
+	extra        []RouteRegistrar
 	logger       *zap.Logger
+}
+
+// RouteRegistrar is an optional handler group mounted under /api/v1, behind
+// that group's auth (the resource usage ledger, for one).
+type RouteRegistrar interface {
+	Register(g *gin.RouterGroup)
 }
 
 // ServerConfig contains server configuration
@@ -21,8 +28,8 @@ type ServerConfig struct {
 
 // NewServer creates a new API server. costHandlers may be nil during early
 // startup before the budgets store is wired — the server will simply omit
-// those routes.
-func NewServer(handlers *Handlers, costHandlers *CostHandlers, cfg *ServerConfig, logger *zap.Logger) *Server {
+// those routes. extra groups mount under /api/v1.
+func NewServer(handlers *Handlers, costHandlers *CostHandlers, cfg *ServerConfig, logger *zap.Logger, extra ...RouteRegistrar) *Server {
 	gin.SetMode(gin.ReleaseMode)
 
 	router := gin.New()
@@ -36,6 +43,7 @@ func NewServer(handlers *Handlers, costHandlers *CostHandlers, cfg *ServerConfig
 		router:       router,
 		handlers:     handlers,
 		costHandlers: costHandlers,
+		extra:        extra,
 		logger:       logger,
 	}
 
@@ -77,6 +85,13 @@ func (s *Server) setupRoutes(cfg *ServerConfig) {
 		// Budgets + cost queries (P2.2)
 		if s.costHandlers != nil {
 			s.costHandlers.Register(api)
+		}
+
+		// Daily resource ledger (RFC 0049 Phase 2) and other optional groups.
+		for _, r := range s.extra {
+			if r != nil {
+				r.Register(api)
+			}
 		}
 	}
 }

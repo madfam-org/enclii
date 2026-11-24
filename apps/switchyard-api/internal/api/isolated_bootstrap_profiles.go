@@ -50,12 +50,15 @@ func (h bootstrapPinHistory) enabled() bool { return h.Revisions > 0 && h.MaxAge
 // main in the eight days to 2026-10-14, up to 22 in one day), while crea-sim
 // moves its MAP pin only by its own reviewed change, so a kernel's held image
 // trails crea-map's current pin within hours. The MAP kernels therefore also
-// accept a digest crea-map pinned on main within its last 30 pin revisions
-// and 14 days: one to four days of deploys at that cadence, and never an
-// image pinned more than two weeks ago. The image still passes every
-// registry, OCI, CI and signature check that follows the pin.
+// accept a digest crea-map pinned on main within its last 60 pin revisions
+// and 14 days: never an image pinned more than two weeks ago, which stays the
+// real bound. The window was 30 until 2026-11-19, when seven merges in one
+// afternoon pushed kernel 01's 2026-11-15 pin to revision 31 and its reset
+// stopped at the fence read («original kernel producer not accredited»). The
+// GitHub page (max 100) still reads the whole window in one request. The image
+// still passes every registry, OCI, CI and signature check that follows the pin.
 const (
-	mapPinHistoryRevisions = 30
+	mapPinHistoryRevisions = 60
 	mapPinHistoryMaxAge    = 14 * 24 * time.Hour
 )
 
@@ -85,6 +88,10 @@ const initialMAPVaultPath = "secret/crea-sim-map01"
 
 // The reusable Enclii build-publish workflow, pinned by tag in each signer SAN.
 const bootstrapReusableWorkflow = `https://github\.com/madfam-org/enclii/\.github/workflows/build-publish\.yml@refs/tags/`
+
+// bootstrapReusableWorkflowAtCommit is the same reusable workflow called at an
+// exact commit SHA (what a keyless certificate names when the caller pins a SHA).
+const bootstrapReusableWorkflowAtCommit = `https://github\.com/madfam-org/enclii/\.github/workflows/build-publish\.yml@`
 
 // These profiles are product-owned initial operations and fixed steps.
 // Neither the request nor an environment variable supplies an image, command,
@@ -181,7 +188,10 @@ func mapSimInitialProfile(name string) (isolatedBootstrapProfile, bool) {
 		Image: "ghcr.io/madfam-org/crea-map/crea-map-web",
 		// crea-map moved to build-publish v1.0.0-alpha.14 on 2026-10-18 (crea-map#639).
 		// alpha.8 stays for images that only an earlier (historical) pin names.
-		SignerIdentity:  `^(` + bootstrapReusableWorkflow + `v1\.0\.0-alpha\.(8|14)|https://github\.com/madfam-org/crea-map/\.github/workflows/build-deploy\.yml@refs/heads/main)$`,
+		// On 2026-11-18 crea-map#1248 pinned build-publish to the exact commit
+		// 9aca7f98 (enclii#974, the action-key secret); its keyless certificates
+		// name that SHA, not a tag. The full 40-hex SHA is accepted, never a prefix.
+		SignerIdentity:  `^(` + bootstrapReusableWorkflow + `v1\.0\.0-alpha\.(8|14)|` + bootstrapReusableWorkflowAtCommit + `9aca7f980961cb177a838a9ed0f5417b1445e469|https://github\.com/madfam-org/crea-map/\.github/workflows/build-deploy\.yml@refs/heads/main)$`,
 		RequiredChecks:  []string{"Instalar dependencias (caché)", "Seguridad de dependencias", "Compuertas de esquema y copy", "Lint + typecheck", "Pruebas unitarias", "Clinical RLS (presence gate)", "Compilación (next build)", "verify-ok", "Móvil + a11y (e2e) 1/6", "Móvil + a11y (e2e) 2/6", "Móvil + a11y (e2e) 3/6", "Móvil + a11y (e2e) 4/6", "Móvil + a11y (e2e) 5/6", "Móvil + a11y (e2e) 6/6", "e2e-ok"},
 		EnvironmentKeys: []string{"MAP_SIMULATION_ENABLED", "MAP_SIMULATION_KERNEL_ID", "APP_ORIGIN", "JANUA_AUDIENCE", "JANUA_ISSUER_URL", "JANUA_JWKS_URL", "RLS_POR_CASO", "MAP_SIMULATION_CONTEXT_KEY", "MAP_SIMULATION_CONTROL_KEY", "MAP_SIMULATION_MAIL_KEY", "MAP_SIMULATION_MCP_CLIENT_ID", "MAP_MCP_PSEUDONYM_KEY"},
 		VaultPath:       initialMAPVaultPath,

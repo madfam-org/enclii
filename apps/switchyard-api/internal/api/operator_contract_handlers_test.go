@@ -287,6 +287,9 @@ func TestHandleOpsJobsTriggerApplyUsesCronJobTemplate(t *testing.T) {
 	job := jobs.Items[0]
 	assert.Equal(t, "forgesight-mexico-wave-seed", job.Labels["enclii.dev/source-cronjob"])
 	assert.Equal(t, "populate verified ForgeSight market data", job.Annotations["enclii.dev/last-ops-reason"])
+	// No ownerReference means no CronJob history pruning: the run must expire.
+	require.NotNil(t, job.Spec.TTLSecondsAfterFinished)
+	assert.Equal(t, int32(7*24*60*60), *job.Spec.TTLSecondsAfterFinished)
 	require.Len(t, job.Spec.Template.Spec.Containers, 1)
 	container := job.Spec.Template.Spec.Containers[0]
 	assert.Equal(t, "ghcr.io/madfam-org/forgesight/pipeline:latest", container.Image)

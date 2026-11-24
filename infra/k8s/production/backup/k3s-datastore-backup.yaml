@@ -5,7 +5,22 @@
 #               main container (aws-cli) uploads to R2
 #
 # Requires: hostPID, control-plane nodeSelector, PolicyException
-# Schedule: 1:30 AM UTC daily
+# Schedule: 1:30 AM (controller-manager local time) daily
+#
+# Datastore consistency: k3s keeps its SQLite datastore in WAL mode, so the
+# newest committed writes live in state.db-wal until a checkpoint. A plain
+# `cp state.db` misses them and, if a checkpoint runs mid-copy, can capture a
+# torn file. The backup therefore uses SQLite's online backup API (host
+# python3, read-only connection, one step = one read transaction = one
+# consistent snapshot) and runs PRAGMA quick_check on the copy before it is
+# archived. The archive's BACKUP_METHOD file records which path produced it.
+#
+# Scheduling: this pod can only run on the control-plane node. When that node
+# is at its request ceiling the pod waits in Pending; with the old 15-minute
+# deadline that wait alone failed the job (DeadlineExceeded with no container
+# log at all). The job now waits up to 3 h and uses the enclii-backup-critical
+# PriorityClass, which moves it to the front of the scheduling queue without
+# evicting anything (see priority-class.yaml).
 #
 # Usage:
 #   1. Ensure r2-backup-credentials secret exists in data namespace
@@ -85,12 +100,14 @@ spec:
   jobTemplate:
     spec:
       backoffLimit: 2
-      activeDeadlineSeconds: 900
+      # Includes time spent Pending; see "Scheduling" above.
+      activeDeadlineSeconds: 10800
       template:
         metadata:
           labels:
             app: k3s-datastore-backup
         spec:
+          priorityClassName: enclii-backup-critical
           restartPolicy: OnFailure
           hostPID: true
           nodeSelector:
@@ -134,19 +151,63 @@ spec:
                   rm -rf "$WORKDIR"
                   mkdir -p "$WORKDIR"
 
+                  DB=/var/lib/rancher/k3s/server/db/state.db
+
+                  # Consistent SQLite snapshot. See the header of this file.
+                  sqlite_snapshot() {
+                    if command -v python3 >/dev/null 2>&1; then
+                      echo "Taking online SQLite backup of state.db (WAL-aware)..."
+                      python3 - "$DB" "$WORKDIR/state.db" <<'PY'
+                  import sqlite3, sys
+                  src_path, dst_path = sys.argv[1], sys.argv[2]
+                  src = sqlite3.connect("file:%s?mode=ro" % src_path, uri=True, timeout=60)
+                  dst = sqlite3.connect(dst_path)
+                  # pages=-1 (default): one step under one read transaction.
+                  # Step-wise copies restart whenever k3s writes, which on a
+                  # live control plane can mean they never finish.
+                  src.backup(dst)
+                  dst.close()
+                  src.close()
+                  chk = sqlite3.connect("file:%s?mode=ro" % dst_path, uri=True)
+                  result = chk.execute("PRAGMA quick_check").fetchone()[0]
+                  if result != "ok":
+                      sys.exit("snapshot failed quick_check: %s" % result)
+                  try:
+                      rows, max_id = chk.execute("SELECT count(*), max(id) FROM kine").fetchone()
+                      print("Snapshot OK: kine rows=%s max_id=%s" % (rows, max_id))
+                  except sqlite3.Error as exc:
+                      print("Snapshot OK (kine summary unavailable: %s)" % exc)
+                  chk.close()
+                  PY
+                      echo "sqlite-online-backup" > "$WORKDIR/BACKUP_METHOD"
+                    else
+                      echo "WARNING: python3 not found on the host; falling back to a file copy." >&2
+                      echo "WARNING: a file copy of a live WAL database is NOT guaranteed consistent." >&2
+                      cp "$DB" "$WORKDIR/state.db"
+                      if [ -f "$DB-wal" ]; then
+                        cp "$DB-wal" "$WORKDIR/state.db-wal"
+                      fi
+                      echo "file-copy-not-crash-consistent" > "$WORKDIR/BACKUP_METHOD"
+                    fi
+                  }
+
                   if [ -d /var/lib/rancher/k3s/server/db/etcd ]; then
                     echo "Embedded etcd datastore directory detected; attempting k3s etcd snapshot..."
                     if k3s etcd-snapshot save \
                       --name "$SNAPSHOT_NAME" \
                       --dir "$WORKDIR"; then
                       echo "K3s etcd snapshot created"
+                      echo "etcd-snapshot" > "$WORKDIR/BACKUP_METHOD"
+                    elif [ -f "$DB" ]; then
+                      echo "K3s etcd snapshot unavailable; using the SQLite datastore..."
+                      sqlite_snapshot
                     else
-                      echo "K3s etcd snapshot unavailable; falling back to SQLite datastore copy..."
-                      cp /var/lib/rancher/k3s/server/db/state.db "$WORKDIR/state.db"
+                      echo "No etcd snapshot and no state.db; nothing to back up" >&2
+                      exit 1
                     fi
-                  elif [ -f /var/lib/rancher/k3s/server/db/state.db ]; then
-                    echo "SQLite datastore detected; copying state.db..."
-                    cp /var/lib/rancher/k3s/server/db/state.db "$WORKDIR/state.db"
+                  elif [ -f "$DB" ]; then
+                    echo "SQLite datastore detected"
+                    sqlite_snapshot
                   else
                     echo "No supported k3s datastore found under /var/lib/rancher/k3s/server/db" >&2
                     exit 1

@@ -185,6 +185,56 @@ enclii jobs run-once --name <name> --command "<cmd>" \
 | `--service-id` | string | | Service ID (required) |
 | `--image` | string | | Container image (default: the service's current deployment image + env) |
 | `--timeout` | int | `3600` | Max execution time in seconds (`activeDeadlineSeconds`) |
+| `--network-identity` | string | (none) | `service`: run the pod with the service's network identity (see [Network identity](#network-identity-for-one-off-jobs)). Deployed image only. |
+
+## Network identity for one-off jobs
+
+By default a one-off pod carries only `app.kubernetes.io/managed-by=enclii` and
+`enclii.dev/one-off-job-id`. A namespace whose NetworkPolicies deny egress by
+default and admit database egress by pod label (`app: <service>`,
+`app.kubernetes.io/part-of`, `app.kubernetes.io/name`, ...) therefore blocks the
+job from its own service's database: even a dry-run fails at the connect.
+
+`--network-identity service` (API: `"network_identity": "service"`) opts one job
+into the service's network identity:
+
+- **Image rule.** Allowed only when the job runs the service's deployed image:
+  no `--image`, `--image` equal to the Deployment's image, or the same
+  repository pinned by `@sha256:<digest>`. Any other image marks the job
+  **failed** with a `failure_reason` starting `service network identity
+  refused:` and no Kubernetes Job is created. The same happens when the
+  service's Deployment cannot be resolved, when a NetworkPolicy selects on a
+  label Enclii sets on one-off pods itself, or when switchyard cannot list the
+  namespace's NetworkPolicies (RBAC).
+- **Only the selected labels.** Enclii copies from the Deployment's pod template
+  only the label keys the namespace's NetworkPolicies select on
+  (`podSelector` `matchLabels` and `matchExpressions` keys). The pod then agrees
+  with the service's pods on every key any policy reads, so every policy in the
+  namespace selects the job pod exactly when it selects the service's pods; this
+  is re-checked before the Job is created. Other labels (release, version,
+  component, ...) are never copied.
+- **Visible and inert.** The Job and pod carry `enclii.dev/run-once=true` and
+  `enclii.dev/network-identity=service`; the pod's annotations
+  `enclii.dev/network-identity-source` (`deployment/<name>`) and
+  `enclii.dev/network-identity-labels` (the copied keys) record what was copied.
+  The pod has a readiness gate (`enclii.dev/one-off-job-serves-no-traffic`) that
+  nothing sets, so it is never Ready and a Service selecting the same labels
+  never routes to it.
+
+Side effects while the job runs, because the pod matches the service's
+selectors: an HPA on the Deployment may report `FailedGetResourceMetric` (the
+job pod declares no resource requests) and holds the replica count until the job
+ends; a ServiceMonitor that keeps not-ready endpoints may show one down target;
+a PDB with a percentage or `maxUnavailable` counts the pod. Keep `--timeout`
+short for these jobs. A server older than this feature ignores the field; the
+CLI then reports an error rather than let you assume the pod got the identity.
+
+```bash
+enclii jobs run-once --project dhanam --service-id <uuid> --timeout 600 \
+  --name grant-dryrun --network-identity service \
+  --command "OPERATOR_CONFIG_B64='$B64' node /app/apps/api/dist/scripts/<script>.js -"
+enclii jobs get <job-id>   # "Network: service identity"; failure_reason on refusal
+```
 
 ## Examples
 

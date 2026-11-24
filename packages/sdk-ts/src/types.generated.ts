@@ -4,6 +4,55 @@
  */
 
 export interface paths {
+    "/v1/admin/projects/{slug}/environments/staging/network-preparation": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Plan or create the fixed held Janua namespace and network configuration
+         * @description Requires a current platform operator with project access and a completed,
+         *     freshly observed held Janua authority. This single-attempt preparation
+         *     creates only the fixed namespace and six network policies. It never
+         *     executes database, credential, volume, replica or grant writes. Existing
+         *     claims are inspect-only; uncertain creates are never retried or adopted.
+         *     Configuration receipts do not qualify packet isolation, capacity, cost,
+         *     database admission, registry custody or staging activation.
+         */
+        post: operations["prepareJanuaStagingNetwork"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/admin/projects/{slug}/environments/staging/network-preparation/{operation_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Inspect retained preparation receipts without performing native writes
+         * @description Requires the original current platform operator and project access.
+         *     Reobserves source, native UIDs and the complete fixed policy inventory.
+         *     A historical completion with current drift is returned with
+         *     configuration_present=false. No missing receipt or object is repaired.
+         */
+        get: operations["inspectJanuaStagingNetwork"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/health": {
         parameters: {
             query?: never;
@@ -2444,6 +2493,31 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/admin/onboard/netpolicy-plan": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Dry run of the onboarding network_policies step
+         * @description Generates the namespace's NetworkPolicies from the repository's
+         *     enclii.yaml and diffs them against the live policies and workloads.
+         *     Writes nothing. `blocked` is true when onboard or onboard ensure would
+         *     refuse the step without `allow_netpol_narrowing`. Only
+         *     repo_full_name, project_name, namespace and allow_netpol_narrowing
+         *     are read from the body.
+         */
+        post: operations["planOnboardingNetworkPolicies"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/admin/status/services": {
         parameters: {
             query?: never;
@@ -3671,6 +3745,49 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        /** @description dry_run=true permits exactly the three required properties. Apply requires dry_run=false and both expect_plan_sha256 and reason. IDs must use canonical lowercase UUID spelling. The server derives every namespace, peer, selector and policy; uploaded evidence is not accepted. */
+        JanuaNetworkPreparationRequest: {
+            /** Format: uuid */
+            operation_id: string;
+            /** Format: uuid */
+            authority_id: string;
+            dry_run: boolean;
+            expect_plan_sha256?: string;
+            reason?: string;
+        };
+        JanuaNetworkPreparationObject: {
+            object_key: string;
+            desired_sha256: string;
+        };
+        JanuaNetworkPreparationReceipt: {
+            index: number;
+            object_key: string;
+            uid: string;
+            resource_version: string;
+            observed_sha256: string;
+        };
+        JanuaNetworkPreparationResponse: {
+            /** @enum {string} */
+            schema: "enclii-janua-network-preparation-v1";
+            /** Format: uuid */
+            operation_id: string;
+            /** Format: uuid */
+            authority_id: string;
+            dry_run: boolean;
+            plan_sha256: string;
+            objects: components["schemas"]["JanuaNetworkPreparationObject"][];
+            create_intents: number;
+            receipts: components["schemas"]["JanuaNetworkPreparationReceipt"][];
+            completion_recorded: boolean;
+            configuration_present: boolean;
+            /** @enum {boolean} */
+            packet_isolation_proven: false;
+            /** @enum {boolean} */
+            db_apply_allowed: false;
+            /** @enum {boolean} */
+            activation_held: true;
+            unresolved_gates: string[];
+        };
         /** @description Canonical lowercase nonzero UUID; all ownership IDs must be distinct */
         JanuaStagingPreregistrationUUID: string;
         JanuaStagingPreregistrationPlanRequest: {
@@ -4744,6 +4861,51 @@ export interface components {
             provision_app_role?: components["schemas"]["AppRoleSpec"];
             /** @description Project-Secret keys whose values the server generates. Values are never returned. */
             generate_secrets?: components["schemas"]["GeneratedSecretSpec"][];
+            /**
+             * @description Let the network_policies step apply policies that narrow live
+             *     access: a podSelector {} made app-specific, an allowed port or
+             *     peer a workload loses, or a new namespace-wide deny. Without it
+             *     such a plan is refused, nothing is applied and the step fails.
+             *     See network_policy_plan in the response.
+             * @default false
+             */
+            allow_netpol_narrowing: boolean;
+        };
+        /**
+         * @description Diff between the live NetworkPolicies in the namespace and the ones
+         *     generated from enclii.yaml, with the narrowing guard's findings.
+         */
+        NetworkPolicyPlan: {
+            namespace?: string;
+            changes?: components["schemas"]["NetworkPolicyChange"][];
+            /** @description Changes refused without allow_netpol_narrowing. */
+            refusals?: components["schemas"]["NetworkPolicyFinding"][];
+            warnings?: string[];
+            /** @description Inputs the guard could not read, such as a workload kind it could not list. */
+            notes?: string[];
+            workloads_checked?: number;
+            /** @description The plan narrows live access and was (or would be) refused. */
+            blocked?: boolean;
+            narrowing_allowed?: boolean;
+            applied?: boolean;
+            dry_run?: boolean;
+            /** @description The plan rendered as lines. */
+            diff?: string[];
+        };
+        /** @description The diff of one NetworkPolicy in a NetworkPolicyPlan. */
+        NetworkPolicyChange: {
+            name?: string;
+            /** @enum {string} */
+            action?: "create" | "update" | "unchanged" | "kept";
+            diff?: string[];
+        };
+        /** @description A change the narrowing guard refuses without allow_netpol_narrowing. */
+        NetworkPolicyFinding: {
+            /** @enum {string} */
+            kind?: "selector_narrowed" | "access_lost" | "default_deny_added";
+            policy?: string;
+            workload?: string;
+            message?: string;
         };
         /**
          * @description Database and owner role. Exactly one of role_password and
@@ -5249,6 +5411,132 @@ export interface components {
 }
 export type $defs = Record<string, never>;
 export interface operations {
+    prepareJanuaStagingNetwork: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                slug: "janua";
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["JanuaNetworkPreparationRequest"];
+            };
+        };
+        responses: {
+            /** @description Read-only plan or completed native configuration receipt */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["JanuaNetworkPreparationResponse"];
+                };
+            };
+            /** @description Closed request or fixed route required */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Authentication required */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Platform operator required */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Project access unavailable */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Refused or unconfirmed; inspect the same operation UUID */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Native preparation adapter unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    inspectJanuaStagingNetwork: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                slug: "janua";
+                operation_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Retained history and current configuration observation */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["JanuaNetworkPreparationResponse"];
+                };
+            };
+            /** @description Exact operation UUID and empty request required */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Authentication required */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Platform operator required */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Owned current operation unavailable */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Native inspection adapter unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
     getHealth: {
         parameters: {
             query?: never;
@@ -8994,6 +9282,7 @@ export interface operations {
                         }[];
                         argocd_yaml?: string;
                         next_steps?: string[];
+                        network_policy_plan?: components["schemas"]["NetworkPolicyPlan"];
                     };
                 };
             };
@@ -9073,6 +9362,49 @@ export interface operations {
                 content?: never;
             };
             /** @description GitHub token or K8s client not available */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    planOnboardingNetworkPolicies: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["OnboardingRequest"];
+            };
+        };
+        responses: {
+            /** @description The plan, or network_declared false when enclii.yaml has no network section */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        namespace?: string;
+                        network_declared?: boolean;
+                        note?: string;
+                        network_policy_plan?: components["schemas"]["NetworkPolicyPlan"];
+                    };
+                };
+            };
+            /** @description Invalid request, or enclii.yaml could not be read */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description K8s client not available, or the live NetworkPolicies could not be read */
             503: {
                 headers: {
                     [name: string]: unknown;

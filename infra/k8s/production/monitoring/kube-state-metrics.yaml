@@ -241,8 +241,8 @@ spec:
             failureThreshold: 6
           resources:
             requests:
-              cpu: 20m
-              memory: 96Mi
+              cpu: 10m
+              memory: 176Mi
             limits:
               # Scales with OBJECT COUNT, not traffic. ~1.1k pods + ~1.5k jobs
               # in this cluster sits well under this; the headroom is for job

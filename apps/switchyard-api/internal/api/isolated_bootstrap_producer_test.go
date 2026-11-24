@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -249,7 +250,7 @@ func newBootstrapPinHistoryChain(t *testing.T, profile isolatedBootstrapProfile,
 		require.Equal(t, "/repos/"+profile.Producer+"/commits", r.URL.Path)
 		require.Equal(t, "main", r.URL.Query().Get("sha"))
 		require.Equal(t, profile.PinPath, r.URL.Query().Get("path"))
-		require.Equal(t, "30", r.URL.Query().Get("per_page"))
+		require.Equal(t, strconv.Itoa(profile.PinHistory.Revisions), r.URL.Query().Get("per_page"))
 		require.Equal(t, "Bearer synthetic-github-token", r.Header.Get("Authorization"))
 		rows := []any{}
 		for _, revision := range *history {
@@ -278,7 +279,7 @@ func newBootstrapPinHistoryChain(t *testing.T, profile isolatedBootstrapProfile,
 	return chain
 }
 
-// A MAP kernel accepts a digest crea-map pinned on main within its last 30 pin
+// A MAP kernel accepts a digest crea-map pinned on main within its last 60 pin
 // revisions and 14 days, once the current pin names another digest. Nothing
 // else about the pin, the registry, CI or the signature loosens.
 func TestBootstrapProducerMAPAcceptsOnlyRecentMainPins(t *testing.T) {
@@ -316,14 +317,16 @@ func TestBootstrapProducerMAPAcceptsOnlyRecentMainPins(t *testing.T) {
 			case "historical at the age bound":
 				history[2].age = 14*24*time.Hour - time.Minute
 			case "beyond the revision count":
-				// 31 rows although 30 were asked for; the owned digest is the 31st.
+				// One row more than the window asks for; the owned digest is that
+				// extra row (61st of 60), each row an hour older, all within 14 days.
 				history = nil
-				for i := 1; i <= 30; i++ {
+				n := profile.PinHistory.Revisions
+				for i := 1; i <= n; i++ {
 					history = append(history, bootstrapPinFixtureRevision{sha: bootstrapPinRevisionSHA(i), age: time.Duration(i) * time.Hour, payload: bootstrapPinPayload(profile.Image, another)})
 				}
-				history = append(history, bootstrapPinFixtureRevision{sha: bootstrapPinRevisionSHA(31), age: 31 * time.Hour, payload: bootstrapPinPayload(profile.Image, owned)})
+				history = append(history, bootstrapPinFixtureRevision{sha: bootstrapPinRevisionSHA(n + 1), age: time.Duration(n+1) * time.Hour, payload: bootstrapPinPayload(profile.Image, owned)})
 				wantErr, wantReads = "owned image is not among the producer's recent main pins", nil
-				for i := 1; i <= 30; i++ {
+				for i := 1; i <= n; i++ {
 					wantReads = append(wantReads, bootstrapPinRevisionSHA(i))
 				}
 			case "beyond the age bound":
@@ -406,7 +409,7 @@ func TestBootstrapProducerExactPinRuleIsUnchangedOutsideMAP(t *testing.T) {
 				profile, err := isolatedBootstrapProfileFor(profileName)
 				require.NoError(t, err)
 				if k8s.IsMapSimProfile(profileName) {
-					require.Equal(t, bootstrapPinHistory{Revisions: 30, MaxAge: 14 * 24 * time.Hour}, profile.PinHistory)
+					require.Equal(t, bootstrapPinHistory{Revisions: 60, MaxAge: 14 * 24 * time.Hour}, profile.PinHistory)
 				} else {
 					require.Zero(t, profile.PinHistory, "only the MAP kernels look back")
 				}

@@ -188,15 +188,18 @@ func distinctProjectIDs(ids []uuid.UUID) []uuid.UUID {
 // buildMinutesMetric renders the meter reading as a UsageMetric.
 //
 // When the meter could not be read the metric reports Used: 0 with
-// Unavailable: true and Cost: 0 — the zero is inert and explicitly marked,
-// rather than a silent claim that no minutes were used. A consumer that
-// ignores the flag gets an obviously suspicious zero; a consumer that reads it
-// gets the truth.
+// Unavailable: true — the zero is inert and explicitly marked, rather than a
+// silent claim that no minutes were used. A consumer that ignores the flag
+// gets an obviously suspicious zero; a consumer that reads it gets the truth.
+//
+// Never priced and no allowance (Included -1): the $0.01/minute over 500
+// "included" minutes this used to charge was a literal, not a plan
+// (usagePricingNote).
 func buildMinutesMetric(result buildMinutesResult) UsageMetric {
 	m := UsageMetric{
 		Type:     "build",
 		Label:    "Build Minutes",
-		Included: includedBuild,
+		Included: -1,
 		Unit:     "minutes",
 		Source:   "waybill",
 	}
@@ -206,6 +209,5 @@ func buildMinutesMetric(result buildMinutesResult) UsageMetric {
 		return m
 	}
 	m.Used = roundToTwoDecimals(result.Minutes)
-	m.Cost = roundToTwoDecimals(calculateOverage(result.Minutes, includedBuild, buildPerMinute))
 	return m
 }

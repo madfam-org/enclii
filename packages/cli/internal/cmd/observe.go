@@ -3,6 +3,7 @@ package cmd
 import (
 	"context"
 	"fmt"
+	"io"
 	"strconv"
 	"text/tabwriter"
 	"time"
@@ -103,6 +104,75 @@ func newObserveMetricsCommand(cfg *config.Config) *cobra.Command {
 // observe history
 // ----------------------------------------------------------------------------
 
+// metricsHistoryResponse mirrors monitoring.MetricsHistory as the Switchyard
+// handler for GET /v1/observability/metrics/history writes it. The CLI used
+// to decode `points[].at/cpu/rps`, keys the API never sends, so every call
+// printed "No history points" however much history the API returned.
+type metricsHistoryResponse struct {
+	TimeRange     string                `json:"time_range"`
+	Resolution    string                `json:"resolution"`
+	DataPoints    []metricsHistoryPoint `json:"data_points"`
+	Scope         string                `json:"scope"`
+	RetainedSince *time.Time            `json:"retained_since,omitempty"`
+	Note          string                `json:"note,omitempty"`
+}
+
+// metricsHistoryPoint mirrors monitoring.MetricsDataPoint: one minute of one
+// switchyard-api replica. Latency and error rate are null for a minute with
+// no requests.
+type metricsHistoryPoint struct {
+	Timestamp        time.Time `json:"timestamp"`
+	RequestsPerSec   float64   `json:"requests_per_sec"`
+	AverageLatencyMs *float64  `json:"average_latency_ms"`
+	ErrorRate        *float64  `json:"error_rate"`
+	CPUUsage         float64   `json:"cpu_usage"`    // cores
+	MemoryUsage      float64   `json:"memory_usage"` // resident MB
+}
+
+// fetchMetricsHistory calls the history endpoint. The handler reads the
+// window from `range` (1h, 6h, 24h, 7d); it used to receive `window`, which
+// it ignored, so --window always returned the default hour.
+func fetchMetricsHistory(ctx context.Context, cfg *config.Config, serviceID, window string) (*metricsHistoryResponse, error) {
+	path := "/v1/observability/metrics/history" + queryString(map[string]string{
+		"service_id": serviceID,
+		"range":      window,
+	})
+	var resp metricsHistoryResponse
+	if err := apiRequest(ctx, cfg, "GET", path, nil, &resp); err != nil {
+		return nil, err
+	}
+	return &resp, nil
+}
+
+func renderMetricsHistory(w io.Writer, resp *metricsHistoryResponse) error {
+	if resp.Scope != "" {
+		fmt.Fprintf(w, "Scope: %s\n", resp.Scope)
+	}
+	if resp.Note != "" {
+		fmt.Fprintf(w, "Note: %s\n", resp.Note)
+	}
+	if len(resp.DataPoints) == 0 {
+		fmt.Fprintln(w, "No history points returned for the requested window.")
+		return nil
+	}
+	tw := tabwriter.NewWriter(w, 0, 0, 2, ' ', 0)
+	fmt.Fprintln(tw, "TIMESTAMP\tCPU (cores)\tMEM (MB)\tRPS\tAVG LATENCY\tERRORS")
+	for _, p := range resp.DataPoints {
+		latency := "-"
+		if p.AverageLatencyMs != nil {
+			latency = fmt.Sprintf("%.2fms", *p.AverageLatencyMs)
+		}
+		errorRate := "-"
+		if p.ErrorRate != nil {
+			errorRate = fmt.Sprintf("%.2f%%", *p.ErrorRate*100)
+		}
+		fmt.Fprintf(tw, "%s\t%.3f\t%.1f\t%.2f\t%s\t%s\n",
+			p.Timestamp.Format("2006-01-02 15:04"),
+			p.CPUUsage, p.MemoryUsage, p.RequestsPerSec, latency, errorRate)
+	}
+	return tw.Flush()
+}
+
 func newObserveHistoryCommand(cfg *config.Config) *cobra.Command {
 	var (
 		serviceID string
@@ -116,43 +186,18 @@ func newObserveHistoryCommand(cfg *config.Config) *cobra.Command {
 			if err := requireServiceFlag(serviceID); err != nil {
 				return err
 			}
-			var resp struct {
-				ServiceID string `json:"service_id"`
-				Window    string `json:"window"`
-				Points    []struct {
-					At         time.Time `json:"at"`
-					CPU        float64   `json:"cpu"`
-					Memory     float64   `json:"memory"`
-					RPS        float64   `json:"rps"`
-					LatencyP95 float64   `json:"latency_p95"`
-				} `json:"points"`
-			}
-			path := "/v1/observability/metrics/history" + queryString(map[string]string{
-				"service_id": serviceID,
-				"window":     window,
-			})
-			if err := apiRequest(context.Background(), cfg, "GET", path, nil, &resp); err != nil {
+			resp, err := fetchMetricsHistory(context.Background(), cfg, serviceID, window)
+			if err != nil {
 				return err
 			}
 			if jsonOut {
 				return emitJSON(resp)
 			}
-			if len(resp.Points) == 0 {
-				fmt.Fprintln(cmd.OutOrStdout(), "No history points returned for the requested window.")
-				return nil
-			}
-			tw := tabwriter.NewWriter(cmd.OutOrStdout(), 0, 0, 2, ' ', 0)
-			fmt.Fprintln(tw, "TIMESTAMP\tCPU\tMEM\tRPS\tP95")
-			for _, p := range resp.Points {
-				fmt.Fprintf(tw, "%s\t%.2f%%\t%.2f%%\t%.2f\t%.2fms\n",
-					p.At.Format("2006-01-02 15:04"),
-					p.CPU, p.Memory, p.RPS, p.LatencyP95)
-			}
-			return tw.Flush()
+			return renderMetricsHistory(cmd.OutOrStdout(), resp)
 		},
 	}
 	cmd.Flags().StringVar(&serviceID, "service", "", "Service ID (required)")
-	cmd.Flags().StringVar(&window, "window", "1h", "Time window: 1h|24h|7d")
+	cmd.Flags().StringVar(&window, "window", "1h", "Time window: 1h|6h|24h|7d")
 	cmd.Flags().BoolVar(&jsonOut, "json", false, "Emit machine-readable JSON")
 	return cmd
 }

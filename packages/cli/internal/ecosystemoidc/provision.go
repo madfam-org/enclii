@@ -6,6 +6,7 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"regexp"
 	"strings"
@@ -35,6 +36,11 @@ type ProvisionOptions struct {
 	// at once. nil keeps Janua's default. It never applies to a create or to a
 	// public login client, neither of which rotates.
 	GraceHours *int
+	// Keychain, when set, also files the pair in the macOS login Keychain
+	// under the platform's local_delivery.macos_keychain service, after the
+	// Vault intake succeeds. Only a platform that declares it accepts it, and
+	// never in a dry run.
+	Keychain KeychainWriter
 }
 
 // ProvisionResult is safe to print — no secret values.
@@ -62,7 +68,44 @@ type ProvisionResult struct {
 	OldSecretsExpireAt string `json:"old_secrets_expire_at,omitempty"`
 	// PlannedGraceHours is the grace a dry run would send if the run rotates.
 	PlannedGraceHours *int `json:"planned_grace_period_hours,omitempty"`
+	// KeychainItems names the login Keychain items this run wrote, as
+	// <service>/<account>. Names only; never a value.
+	KeychainItems []string `json:"keychain_items,omitempty"`
+	// KeychainState, set only when the Keychain write failed after the intake,
+	// maps <service>/<account> to what that item holds now (one of the
+	// KeychainState* values). Names and states only; never a value.
+	KeychainState map[string]string `json:"keychain_state,omitempty"`
 }
+
+// KeychainDeliveryError is a run whose Vault intake succeeded and whose
+// Keychain write did not. Vault holds the complete new pair; the Keychain
+// holds what Err's states say.
+type KeychainDeliveryError struct {
+	PlatformID   string
+	IntakeID     string
+	IntakeTarget string
+	Err          error
+	// Grace is the grace check's failure on the same run, if any.
+	Grace error
+}
+
+func (e *KeychainDeliveryError) Error() string {
+	var b strings.Builder
+	fmt.Fprintf(&b, "vault intake succeeded (intake %s, target %s): Vault holds the complete new pair. "+
+		"The macOS Keychain write did not complete: %v. ", e.IntakeID, e.IntakeTarget, e.Err)
+	var writeErr *KeychainWriteError
+	if !errors.As(e.Err, &writeErr) || len(writeErr.States) == 0 {
+		b.WriteString("What the Keychain holds was not checked. ")
+	}
+	fmt.Fprintf(&b, "Recover with the owner-run scripts/deliver-ops-agents-keychain.sh %s (it overwrites both items), "+
+		"or re-run with --rotate-secret --keychain (this rotates the client secret)", e.PlatformID)
+	if e.Grace != nil {
+		fmt.Fprintf(&b, ". Also: %v", e.Grace)
+	}
+	return b.String()
+}
+
+func (e *KeychainDeliveryError) Unwrap() error { return e.Err }
 
 // ValidateProvision performs only local contract validation, including for dry runs.
 func ValidateProvision(reg *Registry, opts ProvisionOptions) (Platform, error) {
@@ -79,6 +122,17 @@ func ValidateProvision(reg *Registry, opts ProvisionOptions) (Platform, error) {
 	}
 	if err := validatePlatform(platform); err != nil {
 		return Platform{}, err
+	}
+	if err := validateLocalDelivery(opts.PlatformID, platform); err != nil {
+		return Platform{}, err
+	}
+	if opts.Keychain != nil {
+		if opts.DryRun {
+			return Platform{}, fmt.Errorf("--keychain is refused with --dry-run: a plan files nothing")
+		}
+		if platform.LocalDelivery == nil || platform.LocalDelivery.MacOSKeychain == "" {
+			return Platform{}, fmt.Errorf("platform %q declares no local_delivery.macos_keychain; --keychain is refused", opts.PlatformID)
+		}
 	}
 	if !opts.DryRun && !boundedText(opts.Reason, 1000) {
 		return Platform{}, fmt.Errorf("audit reason is required before provisioning")
@@ -127,6 +181,13 @@ func ProvisionPlatform(
 			result.PlannedGraceHours = opts.GraceHours
 		}
 		return result, nil
+	}
+	// A locked or unwritable Keychain is found before anything changes, not
+	// after Janua minted a secret the run then cannot deliver.
+	if opts.Keychain != nil {
+		if err := opts.Keychain.Preflight(ctx, platform.LocalDelivery.MacOSKeychain); err != nil {
+			return ProvisionResult{}, fmt.Errorf("--keychain refused before any Janua change: %w", err)
+		}
 	}
 	if strings.TrimSpace(platform.IntakeTarget) != "" {
 		if pre, ok := submitter.(IntakePreflighter); ok {
@@ -180,6 +241,25 @@ func ProvisionPlatform(
 		return result, fmt.Errorf("vault intake outcome held: %w", err)
 	}
 	result.KeysWritten = mapKeys(values)
+	// The local copy follows the Vault copy, never precedes it: a failure here
+	// leaves the pair in Vault and says so.
+	if opts.Keychain != nil {
+		service := platform.LocalDelivery.MacOSKeychain
+		items := []KeychainItem{{Account: "client_id", Value: remote.ClientID}, {Account: "client_secret", Value: secret}}
+		if err := opts.Keychain.WriteItems(ctx, service, items); err != nil {
+			delivery := &KeychainDeliveryError{PlatformID: opts.PlatformID, IntakeID: intakeID, IntakeTarget: platform.IntakeTarget, Err: err}
+			var writeErr *KeychainWriteError
+			if errors.As(err, &writeErr) && len(writeErr.States) > 0 {
+				result.KeychainState = map[string]string{}
+				for account, state := range writeErr.States {
+					result.KeychainState[service+"/"+account] = state
+				}
+			}
+			delivery.Grace = checkGraceApplied(rotation)
+			return result, delivery
+		}
+		result.KeychainItems = []string{service + "/client_id", service + "/client_secret"}
+	}
 	// The new secret is filed first, so a grace Janua did not honour never
 	// costs the credential; the run still fails, because the previous secret
 	// may stay valid longer than the operator asked for.

@@ -15,6 +15,16 @@ packages:
   - vim
 
 write_files:
+  # Owner standard (2026-11-05): a node ends onboarding with direct SSH closed.
+  # Root SSH with the provisioning key is a bootstrap path only; it is parked
+  # after the join below. Break-glass: kubectl debug node, or the provider's
+  # web console. 00- sorts first, and sshd keeps the first value it reads.
+  - path: /etc/ssh/sshd_config.d/00-madfam-no-direct-ssh.conf
+    permissions: '0644'
+    content: |
+      PermitRootLogin no
+      PasswordAuthentication no
+      KbdInteractiveAuthentication no
   - path: /etc/rancher/k3s/config.yaml
     content: |
       node-name: ${node_name}
@@ -65,5 +75,15 @@ runcmd:
   - |
     curl -sfL https://get.k3s.io | sh -s - agent \
       --config /etc/rancher/k3s/config.yaml
+
+  # Close direct SSH once the agent is installed (owner standard 2026-11-05):
+  # park the provisioning key as a root-only break-glass copy and apply the
+  # drop-in written above.
+  - |
+    if [ -f /root/.ssh/authorized_keys ]; then
+      mv /root/.ssh/authorized_keys /root/.ssh/authorized_keys.disabled-bootstrap
+      chmod 600 /root/.ssh/authorized_keys.disabled-bootstrap
+    fi
+    sshd -t && (systemctl reload ssh || systemctl reload sshd)
 
 final_message: "K3s agent ${node_name} joined cluster successfully after $UPTIME seconds"
