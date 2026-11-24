@@ -20,7 +20,7 @@
 > missing Enclii adapter gap.
 
 
-> Last Updated: 2026-09-19 (step 0 DONE: proxy + Sentinel fixes live, three drills logged; next = the forgesight canary; original 2026-04-17)
+> Last Updated: 2026-11-24 (the roll-the-Deployment command written without a blank); 2026-09-19 (step 0 DONE: proxy + Sentinel fixes live, three drills logged; next = the forgesight canary; original 2026-04-17)
 > Owner: Platform Infra
 > Related: [P1.3 in 2026-04 Enclii remediation plan](https://github.com/madfam-org/internal-devops/blob/main/roadmaps/2026-04-enclii-remediation-plan.md)
 
@@ -444,9 +444,9 @@ Deployment picks up the change on the next pod restart.
 ### 3. Roll the Deployment
 
 ```bash
-# From the karafiel-api checkout (enclii deploy reads ./service.yaml; -f to point elsewhere)
-enclii deploy --env production --canary 25 --change-ticket <url>
-# or
+# From the karafiel-api checkout (enclii deploy reads ./service.yaml; -f to point
+# elsewhere): `enclii deploy --env production --canary 25` with --change-ticket set
+# to the change ticket's URL; or
 kubectl rollout restart -n karafiel deployment/karafiel-api
 ```
 

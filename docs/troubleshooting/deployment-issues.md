@@ -22,20 +22,39 @@ This guide helps resolve issues with deploying services to the Enclii platform.
 - [CLI installed](/cli/)
 - Service configured with successful build
 
+## Before You Start
+
+The commands below read your project and service from shell variables, so
+each one runs as written once they are set. Set them once per terminal
+session:
+
+| Variable | Set it to | Where to find it |
+|---|---|---|
+| `PROJECT` | your project's slug | `enclii projects list` |
+| `SERVICE` | the service's name | `enclii projects services "$PROJECT"` |
+| `ENVIRONMENT` | the environment, for example `production` | `enclii projects environments "$PROJECT"` |
+
+Commands that take a service id (`--service-id`, `--service`) read it
+from the project's service list:
+
+```bash
+SERVICE_ID=$(enclii projects services "$PROJECT" --json | jq -r --arg s "$SERVICE" '.[] | select(.name == $s) | .id')
+```
+
 ## Quick Diagnosis
 
 ```bash
-# Check service status (the project defaults to service.yaml / ENCLII_PROJECT; override with --project)
-enclii ps --env <env>
+# Check service status
+enclii ps --env "$ENVIRONMENT" --project "$PROJECT"
 
 # View recent deployments
-enclii deployments list --service <service-id>
+enclii deployments list --service "$SERVICE_ID"
 
-# Check deployment details
-enclii deployments get <deployment-id>
+# Check the latest deployment's details
+enclii deployments latest --service "$SERVICE_ID"
 
 # View service logs
-enclii logs <service-name> -f
+enclii logs "$SERVICE" --env "$ENVIRONMENT" -f
 ```
 
 ## Common Deployment Errors
@@ -54,7 +73,7 @@ enclii logs <service-name> -f
 
 1. **Check service logs for startup errors**:
 ```bash
-enclii logs <service-name> --env <env> -n 500
+enclii logs "$SERVICE" --env "$ENVIRONMENT" -n 500
 
 # Direct pod debugging (kubectl — when you need K8s event details)
 kubectl describe pod -n <namespace> -l app=<service>
@@ -140,7 +159,7 @@ app.get('/healthz', (req, res) => {
 
 1. **Check logs from crashed container**:
 ```bash
-enclii logs <service-name> --env <env> -n 500
+enclii logs "$SERVICE" --env "$ENVIRONMENT" -n 500
 
 # The CLI has no --previous flag; for the previous container's output (break-glass):
 kubectl logs -n <namespace> <pod> --previous
@@ -148,7 +167,7 @@ kubectl logs -n <namespace> <pod> --previous
 
 2. **Verify environment variables** (run in the service's directory, or pass `-f path/to/service.yaml`):
 ```bash
-enclii secrets list --env <env>
+enclii secrets list --env "$ENVIRONMENT"
 ```
 
 3. **Check for common startup issues**:
@@ -158,7 +177,7 @@ enclii secrets list --env <env>
 
 4. **Debug locally** with same environment. There is no env export command; `--json` gives a machine-readable list (add `--reveal` to include secret values, which is audit-logged):
 ```bash
-enclii secrets list --env <env> --json
+enclii secrets list --env "$ENVIRONMENT" --json
 docker run --env-file .env <image>
 ```
 
@@ -229,15 +248,18 @@ resources:
 
 ```bash
 # Quick rollback to the previous deployment
-enclii rollback <service-name> --env <env>
+enclii rollback "$SERVICE" --env "$ENVIRONMENT"
 
-# List deployments with their v-numbers, then roll back to one
-enclii deploy ls <service-name>
-enclii rollback <service-name> v42 --env <env>
+# List deployments with their v-numbers
+enclii deploy ls "$SERVICE"
 
 # Flip traffic in under 30s instead of re-committing a manifest
-enclii rollback <service-name> --env <env> --instant --reason "bad release"
+enclii rollback "$SERVICE" --env "$ENVIRONMENT" --instant --reason "bad release"
 ```
+
+To roll back to a specific deployment instead of the previous one, pass its
+v-number from `enclii deploy ls` after the service name. A production
+`--instant` rollback also needs `--change-ticket` with the change ticket's URL.
 
 ### Pod Scheduling Issues
 
@@ -271,23 +293,19 @@ resources:
 
 ```bash
 # Deploy with canary: 10% of traffic, auto-promote after the validation window
-enclii deploy --env <env> --canary 10 --validation-window 10m
-
-# Check canary status (tail until it reaches a terminal state)
-enclii canary status <rollout-id> --service <service-name> -f
-
-# Promote canary to full rollout
-enclii canary promote <rollout-id> --service <service-name>
-
-# Abort canary
-enclii canary rollback <rollout-id> --service <service-name> --reason "error rate spiked"
+enclii deploy --env "$ENVIRONMENT" --canary 10 --validation-window 10m
 ```
 
-Production canaries also need `--change-ticket <url>`. See [enclii canary](/cli/commands/canary).
+The deploy prints `Canary rollout started:` followed by the rollout id. Each
+of `enclii canary status` (`-f` tails it until a terminal state),
+`enclii canary promote` (full rollout now) and `enclii canary rollback`
+(abort, with a `--reason`) takes that rollout id and `--service "$SERVICE"`.
+
+Production canaries also need `--change-ticket` with the change ticket's URL. See [enclii canary](/cli/commands/canary).
 
 ### Blue-Green Deployments
 
-There is no blue-green strategy. `enclii deploy` does a rolling update by default or a canary with `--canary N`; for a fast revert use `enclii rollback <service-name> --instant`.
+There is no blue-green strategy. `enclii deploy` does a rolling update by default or a canary with `--canary N`; for a fast revert use `enclii rollback` with the service name and `--instant`.
 
 ## Monitoring Deployments
 
@@ -295,11 +313,11 @@ There is no blue-green strategy. `enclii deploy` does a rolling update by defaul
 
 ```bash
 # Check deployment progress (ps has no watch mode; re-run it, or deploy with --wait)
-enclii ps --env <env>
-enclii deploy ls <service-name>
+enclii ps --env "$ENVIRONMENT" --project "$PROJECT"
+enclii deploy ls "$SERVICE"
 
 # Stream logs during deployment
-enclii logs <service-name> -f
+enclii logs "$SERVICE" --env "$ENVIRONMENT" -f
 ```
 
 ### Via kubectl (Admin Access — when CLI doesn't expose enough detail)
@@ -330,13 +348,14 @@ kubectl get pods -n <namespace> -l app=<service> -w
 ```bash
 # Run in the service's directory, or pass -f path/to/service.yaml
 # List current environment
-enclii secrets list --env <env>
+enclii secrets list --env "$ENVIRONMENT"
 
 # Set new variable
-enclii secrets set KEY=value --env <env>
+enclii secrets set LOG_LEVEL=info --env "$ENVIRONMENT"
 
-# Set secret (encrypted)
-enclii secrets set SECRET_KEY=sensitive-value --secret --env <env>
+# Set secret (encrypted), read from SECRET_KEY in your shell so the value never
+# appears in this document or your shell history
+enclii secrets set SECRET_KEY="$SECRET_KEY" --secret --env "$ENVIRONMENT"
 ```
 
 ## Related Documentation

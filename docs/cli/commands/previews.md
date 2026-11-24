@@ -4,7 +4,7 @@ Manage PR-based preview environments for a service.
 
 ## Synopsis
 
-```bash
+```usage
 enclii previews <subcommand> [flags]
 ```
 

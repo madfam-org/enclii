@@ -166,13 +166,13 @@ wrong about all of it.
   live object. #634 (a tenant webhook signing secret, 2026-09-26) repeated it. The
   directory is also non-recursive, and the live objects were bootstrapped by
   `scripts/cluster-ops-deploy.sh` (client-side `kubectl apply`). Issue #539
-  tracks the sanctioned path (`enclii secrets es-apply`, or
-  reconcile-then-include). Do NOT assume merging a `vault-secrets/*.yaml`
+  tracks the sanctioned path (a proposed per-app apply op —
+  `enclii secrets es-apply` does not exist — or reconcile-then-include). Do NOT assume merging a `vault-secrets/*.yaml`
   change deploys it: patch the live object additively AND keep git in step
   (procedure in `docs/infrastructure/EXTERNAL_SECRETS.md`).
 - `enclii ops secrets sync|refresh` only patches ExternalSecret annotations
   (`force-sync` + `enclii.dev/*`); it never touches values or `spec`.
-  Roll consumers with `enclii ops pods restart <kind>/<name> -n <ns>`:
+  Roll consumers with `enclii ops pods restart` (a `kind/name` target, `-n`):
   `deployment|statefulset|daemonset/<name>` = kubectl rollout restart's patch;
   `pod/<name>` = delete one controller-owned pod (StatefulSet stuck on an old
   revision under OrderedReady). Needs platform_admin rank and the namespace in

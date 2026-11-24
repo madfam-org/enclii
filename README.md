@@ -73,7 +73,7 @@ end-to-end description of the monetization pipeline is private and lives in `int
 [docs/PUBLIC_REPO_BOUNDARY.md](./docs/PUBLIC_REPO_BOUNDARY.md) and the
 [repo-boundary contract](https://github.com/madfam-org/internal-devops/blob/main/docs/repo-boundary-contract.md).
 
-_Last Updated: 2026-07-26_
+_Last Updated: 2026-11-24_
 
 ---
 
@@ -398,7 +398,7 @@ kubectl apply -k infra/k8s/production
 enclii login             # Authenticate via Janua SSO
 enclii init              # Create a service.yaml from a framework template
 enclii deploy            # Build and deploy the service in ./service.yaml (rolling, or --canary N)
-enclii logs <service>    # Show logs (-f to stream)
+enclii logs              # Show logs of the service in ./service.yaml (-f to stream)
 enclii ps                # List services and their status
 enclii secrets set       # Manage secrets and environment variables
 enclii domains add       # Add a custom domain
@@ -415,8 +415,9 @@ The full command reference is [`docs/cli/README.md`](./docs/cli/README.md).
 # Canary deploy to production: 10% of traffic, auto-promote after the validation window
 enclii deploy --env prod --canary 10 --change-ticket https://tracker.example.com/CHG-1234
 
-# Set secrets
-enclii secrets set DATABASE_URL=postgres://... --secret --env prod
+# Set secrets (the value is read from DATABASE_URL in your shell, so it never
+# appears in a document or your shell history)
+enclii secrets set DATABASE_URL="$DATABASE_URL" --secret --env prod
 
 # Custom domain
 enclii domains add api.example.com --service api --env prod
@@ -670,7 +671,7 @@ This repository includes machine-readable context files following the [llmstxt.o
 
 | Repository | Contract | Defined in |
 |---|---|---|
-| [janua](https://github.com/madfam-org/janua) | Identity provider for the control plane, the dashboard and the CLI (OIDC, RS256 JWKS). `enclii provision oidc` registers ecosystem OAuth clients against it. | [`docs/guides/ECOSYSTEM_INTEGRATION.md`](https://github.com/madfam-org/janua/blob/main/docs/guides/ECOSYSTEM_INTEGRATION.md) |
+| [janua](https://github.com/madfam-org/janua) | Identity provider for the control plane, the dashboard and the CLI (OIDC, RS256 JWKS). `enclii secrets provision oidc` registers ecosystem OAuth clients against it. | [`docs/guides/ECOSYSTEM_INTEGRATION.md`](https://github.com/madfam-org/janua/blob/main/docs/guides/ECOSYSTEM_INTEGRATION.md) |
 | [janua](https://github.com/madfam-org/janua) | Machine-to-machine tokens between services that Enclii deploys: one confidential client per edge, scoped, with the client secret delivered through Enclii secrets. | [`docs/service-tokens.md`](https://github.com/madfam-org/janua/blob/main/docs/service-tokens.md) |
 | [tezca](https://github.com/madfam-org/tezca) (consumer) | Deploys on Enclii with its own build workflows: digest pins in `k8s/production/`, lifecycle events reported here, ArgoCD sync. Its root-lockfile deploy gap is documented on its side. | [`enclii.yaml`](https://github.com/madfam-org/tezca/blob/main/enclii.yaml), [`docs/deployment/PRODUCTION_DEPLOYMENT.md`](https://github.com/madfam-org/tezca/blob/main/docs/deployment/PRODUCTION_DEPLOYMENT.md) |
 | Other ecosystem services (consumers) | Every product repo declares an `enclii.yaml` and deploys through Enclii, either with the reusable `build-publish.yml` or with its own workflows that pin digests. | This repo: [`docs/reference/service-spec.md`](docs/reference/service-spec.md), [`docs/guides/ZERO_TOUCH_CONTRACT.md`](docs/guides/ZERO_TOUCH_CONTRACT.md), [`docs/guides/reusable-workflows.md`](docs/guides/reusable-workflows.md), [`docs/guides/EXTERNAL_REPO_DEPLOY.md`](docs/guides/EXTERNAL_REPO_DEPLOY.md) |

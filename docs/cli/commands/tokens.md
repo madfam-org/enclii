@@ -4,7 +4,7 @@ Manage personal API tokens for CI and scripts.
 
 ## Synopsis
 
-```bash
+```usage
 enclii tokens <subcommand> [flags]
 ```
 
@@ -24,7 +24,9 @@ This command mirrors the `/account/tokens` page in the consumer web UI.
 
 List your API tokens (metadata only).
 
-```bash
+**Usage**
+
+```usage
 enclii tokens list [flags]
 ```
 
@@ -38,7 +40,9 @@ enclii tokens list [flags]
 
 Get token metadata. Never returns the secret value.
 
-```bash
+**Usage**
+
+```usage
 enclii tokens get <token_id> [flags]
 ```
 
@@ -52,7 +56,9 @@ Create a new API token. The full token value is printed to **STDERR** with a cle
 
 Default expiry is **90 days**. Use Go duration syntax extended with `d` for days: `24h`, `30d`, `90d`. Negative or zero durations are rejected.
 
-```bash
+**Usage**
+
+```usage
 enclii tokens create --name <name> [--expires-in <duration>] [--scopes <list>]
 ```
 
@@ -67,7 +73,9 @@ enclii tokens create --name <name> [--expires-in <duration>] [--scopes <list>]
 
 Revoke an API token immediately. Any CI runs using it start failing on the next request.
 
-```bash
+**Usage**
+
+```usage
 enclii tokens revoke <token_id> [--force]
 ```
 

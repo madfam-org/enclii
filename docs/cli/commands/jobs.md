@@ -4,7 +4,7 @@ Manage cron and one-off scheduled jobs.
 
 ## Synopsis
 
-```bash
+```usage
 enclii jobs <subcommand> [flags]
 ```
 
@@ -65,7 +65,9 @@ List all cron and one-off jobs for a project.
 
 **Aliases:** `ls`
 
-```bash
+**Usage**
+
+```usage
 enclii jobs list --project <slug>
 ```
 
@@ -81,7 +83,9 @@ enclii jobs list --project <slug>
 
 Create a new cron job with a schedule expression.
 
-```bash
+**Usage**
+
+```usage
 enclii jobs create --name <name> --schedule "<cron-expr>" --command "<cmd>" \
   --service-id <uuid> --project <slug> [flags]
 ```
@@ -114,7 +118,9 @@ The schedule uses standard 5-field cron syntax:
 
 Get detailed information about a cron **or one-off** job.
 
-```bash
+**Usage**
+
+```usage
 enclii jobs get <job-id>
 ```
 
@@ -126,7 +132,9 @@ Takes the full job UUID as a positional argument. The ID is looked up first as a
 
 Fetch the pod logs of a one-off job execution.
 
-```bash
+**Usage**
+
+```usage
 enclii jobs logs <job-id>
 ```
 
@@ -144,7 +152,9 @@ Delete a cron job and all its run history.
 
 **Aliases:** `rm`, `remove`
 
-```bash
+**Usage**
+
+```usage
 enclii jobs delete <job-id> [--force]
 ```
 
@@ -160,7 +170,9 @@ Without `--force`, the command prompts for confirmation before deleting.
 
 List execution history for a cron job.
 
-```bash
+**Usage**
+
+```usage
 enclii jobs runs <job-id>
 ```
 
@@ -172,7 +184,9 @@ enclii jobs runs <job-id>
 
 Run a one-off job that executes immediately and exits.
 
-```bash
+**Usage**
+
+```usage
 enclii jobs run-once --name <name> --command "<cmd>" \
   --service-id <uuid> --project <slug> [flags]
 ```
@@ -229,11 +243,16 @@ a PDB with a percentage or `maxUnavailable` counts the pod. Keep `--timeout`
 short for these jobs. A server older than this feature ignores the field; the
 CLI then reports an error rather than let you assume the pod got the identity.
 
+The service id comes from `enclii releases` (its first line reads
+`Releases for service` followed by the id), and the job id from the
+`  ID:` line `run-once` prints, so this runs as pasted:
+
 ```bash
-enclii jobs run-once --project dhanam --service-id <uuid> --timeout 600 \
-  --name grant-dryrun --network-identity service \
-  --command "OPERATOR_CONFIG_B64='$B64' node /app/apps/api/dist/scripts/<script>.js -"
-enclii jobs get <job-id>   # "Network: service identity"; failure_reason on refusal
+SERVICE_ID=$(enclii releases dhanam-api --project dhanam --limit 1 | awk '/^Releases for service/{print $4}')
+JOB_ID=$(enclii jobs run-once --project dhanam --service-id "$SERVICE_ID" --timeout 600 \
+  --name network-identity-check --network-identity service \
+  --command "node --version" | awk '/^  ID:/{print $2}')
+enclii jobs get "$JOB_ID"   # "Network: service identity"; failure_reason on refusal
 ```
 
 ## Examples
@@ -383,21 +402,27 @@ enclii jobs delete 550e8400-e29b-41d4-a716-446655440001 --force
 ### forbid (Default)
 Skips the new run if the previous run is still active. Prevents overlapping executions.
 
-```bash
+**Usage**
+
+```usage
 enclii jobs create --concurrency forbid ...
 ```
 
 ### allow
 Permits concurrent runs of the same job. Use when jobs are idempotent and can safely overlap.
 
-```bash
+**Usage**
+
+```usage
 enclii jobs create --concurrency allow ...
 ```
 
 ### replace
 Cancels the currently running instance and starts a new one. Use when only the latest run matters.
 
-```bash
+**Usage**
+
+```usage
 enclii jobs create --concurrency replace ...
 ```
 

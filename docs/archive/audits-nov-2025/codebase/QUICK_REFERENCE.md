@@ -1,5 +1,10 @@
 # Enclii Codebase: Quick Reference Guide
 
+> **2026-11-24:** this is a dated record, kept as evidence of its date. Some
+> `enclii` commands below do not exist in the current CLI, or carry blanks to
+> fill in, so they are not runnable as written. The current command forms are
+> in the [CLI reference](../../../cli/README.md).
+
 ## Component Status at a Glance
 
 | Component | Location | Status | Implementation | Key Files |

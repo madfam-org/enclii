@@ -1,6 +1,6 @@
 # Service health observation
 
-`enclii observe health --service <SERVICE_ID>` reads the same runtime evidence as
+`enclii observe health`, with `--service` set to the service id, reads the same runtime evidence as
 `GET /v1/observability/health`. A historical running deployment no longer counts
 as evidence of live health when the Kubernetes observer is unavailable.
 

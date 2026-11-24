@@ -59,12 +59,20 @@ enclii providers cloudflare tunnels-apply --project example
 enclii providers cloudflare tunnels-apply app.example.com --project example
 enclii providers porkbun dns-apply crm.phynd.app --domain phynd.app --type CNAME --content c9fac286-497b-4aac-9288-f784a1ea561c.cfargotunnel.com --apply --reason "restore PhyndCRM app host through Enclii"
 enclii providers porkbun nameservers-apply phynd.app --nameservers ns1.cloudflare.com,ns2.cloudflare.com --apply --reason "delegate phynd.app to Enclii-managed Cloudflare"
-enclii providers porkbun ping --tenant <slug>
-enclii providers porkbun domains --tenant <slug>
-enclii providers porkbun nameservers-apply <client-domain> --tenant <slug> --nameservers <NS1>,<NS2> --apply --reason "delegate the client apex to its Enclii-managed Cloudflare zone"
 enclii providers github rerun 25430873929 --apply --reason "re-run after GHCR token scope fix"
 enclii providers resend send-test-apply enclii.dev --to ops@example.com
 enclii providers resend send-test-apply enclii.dev --to ops@example.com --apply --reason "confirm enclii.dev sends after DNS verify"
+```
+
+A tenant-owned registrar account is selected with `--tenant` and the tenant's
+slug; see [Porkbun per-tenant registrar credentials](../../infrastructure/porkbun-tenant-credentials.md).
+
+**Usage**
+
+```usage
+enclii providers porkbun ping --tenant <slug>
+enclii providers porkbun domains --tenant <slug>
+enclii providers porkbun nameservers-apply <client-domain> --tenant <slug> --nameservers <NS1>,<NS2> --apply --reason "delegate the client apex to its Enclii-managed Cloudflare zone"
 ```
 
 ## Required Mutation Flags
@@ -140,8 +148,9 @@ as unknown. Check with `enclii version` before you start.
 The dry run and the apply are **two separate steps with a review between
 them**. Never run them back to back, and never paste them as one block.
 
-1. **Dry run.** `enclii providers cloudflare tunnels-apply --project <slug>`
-   (or one `<hostname>` with `--project <slug>`). It writes nothing.
+1. **Dry run.** `enclii providers cloudflare tunnels-apply` with `--project`
+   and the project slug (or one hostname as its argument, with `--project`).
+   It writes nothing.
 2. **Review every row.** Read each `LABEL HOSTNAME LIVE DESIRED ENVIRONMENT`
    line, and each row's `reason` and `environment_source`. Every `UPDATE` and
    `CREATE` must be a change you intend. A summary that starts with
@@ -156,8 +165,8 @@ them**. Never run them back to back, and never paste them as one block.
 4. **Rebind junctions first when a project's hostnames are served by more than
    one service or environment** (for example web, API and admin services, or
    production and staging). Preview each change with
-   `enclii ops junctions rebind <hostname> --project <slug> --to-service <svc> --environment <env>`
-   (a dry run; `live_matches: true` means the live route already serves that
+   `enclii ops junctions rebind`, giving the hostname as its argument plus
+   `--project`, `--to-service` and `--environment` (a dry run; `live_matches: true` means the live route already serves that
    binding), apply it with `--apply --reason`, and then start again at step 1.
    A rebind changes data only; the route follows through the next reviewed
    `tunnels-apply`.
@@ -165,23 +174,23 @@ them**. Never run them back to back, and never paste them as one block.
 ```bash
 # Step 1: dry run. Read every row before going further.
 enclii providers cloudflare tunnels-apply --project example
-
-# Step 3, a separate decision taken after the review: the Next line of a
-# clean plan, pinned to the plan you reviewed.
-enclii providers cloudflare tunnels-apply --project example \
-  --expect-plan <fingerprint-from-the-dry-run> --apply --reason "<why>"
 ```
+
+Step 3 is a separate decision taken after the review: run the `Next` line the
+clean plan printed. It is the whole apply, bound to the plan you reviewed:
+`--expect-plan` with its fingerprint, `--apply`, and a default `--reason` you
+may replace with your own.
 
 ## Cloudflare DNS apply
 
 Apply or dry-run Cloudflare DNS through Enclii instead of provider UI/API calls.
 
 ```bash
-enclii providers cloudflare dns-apply app.example.com --type CNAME --content <TUNNEL_CNAME>
+enclii providers cloudflare dns-apply app.example.com --type CNAME
 enclii providers cloudflare dns-apply app.example.com --type CNAME --proxied true --apply --reason "route customer domain through Enclii"
 ```
 
-Without `--apply`, the command requests a dry-run plan. With `--apply`, `--reason` is required.
+Without `--apply`, the command requests a dry-run plan. With `--apply`, `--reason` is required. Without `--content`, a `CNAME` points at the Enclii tunnel.
 
 ### Several records of one type at one name
 
@@ -206,10 +215,12 @@ name (`existingRecordsAtName`) so an add shows what it is joining and a
 name that already has one is an `update` of that record, which is what
 repointing a host means.
 
+Proton's verification `TXT` and the SPF `TXT` coexist at the apex, with no
+`--replace` and no dashboard. Add the verification record the same way as the
+SPF record below, with `--content` set to the `protonmail-verification=` value
+Proton shows for the domain and `--reason "Proton domain ownership"`:
+
 ```bash
-# Proton verification TXT and SPF TXT coexist at the apex — no --replace, no dashboard.
-enclii providers cloudflare dns-apply example.com --type TXT \
-  --content 'protonmail-verification=<token>' --apply --reason "Proton domain ownership"
 enclii providers cloudflare dns-apply example.com --type TXT \
   --content 'v=spf1 include:_spf.protonmail.ch ~all' --apply --reason "Proton SPF"
 ```

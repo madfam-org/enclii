@@ -9,7 +9,9 @@ repo-boundary-contract. -->
 
 `enclii quote-flow verify` is the Enclii-first readiness check for the Selva -> Yantra4D -> Cotiza -> ForgeSight quote path.
 
-```sh
+**Usage** (`--project` is the client project's slug):
+
+```usage
 enclii quote-flow verify --project <project> --agent selva --require-market-verified
 ```
 

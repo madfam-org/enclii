@@ -4,7 +4,7 @@ Create a new Enclii account via the self-serve signup wizard.
 
 ## Synopsis
 
-```bash
+```usage
 enclii signup [--no-browser]
 ```
 

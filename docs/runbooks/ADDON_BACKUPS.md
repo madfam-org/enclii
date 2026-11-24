@@ -165,13 +165,12 @@ paste the two as one block.
 enclii ops addons backup-credential
 
 # 2. Review the plan.
-
-# 3. Apply, bound to it.
-enclii ops addons backup-credential --apply \
-  --expect-plan <plan_hash> \
-  --idempotency-key addon-backups-credential-1 \
-  --reason "addon backups: provision the bucket-scoped R2 credential"
 ```
+
+3. Apply, bound to it: run the same command again with `--apply`,
+   `--expect-plan` set to the `plan_hash` the dry run printed,
+   `--idempotency-key addon-backups-credential-1` and
+   `--reason "addon backups: provision the bucket-scoped R2 credential"`.
 
 Properties:
 

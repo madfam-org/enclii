@@ -298,7 +298,7 @@ Assuming program execution start **2026-05-29**:
 
 11. Ship `cloudflare.credentials` to prod
 12. `enclii projects reconcile-services` CLI
-13. `enclii ops storage settings apply` for Longhorn
+13. `enclii ops storage settings-apply` for Longhorn
 
 ---
 

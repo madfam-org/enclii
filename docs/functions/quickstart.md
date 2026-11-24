@@ -4,7 +4,7 @@ Get started with Enclii's serverless functions in under 5 minutes. Functions aut
 
 ## Prerequisites
 
-- Enclii CLI installed (`enclii --version`)
+- Enclii CLI installed (`enclii version`)
 - An Enclii project created (`enclii init`)
 - Authenticated with Enclii (`enclii login`)
 

@@ -30,7 +30,7 @@ tags: [operations, runbook, incident-response, on-call]
 
 **Purpose:** Defines severity classifications, escalation paths, communication protocols, failure mode playbooks, and postmortem processes for production incidents on the Enclii platform.
 
-**Last Updated:** March 2026
+**Last Updated:** 2026-11-24
 
 **Prerequisites:**
 - `kubectl` access to enclii-production cluster (`KUBECONFIG=~/.kube/enclii-production`)
@@ -473,7 +473,7 @@ enclii logs switchyard-api --env production -n 100 | grep -ci error
 
 **Detection signals:**
 - Builds queued for more than 10 minutes with no progress
-- `enclii releases <service>` shows the latest build stuck in `building`
+- `enclii releases` for an affected service shows the latest build stuck in `building`
 - Prometheus alert: `BuildQueueDepth` > 5 for > 10 minutes
 - Users report pushes to GitHub not triggering builds
 
@@ -537,7 +537,7 @@ kubectl logs -n enclii -l app=roundhouse --tail=20
 # Expected: Shows build processing activity
 
 # Trigger a test build (enclii deploy in a test service's directory) and monitor
-enclii releases <service> -n 1
+# it with `enclii releases` given that service's name and -n 1
 # Expected: the new release moves from building to ready
 
 # Verify queue is draining

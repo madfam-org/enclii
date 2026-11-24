@@ -20,8 +20,22 @@ What an operator actually has to do — and what currently bites — to bring a 
 host, and a mail provider's record set, onto a zone Enclii hosts in Cloudflare.
 
 Every step below was executed against a vCTO client's apex on **2026-09-07** during
-that client's tenant onboarding; `<client-domain>` stands for that apex. Read
+that client's tenant onboarding; `DOMAIN` (below) stands for that apex. Read
 [How `dns-apply` decides](#how-dns-apply-decides) before you plan a record set.
+
+## Per-run values
+
+The commands below read the per-domain values from shell variables, so each
+one runs as written once they are set. Set them once per terminal session
+(for example `export DOMAIN=` followed by the apex):
+
+| Variable | Set it to | Where to find it |
+|---|---|---|
+| `DOMAIN` | the client's apex | the onboarding request |
+| `PROTON_VERIFICATION` | the value after `protonmail-verification=` | the Proton admin panel's domain settings |
+| `PROTON_DKIM_HASH` | the per-domain part of Proton's three DKIM CNAME targets | the Proton admin panel (not derivable) |
+| `PROJECT` | the Enclii project whose service serves the brand host | `enclii projects list` |
+| `ENCLII_VERIFICATION` | the value after `enclii-verification=` | the output of `enclii domains add` in step 1 below |
 
 :::info This runbook changed with #536
 
@@ -55,12 +69,12 @@ record *plus* every provider's verification token, and mail providers ship an
 
 ```bash
 # Both survive. No --replace, no dashboard.
-enclii providers cloudflare dns-apply <client-domain> \
-  --type TXT --content 'protonmail-verification=<token>' \
+enclii providers cloudflare dns-apply "$DOMAIN" \
+  --type TXT --content "protonmail-verification=$PROTON_VERIFICATION" \
   --apply --reason "prove domain ownership to Proton"
 # → created
 
-enclii providers cloudflare dns-apply <client-domain> \
+enclii providers cloudflare dns-apply "$DOMAIN" \
   --type TXT --content 'v=spf1 include:_spf.protonmail.ch ~all' \
   --apply --reason "publish SPF"
 # → created (1 existing TXT record left in place)
@@ -81,7 +95,7 @@ destroys and the records at that name it leaves alone. Like
 Re-read authoritative state after any record-set change:
 
 ```bash
-dig +short TXT <client-domain> @<one of the zone's Cloudflare nameservers>
+dig +short TXT "$DOMAIN" @<one of the zone's Cloudflare nameservers>
 ```
 
 ### MX priority
@@ -91,11 +105,11 @@ dig +short TXT <client-domain> @<one of the zone's Cloudflare nameservers>
 `--priority` wins when both are given, and the response reports which was used.
 
 ```bash
-enclii providers cloudflare dns-apply <client-domain> \
+enclii providers cloudflare dns-apply "$DOMAIN" \
   --type MX --priority 10 --content mail.protonmail.ch \
   --apply --reason "primary MX for Proton Mail"
 
-enclii providers cloudflare dns-apply <client-domain> \
+enclii providers cloudflare dns-apply "$DOMAIN" \
   --type MX --priority 20 --content mailsec.protonmail.ch \
   --apply --reason "backup MX for Proton Mail"
 ```
@@ -145,19 +159,19 @@ The apex set — two TXT and the MX pair — applies in any order; each apply ad
 record and reports the ones it joined:
 
 ```bash
-enclii providers cloudflare dns-apply <client-domain> --type TXT \
-  --content 'protonmail-verification=<token>' \
+enclii providers cloudflare dns-apply "$DOMAIN" --type TXT \
+  --content "protonmail-verification=$PROTON_VERIFICATION" \
   --apply --reason "prove domain ownership to Proton"
 
-enclii providers cloudflare dns-apply <client-domain> --type TXT \
+enclii providers cloudflare dns-apply "$DOMAIN" --type TXT \
   --content 'v=spf1 include:_spf.protonmail.ch ~all' \
   --apply --reason "publish Proton SPF"
 
-enclii providers cloudflare dns-apply <client-domain> --type MX \
+enclii providers cloudflare dns-apply "$DOMAIN" --type MX \
   --priority 10 --content mail.protonmail.ch --proxied false \
   --apply --reason "primary MX for Proton Mail"
 
-enclii providers cloudflare dns-apply <client-domain> --type MX \
+enclii providers cloudflare dns-apply "$DOMAIN" --type MX \
   --priority 20 --content mailsec.protonmail.ch --proxied false \
   --apply --reason "backup MX for Proton Mail"
 ```
@@ -165,8 +179,8 @@ enclii providers cloudflare dns-apply <client-domain> --type MX \
 Confirm the apex holds the whole set, not the last one written:
 
 ```bash
-dig +short TXT <client-domain> @<one of the zone's Cloudflare nameservers>   # expect 2 records
-dig +short MX  <client-domain> @<one of the zone's Cloudflare nameservers>   # expect 10 and 20
+dig +short TXT "$DOMAIN" @<one of the zone's Cloudflare nameservers>   # expect 2 records
+dig +short MX  "$DOMAIN" @<one of the zone's Cloudflare nameservers>   # expect 10 and 20
 ```
 
 The three DKIM CNAMEs and `_dmarc` are each the only record of their type at
@@ -174,8 +188,8 @@ their name:
 
 ```bash
 for n in "" 2 3; do
-  enclii providers cloudflare dns-apply "protonmail${n}._domainkey.<client-domain>" \
-    --type CNAME --content "protonmail${n}.domainkey.<hash>.domains.proton.ch" \
+  enclii providers cloudflare dns-apply "protonmail${n}._domainkey.$DOMAIN" \
+    --type CNAME --content "protonmail${n}.domainkey.$PROTON_DKIM_HASH.domains.proton.ch" \
     --proxied false \
     --apply --reason "Proton Mail DKIM key ${n:-1}"
 done
@@ -214,7 +228,7 @@ delegation lands and Cloudflare stops reporting the zone as `pending`). A
 pending zone has no settings to read.
 
 ```bash
-enclii providers cloudflare zone-settings-apply <client-domain> \
+enclii providers cloudflare zone-settings-apply "$DOMAIN" \
   --apply --reason "apply Enclii HTTPS posture to the client apex"
 ```
 
@@ -231,7 +245,7 @@ downgradeable while reading as secure in a browser:
 Verify from outside — a 301 is the whole point of the step:
 
 ```bash
-curl -sSI http://<client-domain>/ | head -1
+curl -sSI "http://$DOMAIN/" | head -1
 # HTTP/1.1 301 Moved Permanently
 ```
 
@@ -246,8 +260,8 @@ Verified end to end on 2026-09-07 for a host on a zone MADFAM hosts.
 ### 1. `domains add` — **from the repo root**
 
 ```bash
-cd <repo root>            # NOT optional; see below
-enclii domains add erp.<client-domain> \
+cd "$(git rev-parse --show-toplevel)"   # the repo root: NOT optional; see below
+enclii domains add "erp.$DOMAIN" \
   --service nauta-web --env production -f enclii.yaml
 ```
 
@@ -268,15 +282,16 @@ plainly there. Run it from the repo root.
 ### 2. `dns-apply` — proxied CNAME to the tunnel
 
 ```bash
-enclii providers cloudflare dns-apply erp.<client-domain> \
-  --type CNAME --content <TUNNEL_CNAME> --proxied true \
+# Without --content, a CNAME points at the Enclii tunnel.
+enclii providers cloudflare dns-apply "erp.$DOMAIN" \
+  --type CNAME --proxied true \
   --apply --reason "route the new brand host through the Enclii tunnel"
 ```
 
 ### 3. `tunnels-apply` — reconcile the tunnel ingress
 
 ```bash
-enclii providers cloudflare tunnels-apply --project <project> \
+enclii providers cloudflare tunnels-apply --project "$PROJECT" \
   --apply --reason "publish the tunnel route for the new brand host"
 ```
 
@@ -289,8 +304,8 @@ manifest's declared domains once rewrote live routes to a dead backend.)
 ### 4. `dns-apply` — the verification TXT
 
 ```bash
-enclii providers cloudflare dns-apply erp.<client-domain> \
-  --type TXT --content 'enclii-verification=<id>' \
+enclii providers cloudflare dns-apply "erp.$DOMAIN" \
+  --type TXT --content "enclii-verification=$ENCLII_VERIFICATION" \
   --apply --reason "prove ownership of the new brand host to Enclii"
 ```
 
@@ -300,7 +315,7 @@ the first in place — see [How `dns-apply` decides](#how-dns-apply-decides).
 ### 5. `domains verify`
 
 ```bash
-enclii domains verify erp.<client-domain> --service nauta-web
+enclii domains verify "erp.$DOMAIN" --service nauta-web
 ```
 
 TLS is issued automatically once verification succeeds.
@@ -314,7 +329,7 @@ But a **manifest-only merge builds nothing**: when `build-publish` detects no
 changed service, no image is built, so no deploy runs and therefore no capture
 happens. A host added to `enclii.yaml` in a docs- or manifest-only PR does not
 become live on merge. Either run the sequence above, or use
-`enclii domains reconcile <service>` to provision the declared hostname
+`enclii domains reconcile` with the service name to provision the declared hostname
 server-side.
 
 ## Host redirects: no Enclii op yet (dashboard break-glass)
@@ -326,13 +341,9 @@ ingress, and `dns-apply` cannot express one: a redirect needs the edge to answer
 with a `Location:` header instead of routing to a backend.
 
 Tracked as [#538](https://github.com/madfam-org/enclii/issues/538), which
-proposes:
-
-```bash
-enclii providers cloudflare redirect-apply <old-host>.madfam.io \
-  --to https://portal.<client-domain> --status 301 --preserve-query \
-  --apply --reason "brand migration: MADFAM host to the client's own apex"
-```
+proposes a `enclii providers cloudflare redirect-apply` command. It does not exist yet:
+no Enclii adapter, this is an adapter gap. The proposal takes the old host, `--to`
+with the new URL, `--status 301`, `--preserve-query`, `--apply` and `--reason`.
 
 Until that ships, this is **documented break-glass** — record actor, reason,
 target, what you did and the result, per the Enclii-first contract.
@@ -394,9 +405,9 @@ Both look exactly like a broken record you just wrote. They are not — the
 authoritative check is against the new zone's own nameservers:
 
 ```bash
-dig +short erp.<client-domain> @<one of the zone's Cloudflare nameservers>
-dig +short NS <client-domain> @1.1.1.1
-dig +short NS <client-domain> @8.8.8.8
+dig +short "erp.$DOMAIN" @<one of the zone's Cloudflare nameservers>
+dig +short NS "$DOMAIN" @1.1.1.1
+dig +short NS "$DOMAIN" @8.8.8.8
 ```
 
 **Do not cut over redirects, and do not "fix" a record that already reads
@@ -442,7 +453,7 @@ follow the apex steps.
 
 ```bash
 go build -o ~/bin/enclii ./packages/cli/cmd/enclii
-enclii providers porkbun ping --tenant <slug>      # exists only with #527
+enclii help providers porkbun ping   # the command exists only with #527
 ```
 
 The same floor applies to the operator scripts that shell out to the CLI,

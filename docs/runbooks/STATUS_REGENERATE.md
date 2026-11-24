@@ -6,7 +6,7 @@
 > `madfam-org/internal-devops`. Policy: `docs/PUBLIC_REPO_BOUNDARY.md` and the
 > canonical repo-boundary contract in `madfam-org/internal-devops`.
 
-_Last updated: 2026-05-18 — onboarding now stores status entries in the DB snapshot; runtime ConfigMap projection is the default zero-touch path._
+_Last updated: 2026-11-24 — command references carry no blanks; 2026-05-18 — onboarding now stores status entries in the DB snapshot; runtime ConfigMap projection is the default zero-touch path._
 
 ## Why this exists
 
@@ -63,7 +63,7 @@ operator action.
 | `EncliiRepoOwner` configured | required only in `gitops` mode; typically `madfam-org` |
 | `EncliiRepoName` configured | required only in `gitops` mode; typically `enclii` |
 | Runtime ConfigMap RBAC present | required only in `runtime` mode; see `switchyard-status-config-manager` |
-| Caller has `admin` JWT role | issued by Janua; check the identity with `enclii whoami 2>&1` (or `enclii --profile <name> whoami 2>&1` for a separate operator login) |
+| Caller has `admin` JWT role | issued by Janua; check the identity with `enclii whoami 2>&1` (or `enclii --profile admin whoami 2>&1` for the separate `admin` operator login described in [`enclii login`](../cli/commands/login.md)) |
 | ArgoCD self-heal enabled for the `status-*` apps | required for `gitops`; `kubectl get application status-madfam -n argocd -o jsonpath='{.spec.syncPolicy.automated.selfHeal}'` |
 
 ## Run the regenerate
@@ -226,7 +226,7 @@ the live endpoint still commits repeatedly, inspect whether the runtime source
 inventory differs from local fixtures.
 
 **Provider DNS apply returns `adapter_required`.**
-Use `enclii providers cloudflare dns <hostname> --json` to prove the current
+Use `enclii providers cloudflare dns` with the hostname and `--json` to prove the current
 Cloudflare state. If a production hostname is down and `dns-apply --apply`
 returns `501 adapter_required`, this is an Enclii adapter gap. Use direct
 provider access only as break-glass, keep the mutation narrow, and record the

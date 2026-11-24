@@ -57,13 +57,11 @@ Admin access is logged and follows the principle of least privilege.
 
 Yes. You have full control:
 
-```bash
-# Delete a service (and its data)
-enclii services-delete --project <project-slug> --name <service-name>
+- Delete a service (and its data): `enclii services-delete` with `--project`
+  (the project slug) and `--name` (the service name).
+- Delete an entire project: `enclii projects delete` with the project slug.
 
-# Delete entire project
-enclii projects delete <project-slug>
-```
+Both ask for confirmation.
 
 For complete account deletion, contact support.
 
@@ -114,8 +112,10 @@ Secrets are managed through the **Lockbox** subsystem:
 
 ```bash
 # CLI
-# Run in the service's directory, or pass -f path/to/service.yaml
-enclii secrets set DATABASE_URL="postgres://..." --secret
+# Run in the service's directory, or pass -f path/to/service.yaml.
+# The value is read from DATABASE_URL in your shell, so it never appears in a
+# document or your shell history.
+enclii secrets set DATABASE_URL="$DATABASE_URL" --secret
 
 # Or via UI
 # Project → Service → Settings → Environment

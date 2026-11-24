@@ -53,7 +53,6 @@ enclii ops jobs trigger forgesight-mexico-wave-seed -n forgesight --apply --reas
 enclii ops storage settings-apply
 enclii ops storage settings-apply --apply --reason "GA O-5 Longhorn CPU"
 enclii ops storage prune-detached
-enclii ops storage prune-detached --expect-plan <plan_hash> --apply --reason "GA O-4 orphan cleanup"
 enclii ops storage storageclass-apply
 enclii ops storage storageclass-apply --apply --reason "GA Longhorn StorageClass reconcile"
 enclii ops policy cosign-enable
@@ -63,7 +62,6 @@ enclii ops policy cosign-enable --apply --reason "GA O-11 Cosign enforce"
 enclii ops pods diagnose switchyard-api -n enclii --json
 enclii ops pods logs forgesight-pipeline-manual-abc123 -n forgesight --tail 500 --limit-bytes 524288 --json
 enclii ops pods restart pod/loki-0 -n logging
-enclii ops pods restart pod/loki-0 -n logging --expect-uid <reviewed-uid> --apply --reason "recreate loki-0 on the fixed revision"
 enclii ops apps sync monitoring --apply --reason "clear Argo drift after reviewed manifest patch"
 enclii ops apps sync-sweep -n argocd
 enclii ops apps sync-sweep -n argocd --apply --reason "GA O-8 Argo sweep"
@@ -75,6 +73,12 @@ enclii secrets vault-backfill enclii-secrets --namespace enclii --vault-path sec
 ./scripts/post-deploy-ga-adapters.sh
 ./scripts/wave1-ga-ops.sh --apply --backup-drill --reason "GA Wave 1"
 ```
+
+The applies of `ops storage prune-detached` and `ops pods restart pod/…` are
+bound to the dry run you reviewed: run the same command again with
+`--expect-plan` (the `plan_hash` the dry run printed) or `--expect-uid` (the
+pod UID it printed), plus `--apply` and `--reason`. See
+[`ops pods restart`](#ops-pods-restart).
 
 ## Argo tracking declaration
 
@@ -96,6 +100,15 @@ value is refused as a migration this command does not perform.
 
 ```bash
 enclii ops apps tracking --json
+```
+
+To apply, run it again with `--expect-uid` and `--expect-resource-version` set
+to the ConfigMap UID and resourceVersion that plan reported, plus `--apply`,
+`--reason` and `--json`:
+
+**Usage**
+
+```usage
 enclii ops apps tracking --expect-uid <reviewed-uid> \
   --expect-resource-version <reviewed-version> \
   --apply --reason "declare the reviewed annotation tracking default" --json
@@ -119,14 +132,18 @@ command and does not carry the key; do not re-apply it as a substitute.
 the fixed `--project janua`. After the reviewed API/CLI and migration `045` pass
 their native qualification, plan with a caller-chosen canonical operation UUID:
 
-```bash
+**Usage**
+
+```usage
 enclii ops apps staging-intent --project janua --operation-id <operation-uuid> --json
 ```
 
 Review the exact fingerprint and all unresolved gates. To retain only that
 immutable metadata intent, use the same UUID and reviewed fingerprint:
 
-```bash
+**Usage**
+
+```usage
 enclii ops apps staging-intent --project janua --operation-id <operation-uuid> \
   --record --expect-plan <reviewed-sha256> --reason "retain reviewed held intent" --json
 ```
@@ -135,7 +152,9 @@ This command uses `--record`, not the generic `--apply` switch. The default plan
 and the `read` subcommand never write. After an uncertain POST outcome, inspect
 the same UUID instead of automatically repeating the write:
 
-```bash
+**Usage**
+
+```usage
 enclii ops apps staging-intent read <operation-uuid> --project janua --json
 ```
 
@@ -154,14 +173,19 @@ matching Switchyard ownership labels. It does not suspend Timetable records.
 
 First review a read-only plan:
 
-```bash
+**Usage**
+
+```usage
 enclii ops jobs suspend <cronjob> --namespace <namespace> \
   --project <project-slug> --service <service-uuid> --json
 ```
 
-After reviewing its binding, active-job count, UID and resourceVersion, apply:
+After reviewing its binding, active-job count, UID and resourceVersion, apply
+with the UID and resourceVersion the plan printed:
 
-```bash
+**Usage**
+
+```usage
 enclii ops jobs suspend <cronjob> --namespace <namespace> \
   --project <project-slug> --service <service-uuid> \
   --expect-uid <reviewed-uid> --expect-resource-version <reviewed-version> \
@@ -203,8 +227,8 @@ without direct `kubectl` access:
 
 ## `ops pods restart`
 
-`enclii ops pods restart <kind>/<name> -n <namespace>` replaces two break-glass
-commands:
+`enclii ops pods restart` (a `kind/name` target and `-n` with its namespace)
+replaces two break-glass commands:
 
 | Target | Effect | Replaces |
 |--------|--------|----------|
@@ -248,17 +272,24 @@ Guards, all enforced by the API:
   written nothing is changed (HTTP 503). A second row records `success` or
   `failure` and points at the first; the response's `audit_id` is the first.
 
-```bash
-# Rollout restart, e.g. so a Deployment reads a changed Secret
+**Usage** (rollout restart, e.g. so a Deployment reads a changed Secret):
+
+```usage
 enclii ops pods restart deployment/<name> -n <namespace>
 enclii ops pods restart deployment/<name> -n <namespace> --expect-uid <reviewed-uid> \
   --apply --reason "load the rotated environment Secret"
-
-# Recreate a crash-looping StatefulSet pod that OrderedReady will not replace
-enclii ops pods restart statefulset/loki -n logging   # lists pods; loki-0 shows stuck
-enclii ops pods restart pod/loki-0 -n logging --expect-uid <reviewed-uid> \
-  --apply --reason "recreate loki-0 on the fixed revision"
 ```
+
+Recreate a crash-looping StatefulSet pod that OrderedReady will not replace.
+The dry run lists the pods; `loki-0` shows stuck:
+
+```bash
+enclii ops pods restart statefulset/loki -n logging
+enclii ops pods restart pod/loki-0 -n logging
+```
+
+Then run the second command again with `--expect-uid` set to the pod UID its
+dry run printed, plus `--apply --reason "recreate loki-0 on the fixed revision"`.
 
 A successful apply returns HTTP 202 `submitted`: the patch or delete was
 accepted, not that the new pods are Ready. Follow it with
@@ -304,7 +335,9 @@ over). **The apply requires `--expect-uid`** from the dry run, as well as
 own grace period. The audit rows add the Cluster UID, phase, instance role and
 project.
 
-```bash
+**Usage**
+
+```usage
 enclii ops pods restart pod/<cluster>-1 -n project-<id>
 enclii ops pods restart pod/<cluster>-1 -n project-<id> --expect-uid <reviewed-uid> \
   --apply --reason "remount the data volume after the node fault"
@@ -365,9 +398,12 @@ Since 2026-11-04 a new managed-Postgres addon's CloudNativePG Cluster requests
 what its plan sells; memory keeps request = limit. Before that the plan CPU
 was both, so a `standard-1` addon reserved 500m on its node while idle. This
 moves one addon created earlier to the new shape (owner decision,
-2026-11-04).
+2026-11-04). The apply takes the `plan_hash` the dry run printed and an
+idempotency key you choose:
 
-```bash
+**Usage**
+
+```usage
 enclii ops addons cpu-request <addon-uuid> --project <slug>
 enclii ops addons cpu-request <addon-uuid> --project <slug> --apply \
   --expect-plan <plan_hash> --idempotency-key <key> \
@@ -413,10 +449,12 @@ never returned or logged.
 
 ```bash
 enclii ops addons backup-credential                       # dry run: plan + plan_hash
-enclii ops addons backup-credential --apply --expect-plan <plan_hash> \
-  --idempotency-key <key> --reason "..."
 enclii ops addons backup-credential --rotate              # plan a rotation
 ```
+
+To apply the plan you reviewed, run the same command again with `--apply`,
+`--expect-plan` set to the `plan_hash` it printed, an `--idempotency-key` you
+choose and a `--reason`.
 
 - A plan of `keep` (Vault already holds both keys) writes nothing on apply; a
   new token is minted only with `--rotate` on both the dry run and the apply.
@@ -460,15 +498,13 @@ enclii ops domains reconcile nauta-web
 
 # Provision everything the manifest declares
 enclii ops domains reconcile nauta-web \
-  --apply --reason "<client>-erp.madfam.io declared but never provisioned"
-
-# Provision ONE hostname, leaving every other declared hostname untouched
-enclii ops domains reconcile nauta-web --domain <client>-erp.madfam.io \
-  --apply --reason "route the declared ERP host"
-
-# Read enclii.yaml at a specific commit instead of the default branch head
-enclii ops domains reconcile nauta-web --ref 1a2b3c4 --apply --reason "..."
+  --apply --reason "declared hostnames never provisioned"
 ```
+
+To provision one hostname and leave every other declared hostname untouched,
+add `--domain` with that hostname (one the plan lists). To read `enclii.yaml`
+at a specific commit instead of the default branch head, add `--ref` with that
+commit.
 
 Besides the shared contract flags (`--apply`, `--reason`, `--idempotency-key`, `--json`, `--namespace`, `--project`, `--service`), it accepts `--domain` (reconcile only this hostname) and `--ref` (git ref to read `enclii.yaml` from; default: the repository's default branch head).
 
@@ -520,7 +556,9 @@ change (dry run, review, rebind, then a reviewed `tunnels-apply` bound with
 Mints a kalya standing-feed token and files it into its consumers' Vault paths,
 entirely server-side.
 
-```bash
+**Usage**
+
+```usage
 enclii ops secrets provision-kalya-feed --tenant <slug> --consumers <client-portal>,nauta
 enclii ops secrets provision-kalya-feed --tenant <slug> --consumers <client-portal>,nauta \
   --apply --reason "wire the tenant's standing feed"
@@ -553,8 +591,8 @@ It also takes the shared contract flags listed under [Required Mutation Flags](#
 
 ## `ops secrets sync` and `refresh`
 
-`enclii ops secrets sync <externalsecret> -n <namespace>` (also `enclii secrets
-sync`) and `enclii ops secrets refresh` run the same Switchyard adapter. With
+`enclii ops secrets sync` (an ExternalSecret name and `-n` with its namespace;
+also `enclii secrets sync`) and `enclii ops secrets refresh` run the same Switchyard adapter. With
 `--apply --reason "..."` it merge-patches the ExternalSecret's annotations —
 `force-sync=<unix time>` plus the `enclii.dev/last-ops-*` and
 `enclii.dev/refresh-requested-at` audit keys — so External Secrets re-reads

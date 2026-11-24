@@ -96,10 +96,12 @@ Give each service its own `service.yaml` and deploy it from, or point `--file` a
 ```bash
 enclii deploy -f apps/api/service.yaml --env staging
 enclii deploy -f apps/web/service.yaml --env staging
-
-# Or register every spec in a directory without deploying
-enclii services-sync --dir apps/ --project <project-slug>
 ```
+
+To register every spec in a directory without deploying, run
+`enclii services-sync --dir apps/` with `--project` set to your project's slug
+(it must match `metadata.project` in each `service.yaml`; without `--project`
+the command uses the `enclii` project).
 
 Each service builds from its own directory context.
 
@@ -126,12 +128,12 @@ There is no blue-green or recreate strategy.
 
 Yes, instantly:
 
-```bash
-enclii rollback <service>            # Roll back to the previous deployment
-enclii deploy ls <service>           # List deployments with their v-numbers
-enclii rollback <service> v42        # Roll back to a specific deployment
-enclii rollback <service> --instant  # Flip traffic at the routing layer (<30s)
-```
+| Command | What it does |
+|---------|--------------|
+| `enclii rollback` with the service name | Roll back to the previous deployment |
+| `enclii deploy ls` (in the service's directory) | List deployments with their v-numbers |
+| `enclii rollback` with the service name and a v-number | Roll back to that deployment |
+| `enclii rollback` with the service name and `--instant` | Flip traffic at the routing layer (<30s) |
 
 ### How do preview environments work?
 

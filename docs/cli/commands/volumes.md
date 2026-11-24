@@ -4,7 +4,7 @@ Manage persistent volumes attached to a service.
 
 ## Synopsis
 
-```bash
+```usage
 enclii volumes <subcommand> [flags]
 ```
 

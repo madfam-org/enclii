@@ -4,7 +4,7 @@ Stream lifecycle events (deploys, builds, env-var changes).
 
 ## Synopsis
 
-```bash
+```usage
 enclii activity <subcommand> [flags]
 ```
 
@@ -20,7 +20,9 @@ This command mirrors the `/activity` page in the consumer web UI. All subcommand
 
 List recent lifecycle events.
 
-```bash
+**Usage**
+
+```usage
 enclii activity list [flags]
 ```
 
@@ -63,7 +65,9 @@ CLI releases before this fix read an `events` array, which the API has never sen
 
 List the valid `--action` filter values supported by the server. Use this to discover available action names rather than hard-coding them.
 
-```bash
+**Usage**
+
+```usage
 enclii activity actions [flags]
 ```
 
@@ -75,7 +79,9 @@ enclii activity actions [flags]
 
 List the valid `--resource-type` filter values supported by the server.
 
-```bash
+**Usage**
+
+```usage
 enclii activity resource-types [flags]
 ```
 

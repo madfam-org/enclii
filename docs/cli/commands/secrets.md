@@ -1,12 +1,12 @@
 # enclii secrets
 
-Last Updated: 2026-11-22
+Last Updated: 2026-11-24
 
 Manage service secrets and environment variables.
 
 ## Synopsis
 
-```bash
+```usage
 enclii secrets <subcommand> [flags]
 ```
 
@@ -32,7 +32,9 @@ The command reads `service.yaml` (or a custom spec file via `--file`) to resolve
 
 Set one or more secrets or environment variables.
 
-```bash
+**Usage**
+
+```usage
 enclii secrets set KEY=VALUE [KEY2=VALUE2 ...] [flags]
 ```
 
@@ -46,7 +48,9 @@ enclii secrets set KEY=VALUE [KEY2=VALUE2 ...] [flags]
 
 List all secrets and environment variables for a service.
 
-```bash
+**Usage**
+
+```usage
 enclii secrets list [flags]
 ```
 
@@ -64,7 +68,9 @@ enclii secrets list [flags]
 
 Get a specific secret or environment variable by key.
 
-```bash
+**Usage**
+
+```usage
 enclii secrets get KEY [flags]
 ```
 
@@ -77,7 +83,9 @@ enclii secrets get KEY [flags]
 
 Delete one or more secrets or environment variables.
 
-```bash
+**Usage**
+
+```usage
 enclii secrets delete KEY [KEY2 ...] [flags]
 ```
 
@@ -240,7 +248,7 @@ change under `infra/k8s/base/external-secrets/vault-secrets/` — those files ar
 not synced by ArgoCD. Adding a key there needs a live patch first; see
 [Procedure: changing a git-only ExternalSecret](../../infrastructure/EXTERNAL_SECRETS.md#procedure-changing-a-git-only-externalsecret-until-539).
 Pods that take the Secret as env vars pick up new values only after they
-restart: roll the consumer with `enclii ops pods restart deployment/<name>`
+restart: roll the consumer's Deployment with `enclii ops pods restart`
 ([ops.md](./ops.md#ops-pods-restart)).
 
 `sync`, `rotate`, and `vault-backfill` share the operation-contract flags: `--apply`, `--reason`, `--idempotency-key` (retry key for safe repeats), `--json`, `--namespace`/`-n`, `--project`, and `--service`. `rotate` adds `--provider-version`; `vault-backfill` adds `--vault-path` and `--external-secret`.
@@ -277,7 +285,6 @@ enclii secrets intake targets
 enclii secrets intake training-capabilities --json
 enclii secrets intake submit ceq/vast-api-key --reason "orchestrator bootstrap"
 enclii secrets intake submit ceq/vast-api-key --value-file ~/.config/madfam/vast.key --reason "orchestrator bootstrap"
-enclii secrets intake submit <client-portal>/internal-api-key --generate internal_api_key --reason "client portal smoke gate"
 enclii secrets intake group phynd-crm/lead-intake-hmac --reason "lead-intake HMAC key"
 enclii secrets intake status int_1234567890
 ```
@@ -324,9 +331,12 @@ delivery, ownership, admission or runtime readiness. See the
 ### `--generate` (server-side minting)
 
 For shared internal keys nobody should ever read, skip generating and pasting a
-value: name the key and Switchyard mints it.
+value: name the key and Switchyard mints it. Generating replaces the value the
+target holds, so the target and key are yours to choose:
 
-```bash
+**Usage**
+
+```usage
 enclii secrets intake submit <client-portal>/internal-api-key \
   --generate internal_api_key --reason "client portal smoke gate bootstrap"
 ```
@@ -441,7 +451,8 @@ silently only to confidential clients. What a run does to an existing client:
 - The admin path PATCHes `redirect_uris`, `allowed_scopes`, `grant_types` and
   `audience` **wholesale** to the declaration. A scope granted in Janua but not
   listed in the registry is removed. Read the live row first:
-  `enclii --profile admin secrets provision oidc inspect --platform <id> --json`.
+  `enclii --profile admin secrets provision oidc inspect` with `--platform`
+  set to the platform id and `--json`.
 - `madfam:silent_auth` is a reserved scope. Adding it, and every later edit or
   rotation of a client that holds it, needs a Janua platform-admin session.
 - On an existing **confidential** client without `--rotate-secret`, the PATCH
@@ -465,9 +476,13 @@ UUIDs are refused locally. No MADFAM simulator profile is introduced here.
 
 An operator may add only organization scope to one embedded reviewed ordinary
 profile, after supported organization creation/readback and approval. The name,
-audience, callbacks, grants, scopes and custody target remain the embedded contract:
+audience, callbacks, grants, scopes and custody target remain the embedded contract.
+`--organization-id` is the UUID of the organization created and read back in
+Janua:
 
-```bash
+**Usage**
+
+```usage
 enclii secrets provision oidc --platform crea-sim --organization-id <ORG_UUID> \
   --dry-run --reason "review dedicated training organization"
 ```
@@ -535,7 +550,9 @@ Rebuild CLI after pulling: `cd packages/cli && go build -o ~/.local/bin/enclii .
 
 Alias of [`enclii ops secrets provision-kalya-feed`](./ops.md#ops-secrets-provision-kalya-feed): mints a kalya standing-feed token server-side and files it into its consumers' Vault paths. The token is never returned or printed.
 
-```bash
+**Usage**
+
+```usage
 enclii secrets provision kalya-feed --tenant <slug> --consumers <client-portal>,nauta
 enclii secrets provision kalya-feed --tenant <slug> --consumers <client-portal>,nauta \
   --apply --reason "wire the tenant's standing feed"

@@ -4,7 +4,7 @@ Manage serverless functions with scale-to-zero capabilities.
 
 ## Synopsis
 
-```bash
+```usage
 enclii functions <subcommand> [flags]
 ```
 
@@ -24,7 +24,9 @@ List all functions for a project or all accessible functions.
 
 **Aliases:** `ls`
 
-```bash
+**Usage**
+
+```usage
 enclii functions list [flags]
 ```
 
@@ -40,7 +42,9 @@ enclii functions list [flags]
 
 Deploy a serverless function from the `functions/` directory in the current working directory.
 
-```bash
+**Usage**
+
+```usage
 enclii functions deploy [flags]
 ```
 
@@ -74,7 +78,9 @@ Default handler entry points per runtime:
 
 View logs for a function.
 
-```bash
+**Usage**
+
+```usage
 enclii functions logs <function-name> [flags]
 ```
 
@@ -89,7 +95,9 @@ enclii functions logs <function-name> [flags]
 
 Invoke a function with optional JSON data.
 
-```bash
+**Usage**
+
+```usage
 enclii functions invoke <function-name> [flags]
 ```
 
@@ -106,7 +114,9 @@ The response includes the HTTP status code, round-trip duration, whether the inv
 
 Show detailed information about a function, including configuration, metrics, and timestamps.
 
-```bash
+**Usage**
+
+```usage
 enclii functions info <function-name>
 ```
 
@@ -120,7 +130,9 @@ Delete a function and all its resources.
 
 **Aliases:** `rm`, `remove`
 
-```bash
+**Usage**
+
+```usage
 enclii functions delete <function-name> [flags]
 ```
 

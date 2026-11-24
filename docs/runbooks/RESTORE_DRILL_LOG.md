@@ -10,7 +10,7 @@
 
 **Owner:** Platform Team
 **Cadence:** Monthly (1st of each month, 5 AM UTC)
-**Last Updated:** 2026-10-18
+**Last Updated:** 2026-11-24
 
 > **Boundary checkpoint (2026-09-24, platform on-call):** Public-safe runbook:
 > drill procedure and pass/fail semantics only, no node identity, secrets or
@@ -99,7 +99,7 @@ volume's real fill after the restore; Longhorn's `actualSize` for the claim is
 a high-water mark, not the fill. It reads the repository with the same
 pgBackRest version that writes it (2.59.1 since #785, enforced by
 `tests/scripts/test_pgbackrest_version_parity.py`). Run it on demand with
-`enclii ops jobs trigger pgbackrest-restore-drill -n data --api-endpoint https://api.enclii.dev --apply --reason "<why>"`.
+`enclii ops jobs trigger pgbackrest-restore-drill -n data --api-endpoint https://api.enclii.dev --apply --reason "on-demand restore drill"`.
 
 ---
 

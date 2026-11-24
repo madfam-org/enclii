@@ -1,6 +1,6 @@
 # Retained synthetic-generation observation
 
-Last Updated: 2026-10-20
+Last Updated: 2026-11-24
 
 The platform-operator API can run a fixed, independent, runtime-only provenance
 reader for an existing synthetic exercise. It does not stop the gateway, reset or
@@ -19,9 +19,13 @@ addon readiness alone is insufficient. There is no owner credential in this path
 
 Use an existing managed Enclii operator profile. No token, cookie or private HTTP
 request needs to be copied between machines. The command defaults to admission
-dry run and requires an explicit operation UUID before planning:
+dry run and requires an explicit operation UUID before planning. The addon,
+gateway service, exercise and kernel ids are the ones the exercise was
+reserved with:
 
-```bash
+**Usage**
+
+```usage
 enclii ops jobs generation-read --project crea-sim \
   --addon <PORTAL_ADDON_UUID> --service <GATEWAY_SERVICE_UUID> \
   --reservation <EXERCISE_UUID> --kernel <OWNED_KERNEL_ID> \
@@ -32,9 +36,12 @@ After reviewing the returned Job name and fingerprint, repeat those same flags
 with `--apply --expect-plan <PLAN_SHA256> --reason "provenance observation"`.
 The CLI sends one request with redirect replay disabled. An unconfirmed response
 requires inspecting that same operation; the CLI never retries or picks a new
-key. Read status without submitting or collecting work:
+key. Read status without submitting or collecting work, with the Job name the
+plan returned:
 
-```bash
+**Usage**
+
+```usage
 enclii ops jobs generation-read status <READ_JOB_NAME> \
   --project crea-sim --addon <PORTAL_ADDON_UUID> --json
 ```

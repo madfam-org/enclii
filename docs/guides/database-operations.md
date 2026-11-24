@@ -15,6 +15,30 @@ Managed databases are provisioned with [`enclii addon`](../cli/commands/addon.md
 
 - [CLI installed](/cli/)
 - Project created in Enclii
+- `jq`, used below to read ids from `--json` output
+
+## Setting Up the Examples
+
+The commands in this guide take your project and service from shell
+variables, so each one runs as written once they are set. Set them once per
+terminal session: your project's slug (`enclii projects list`) and the name of
+the service that uses the database (`enclii projects services` with the
+project slug):
+
+| Variable | Set it to | Where to find it |
+|---|---|---|
+| `PROJECT` | your project's slug | `enclii projects list` |
+| `SERVICE` | the service's name | `enclii projects services "$PROJECT"` |
+
+Then read the service's id, which `--service-id` and `--service` take, from
+the project's service list:
+
+```bash
+SERVICE_ID=$(enclii projects services "$PROJECT" --json | jq -r --arg s "$SERVICE" '.[] | select(.name == $s) | .id')
+```
+
+A one-off job prints its id on an `  ID:` line; the examples below capture it
+into `JOB_ID` with `awk` so the follow-up commands run as written.
 
 ## Related Documentation
 
@@ -33,7 +57,7 @@ Enclii supports the following database addons:
 | **Redis** | Caching, sessions, queues | Key-value, pub/sub, streams |
 | **MySQL** | Legacy apps, WordPress | Wide compatibility |
 
-PostgreSQL (CloudNativePG) is the managed engine. `enclii addon create` accepts `--engine redis` and `--engine mysql`, but those engines are scaffolded rather than generally available; `enclii addon plans --engine <engine>` shows whether any plan is offered for them.
+PostgreSQL (CloudNativePG) is the managed engine. `enclii addon create` accepts `--engine redis` and `--engine mysql`, but those engines are scaffolded rather than generally available; `enclii addon plans --engine redis` (or `--engine mysql`) shows whether any plan is offered for them.
 
 ## Provisioning Databases
 
@@ -44,14 +68,15 @@ PostgreSQL (CloudNativePG) is the managed engine. `enclii addon create` accepts 
 enclii addon plans
 
 # PostgreSQL (recommended for most apps)
-enclii addon create my-db --plan standard-0 --project <project-slug>
-
-# Redis / MySQL (only if `enclii addon plans --engine <engine>` lists a plan)
-enclii addon create my-cache --engine redis --plan <plan> --project <project-slug>
-enclii addon create my-mysql --engine mysql --plan <plan> --project <project-slug>
+enclii addon create my-db --plan standard-0 --project "$PROJECT"
 ```
 
-The addon starts in a provisioning state; poll it with `enclii addon ls --project <project-slug>`.
+Redis and MySQL addons take `--engine redis` or `--engine mysql` and a plan
+that `enclii addon plans --engine redis` (or `--engine mysql`) lists; create
+one only when that list is not empty.
+
+The addon starts in a provisioning state; poll it with
+`enclii addon ls --project "$PROJECT"`.
 
 ### Configuration Options
 
@@ -78,14 +103,14 @@ A service is bound when the addon is created. The connection string is injected 
 
 ```bash
 # Create and bind in one step (--service takes the service ID)
-enclii addon create my-db --plan standard-0 --project <project-slug> --service <service-id>
+enclii addon create my-db --plan standard-0 --project "$PROJECT" --service "$SERVICE_ID"
 
 # Use a different env var name
-enclii addon create reporting-db --plan standard-0 --project <project-slug> \
-  --service <service-id> --env-var REPORTING_DATABASE_URL
+enclii addon create reporting-db --plan standard-0 --project "$PROJECT" \
+  --service "$SERVICE_ID" --env-var REPORTING_DATABASE_URL
 ```
 
-There is no separate `link` command; binding an existing addon to another service is not available in the CLI. `enclii projects services <project-slug>` lists service IDs.
+There is no separate `link` command; binding an existing addon to another service is not available in the CLI. `enclii projects services` with the project slug and `--json` lists service IDs.
 
 ## Connection Strings
 
@@ -116,7 +141,7 @@ postgresql://user:pass@my-db.enclii-workloads.svc.cluster.local:5432/mydb
 **External** (for admin tools, local development): the CLI has no port-forward command. Options:
 
 - Run one-off SQL inside the cluster with `enclii jobs run-once` (see [One-off SQL](#one-off-sql)).
-- Expose the database over HTTPS as a REST API with `enclii addon api enable <addon_id>` (PostgREST; authorization via row-level security). See [`enclii addon api`](../cli/commands/addon.md#api).
+- Expose the database over HTTPS as a REST API with `enclii addon api enable` and the addon's id (PostgREST; authorization via row-level security). See [`enclii addon api`](../cli/commands/addon.md#api).
 - Operators can use `kubectl port-forward` into the project namespace as a break-glass path.
 
 ### Connection Pooling
@@ -134,13 +159,13 @@ If the namespace's NetworkPolicies deny egress by default and admit the database
 **Node.js (Prisma)**:
 ```bash
 enclii jobs run-once --name prisma-migrate --command "npx prisma migrate deploy" \
-  --service-id <id> --project <project-slug>
+  --service-id "$SERVICE_ID" --project "$PROJECT"
 ```
 
 **Node.js (Knex)**:
 ```bash
 enclii jobs run-once --name knex-migrate --command "npx knex migrate:latest" \
-  --service-id <id> --project <project-slug>
+  --service-id "$SERVICE_ID" --project "$PROJECT"
 ```
 
 **Go (golang-migrate)**:
@@ -148,22 +173,23 @@ enclii jobs run-once --name knex-migrate --command "npx knex migrate:latest" \
 # Assumes the migrate binary and ./migrations are in the service image
 enclii jobs run-once --name migrate-up \
   --command 'migrate -path ./migrations -database "$DATABASE_URL" up' \
-  --service-id <id> --project <project-slug>
+  --service-id "$SERVICE_ID" --project "$PROJECT"
 ```
 
 **Python (Alembic)**:
 ```bash
 enclii jobs run-once --name alembic-upgrade --command "alembic upgrade head" \
-  --service-id <id> --project <project-slug>
+  --service-id "$SERVICE_ID" --project "$PROJECT"
 ```
 
 **Ruby (Rails)**:
 ```bash
 enclii jobs run-once --name db-migrate --command "rails db:migrate" \
-  --service-id <id> --project <project-slug>
+  --service-id "$SERVICE_ID" --project "$PROJECT"
 ```
 
-Check the result with `enclii jobs get <job-id>` and `enclii jobs logs <job-id>`.
+Each prints `One-off job created:` and the job's `ID:`. Check the result with
+`enclii jobs get` and `enclii jobs logs`, each given that ID.
 
 ### Migration Best Practices
 
@@ -172,7 +198,7 @@ Check the result with `enclii jobs get <job-id>` and `enclii jobs logs <job-id>`
    # Deploy the new code, then migrate
    enclii deploy --env prod --wait
    enclii jobs run-once --name db-migrate --command "npm run migrate" \
-     --service-id <id> --project <project-slug>
+     --service-id "$SERVICE_ID" --project "$PROJECT"
    ```
 
 2. **Make migrations backward-compatible**:
@@ -180,11 +206,11 @@ Check the result with `enclii jobs get <job-id>` and `enclii jobs logs <job-id>`
    - Migrate data in separate step
    - Remove old columns after all pods updated
 
-3. **Test migrations in staging first**. `jobs run-once` has no `--env` flag; it targets the service ID you pass, so use the staging service's ID:
+3. **Test migrations in staging first**. `jobs run-once` has no `--env` flag; it targets the service ID you pass, so set `SERVICE` to the staging service's name, read its id as in [Setting Up the Examples](#setting-up-the-examples), and run the same job:
    ```bash
    enclii deploy --env staging --wait
    enclii jobs run-once --name db-migrate --command "npm run migrate" \
-     --service-id <staging-service-id> --project <project-slug>
+     --service-id "$SERVICE_ID" --project "$PROJECT"
    ```
 
 ### Rollback Migrations
@@ -192,7 +218,7 @@ Check the result with `enclii jobs get <job-id>` and `enclii jobs logs <job-id>`
 ```bash
 # Rollback last migration
 enclii jobs run-once --name knex-rollback --command "npx knex migrate:rollback" \
-  --service-id <id> --project <project-slug>
+  --service-id "$SERVICE_ID" --project "$PROJECT"
 ```
 
 (`npx prisma migrate reset` drops and recreates the database; it is not a single-step rollback.)
@@ -211,13 +237,14 @@ A tenant export includes a `pg_dump` of each bound database addon:
 
 ```bash
 # Start an export and download it when ready
-enclii export --project <project-slug> --wait --out ./backup.tar.gz
+enclii export --project "$PROJECT" --wait --out ./backup.tar.gz
 
-# Or check on it later
-enclii export list --project <project-slug>
-enclii export status <export_id>
-enclii export download <export_id> --out ./backup.tar.gz
+# Or list the project's exports to check on one later
+enclii export list --project "$PROJECT"
 ```
+
+`enclii export status` and `enclii export download --out ./backup.tar.gz`
+each take the export id that `export list` shows.
 
 Production exports require a second project admin's approval (`enclii export approve`). See [`enclii export`](../cli/commands/export.md).
 
@@ -228,7 +255,7 @@ There is no `restore` command. To restore, create an addon (or use an existing o
 ```bash
 enclii jobs run-once --name restore --image postgres:16-alpine \
   --command 'pg_restore --no-owner --no-acl -d "$DATABASE_URL" /path/to/backup.dump' \
-  --service-id <id> --project <project-slug>
+  --service-id "$SERVICE_ID" --project "$PROJECT"
 ```
 
 The dump must be reachable from inside the job (for example downloaded from object storage as part of the command).
@@ -258,10 +285,10 @@ redis-cli -u "$REDIS_URL" --rdb dump.rdb
 There is no `enclii addon shell` and no interactive session. Run statements as one-off jobs; `--image` supplies the client while the service's `DATABASE_URL` is inherited:
 
 ```bash
-enclii jobs run-once --name sql --image postgres:16-alpine \
+JOB_ID=$(enclii jobs run-once --name sql --image postgres:16-alpine \
   --command 'psql "$DATABASE_URL" -c "SELECT version();"' \
-  --service-id <id> --project <project-slug>
-enclii jobs logs <job-id>
+  --service-id "$SERVICE_ID" --project "$PROJECT" | awk '/^  ID:/{print $2}')
+enclii jobs logs "$JOB_ID"   # once the job has run; `enclii jobs get "$JOB_ID"` shows its status
 ```
 
 ### PostgreSQL
@@ -270,7 +297,7 @@ enclii jobs logs <job-id>
 ```bash
 enclii jobs run-once --name create-ext --image postgres:16-alpine \
   --command 'psql "$DATABASE_URL" -c "CREATE EXTENSION IF NOT EXISTS pg_trgm;"' \
-  --service-id <id> --project <project-slug>
+  --service-id "$SERVICE_ID" --project "$PROJECT"
 ```
 
 **Common extensions**:
@@ -306,7 +333,7 @@ Redis addons are not generally available (see [Database Types](#database-types))
 ```bash
 enclii jobs run-once --name redis-info --image redis:7-alpine \
   --command 'redis-cli -u "$REDIS_URL" INFO memory' \
-  --service-id <id> --project <project-slug>
+  --service-id "$SERVICE_ID" --project "$PROJECT"
 ```
 
 **Flush cache**:
@@ -314,7 +341,7 @@ enclii jobs run-once --name redis-info --image redis:7-alpine \
 # Flush the database in REDIS_URL (careful!)
 enclii jobs run-once --name redis-flush --image redis:7-alpine \
   --command 'redis-cli -u "$REDIS_URL" FLUSHDB' \
-  --service-id <id> --project <project-slug>
+  --service-id "$SERVICE_ID" --project "$PROJECT"
 ```
 
 Interactive commands such as `MONITOR` need a live session, which the CLI does not provide.
@@ -337,15 +364,15 @@ FLUSH PRIVILEGES;
 There is no addon metrics command. `enclii addon ls` shows each addon's status; [`enclii observe`](../cli/commands/observe.md) reports service-level metrics (CPU, memory, requests, latency) for the service that uses the database.
 
 ```bash
-enclii addon ls --project <project-slug>
-enclii observe metrics --service <service-id>
+enclii addon ls --project "$PROJECT"
+enclii observe metrics --service "$SERVICE_ID"
 ```
 
 Key metrics to watch from inside the database (via [One-off SQL](#one-off-sql)): connection count (`pg_stat_activity`), slow queries (`pg_stat_statements`), and storage (`pg_database_size`).
 
 ### Alerts
 
-Addon-level alert configuration is not available. `enclii observe alerts --service <service-id>` lists active alerts for a service.
+Addon-level alert configuration is not available. `enclii observe alerts --service "$SERVICE_ID"` lists active alerts for a service.
 
 ## Security
 
@@ -361,7 +388,7 @@ Addon credential rotation is not exposed in the CLI yet (it is planned in the [a
 
 ### Access Control
 
-There are no addon user-management commands. The addon's application role has no `CREATEROLE` privilege, so additional database users cannot be created from the application connection. For read access from outside the cluster, prefer the data API (`enclii addon api enable`, with row-level security policies and `enclii addon api token --role <role>`).
+There are no addon user-management commands. The addon's application role has no `CREATEROLE` privilege, so additional database users cannot be created from the application connection. For read access from outside the cluster, prefer the data API (`enclii addon api enable`, with row-level security policies and `enclii addon api token` with `--role` set to the database role).
 
 ## Troubleshooting
 
@@ -414,8 +441,9 @@ Per-region addon placement is not available.
 Stream row changes from a Postgres addon table over a WebSocket:
 
 ```bash
-enclii addon realtime enable <addon_id> --table public.orders
-enclii addon realtime list <addon_id>
+ADDON_ID=$(enclii addon ls --project "$PROJECT" --json | jq -r '.addons[] | select(.name == "my-db") | .id')
+enclii addon realtime enable "$ADDON_ID" --table public.orders
+enclii addon realtime list "$ADDON_ID"
 ```
 
 ## Related Commands
@@ -423,17 +451,17 @@ enclii addon realtime list <addon_id>
 ```bash
 # Full addon management reference
 enclii addon --help
-
-# Common operations
-enclii addon plans                                    # List managed-database plans
-enclii addon create <name> --plan <plan>              # Create (optionally --service <id>)
-enclii addon ls --json                                # List addons with full IDs
-enclii addon destroy <addon_id>                       # Destroy (asks for confirmation; --yes skips)
-enclii addon api enable <addon_id>                    # REST API over the database
-enclii jobs run-once --name <n> --command "<cmd>" \
-  --service-id <id> --project <slug>                  # One-off command with the service's DATABASE_URL
-enclii export --project <slug> --wait                 # Tenant export incl. pg_dump of bound addons
 ```
+
+| Command | What it does |
+|---------|--------------|
+| `enclii addon plans` | List managed-database plans |
+| `enclii addon create` | Create an addon: a name, `--plan`, `--project`, optionally `--service` with the service id |
+| `enclii addon ls --json` | List addons with full IDs |
+| `enclii addon destroy` | Destroy an addon by id (asks for confirmation; `--yes` skips) |
+| `enclii addon api enable` | REST API over the database, by addon id |
+| `enclii jobs run-once` | One-off command with the service's `DATABASE_URL`: `--name`, `--command`, `--service-id`, `--project` |
+| `enclii export` | Tenant export, including a `pg_dump` of bound addons: `--project`, `--wait` |
 
 ## Related Documentation
 

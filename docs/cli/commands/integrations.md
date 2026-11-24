@@ -4,7 +4,7 @@ Manage third-party integrations (GitHub, ...).
 
 ## Synopsis
 
-```bash
+```usage
 enclii integrations <subcommand> [flags]
 ```
 
@@ -20,7 +20,9 @@ This command mirrors the `/integrations` page in the consumer web UI. All read s
 
 Show GitHub App connection status — whether the App is installed, the linked account, the installation ID, and granted scopes.
 
-```bash
+**Usage**
+
+```usage
 enclii integrations github status [flags]
 ```
 
@@ -32,7 +34,9 @@ enclii integrations github status [flags]
 
 List repositories accessible to the GitHub App installation.
 
-```bash
+**Usage**
+
+```usage
 enclii integrations github repos [flags]
 ```
 
@@ -45,7 +49,9 @@ enclii integrations github repos [flags]
 
 List branches for a repository.
 
-```bash
+**Usage**
+
+```usage
 enclii integrations github branches <owner> <repo> [flags]
 ```
 
@@ -57,7 +63,9 @@ enclii integrations github branches <owner> <repo> [flags]
 
 Link a GitHub App installation to the current account. Run after completing the GitHub OAuth flow in the browser; provide the installation ID shown on the GitHub-side post-install screen.
 
-```bash
+**Usage**
+
+```usage
 enclii integrations github link --installation-id <id> [flags]
 ```
 
@@ -70,7 +78,9 @@ enclii integrations github link --installation-id <id> [flags]
 
 Analyze a repository for services and Dockerfiles. Returns the inferred service tree (path, language, Dockerfile location), useful as a precursor to onboarding.
 
-```bash
+**Usage**
+
+```usage
 enclii integrations github analyze <owner> <repo> [flags]
 ```
 

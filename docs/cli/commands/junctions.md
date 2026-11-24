@@ -4,7 +4,7 @@ Manage routing rules and ingress configuration.
 
 ## Synopsis
 
-```bash
+```usage
 enclii junctions <subcommand> [flags]
 ```
 
@@ -24,7 +24,9 @@ List all routing rules for a project.
 
 **Aliases:** `ls`
 
-```bash
+**Usage**
+
+```usage
 enclii junctions list --project <project-slug>
 enclii junctions list --project <project-slug> --json
 ```
@@ -38,7 +40,9 @@ enclii junctions list --project <project-slug> --json
 
 Add a routing rule that maps a domain to a service.
 
-```bash
+**Usage**
+
+```usage
 enclii junctions add <domain> --service-id <uuid> --project <project-slug> [flags]
 ```
 
@@ -53,7 +57,9 @@ enclii junctions add <domain> --service-id <uuid> --project <project-slug> [flag
 
 Get detailed information about a junction, including TLS configuration.
 
-```bash
+**Usage**
+
+```usage
 enclii junctions get <junction-id>
 ```
 
@@ -65,7 +71,9 @@ Delete a junction. This removes the domain routing and any associated TLS certif
 
 **Aliases:** `rm`, `remove`
 
-```bash
+**Usage**
+
+```usage
 enclii junctions delete <junction-id> [flags]
 ```
 

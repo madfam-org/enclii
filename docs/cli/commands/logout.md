@@ -4,7 +4,7 @@ Clear local authentication credentials.
 
 ## Synopsis
 
-```bash
+```usage
 enclii [--profile NAME] logout
 ```
 

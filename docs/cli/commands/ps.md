@@ -1,6 +1,6 @@
 # enclii ps
 
-Last Updated: 2026-10-20
+Last Updated: 2026-11-24
 
 Public-safe CLI behavior; private operational evidence remains outside this repo
 under the [repository boundary policy](../../PUBLIC_REPO_BOUNDARY.md).
@@ -9,7 +9,7 @@ List services and their runtime status.
 
 ## Synopsis
 
-```bash
+```usage
 enclii ps [flags]
 ```
 

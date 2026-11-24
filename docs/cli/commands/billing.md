@@ -4,7 +4,7 @@ View current-period spend and manage per-project budgets.
 
 ## Synopsis
 
-```bash
+```usage
 enclii billing <subcommand> [flags]
 ```
 
@@ -20,7 +20,9 @@ Spend is reported in minor currency units (cents). All amounts are displayed in 
 
 Show current-period spend vs. budgets.
 
-```bash
+**Usage**
+
+```usage
 enclii billing show [flags]
 ```
 
@@ -48,7 +50,9 @@ With `--json`, read `cost.spend_known` and `cost.metering.status` before using
 
 List recent budget threshold crossings.
 
-```bash
+**Usage**
+
+```usage
 enclii billing alerts [flags]
 ```
 
@@ -62,7 +66,9 @@ List budget deploy throttles (active or historical). When hard throttle is enabl
 
 **Aliases:** `throttle`
 
-```bash
+**Usage**
+
+```usage
 enclii billing throttles [flags]
 ```
 
@@ -75,13 +81,17 @@ enclii billing throttles [flags]
 
 Manage per-project budgets.
 
-```bash
+**Usage**
+
+```usage
 enclii billing budgets <create|list|update|delete> [flags]
 ```
 
 #### `budgets create`
 
-```bash
+**Usage**
+
+```usage
 enclii billing budgets create [flags]
 ```
 
@@ -96,7 +106,9 @@ enclii billing budgets create [flags]
 
 #### `budgets list`
 
-```bash
+**Usage**
+
+```usage
 enclii billing budgets list [flags]
 ```
 
@@ -106,7 +118,9 @@ enclii billing budgets list [flags]
 
 #### `budgets update`
 
-```bash
+**Usage**
+
+```usage
 enclii billing budgets update <budget_id> [flags]
 ```
 
@@ -119,7 +133,9 @@ enclii billing budgets update <budget_id> [flags]
 
 #### `budgets delete`
 
-```bash
+**Usage**
+
+```usage
 enclii billing budgets delete <budget_id> [flags]
 ```
 

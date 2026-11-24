@@ -4,7 +4,7 @@ Generate shell autocompletion scripts.
 
 ## Synopsis
 
-```bash
+```usage
 enclii completion <bash|zsh|fish|powershell>
 ```
 
@@ -78,8 +78,10 @@ enclii completion bash > $(brew --prefix)/etc/bash_completion.d/enclii
 
 ```bash
 source <(enclii completion bash)
-enclii dep<TAB>           # → enclii deploy / enclii deployments
 ```
+
+Then type `enclii` followed by the first letters of a command (for example
+`dep`) and press Tab: it offers `enclii deploy` and `enclii deployments`.
 
 ## Notes
 

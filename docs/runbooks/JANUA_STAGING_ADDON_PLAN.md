@@ -1,6 +1,6 @@
 # Read-only Janua staging addon plan
 
-Last Updated: 2026-10-20
+Last Updated: 2026-11-24
 
 > Boundary checkpoint (2026-10-20, platform preparation): public-safe logical
 > names, role names, API contracts and namespace patterns only. Actual object
@@ -114,9 +114,12 @@ The separate `staging-admission` adapter closes the source path for a native
 admission observation. It adds no apply path and does not invoke legacy addon
 `Provision`. The generic `*_sim` runtime validator remains unchanged. Run only
 after the released adapter and actual prerequisites have been independently
-verified through Enclii:
+verified through Enclii. `--service-id` is the persisted staging API service's
+id:
 
-```bash
+**Usage**
+
+```usage
 enclii addon staging-admission --project janua --plan standard-0 --service-id <STAGING_API_SERVICE_UUID> --json
 ```
 

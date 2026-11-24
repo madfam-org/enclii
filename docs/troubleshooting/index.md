@@ -40,7 +40,7 @@ Troubleshoot DNS resolution, SSL certificates, Cloudflare tunnel problems, and r
 
 If you can't find a solution here:
 
-1. **Check the logs**: Use `enclii logs <service> -f` for real-time logs
+1. **Check the logs**: Use `enclii logs` with the service name and `-f` for real-time logs
 2. **Review recent changes**: Check `git log` and deployment history
 3. **Search existing issues**: [GitHub Issues](https://github.com/madfam-org/enclii/issues)
 4. **Open a new issue**: Include error messages, steps to reproduce, and relevant logs

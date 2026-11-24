@@ -1,5 +1,10 @@
 # Enclii ExternalSecret refresh adapter - 2026-05-14
 
+> **2026-11-24:** this is a dated record, kept as evidence of its date. Some
+> `enclii` commands below do not exist in the current CLI, or carry blanks to
+> fill in, so they are not runnable as written. The current command forms are
+> in the [CLI reference](../cli/README.md).
+
 > **Boundary checkpoint (2026-09-27, platform on-call):** Public-safe runbook — no
 > secret values, private hostnames or production topology beyond this repo's own
 > IaC. Private operational detail (who patched what, live object dumps) lives in

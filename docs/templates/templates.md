@@ -9,7 +9,7 @@ tags: [templates, quickstart, starters]
 
 Every template here is a minimal, deployable starter. Clone it, run `enclii deploy`, and you're live.
 
-> **Current status:** The CLI's `enclii init --template` flag accepts `auto`, `node`, `go`, and `python` today. Named framework templates below are provisioned as starter repos under [github.com/madfam-org](https://github.com/madfam-org). Entries marked **Coming soon** are tracked; the `enclii init <name>` shorthand lands with P3.3 (template gallery in dashboard).
+> **Current status:** The CLI's `enclii init --template` flag accepts `auto`, `node`, `go`, and `python` today. Named framework templates below are provisioned as starter repos under [github.com/madfam-org](https://github.com/madfam-org). Entries marked **Coming soon** are tracked; a template-name shorthand for `enclii init` lands with P3.3 (template gallery in dashboard).
 
 ## Quick usage
 

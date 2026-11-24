@@ -12,7 +12,7 @@ Inspect the platform database (read-only).
 
 ## Synopsis
 
-```bash
+```usage
 enclii db <subcommand> [flags]
 ```
 
@@ -33,7 +33,9 @@ Mutating operations (`backup`, `restore`, point-in-time recovery) are intentiona
 
 Report WAL archive freshness, backup history, and replica lag for the production in-cluster Postgres.
 
-```bash
+**Usage**
+
+```usage
 enclii db wal-status [flags]
 ```
 
@@ -58,7 +60,9 @@ The command makes two read-only cluster calls: `pgbackrest info --output=json` i
 
 Report DB migration version and GA-critical column presence (GA migration verify).
 
-```bash
+**Usage**
+
+```usage
 enclii db schema [flags]
 ```
 

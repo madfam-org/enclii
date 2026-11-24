@@ -209,16 +209,16 @@ spec:
 
 **Top‑level verbs** (design, with current status)
 
-* `enclii init` → scaffold project and Service Spec from templates. *Implemented:* `enclii init [name] --template <slug>`.
+* `enclii init` → scaffold project and Service Spec from templates. *Implemented:* `enclii init`, with an optional name and `--template` (a template slug).
 * `enclii up` → build + deploy current branch to a preview env; returns URL. *Planned; not implemented.* Preview environments are created by the GitHub webhook and managed with `enclii previews`.
 * `enclii deploy --env prod [--strategy canary --wait]` → promote release. *Implemented as* `enclii deploy --env prod [--canary N] [--wait]`; there is no `--strategy` flag.
-* `enclii logs <service> [-f] [--env <name>] [--grep <expr>]` → stream logs. *Implemented without `--grep`:* `enclii logs <service> [-f] [--env <name>] [--since <dur>] [-n <lines>]`.
+* `enclii logs` with a service, `-f`, `--env` and `--grep` → stream logs. *Implemented without `--grep`:* `enclii logs` with a service name, `-f`, `--env`, `--since` and `-n`.
 * `enclii ps [--env]` → show services, versions, replicas, health, P95, error rate. *Implemented:* `enclii ps [--env] [--project]`.
 * `enclii secrets set NAME=val --service api --env prod` → write secrets. *Implemented as* `enclii secrets set NAME=val [--secret] [--env prod]`, targeting the service in `./service.yaml` (`-f` for another spec); there is no `--service` flag.
 * `enclii scale api --min 2 --max 8 --env prod` → adjust HPA bounds. *Planned; not implemented.* Replicas are set in the Service Spec.
-* `enclii routes add --host api.example.com --service api --env prod`. *Implemented as* `enclii junctions add <domain> --service-id <id> --project <slug>` (`routes` is an alias of `junctions`), and `enclii domains add <domain> --service <name> --env <env>`.
-* `enclii jobs run nightly-report --env prod`. *Implemented as* `enclii jobs run-once --name <name> --command <cmd> --service-id <id> --project <slug>`; scheduled jobs use `enclii jobs create`.
-* `enclii rollback api --to <releaseId>`. *Implemented:* `enclii rollback api [v{n}|digest]`, or `--to <id>`; `--instant` flips traffic at the routing layer.
+* `enclii routes add` with `--host`, `--service` and `--env` (design; that form does not exist). *Implemented as* `enclii junctions add` with a domain, `--service-id` and `--project` (`routes` is an alias of `junctions`), and `enclii domains add` with a domain, `--service` and `--env`.
+* A one-off `enclii jobs run` with a job name and `--env` (design; that command does not exist). *Implemented as* `enclii jobs run-once` with `--name`, `--command`, `--service-id` and `--project`; scheduled jobs use `enclii jobs create`.
+* `enclii rollback api --to` with a release id. *Implemented:* `enclii rollback api` with an optional v-number or digest, or `--to` with a deployment id; `--instant` flips traffic at the routing layer.
 * `enclii cost --since 30d`. *Implemented as* `enclii billing show --project <slug>` (current-period spend); there is no `cost` command or `--since` window.
 * `enclii auth login|token create --scopes ...`. *Implemented as* `enclii login` and `enclii tokens create --name <name> [--scopes ...]`; there is no `auth` command.
 
@@ -253,18 +253,18 @@ spec:
 
 **Deploy (main branch, prod)**
 
-1. Git push to `main` → CI calls `enclii build` (Roundhouse) → image + SBOM → sign image. *(Design. There is no `enclii build` command: builds start from the GitHub webhook or from `enclii deploy`.)*
+1. Git push to `main` → CI builds (Roundhouse) → image + SBOM → sign image. *(The design named an `enclii build` command; it does not exist: builds start from the GitHub webhook or from `enclii deploy`.)*
 2. Create `Release` → `POST /deployments` with `strategy=canary 10%/5m` and success metrics (error rate, P95).
 3. Reconcilers apply manifests; Service becomes `Healthy` when probes pass and canary checks OK.
 4. Auto‑promote 10%→100% if checks pass; on failure, auto‑rollback and page.
 
 **Preview env (PR)**
 
-* *(Design; `enclii up` is not implemented. Previews are created by the GitHub webhook.)* `enclii up` creates `preview‑{branch‑hash}` namespace, route `https://{hash}.project.dev.enclii.dev`, deploys release, comments URL on PR.
+* *(Design; `enclii up` is not implemented. Previews are created by the GitHub webhook.)* The design's `enclii up` (not implemented) creates `preview‑{branch‑hash}` namespace, route `https://{hash}.project.dev.enclii.dev`, deploys release, comments URL on PR.
 
 **Rollback**
 
-* `enclii rollback api --to <releaseId>` swaps ReplicaSets, monitors SLOs for 10 min, and scales down the failed set.
+* `enclii rollback api --to` with a release id swaps ReplicaSets, monitors SLOs for 10 min, and scales down the failed set.
 
 ---
 

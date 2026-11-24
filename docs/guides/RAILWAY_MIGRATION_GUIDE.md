@@ -9,7 +9,7 @@
 
 
 **Version**: 1.1
-**Last Updated**: 2026-01-30
+**Last Updated**: 2026-11-24
 **Estimated Migration Time**: 2-4 hours per service
 
 ---
@@ -502,12 +502,14 @@ curl -H "Authorization: Bearer $RAILWAY_TOKEN" \
 `enclii secrets set` takes `KEY=VALUE` pairs for the service in the spec file. The service must be registered, and an `--env` environment must already exist (omit `--env` to apply to all environments).
 
 ```bash
-# Create secrets in Lockbox
+# Create secrets in Lockbox. Each value is read from the variable of the same
+# name exported in your shell, so no value appears in a document or your
+# shell history.
 enclii secrets set -f enclii.yaml --secret --env production \
-  DATABASE_URL="postgresql://user:pass@rds.amazonaws.com:5432/mydb" \
-  REDIS_URL="redis://elasticache.amazonaws.com:6379" \
-  API_KEY="sk_live_xxxxx" \
-  JWT_SECRET="super-secret-key"
+  DATABASE_URL="$DATABASE_URL" \
+  REDIS_URL="$REDIS_URL" \
+  API_KEY="$API_KEY" \
+  JWT_SECRET="$JWT_SECRET"
 
 # Verify secrets
 enclii secrets list -f enclii.yaml --env production
@@ -769,8 +771,9 @@ sudo killall -HUP mDNSResponder  # macOS
 **5. Monitor After Cutover**
 
 ```bash
-# Watch metrics (service ID from `enclii projects services myapp`)
-enclii observe metrics --service <service-id>
+# Watch metrics (the service id comes from the project's service list)
+WEB_API_ID=$(enclii projects services myapp --json | jq -r '.[] | select(.name == "web-api") | .id')
+enclii observe metrics --service "$WEB_API_ID"
 
 # Monitor error rate
 enclii logs web-api --env production --follow | grep ERROR
@@ -836,10 +839,12 @@ enclii secrets set DATABASE_URL="$RAILWAY_DATABASE_URL" -f enclii.yaml --secret 
 enclii deploy -f enclii.yaml --env production --wait
 
 # 4. Verify connectivity with a one-off job in the service's environment
-enclii jobs run-once --name db-check --image postgres:16-alpine \
+#    (the job id is the `  ID:` line run-once prints)
+WEB_API_ID=$(enclii projects services myapp --json | jq -r '.[] | select(.name == "web-api") | .id')
+JOB_ID=$(enclii jobs run-once --name db-check --image postgres:16-alpine \
   --command 'psql "$DATABASE_URL" -c "SELECT 1;"' \
-  --service-id <service-id> --project myapp
-enclii jobs logs <job-id>
+  --service-id "$WEB_API_ID" --project myapp | awk '/^  ID:/{print $2}')
+enclii jobs logs "$JOB_ID"   # once the job has run
 ```
 
 ### Complete Rollback to Railway
@@ -882,10 +887,11 @@ Error: connect ECONNREFUSED
 ```bash
 # Check if database is accessible from the cluster (one-off job in the
 # service's environment; there is no `enclii exec`)
-enclii jobs run-once --name db-reach --image postgres:16-alpine \
-  --command "pg_isready -h <db-host> -p 5432" \
-  --service-id <service-id> --project myapp
-enclii jobs logs <job-id>
+WEB_API_ID=$(enclii projects services myapp --json | jq -r '.[] | select(.name == "web-api") | .id')
+JOB_ID=$(enclii jobs run-once --name db-reach --image postgres:16-alpine \
+  --command 'pg_isready -d "$DATABASE_URL"' \
+  --service-id "$WEB_API_ID" --project myapp | awk '/^  ID:/{print $2}')
+enclii jobs logs "$JOB_ID"   # once the job has run
 
 # Check security group rules
 aws ec2 describe-security-groups --group-ids sg-xxxxx
@@ -924,8 +930,8 @@ kubectl exec -n myapp-production deploy/web-api -- env | grep DATABASE_URL
 **Fix:**
 
 ```bash
-# Recreate secret
-enclii secrets set DATABASE_URL="postgresql://..." -f enclii.yaml --secret --env production
+# Recreate secret (the value is read from DATABASE_URL in your shell)
+enclii secrets set DATABASE_URL="$DATABASE_URL" -f enclii.yaml --secret --env production
 
 # Redeploy (there is no --force flag; deploy always rebuilds and rolls out)
 enclii deploy -f enclii.yaml --env production --wait
@@ -1009,10 +1015,11 @@ aws rds describe-db-instances --db-instance-identifier myapp-prod --query 'DBIns
 kubectl get nodes -o wide
 
 # Check connection latency from the cluster (one-off job; there is no `enclii exec`)
-enclii jobs run-once --name db-latency --image postgres:16-alpine \
+WEB_API_ID=$(enclii projects services myapp --json | jq -r '.[] | select(.name == "web-api") | .id')
+JOB_ID=$(enclii jobs run-once --name db-latency --image postgres:16-alpine \
   --command 'time psql "$DATABASE_URL" -c "SELECT 1;"' \
-  --service-id <service-id> --project myapp
-enclii jobs logs <job-id>
+  --service-id "$WEB_API_ID" --project myapp | awk '/^  ID:/{print $2}')
+enclii jobs logs "$JOB_ID"   # once the job has run
 ```
 
 **Fix:**
@@ -1176,8 +1183,9 @@ curl https://app.myapp.com
 # 8. Switch DNS
 # Update A record to Enclii
 
-# 9. Monitor (service ID from `enclii projects services myapp`)
-enclii observe metrics --service <service-id>
+# 9. Monitor (the service id comes from the project's service list)
+WEB_APP_ID=$(enclii projects services myapp --json | jq -r '.[] | select(.name == "web-app") | .id')
+enclii observe metrics --service "$WEB_APP_ID"
 ```
 
 **Time:** ~3 hours
@@ -1277,9 +1285,10 @@ spec:
 There is no `enclii alert` command; alert rules cannot be created from the CLI. Inspect a service's active alerts, health and errors with [`enclii observe`](../cli/commands/observe.md):
 
 ```bash
-enclii observe alerts --service <service-id>
-enclii observe health --service <service-id>
-enclii observe errors --service <service-id>
+WEB_API_ID=$(enclii projects services myapp --json | jq -r '.[] | select(.name == "web-api") | .id')
+enclii observe alerts --service "$WEB_API_ID"
+enclii observe health --service "$WEB_API_ID"
+enclii observe errors --service "$WEB_API_ID"
 ```
 
 ### 4. Configure Backups
@@ -1289,8 +1298,11 @@ There is no `enclii backup` command. For an external database (RDS), use the pro
 ```bash
 enclii jobs create --name nightly-backup --schedule "0 2 * * *" \
   --command 'pg_dump -Fc "$DATABASE_URL" > /backups/db.dump' \
-  --service-id <service-id> --project myapp
+  --service-id "$WEB_API_ID" --project myapp
 ```
+
+`WEB_API_ID` is the `web-api` service's id, read as in
+[Set Up Monitoring Alerts](#3-set-up-monitoring-alerts).
 
 For Enclii managed Postgres addons, `enclii export --project myapp` produces a tarball that includes a `pg_dump` of each bound addon. There is no restore command; restore with `pg_restore` (see [Database Operations](./database-operations.md)).
 

@@ -1,12 +1,12 @@
 # enclii addon
 
-Last Updated: 2026-10-20
+Last Updated: 2026-11-24
 
 Manage database addons — fresh, isolated managed Postgres instances scoped to a service.
 
 ## Synopsis
 
-```bash
+```usage
 enclii addon <subcommand> [flags]
 ```
 
@@ -44,7 +44,9 @@ See [the exact preview and custody contract](../../runbooks/JANUA_STAGING_ADDON_
 Dry-admit the fixed Janua staging database candidate after its separate service
 and isolation prerequisites exist:
 
-```bash
+**Usage**
+
+```usage
 enclii addon staging-admission --project janua --plan standard-0 --service-id <STAGING_API_SERVICE_UUID> --json
 ```
 
@@ -71,7 +73,9 @@ See [the admission boundary](../../runbooks/JANUA_STAGING_ADDON_PLAN.md#typed-se
 
 List available managed-database plans.
 
-```bash
+**Usage**
+
+```usage
 enclii addon plans [flags]
 ```
 
@@ -84,7 +88,9 @@ enclii addon plans [flags]
 
 Create a new managed database addon.
 
-```bash
+**Usage**
+
+```usage
 enclii addon create <name> [flags]
 ```
 
@@ -107,7 +113,9 @@ retired automatically because its isolated network policy could not be applied.
 
 List database addons.
 
-```bash
+**Usage**
+
+```usage
 enclii addon ls [flags]
 ```
 
@@ -122,7 +130,9 @@ enclii addon ls [flags]
 
 Destroy a database addon. **Irreversible** — the underlying CloudNativePG cluster and all its data are deleted.
 
-```bash
+**Usage**
+
+```usage
 enclii addon destroy <addon_id> [flags]
 ```
 
@@ -136,7 +146,9 @@ enclii addon destroy <addon_id> [flags]
 
 Manage the auto-generated REST API (PostgREST) over a Postgres addon. Enabling it serves the database schema as a REST API; authorization is enforced by row-level security in your database. Enclii creates deny-by-default `anon`/`authenticated` roles and wires the JWT signing secret; you own the RLS policies.
 
-```bash
+**Usage**
+
+```usage
 enclii addon api enable <addon_id> [flags]
 enclii addon api info <addon_id> [flags]
 enclii addon api token <addon_id> [flags]
@@ -160,7 +172,9 @@ enclii addon api disable <addon_id> [flags]
 
 Enable, disable, and list realtime row-change streaming for tables in a Postgres addon. Enabling a table installs an opt-in trigger that publishes `INSERT`/`UPDATE`/`DELETE` events; clients subscribe over a WebSocket at `/v1/projects/<slug>/addons/<addon>/realtime`.
 
-```bash
+**Usage**
+
+```usage
 enclii addon realtime enable <addon_id> --table public.orders
 enclii addon realtime list <addon_id> [--json]
 enclii addon realtime disable <addon_id> --table public.orders

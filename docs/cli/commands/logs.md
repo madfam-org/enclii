@@ -4,7 +4,7 @@ Show or stream service logs.
 
 ## Synopsis
 
-```bash
+```usage
 enclii logs [service] [flags]
 ```
 

@@ -47,7 +47,7 @@ A resolved tenant then splits two ways:
 
 Two rules make this safe:
 
-**Explicit scope beats domain inference.** An operator who typed `--tenant <slug>`
+**Explicit scope beats domain inference.** An operator who typed `--tenant "$TENANT"`
 and silently reached MADFAM's account would be told the domain does not exist,
 with nothing on screen explaining why.
 
@@ -96,7 +96,7 @@ should mount a client's registrar keys into a pod's environment.
 other intake path Switchyard reads it back on every registrar operation. CI's
 intake/policy parity gate proves the block exists in git; it cannot prove the
 policy was applied to the running Vault. Until an operator re-applies it, the
-first `--tenant <slug>` call 403s and surfaces as "credentials missing" —
+first `--tenant "$TENANT"` call 403s and surfaces as "credentials missing" —
 indistinguishable from never having run the intake.
 
 The helper below takes the admin token **on stdin, never in argv**, so it never
@@ -141,6 +141,18 @@ The Vault path and property names here must match the intake registry entry
 exactly. A mismatch resolves to "credentials missing" — never to a wrong-account
 call.
 
+## Per-tenant values
+
+The commands below read the tenant and its domain from shell variables, so
+each one runs as written once they are set (for example `export TENANT=`
+followed by the slug). Client names are not written in this public repo:
+
+| Variable | Set it to | Where to find it |
+|---|---|---|
+| `TENANT` | the tenant's slug | `apps/switchyard-api/internal/ecosystem/tenants.json` |
+| `DOMAIN` | the client's apex domain | the onboarding request |
+| `CLOUDFLARE_NS` | the zone's two Cloudflare nameservers, comma-separated | the Cloudflare zone |
+
 ## Loading a tenant's credentials
 
 One command, run by a human operator. It prompts silently, sends the values
@@ -148,16 +160,16 @@ straight to Vault through Enclii, and verifies them against the live Porkbun
 API. No agent, log, shell history, or terminal scrollback ever holds a value.
 
 ```bash
-ENCLII_TENANT=<slug> VERIFY_DOMAIN=<client-domain> \
+ENCLII_TENANT="$TENANT" VERIFY_DOMAIN="$DOMAIN" \
   scripts/operator/porkbun-tenant-credentials.sh
 ```
 
 Equivalent by hand:
 
 ```bash
-enclii secrets intake submit <slug>/porkbun-registrar \
+enclii secrets intake submit "$TENANT/porkbun-registrar" \
   --reason "load the tenant's Porkbun registrar credentials"
-enclii providers porkbun ping --tenant <slug>
+enclii providers porkbun ping --tenant "$TENANT"
 ```
 
 ### The one manual step that stays manual
@@ -171,9 +183,9 @@ reports it identically to a bad key. Nothing in Enclii can flip this toggle.
 
 Two commands tell the failures apart:
 
-- `enclii providers porkbun ping --tenant <slug>` — validates the key pair alone,
+- `enclii providers porkbun ping --tenant "$TENANT"` — validates the key pair alone,
   naming no domain. Fails ⇒ wrong or mistyped key.
-- `enclii providers porkbun renewals --tenant <slug>` — lists each domain with
+- `enclii providers porkbun renewals --tenant "$TENANT"` — lists each domain with
   `apiAccess`. `0` ⇒ the toggle is off.
 
 ## CLI usage for a tenant-owned account
@@ -181,12 +193,12 @@ Two commands tell the failures apart:
 Read-only, safe at any time:
 
 ```bash
-enclii providers porkbun credentials --tenant <slug>   # which account, is it usable
-enclii providers porkbun ping        --tenant <slug>   # validate the key pair live
-enclii providers porkbun domains     --tenant <slug>   # what the account holds
-enclii providers porkbun renewals    --tenant <slug>   # expiry, autoRenew, apiAccess
-enclii providers porkbun nameservers <client-domain> --tenant <slug>
-enclii providers porkbun dns         <client-domain> --tenant <slug>
+enclii providers porkbun credentials --tenant "$TENANT"   # which account, is it usable
+enclii providers porkbun ping        --tenant "$TENANT"   # validate the key pair live
+enclii providers porkbun domains     --tenant "$TENANT"   # what the account holds
+enclii providers porkbun renewals    --tenant "$TENANT"   # expiry, autoRenew, apiAccess
+enclii providers porkbun nameservers "$DOMAIN" --tenant "$TENANT"
+enclii providers porkbun dns         "$DOMAIN" --tenant "$TENANT"
 ```
 
 `--project <client-portal>` and `--project nauta` resolve to the same account, so an
@@ -197,19 +209,19 @@ Mutating verbs are dry-run by default; `--apply` requires `--reason`:
 
 ```bash
 # Dry run first — always.
-enclii providers porkbun nameservers-apply <client-domain> --tenant <slug> \
-  --nameservers <ns1>,<ns2>
-
-enclii providers porkbun nameservers-apply <client-domain> --tenant <slug> \
-  --nameservers <ns1>,<ns2> \
-  --apply --reason "delegate <client-domain> to its Enclii-managed Cloudflare zone"
+enclii providers porkbun nameservers-apply "$DOMAIN" --tenant "$TENANT" \
+  --nameservers "$CLOUDFLARE_NS"
 ```
+
+After reviewing that dry run, run the same command again with `--apply` and
+`--reason "delegate the client apex to its Enclii-managed Cloudflare zone"`.
 
 ```bash
-enclii providers porkbun auto-renew-apply <client-domain> --tenant <slug> --auto-renew on
-enclii providers porkbun auto-renew-apply <client-domain> --tenant <slug> --auto-renew on \
-  --apply --reason "protect the client apex from lapsing"
+enclii providers porkbun auto-renew-apply "$DOMAIN" --tenant "$TENANT" --auto-renew on
 ```
+
+After reviewing that dry run, run it again with `--apply` and
+`--reason "protect the client apex from lapsing"`.
 
 Every response carries a `credentialScope` block naming the tenant, the account,
 how the scope was decided, and the Vault path consulted — never a value.
@@ -226,13 +238,13 @@ bash scripts/apply-switchyard-vault-policy-remote.sh
 #    → expect: APPLIED_OK_asserted_path_present
 
 # 2. Load the tenant's Porkbun key pair into secret/<slug>, then verify it live.
-ENCLII_TENANT=<slug> VERIFY_DOMAIN=<client-domain> \
+ENCLII_TENANT="$TENANT" VERIFY_DOMAIN="$DOMAIN" \
   bash scripts/operator/porkbun-tenant-credentials.sh
 
 # 3. Confirm through the CLI.
-enclii providers porkbun credentials --tenant <slug>   # which account, is it usable
-enclii providers porkbun ping        --tenant <slug>   # validate the key pair live
-enclii providers porkbun domains <client-domain> --tenant <slug>
+enclii providers porkbun credentials --tenant "$TENANT"   # which account, is it usable
+enclii providers porkbun ping        --tenant "$TENANT"   # validate the key pair live
+enclii providers porkbun domains "$DOMAIN" --tenant "$TENANT"
 ```
 
 ### CLI gotchas that cost time on the first run

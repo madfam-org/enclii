@@ -114,7 +114,8 @@ heroku pg:backups:download --app my-heroku-app
 # Create a managed Postgres addon bound to the web service; its connection
 # string is injected into the service as DATABASE_URL.
 enclii addon plans
-enclii addon create my-app-db --plan standard-0 --service <web-service-id>
+WEB_ID=$(enclii projects services my-app --json | jq -r '.[] | select(.name == "web") | .id')
+enclii addon create my-app-db --plan standard-0 --project my-app --service "$WEB_ID"
 
 # Restore. DATABASE_URL is the addon's connection string; run this from a host
 # that can reach the addon (the CLI has no port-forward command).
@@ -146,7 +147,7 @@ Heroku Review Apps spin up a fresh environment per PR. Enclii preview environmen
 
 - **No dyno types.** `web` vs `worker` is expressed via `spec.runtime.type: http | worker | job`. Resources are set per service, not per dyno hour.
 - **No free tier sleep.** Services stay up. To scale to zero, set `replicas: 0` and use Knative autoscale (P3.x).
-- **Logs:** `heroku logs --tail` → `enclii logs <service> -f`. Logs are structured JSON by default.
+- **Logs:** `heroku logs --tail` → `enclii logs web -f` (or `worker`). Logs are structured JSON by default.
 - **Release phase:** Heroku's release phase is `spec.release.command`. It runs once per deploy, against the new image, before the new pods receive traffic. If it fails, the deploy rolls back automatically.
 
 ## Next steps

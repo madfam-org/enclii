@@ -94,7 +94,7 @@ The `--template` flag takes `auto` (the default) or a framework slug such as `ne
 enclii deploy
 ```
 
-Default environment is `dev`. The command must run inside a git repository: it builds the current commit, then deploys it. Add `--wait` if you want the CLI to block until the deploy is healthy; without it the command returns once the deployment starts and prints the `enclii logs <service> -f` command to follow it.
+Default environment is `dev`. The command must run inside a git repository: it builds the current commit, then deploys it. Add `--wait` if you want the CLI to block until the deploy is healthy; without it the command returns once the deployment starts and prints the `enclii logs` command, with the service name and `-f`, that follows it.
 
 **If the build failed:** see [Build failures](./troubleshooting/build-failures.md). The most common cause is a missing `package.json` start script or a mis-detected runtime — set `spec.build.type: dockerfile` (with `spec.build.dockerfile`) in `service.yaml` to build from your own Dockerfile.
 
@@ -116,7 +116,7 @@ Open [app.enclii.dev](https://app.enclii.dev) to view the service in the dashboa
 - **Tail logs:** `enclii logs my-service -f` → [logs command](./cli/commands/logs.md)
 - **Promote to production:** `enclii deploy --env prod` → [deploy command](./cli/commands/deploy.md)
 - **Add a custom domain:** `enclii domains add mydomain.com` → [domains command](./cli/commands/domains.md)
-- **Set a secret:** `enclii secrets set DATABASE_URL="postgresql://..." --secret` → [secrets command](./cli/commands/secrets.md)
+- **Set a secret:** `enclii secrets set DATABASE_URL="$DATABASE_URL" --secret` (the value is read from your shell) → [secrets command](./cli/commands/secrets.md)
 - **Roll back:** `enclii rollback my-service` → [rollback command](./cli/commands/rollback.md)
 
 ## Migrating from another platform?

@@ -4,7 +4,7 @@ Initialize a new service configuration.
 
 ## Synopsis
 
-```bash
+```usage
 enclii init [name] [flags]
 ```
 
