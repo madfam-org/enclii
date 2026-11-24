@@ -45,6 +45,15 @@ export function customObjectsApi(): k8s.CustomObjectsApi {
 }
 
 /**
+ * Request options that send a patch body as a JSON merge patch (the
+ * equivalent of `kubectl patch --type merge`). The 1.x client otherwise picks
+ * `application/json-patch+json`, which expects an array of operations.
+ */
+export function mergePatchOptions() {
+  return k8s.setHeaderOptions('Content-Type', k8s.PatchStrategy.MergePatch)
+}
+
+/**
  * Parse Kubernetes resource quantity strings into numeric base units.
  * - CPU: returns millicores (e.g. "500m" → 500, "2" → 2000)
  * - Memory/storage: returns bytes (e.g. "1Gi" → 1073741824)
