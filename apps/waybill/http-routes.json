@@ -1,0 +1,55 @@
+{
+  "about": "Every route the Waybill API (cmd/api) registers. internal/api/http_routes_manifest_test.go fails when this list and the router differ, and checks the query parameters and response fields listed here against the handlers. Enclii's native MCP (switchyard-api POST /mcp) builds its coverage contract and drift guard on this file: apps/switchyard-api/internal/waybillmcp. Change both in the same PR. See docs/operations/NATIVE_MCP.md.",
+  "routes": [
+    {"method": "GET", "path": "/health"},
+    {"method": "GET", "path": "/ready"},
+    {"method": "POST", "path": "/internal/events"},
+    {"method": "POST", "path": "/internal/events/batch"},
+    {"method": "GET", "path": "/api/v1/projects/:project_id/usage/current"},
+    {"method": "GET", "path": "/api/v1/projects/:project_id/usage/history"},
+    {"method": "POST", "path": "/api/v1/estimate"},
+    {"method": "GET", "path": "/api/v1/projects/:project_id/invoices"},
+    {"method": "GET", "path": "/api/v1/plans"},
+    {"method": "GET", "path": "/api/v1/projects/:project_id/cost"},
+    {"method": "GET", "path": "/api/v1/services/:service_id/cost"},
+    {"method": "GET", "path": "/api/v1/projects/:project_id/budgets"},
+    {"method": "POST", "path": "/api/v1/projects/:project_id/budgets"},
+    {"method": "PATCH", "path": "/api/v1/projects/:project_id/budgets/:budget_id"},
+    {"method": "DELETE", "path": "/api/v1/projects/:project_id/budgets/:budget_id"},
+    {"method": "GET", "path": "/api/v1/projects/:project_id/budgets/alerts"},
+    {"method": "GET", "path": "/api/v1/projects/:project_id/throttles"},
+    {
+      "method": "GET",
+      "path": "/api/v1/resource-usage/daily",
+      "query": ["from", "to", "namespace", "cluster"],
+      "response": {
+        "fields": ["from", "to", "timezone", "captures", "uncaptured_dates", "rows"],
+        "items": {
+          "captures": ["date", "cluster", "usage_coverage", "requests_coverage", "workload_rows", "node_rows", "source", "captured_at"],
+          "rows": [
+            "date", "cluster", "node", "namespace", "workload_kind", "workload_name", "container", "pod_count",
+            "cpu_core_hours_used", "cpu_core_hours_requested", "cpu_limit_core_hours", "cpu_cores_p95", "cpu_cores_max",
+            "mem_gib_hours_used", "mem_gib_hours_requested", "mem_limit_gib_hours", "mem_working_set_p95_bytes",
+            "mem_working_set_max_bytes", "sample_count", "coverage", "source"
+          ]
+        }
+      }
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/resource-usage/nodes/daily",
+      "query": ["from", "to", "cluster"],
+      "response": {
+        "fields": ["from", "to", "timezone", "captures", "uncaptured_dates", "nodes"],
+        "items": {
+          "captures": ["date", "cluster", "usage_coverage", "requests_coverage", "workload_rows", "node_rows", "source", "captured_at"],
+          "nodes": [
+            "date", "cluster", "node", "pod_count", "cpu_allocatable_core_hours", "cpu_core_hours_requested",
+            "cpu_core_hours_used", "cpu_cores_p95", "cpu_cores_max", "mem_allocatable_gib_hours", "mem_gib_hours_requested",
+            "mem_gib_hours_used", "mem_working_set_max_bytes", "sample_count", "coverage", "source"
+          ]
+        }
+      }
+    }
+  ]
+}

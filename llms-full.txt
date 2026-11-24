@@ -279,6 +279,34 @@ enforces it and documents how to add npm back. Baseline: `README.md` ->
   for `--project`. Domain changes reconcile on a detached, strict 2-minute
   context (#796).
 
+## Native MCP for the cost ledger (RFC 0051, 2026-11-06)
+
+- `POST /mcp` lives on switchyard-api (`api.enclii.dev`), Enclii's API host,
+  because Waybill has no public route and verifies no Janua token. Each tool
+  calls the Waybill route it covers in-cluster, with the billing proxy's base
+  URL and service key, so Waybill's handler is the one implementation.
+- Off by default: `ENCLII_MCP_ENABLED` (owner only, RFC 0051 M6). Also
+  unmounted without `ENCLII_MCP_ORG_IDS`, the external Janua JWKS or
+  `ENCLII_WAYBILL_BASE_URL`.
+- Gates: browser `Origin` → 403; token not verified like the HTTP API's
+  (JWKS, expiry, issuer, `ENCLII_JANUA_AUDIENCE`) → 401; a person's token →
+  403; organization not allowed → 403; no exact `enclii-cogs:read` → 403;
+  per-client rate → 429.
+- Tools: `usage_resource_daily(from, to, namespace?, cluster?)` and
+  `usage_node_daily(from, to, cluster?)`, titled with the RFC names
+  `usage.resource_daily` / `usage.node_daily`. Outputs are projections of
+  Waybill's JSON by their output schemas. Answers over 4 MiB are refused as a
+  tool error (narrow the range).
+- Audit: one `mcp.call` log line per request (client id, org, method, tool,
+  outcome, latency, `args_sha256`; never arguments or tokens) and
+  `enclii_mcp_calls_total` / `enclii_mcp_call_duration_seconds`.
+- Drift guard: `apps/switchyard-api/internal/waybillmcp/coverage_test.go`
+  classifies every Waybill route (from `apps/waybill/http-routes.json`, which
+  Waybill's tests keep equal to its router) and every switchyard
+  usage/billing/cost route as COVERED or EXEMPTED. It also checks tool
+  arguments and output fields against what Waybill publishes.
+- Full contract and owner steps: `docs/operations/NATIVE_MCP.md`.
+
 ## Boundary
 
 This is not a full repository ingest. It is a compact context pointer; task-specific work must still read the relevant source documents listed below.

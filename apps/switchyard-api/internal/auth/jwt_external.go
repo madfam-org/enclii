@@ -26,14 +26,34 @@ type ExternalClaims struct {
 // ValidateExternalToken validates a token against the external JWKS (e.g., Janua)
 // Returns the claims if valid, nil otherwise
 func (j *JWTManager) ValidateExternalToken(tokenString string) (*ExternalClaims, error) {
+	claims := &ExternalClaims{}
+	if err := j.verifyExternal(tokenString, claims); err != nil {
+		return nil, err
+	}
+
+	logrus.WithFields(logrus.Fields{
+		"email":  claims.Email,
+		"issuer": claims.Issuer,
+		"sub":    claims.Subject,
+	}).Debug("External token validated successfully")
+
+	return claims, nil
+}
+
+// verifyExternal checks tokenString's RS256 signature against the external
+// JWKS, its registered time claims, and the configured issuer and audience,
+// decoding the payload into claims. ValidateExternalToken (people) and
+// ValidateExternalMachineClaims (Janua machine clients) share it, so the two
+// paths cannot drift on what "a valid Janua token" means.
+func (j *JWTManager) verifyExternal(tokenString string, claims jwt.Claims) error {
 	if j.externalJWKSCache == nil || j.externalJWKSURL == "" {
-		return nil, fmt.Errorf("external JWKS validation not configured")
+		return fmt.Errorf("external JWKS validation not configured")
 	}
 
 	// Parse token header to get kid
-	token, _, err := new(jwt.Parser).ParseUnverified(tokenString, &ExternalClaims{})
+	token, _, err := new(jwt.Parser).ParseUnverified(tokenString, jwt.MapClaims{})
 	if err != nil {
-		return nil, fmt.Errorf("failed to parse token header: %w", err)
+		return fmt.Errorf("failed to parse token header: %w", err)
 	}
 
 	kid, ok := token.Header["kid"].(string)
@@ -44,11 +64,11 @@ func (j *JWTManager) ValidateExternalToken(tokenString string) (*ExternalClaims,
 	// Get public key from cache or fetch
 	publicKey, err := j.getExternalPublicKey(kid)
 	if err != nil {
-		return nil, fmt.Errorf("failed to get external public key: %w", err)
+		return fmt.Errorf("failed to get external public key: %w", err)
 	}
 
 	// Parse and validate token with external key
-	parsedToken, err := jwt.ParseWithClaims(tokenString, &ExternalClaims{}, func(token *jwt.Token) (interface{}, error) {
+	parsedToken, err := jwt.ParseWithClaims(tokenString, claims, func(token *jwt.Token) (interface{}, error) {
 		if _, ok := token.Method.(*jwt.SigningMethodRSA); !ok {
 			return nil, fmt.Errorf("unexpected signing method: %v", token.Header["alg"])
 		}
@@ -56,44 +76,35 @@ func (j *JWTManager) ValidateExternalToken(tokenString string) (*ExternalClaims,
 	})
 
 	if err != nil {
-		return nil, fmt.Errorf("failed to validate token: %w", err)
+		return fmt.Errorf("failed to validate token: %w", err)
 	}
 
 	if !parsedToken.Valid {
-		return nil, fmt.Errorf("token is not valid")
-	}
-
-	claims, ok := parsedToken.Claims.(*ExternalClaims)
-	if !ok {
-		return nil, fmt.Errorf("failed to parse claims")
+		return fmt.Errorf("token is not valid")
 	}
 
 	// Verify issuer if configured
-	if j.externalIssuer != "" && claims.Issuer != j.externalIssuer {
-		return nil, fmt.Errorf("invalid issuer: expected %s, got %s", j.externalIssuer, claims.Issuer)
+	issuer, _ := claims.GetIssuer()
+	if j.externalIssuer != "" && issuer != j.externalIssuer {
+		return fmt.Errorf("invalid issuer: expected %s, got %s", j.externalIssuer, issuer)
 	}
 
 	// Verify audience if configured (per-client token isolation)
 	if j.externalAudience != "" {
+		audience, _ := claims.GetAudience()
 		audValid := false
-		for _, aud := range claims.Audience {
+		for _, aud := range audience {
 			if aud == j.externalAudience {
 				audValid = true
 				break
 			}
 		}
 		if !audValid {
-			return nil, fmt.Errorf("invalid audience: expected %s, got %v", j.externalAudience, claims.Audience)
+			return fmt.Errorf("invalid audience: expected %s, got %v", j.externalAudience, audience)
 		}
 	}
 
-	logrus.WithFields(logrus.Fields{
-		"email":  claims.Email,
-		"issuer": claims.Issuer,
-		"sub":    claims.Subject,
-	}).Debug("External token validated successfully")
-
-	return claims, nil
+	return nil
 }
 
 // getExternalPublicKey retrieves the public key for the given kid from cache or fetches from JWKS

@@ -79,6 +79,9 @@ type Config struct {
 	WaybillBaseURL        string // Base URL of the Waybill service, e.g. http://waybill:8080
 	WaybillInternalAPIKey string // Optional internal API key forwarded as X-API-Key
 
+	// Native MCP (RFC 0051): POST /mcp, off unless ENCLII_MCP_ENABLED (mcp.go).
+	MCP MCPConfig
+
 	// Dhanam Billing Federation (checkout relay — mirrors janua#453)
 	DhanamFederationURL string // ENCLII_DHANAM_FEDERATION_URL — Dhanam federation API origin (e.g. https://api.dhan.am). Empty disables the relay (fails closed 503).
 	FederationAPIToken  string // FEDERATION_API_TOKEN — ecosystem-shared bearer for Dhanam customer-federation calls. Empty disables the relay (fails closed 503).
@@ -510,6 +513,8 @@ func Load() (*Config, error) {
 		SignupEnabled:         viper.GetBool("signup-enabled"),
 		SelfServiceAPIBaseURL: viper.GetString("self-service-api-base-url"),
 	}
+
+	config.MCP = loadMCPConfig()
 
 	// SEC-001: Validate required configuration
 	if config.DatabaseURL == "" {

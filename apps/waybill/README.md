@@ -299,6 +299,22 @@ nothing missing a run is one database read. Runs never overlap.
 `uncaptured_dates` beside the rows, so a missing day is never read as a zero.
 They sit under `/api/v1`, so they carry that group's auth. No money fields.
 
+**Agents read them over MCP.** Waybill has no public route, so Enclii's
+native MCP lives on switchyard-api (`POST https://api.enclii.dev/mcp`, off
+unless `ENCLII_MCP_ENABLED`). Its tools `usage_resource_daily` and
+`usage_node_daily` call these two routes in-cluster with the billing proxy's
+base URL and service key, so this handler is the only implementation. Janua
+machine tokens with scope `enclii-cogs:read` only:
+[`docs/operations/NATIVE_MCP.md`](../../docs/operations/NATIVE_MCP.md).
+
+**Published route list.** [`http-routes.json`](http-routes.json) lists every
+route this API registers, with the query parameters and response fields of
+the two ledger reads. `internal/api/http_routes_manifest_test.go` fails when
+the file and the router or handlers differ. Switchyard's MCP drift guard
+(`apps/switchyard-api/internal/waybillmcp`) reads the file: a new Waybill
+route must be COVERED by an MCP tool or EXEMPTED there with a reason. Change
+both in the same PR.
+
 **Not here yet (follow-ups, RFC 0049 Phase 2 / RFC 0050).** Node cost
 (`cost_line` from the Hetzner invoice and its daily accrual), the namespace →
 product → engagement map, the allocation of node cost to workloads, the
