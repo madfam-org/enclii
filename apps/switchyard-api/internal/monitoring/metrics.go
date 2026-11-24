@@ -2,6 +2,7 @@ package monitoring
 
 import (
 	"net/http"
+	"os"
 	"strconv"
 	"strings"
 	"sync"
@@ -183,6 +184,27 @@ var (
 // MetricsCollector handles metrics collection and registration
 type MetricsCollector struct {
 	registry *prometheus.Registry
+
+	// history holds this replica's own one-minute points, read from THIS
+	// registry. Until 2026-11-04 (RFC 0049 Phase 1) a package init() read
+	// prometheus.DefaultGatherer instead, where none of the enclii_* metrics
+	// are registered, so every /observability chart was flat zero.
+	history   *metricsHistoryBuffer
+	scope     string
+	startedAt time.Time
+	prev      *historyCounters // guarded by history.mu
+}
+
+// historyCounters are the cumulative values at one sample; a history point is
+// the difference between two of them.
+type historyCounters struct {
+	at           time.Time
+	requests     float64
+	serverErrors float64
+	latencySum   float64
+	latencyCount float64
+	cpuSeconds   float64
+	residentMB   float64
 }
 
 func NewMetricsCollector() *MetricsCollector {
@@ -222,13 +244,27 @@ func NewMetricsCollector() *MetricsCollector {
 	registry.MustRegister(collectors.NewProcessCollector(collectors.ProcessCollectorOpts{}))
 
 	collector := &MetricsCollector{
-		registry: registry,
+		registry:  registry,
+		history:   newMetricsHistoryBuffer(historyCapacity),
+		scope:     replicaScope(),
+		startedAt: time.Now(),
 	}
 
 	// Start background metrics collection
 	go collector.collectSystemMetrics()
+	go collector.collectHistory()
 
 	return collector
+}
+
+// replicaScope names what the snapshot and history describe: one
+// switchyard-api replica's own traffic and process, not the platform.
+func replicaScope() string {
+	host, err := os.Hostname()
+	if err != nil || host == "" {
+		return "switchyard-api replica"
+	}
+	return "switchyard-api replica " + host
 }
 
 func (mc *MetricsCollector) Handler() http.Handler {
@@ -440,6 +476,11 @@ type MetricsSnapshot struct {
 	CacheMetrics CacheMetrics      `json:"cache"`
 	BuildMetrics BuildMetrics      `json:"builds"`
 	K8sMetrics   KubernetesMetrics `json:"kubernetes"`
+	// Scope and Since say what the numbers are: counters of ONE
+	// switchyard-api replica, accumulated since it started. Requests go to
+	// whichever replica the load balancer picks, so two reads can differ.
+	Scope string     `json:"scope,omitempty"`
+	Since *time.Time `json:"since,omitempty"`
 }
 
 type HTTPMetrics struct {
@@ -516,6 +557,7 @@ func (mc *MetricsCollector) GetSnapshot() (*MetricsSnapshot, error) {
 	var latencyCount int
 	var cacheHitsTotal, cacheMissesTotal float64
 	var buildsSuccess, buildsTotal float64
+	var dbQuerySum, dbQueryCount, cacheOpSum, cacheOpCount float64
 
 	for _, mf := range metricFamilies {
 		name := mf.GetName()
@@ -526,10 +568,8 @@ func (mc *MetricsCollector) GetSnapshot() (*MetricsSnapshot, error) {
 			for _, m := range metrics {
 				val := m.GetCounter().GetValue()
 				totalRequests += val
-				for _, label := range m.GetLabel() {
-					if label.GetName() == "status_code" && label.GetValue()[0] >= '4' {
-						errorRequests += val
-					}
+				if isServerErrorLabels(m.GetLabel()) {
+					errorRequests += val
 				}
 			}
 		case "enclii_http_request_duration_seconds":
@@ -547,6 +587,20 @@ func (mc *MetricsCollector) GetSnapshot() (*MetricsSnapshot, error) {
 		case "enclii_db_connections_in_use":
 			for _, m := range metrics {
 				snapshot.DBMetrics.ConnectionsInUse = int(m.GetGauge().GetValue())
+			}
+		case "enclii_db_query_duration_seconds":
+			for _, m := range metrics {
+				if h := m.GetHistogram(); h != nil {
+					dbQuerySum += h.GetSampleSum()
+					dbQueryCount += float64(h.GetSampleCount())
+				}
+			}
+		case "enclii_cache_operation_duration_seconds":
+			for _, m := range metrics {
+				if h := m.GetHistogram(); h != nil {
+					cacheOpSum += h.GetSampleSum()
+					cacheOpCount += float64(h.GetSampleCount())
+				}
 			}
 		case "enclii_cache_hits_total":
 			for _, m := range metrics {
@@ -597,8 +651,44 @@ func (mc *MetricsCollector) GetSnapshot() (*MetricsSnapshot, error) {
 	if buildsTotal > 0 {
 		snapshot.BuildMetrics.SuccessRate = buildsSuccess / buildsTotal
 	}
+	if dbQueryCount > 0 {
+		snapshot.DBMetrics.AverageQueryTime = dbQuerySum / dbQueryCount
+	}
+	if cacheOpCount > 0 {
+		snapshot.CacheMetrics.AverageLatency = cacheOpSum / cacheOpCount
+	}
+	if mc.history != nil {
+		mc.history.mu.RLock()
+		if n := len(mc.history.dataPoints); n > 0 {
+			snapshot.HTTPMetrics.RequestsPerSecond = mc.history.dataPoints[n-1].RequestsPerSec
+		}
+		mc.history.mu.RUnlock()
+	}
+	snapshot.Scope = mc.scope
+	if !mc.startedAt.IsZero() {
+		since := mc.startedAt
+		snapshot.Since = &since
+	}
 
 	return snapshot, nil
+}
+
+// labelPair is the accessor pair of a gathered metric's label.
+type labelPair interface {
+	GetName() string
+	GetValue() string
+}
+
+// isServerErrorLabels reports a 5xx status_code label. 4xx are the caller's
+// problem (expired sessions, missing objects) and are not counted as errors.
+func isServerErrorLabels[L labelPair](labels []L) bool {
+	for _, label := range labels {
+		if label.GetName() == "status_code" {
+			v := label.GetValue()
+			return len(v) > 0 && v[0] == '5'
+		}
+	}
+	return false
 }
 
 // MetricsHistory stores time-series data for metrics
@@ -606,16 +696,29 @@ type MetricsHistory struct {
 	TimeRange  string             `json:"time_range"`
 	Resolution string             `json:"resolution"`
 	DataPoints []MetricsDataPoint `json:"data_points"`
+	// Scope: these are ONE switchyard-api replica's own requests and
+	// process, kept in memory for at most historyCapacity minutes and lost on
+	// restart. They are not platform-wide and not other replicas'.
+	Scope         string     `json:"scope"`
+	RetainedSince *time.Time `json:"retained_since,omitempty"`
+	Note          string     `json:"note,omitempty"`
 }
 
+// MetricsDataPoint is one minute of one replica. Every field is a rate or
+// level over that minute, not a lifetime counter. Latency and error rate are
+// null for a minute with no requests: there was nothing to measure, which is
+// not the same as 0 ms or 0%.
 type MetricsDataPoint struct {
 	Timestamp        time.Time `json:"timestamp"`
 	RequestsPerSec   float64   `json:"requests_per_sec"`
-	AverageLatencyMs float64   `json:"average_latency_ms"`
-	ErrorRate        float64   `json:"error_rate"`
-	CPUUsage         float64   `json:"cpu_usage"`
-	MemoryUsage      float64   `json:"memory_usage"`
+	AverageLatencyMs *float64  `json:"average_latency_ms"`
+	ErrorRate        *float64  `json:"error_rate"`   // share of 5xx responses
+	CPUUsage         float64   `json:"cpu_usage"`    // cores, averaged over the minute
+	MemoryUsage      float64   `json:"memory_usage"` // resident MB at the sample
 }
+
+// historyCapacity is 24 hours at one-minute resolution.
+const historyCapacity = 1440
 
 // In-memory metrics history buffer (ring buffer)
 type metricsHistoryBuffer struct {
@@ -624,92 +727,110 @@ type metricsHistoryBuffer struct {
 	mu         sync.RWMutex
 }
 
-var historyBuffer = &metricsHistoryBuffer{
-	dataPoints: make([]MetricsDataPoint, 0, 1440), // 24h at 1-minute resolution
-	maxSize:    1440,
+func newMetricsHistoryBuffer(size int) *metricsHistoryBuffer {
+	return &metricsHistoryBuffer{dataPoints: make([]MetricsDataPoint, 0, size), maxSize: size}
 }
 
-func init() {
-	// Start background collector for history
-	go func() {
-		ticker := time.NewTicker(1 * time.Minute)
-		defer ticker.Stop()
-		for range ticker.C {
-			collectHistoryDataPoint()
-		}
-	}()
+func (mc *MetricsCollector) collectHistory() {
+	ticker := time.NewTicker(1 * time.Minute)
+	defer ticker.Stop()
+	mc.recordHistoryPoint(time.Now())
+	for now := range ticker.C {
+		mc.recordHistoryPoint(now)
+	}
 }
 
-func collectHistoryDataPoint() {
-	historyBuffer.mu.Lock()
-	defer historyBuffer.mu.Unlock()
-
-	// Collect current values from Prometheus metrics
-	metricFamilies, err := prometheus.DefaultGatherer.Gather()
+// readCounters gathers this collector's registry into cumulative values.
+func (mc *MetricsCollector) readCounters(now time.Time) (*historyCounters, error) {
+	families, err := mc.registry.Gather()
 	if err != nil {
-		return
+		return nil, err
 	}
-
-	dp := MetricsDataPoint{
-		Timestamp: time.Now(),
-	}
-
-	var totalRequests, errorRequests float64
-	var totalLatency float64
-	var latencyCount uint64
-
-	for _, mf := range metricFamilies {
-		name := mf.GetName()
-		metrics := mf.GetMetric()
-
-		switch name {
+	c := &historyCounters{at: now}
+	for _, mf := range families {
+		switch mf.GetName() {
 		case "enclii_http_requests_total":
-			for _, m := range metrics {
-				totalRequests += m.GetCounter().GetValue()
-				for _, label := range m.GetLabel() {
-					if label.GetName() == "status_code" && len(label.GetValue()) > 0 && label.GetValue()[0] >= '4' {
-						errorRequests += m.GetCounter().GetValue()
-					}
+			for _, m := range mf.GetMetric() {
+				v := m.GetCounter().GetValue()
+				c.requests += v
+				if isServerErrorLabels(m.GetLabel()) {
+					c.serverErrors += v
 				}
 			}
 		case "enclii_http_request_duration_seconds":
-			for _, m := range metrics {
-				h := m.GetHistogram()
-				if h != nil {
-					totalLatency += h.GetSampleSum()
-					latencyCount += h.GetSampleCount()
+			for _, m := range mf.GetMetric() {
+				if h := m.GetHistogram(); h != nil {
+					c.latencySum += h.GetSampleSum()
+					c.latencyCount += float64(h.GetSampleCount())
 				}
 			}
 		case "process_cpu_seconds_total":
-			for _, m := range metrics {
-				dp.CPUUsage = m.GetCounter().GetValue()
+			for _, m := range mf.GetMetric() {
+				c.cpuSeconds = m.GetCounter().GetValue()
 			}
 		case "process_resident_memory_bytes":
-			for _, m := range metrics {
-				dp.MemoryUsage = m.GetGauge().GetValue() / (1024 * 1024) // Convert to MB
+			for _, m := range mf.GetMetric() {
+				c.residentMB = m.GetGauge().GetValue() / (1024 * 1024)
 			}
 		}
 	}
+	return c, nil
+}
 
-	if totalRequests > 0 {
-		dp.ErrorRate = errorRequests / totalRequests
+// recordHistoryPoint appends the minute since the previous sample. The first
+// sample only sets the baseline: a point needs two readings to be a rate.
+func (mc *MetricsCollector) recordHistoryPoint(now time.Time) {
+	cur, err := mc.readCounters(now)
+	if err != nil {
+		return
 	}
-	if latencyCount > 0 {
-		dp.AverageLatencyMs = (totalLatency / float64(latencyCount)) * 1000
+	mc.history.mu.Lock()
+	defer mc.history.mu.Unlock()
+	prev := mc.prev
+	mc.prev = cur
+	if prev == nil {
+		return
 	}
+	dp, ok := historyPoint(prev, cur)
+	if !ok {
+		return
+	}
+	if len(mc.history.dataPoints) >= mc.history.maxSize {
+		mc.history.dataPoints = mc.history.dataPoints[1:]
+	}
+	mc.history.dataPoints = append(mc.history.dataPoints, dp)
+}
 
-	// Add to ring buffer
-	if len(historyBuffer.dataPoints) >= historyBuffer.maxSize {
-		historyBuffer.dataPoints = historyBuffer.dataPoints[1:]
+// historyPoint turns two cumulative readings into one interval point.
+func historyPoint(prev, cur *historyCounters) (MetricsDataPoint, bool) {
+	dt := cur.at.Sub(prev.at).Seconds()
+	if dt <= 0 {
+		return MetricsDataPoint{}, false
 	}
-	historyBuffer.dataPoints = append(historyBuffer.dataPoints, dp)
+	dReq := cur.requests - prev.requests
+	if dReq < 0 {
+		// A counter went backwards: not one process. Skip, never invent.
+		return MetricsDataPoint{}, false
+	}
+	dp := MetricsDataPoint{
+		Timestamp:      cur.at,
+		RequestsPerSec: dReq / dt,
+		CPUUsage:       (cur.cpuSeconds - prev.cpuSeconds) / dt,
+		MemoryUsage:    cur.residentMB,
+	}
+	if dReq > 0 {
+		errRate := (cur.serverErrors - prev.serverErrors) / dReq
+		dp.ErrorRate = &errRate
+	}
+	if dCount := cur.latencyCount - prev.latencyCount; dCount > 0 {
+		latency := (cur.latencySum - prev.latencySum) / dCount * 1000
+		dp.AverageLatencyMs = &latency
+	}
+	return dp, true
 }
 
 // GetHistory returns metrics history for a given time range
 func (mc *MetricsCollector) GetHistory(timeRange string) (*MetricsHistory, error) {
-	historyBuffer.mu.RLock()
-	defer historyBuffer.mu.RUnlock()
-
 	now := time.Now()
 	var since time.Time
 	var resolution string
@@ -733,17 +854,35 @@ func (mc *MetricsCollector) GetHistory(timeRange string) (*MetricsHistory, error
 		timeRange = "1h"
 	}
 
-	// Filter data points by time range
-	var filteredPoints []MetricsDataPoint
-	for _, dp := range historyBuffer.dataPoints {
-		if dp.Timestamp.After(since) {
-			filteredPoints = append(filteredPoints, dp)
-		}
-	}
-
-	return &MetricsHistory{
+	history := &MetricsHistory{
 		TimeRange:  timeRange,
 		Resolution: resolution,
-		DataPoints: filteredPoints,
-	}, nil
+		Scope:      "switchyard-api replica",
+	}
+	if mc.history == nil {
+		history.Note = "No history is kept by this replica."
+		return history, nil
+	}
+	history.Scope = mc.scope
+
+	mc.history.mu.RLock()
+	defer mc.history.mu.RUnlock()
+
+	for _, dp := range mc.history.dataPoints {
+		if dp.Timestamp.After(since) {
+			history.DataPoints = append(history.DataPoints, dp)
+		}
+	}
+	retained := mc.startedAt
+	if len(mc.history.dataPoints) > 0 {
+		retained = mc.history.dataPoints[0].Timestamp
+	}
+	if !retained.IsZero() {
+		history.RetainedSince = &retained
+		if since.Before(retained) {
+			history.Note = "This replica keeps at most 24 hours in memory, from its start; there are no points before " +
+				retained.UTC().Format(time.RFC3339) + "."
+		}
+	}
+	return history, nil
 }

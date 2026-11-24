@@ -414,7 +414,18 @@ func (r *TimetableReconciler) dispatchOneOffJob(ctx context.Context, job *types.
 	}
 
 	rc := r.resolveJobRuntimeContext(ctx, job.ServiceID, namespace, job.Image)
+
+	// Opt-in only (job.NetworkIdentity == "service"); nil for every other job.
+	identity, refused, err := r.oneOffJobNetworkIdentity(ctx, job, namespace, rc)
+	if err != nil {
+		return err
+	}
+	if refused {
+		return nil
+	}
+
 	k8sJob := r.buildOneOffJob(job, namespace, rc)
+	identity.applyTo(k8sJob)
 
 	_, err = r.k8sClient.Kube().BatchV1().Jobs(namespace).Create(ctx, k8sJob, metav1.CreateOptions{})
 	if err != nil {
@@ -495,6 +506,15 @@ func isAdmissionRejection(err error) bool {
 	return strings.Contains(strings.ToLower(err.Error()), "admission webhook")
 }
 
+// oneOffJobTTLSeconds is how long a finished one-off Job (and its pod and
+// logs) stays in the cluster. Without a TTL nothing ever removed them:
+// failed one-off Jobs from months earlier stayed in tenant namespaces as
+// failed Jobs and Error pods long after the outcome was recorded in the
+// database. Seven days is far longer than the status sync needs (it records
+// the outcome on the next reconcile pass) and leaves a week to read the pod
+// log with kubectl.
+const oneOffJobTTLSeconds int32 = 7 * 24 * 60 * 60
+
 // buildOneOffJob constructs the desired K8s Job spec from the database record
 // and the resolved service runtime context (image, env, serviceAccount,
 // imagePullSecrets -- see resolveJobRuntimeContext).
@@ -503,14 +523,14 @@ func (r *TimetableReconciler) buildOneOffJob(job *types.OneOffJob, namespace str
 	if timeout <= 0 {
 		timeout = 3600
 	}
+	ttl := oneOffJobTTLSeconds
 
 	// One-off jobs do not retry by default.
 	var backoffLimit int32
 
-	labels := map[string]string{
-		labelManagedBy:   labelManagedByValue,
-		LabelOneOffJobID: job.ID.String(),
-	}
+	// Separate maps for the Job and its pod template: an opt-in network
+	// identity adds labels to the pod only (serviceNetworkIdentity.applyTo).
+	labels := oneOffJobBaseLabels(job)
 
 	return &batchv1.Job{
 		ObjectMeta: metav1.ObjectMeta{
@@ -519,11 +539,12 @@ func (r *TimetableReconciler) buildOneOffJob(job *types.OneOffJob, namespace str
 			Labels:    labels,
 		},
 		Spec: batchv1.JobSpec{
-			ActiveDeadlineSeconds: &timeout,
-			BackoffLimit:          &backoffLimit,
+			ActiveDeadlineSeconds:   &timeout,
+			BackoffLimit:            &backoffLimit,
+			TTLSecondsAfterFinished: &ttl,
 			Template: corev1.PodTemplateSpec{
 				ObjectMeta: metav1.ObjectMeta{
-					Labels: labels,
+					Labels: oneOffJobBaseLabels(job),
 				},
 				Spec: corev1.PodSpec{
 					RestartPolicy:      corev1.RestartPolicyNever,

@@ -27,9 +27,21 @@ spec:
           containers:
             - name: recorder
               image: docker.io/curlimages/curl@sha256:08e466006f0860e54fc299378de998935333e0e130a15f6f98482e9f8dab3058
+              # --retry-connrefused: the first connect from a brand-new pod is
+              # refused until the NetworkPolicy controller has admitted the
+              # pod's IP (seconds). Without retries every run failed once
+              # (curl exit 7) and restarted, which showed as CrashLoopBackOff
+              # and doubled the pod churn of a once-a-minute job. -S keeps the
+              # error text in the log. No --max-time: the madfam record call
+              # legitimately takes ~20 s; activeDeadlineSeconds still bounds it.
               command:
                 - curl
-                - -sf
+                - -sSf
+                - --retry
+                - "3"
+                - --retry-connrefused
+                - --retry-delay
+                - "2"
                 - -X
                 - POST
                 - -H

@@ -1,6 +1,6 @@
 # enclii secrets
 
-Last Updated: 2026-10-20
+Last Updated: 2026-11-22
 
 Manage service secrets and environment variables.
 
@@ -278,6 +278,7 @@ enclii secrets intake training-capabilities --json
 enclii secrets intake submit ceq/vast-api-key --reason "orchestrator bootstrap"
 enclii secrets intake submit ceq/vast-api-key --value-file ~/.config/madfam/vast.key --reason "orchestrator bootstrap"
 enclii secrets intake submit <client-portal>/internal-api-key --generate internal_api_key --reason "client portal smoke gate"
+enclii secrets intake group phynd-crm/lead-intake-hmac --reason "lead-intake HMAC key"
 enclii secrets intake status int_1234567890
 ```
 
@@ -286,6 +287,7 @@ enclii secrets intake status int_1234567890
 | `targets` | List registered intake targets (Vault path, keys, namespace) |
 | `training-capabilities` | Observe current writer authorization on ten fixed training custody paths; metadata only |
 | `submit TARGET` | Send secret value(s) once; masked prompt, `--value-file`, `--stdin`, or `--generate` |
+| `group GROUP` | Write one server-generated value to every member of a shared group ([below](#group-one-value-for-several-targets)); `--rotate` replaces it |
 | `status INTAKE_ID` | Poll metadata only — safe for agents (no values returned) |
 
 **`submit` flags**
@@ -348,6 +350,34 @@ or concurrent Vault change refuses with 409 and no retry. Database/CA targets
 are supplied-only and reject generation. No arbitrary generator, destination,
 production key reuse or rotation option is exposed.
 
+### `group` (one value for several targets)
+
+Some services must hold the **same** key, such as an HMAC key one service
+verifies and others sign with. Intake writes one Vault path per target, so the
+registry declares a shared group (`groups:` in the registry) whose member
+targets each name it (`generate: {group: <id>}`):
+
+```bash
+enclii secrets intake group phynd-crm/lead-intake-hmac --reason "lead-intake HMAC key"
+enclii secrets intake group phynd-crm/lead-intake-hmac --rotate --reason "rotate lead-intake HMAC key"
+```
+
+- Switchyard mints the value (`crypto/rand`, 32 bytes by default, hex-encoded)
+  and writes it to every member, in registry order, each with a Vault
+  compare-and-set. It is never returned, printed or logged; the response lists
+  each member's result (`written`, `unchanged`, `failed`, `not_attempted`).
+- **Without `--rotate` a run never changes a held value.** If the members
+  already hold one, it is copied to any member that lacks it; if none holds
+  one, a new value is minted. Re-running a complete group writes nothing.
+- **A failed member stops the run** (HTTP 207, `status: partial`, exit
+  nonzero) and names the member. Re-run the same command: it completes the
+  group with the value already written. After an interrupted `--rotate`, the
+  members hold different values; a plain run then refuses with 409 and writes
+  nothing, and `--rotate` converges them on one new value.
+- A member target refuses `submit`, generated or supplied, before any prompt or
+  file read: only its group writes it.
+- Restart every member service after a write: each reads the value at start.
+
 Requires Switchyard Vault writer enabled (`ENCLII_SECRET_ROTATION_ENABLED` + `vault-credentials` secret). Until then, submit returns `503 vault_writer_disabled`.
 
 Canonical routing: `enclii/apps/switchyard-api/internal/secretsintake/registry.yaml`. Policy: [internal-devops secret intake decision](https://github.com/madfam-org/internal-devops/blob/main/decisions/2026-06-15-secret-intake-protocol.md).
@@ -379,6 +409,7 @@ enclii secrets provision oidc --all --dry-run --reason "ecosystem sweep"
 | `--json` | JSON output (no secret values) |
 | `--grace-hours` | Grace period, `0`–`168` hours, for the previous secrets when a secret is rotated. Unset keeps Janua's default (24 h) |
 | `--intake-profile` | Stored login that submits the Vault intake (the `platform_admin` operator under ADR-003). The active profile keeps the Janua calls. Unset uses the active profile |
+| `--keychain` | macOS only, one `--platform` whose registry entry declares `local_delivery.macos_keychain`, never with `--dry-run`. Before Janua is touched, proves the login Keychain takes a write (a throwaway item, written, read back and deleted). After the Vault intake succeeds, also files `client_id` and `client_secret` in the login Keychain under that service (through `/usr/bin/security` on stdin, values of at most 1024 characters, read back to verify) and lists the item names as `keychain_items`. A failed Keychain write exits non-zero, says Vault holds the complete pair and what each Keychain item holds (`keychain_state` in `--json`); see the [SECRET_INTAKE runbook](../../runbooks/SECRET_INTAKE.md#cogs-mcp-consumer-clients-2026-11-06) for the recovery |
 
 **Two identities since ADR-003 (2026-10-17).** The Vault intake routes accept only
 the `platform_admin` operator, so a tenant administrator such as `admin@madfam.io`

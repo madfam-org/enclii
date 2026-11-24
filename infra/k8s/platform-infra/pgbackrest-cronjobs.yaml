@@ -160,6 +160,11 @@ spec:
     spec:
       backoffLimit: 0
       activeDeadlineSeconds: 300
+      # Without a TTL the five newest FAILED Jobs are kept until five newer
+      # failures replace them. For a */15 check that recovers, that means a
+      # one-night failure stays in the cluster (and in any alert keyed on
+      # kube_job_status_failed) indefinitely.
+      ttlSecondsAfterFinished: 604800  # 7 days
       template:
         metadata:
           labels:

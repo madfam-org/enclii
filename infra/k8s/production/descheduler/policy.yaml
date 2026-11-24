@@ -1,0 +1,136 @@
+# Descheduler policy (kubernetes-sigs/descheduler v0.33.0, API v1alpha2).
+#
+# Owner-approved 2026-11-04 (fully using the cluster). The scheduler only
+# places a pod once; nothing moves it later. After the 2026-11-04 request
+# right-sizing, apps reserve far less than they did, but their pods still sit
+# where the old requests put them, many on the control-plane node. This policy
+# moves a few pods per run, and only pods that are cheap to move.
+#
+# What it does, per run (CronJob, cronjob.yaml):
+#   - RemovePodsViolatingNodeTaints: evicts pods from a node carrying the
+#     `node-role.madfam.io/control-plane:PreferNoSchedule` taint (applied by
+#     the coordinator) when the pod does not tolerate it. Only that taint key
+#     counts, so no other taint, present or future, makes this plugin act.
+#   - LowNodeUtilization: by REQUESTS (no metrics provider is configured),
+#     moves pods off nodes above targetThresholds while some node is below
+#     thresholds on every resource.
+#   - RemoveDuplicates: spreads replicas of one owner that share a node.
+#
+# What it never does:
+#   - touch a builder node: `nodeSelector` keeps the whole run to non-builders;
+#   - evict in a namespace listed under EXCLUDED below;
+#   - evict a pod with local storage (emptyDir or hostPath), a pod with a PVC,
+#     a DaemonSet pod, a system-critical pod, a bare pod, a mirror/static
+#     pod, or a pod younger than minPodAge;
+#   - evict a pod that fits no other non-builder node (nodeFit), so a pod
+#     pinned to the control-plane node stays there;
+#   - go around a PodDisruptionBudget: every eviction uses the Eviction API,
+#     which refuses one that would break a PDB;
+#   - evict more than 5 pods in a run, or more than 1 per namespace.
+#
+# A pod annotated `descheduler.alpha.kubernetes.io/evict` skips the filters
+# above (upstream behaviour). Nothing in this repo sets it; do not add it.
+#
+# EXCLUDED namespaces (each plugin carries the same list; the test keeps them
+# equal): the owner's list (kube-system, arc-system, arc-runners,
+# longhorn-system, data, monitoring, logging, argocd, cnpg-system,
+# external-secrets) plus three more that only make it stricter:
+#   - descheduler: its own Job pod;
+#   - kyverno: a single admission replica; evicting it stalls admission;
+#   - vault: a restarted Vault pod comes back sealed.
+#
+# Thresholds are percentages of each node's allocatable, by request. A node
+# below 30% on cpu, memory AND pods receives; a node above 60% cpu, 60%
+# memory OR 80% pods gives. The first runs' logs print each node's class and
+# usage; tune here, in Git, if the bands are wrong for the current nodes.
+#
+# Tested by tests/scripts/test_descheduler_policy.py. Runbook:
+# infra/k8s/production/descheduler/README.md.
+apiVersion: descheduler/v1alpha2
+kind: DeschedulerPolicy
+nodeSelector: "role!=builder"
+maxNoOfPodsToEvictTotal: 5
+maxNoOfPodsToEvictPerNamespace: 1
+profiles:
+  - name: madfam-rebalance
+    pluginConfig:
+      - name: DefaultEvictor
+        args:
+          nodeSelector: "role!=builder"
+          evictLocalStoragePods: false
+          evictDaemonSetPods: false
+          evictSystemCriticalPods: false
+          evictFailedBarePods: false
+          ignorePvcPods: true
+          nodeFit: true
+          minPodAge: 1h
+      - name: RemovePodsViolatingNodeTaints
+        args:
+          includePreferNoSchedule: true
+          includedTaints:
+            - node-role.madfam.io/control-plane
+          namespaces:
+            exclude:
+              - kube-system
+              - arc-system
+              - arc-runners
+              - longhorn-system
+              - data
+              - monitoring
+              - logging
+              - argocd
+              - cnpg-system
+              - external-secrets
+              - descheduler
+              - kyverno
+              - vault
+      - name: LowNodeUtilization
+        args:
+          thresholds:
+            cpu: 30
+            memory: 30
+            pods: 30
+          targetThresholds:
+            cpu: 60
+            memory: 60
+            pods: 80
+          evictableNamespaces:
+            exclude:
+              - kube-system
+              - arc-system
+              - arc-runners
+              - longhorn-system
+              - data
+              - monitoring
+              - logging
+              - argocd
+              - cnpg-system
+              - external-secrets
+              - descheduler
+              - kyverno
+              - vault
+      - name: RemoveDuplicates
+        args:
+          namespaces:
+            exclude:
+              - kube-system
+              - arc-system
+              - arc-runners
+              - longhorn-system
+              - data
+              - monitoring
+              - logging
+              - argocd
+              - cnpg-system
+              - external-secrets
+              - descheduler
+              - kyverno
+              - vault
+    plugins:
+      deschedule:
+        enabled:
+          - RemovePodsViolatingNodeTaints
+      balance:
+        enabled:
+          - RemoveDuplicates
+          - LowNodeUtilization

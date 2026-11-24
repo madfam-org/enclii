@@ -69,6 +69,14 @@ spec:
                 - -c
                 - |
                   ENDPOINT="https://${R2_ACCOUNT_ID}.r2.cloudflarestorage.com"
+
+                  # Bound aws-cli's transfer manager. Its defaults (10 parallel
+                  # ranged GETs, deep in-memory queue) plus the page cache of a
+                  # ~0.5 GB write were enough to SIGKILL this container (exit
+                  # 137) under its old 256Mi limit; the verify then never ran.
+                  export AWS_CONFIG_FILE=/tmp/aws-config
+                  printf '[default]\ns3 =\n  max_concurrent_requests = 4\n  max_queue_size = 100\n' > "${AWS_CONFIG_FILE}"
+
                   echo "Downloading latest backup from R2..."
 
                   # Find latest backup file
@@ -90,12 +98,15 @@ spec:
                     exit 1
                   fi
                   echo "Download complete."
+              # Init-container requests do not add to the pod's effective
+              # request (the verify container's 512Mi already dominates), so
+              # the higher limit costs no schedulable capacity.
               resources:
                 requests:
                   memory: "128Mi"
                   cpu: "50m"
                 limits:
-                  memory: "256Mi"
+                  memory: "1Gi"
                   cpu: "200m"
               volumeMounts:
                 - name: shared

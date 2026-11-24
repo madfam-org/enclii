@@ -71,6 +71,18 @@
       "deploy_check": "waybill"
     },
     {
+      "name": "waybill-aggregator",
+      "path": "apps/waybill",
+      "type": "go",
+      "dockerfile": "apps/waybill/Dockerfile",
+      "target": "aggregator",
+      "image": "waybill-aggregator",
+      "kustomization": "infra/k8s/production",
+      "kustomize_image": "waybill-aggregator",
+      "dependencies": ["packages/otel-go"],
+      "scan": true
+    },
+    {
       "name": "landing-page",
       "path": "apps/landing",
       "type": "node",

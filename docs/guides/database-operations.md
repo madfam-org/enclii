@@ -65,6 +65,13 @@ Sizing is chosen by plan. There are no `--version`, `--size`, `--storage`, or `-
 
 `enclii addon plans` is the authoritative, live catalog.
 
+The CPU column is the instance's CPU **limit**. Since 2026-11-04 every addon
+requests `100m` CPU (or its plan CPU when that is smaller) and bursts up to
+the limit; memory is both request and limit. Addons created earlier move to
+that shape one at a time with
+[`enclii ops addons cpu-request`](../cli/commands/ops.md#ops-addons-cpu-request),
+which restarts the instance.
+
 ### Connect Service to Database
 
 A service is bound when the addon is created. The connection string is injected into the service as `DATABASE_URL` (`REDIS_URL` / `MYSQL_URL` for those engines), and the bound service rolls automatically once the credentials secret exists:
@@ -119,6 +126,8 @@ A managed connection pooler (PgBouncer) for addons is not available yet; it is a
 ## Running Migrations
 
 Run migrations as a one-off job with [`enclii jobs run-once`](../cli/commands/jobs.md). The job runs in the service's currently deployed image with the service's environment and secrets (so it sees `DATABASE_URL`), and the command is executed with `/bin/sh -c`. There is no `enclii exec`.
+
+If the namespace's NetworkPolicies deny egress by default and admit the database only for pods with the service's labels, add `--network-identity service`: the pod then gets exactly the service's egress (deployed image only). See [Network identity for one-off jobs](../cli/commands/jobs.md#network-identity-for-one-off-jobs).
 
 ### With Popular Migration Tools
 

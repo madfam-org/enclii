@@ -121,6 +121,65 @@ After installation, the cluster becomes self-managing:
 - **Namespace**: arc-systems, arc-runners
 - **Purpose**: Self-hosted GitHub Actions runners
 
+## Retiring a project
+
+Legacy projects get their `<name>-services` Application from
+`apps/project-appset.yaml`, one per `projects/<name>/config.json`. **Do not
+retire one by deleting its `config.json`.** The ApplicationSet would delete
+the Application, and the Application carries
+`resources-finalizer.argocd.argoproj.io`, so Argo would delete every workload
+it deployed with it.
+
+Instead, add `"lifecycle": "retired"` to the `config.json`. The
+ApplicationSet's `templatePatch` then renders that one Application:
+
+- without `syncPolicy.automated`: Argo stops applying the project's repo and
+  stops self-healing, so hand changes such as Deployments scaled to 0 stay;
+- without the resources finalizer: deleting the Application later removes
+  only the Application, never the workloads.
+
+Every other project renders exactly as before.
+`tests/scripts/test_project_appset_lifecycle.py` checks both. It was also
+proven once against Argo CD v3.2.5's own ApplicationSet code over every
+`config.json` (the PR that retired sim4d).
+
+Coordinator steps after the change merges:
+
+1. Confirm the Application changed: `enclii ops apps status <name>-services -n argocd --json`
+   reports no automated sync policy and no `resources-finalizer`. The
+   ApplicationSet controller reconciles within its requeue interval (3
+   minutes by default).
+2. Scale the project's Deployments to 0. Enclii's scale path covers only
+   services bound to an explicit workload target, so for a legacy project
+   this is break-glass until that adapter exists
+   ([adapter gap](../../docs/ADAPTER_GAPS.md)):
+
+   ```bash
+   kubectl -n <namespace> get deploy,statefulset,hpa,scaledobject
+   kubectl -n <namespace> scale deploy --all --replicas=0
+   ```
+
+   An HPA does not scale a Deployment back up from 0. A KEDA `ScaledObject`
+   does, so pause or delete it first if the first command lists one.
+   StatefulSets and PVCs are left alone: they hold data and are a separate
+   decision.
+3. Later, once nothing should come back, remove the `config.json` in a PR.
+   Only the Application goes; the scaled-down workloads stay until the
+   namespace is deleted on purpose.
+
+Do not use `enclii ops apps retire` for this. While the `config.json` exists
+the ApplicationSet recreates the Application within minutes. The command
+refuses an Application that an ApplicationSet generated, in either mode
+(`refused`, HTTP 409), changes nothing, and points back to the
+`"lifecycle": "retired"` flag above
+([`ops.md`](../../docs/cli/commands/ops.md#remaining-adapter-work)).
+
+### Retired projects
+
+| Project | Retired | Why | Application |
+| --- | --- | --- | --- |
+| sim4d | 2026-11-04 | GitHub repo archived; product retired 2026-08-30 for Yantra4D | `sim4d-services`, manual sync |
+
 ## Webhooks (Optional)
 
 For instant sync instead of polling:

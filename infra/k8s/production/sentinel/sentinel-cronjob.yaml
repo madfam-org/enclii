@@ -93,9 +93,11 @@ data:
     echo "📍 CHECK 3: hostPort Usage"
     echo "   Rule: No pods using hostPort"
 
+    # No exemptions: Traefik is a ClusterIP Service, so k3s ServiceLB no
+    # longer runs svclb-traefik-* hostPort pods. Any hostPort pod, including
+    # a returning svclb pod, is a violation.
     HOSTPORT_PODS=$(kubectl get pods -A -o json 2>/dev/null | \
         jq -r '.items[] |
-        select((.metadata.namespace == "kube-system" and (.metadata.name | startswith("svclb-traefik-"))) | not) |
         select(any(.spec.containers[]?.ports[]?; .hostPort != null)) |
         "\(.metadata.namespace)/\(.metadata.name)"' || true)
 
