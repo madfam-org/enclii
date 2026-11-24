@@ -478,6 +478,10 @@ platforms:
     intake_key_map:
       phynd_crm_pipeline_client_id: client_id
       phynd_crm_pipeline_client_secret: client_secret  # pragma: allowlist secret
+    # Owner ruling 2026-11-23 (wave 2): `provision oidc --keychain` also files the
+    # pair in the ops agents' macOS login Keychain, after the Vault intake.
+    local_delivery:
+      macos_keychain: madfam-ops-agents-phynd-crm-pipeline
     janua_client:
       name: ops-agents-phynd-crm-pipeline
       client_key: ops-agents-phynd-crm-pipeline  # pragma: allowlist secret
@@ -1926,6 +1930,10 @@ platforms:
     intake_key_map:
       converge_dash_cogs_client_id: client_id
       converge_dash_cogs_client_secret: client_secret  # pragma: allowlist secret
+    # Owner ruling 2026-11-23 (wave 2): `provision oidc --keychain` also files the
+    # pair in the ops agents' macOS login Keychain, after the Vault intake.
+    local_delivery:
+      macos_keychain: madfam-ops-agents-converge-dash-cogs
     janua_client:
       name: ops-agents-converge-dash-cogs
       client_key: ops-agents-converge-dash-cogs  # pragma: allowlist secret
@@ -1964,6 +1972,10 @@ platforms:
     intake_key_map:
       pravara_cogs_client_id: client_id
       pravara_cogs_client_secret: client_secret  # pragma: allowlist secret
+    # Owner ruling 2026-11-23 (wave 2): `provision oidc --keychain` also files the
+    # pair in the ops agents' macOS login Keychain, after the Vault intake.
+    local_delivery:
+      macos_keychain: madfam-ops-agents-pravara-cogs
     janua_client:
       name: ops-agents-pravara-cogs
       client_key: ops-agents-pravara-cogs  # pragma: allowlist secret
@@ -2001,6 +2013,10 @@ platforms:
     intake_key_map:
       nauta_cogs_client_id: client_id
       nauta_cogs_client_secret: client_secret  # pragma: allowlist secret
+    # Owner ruling 2026-11-23 (wave 2): `provision oidc --keychain` also files the
+    # pair in the ops agents' macOS login Keychain, after the Vault intake.
+    local_delivery:
+      macos_keychain: madfam-ops-agents-nauta-cogs
     janua_client:
       name: ops-agents-nauta-cogs
       client_key: ops-agents-nauta-cogs  # pragma: allowlist secret

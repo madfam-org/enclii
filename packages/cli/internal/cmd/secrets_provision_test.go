@@ -134,7 +134,7 @@ func TestProvisionOIDCKeychainRefusalsStayLocal(t *testing.T) {
 		{[]string{"--platform", "ops-agents-karafiel-cogs", "--keychain", "--dry-run"}, "--keychain is refused with --dry-run"},
 		{[]string{"--platform", "ops-agents-dhanam-cogs", "--keychain", "--dry-run", "--json"}, "--keychain is refused with --dry-run"},
 		{[]string{"--platform", "zavlo-cfdi-emitter", "--keychain"}, `platform "zavlo-cfdi-emitter" declares no local_delivery.macos_keychain`},
-		{[]string{"--platform", "ops-agents-nauta-cogs", "--keychain"}, `platform "ops-agents-nauta-cogs" declares no local_delivery.macos_keychain`},
+		{[]string{"--platform", "ops-agents-selva-cogs", "--keychain"}, `platform "ops-agents-selva-cogs" declares no local_delivery.macos_keychain`},
 	} {
 		err := provisionOIDC(t, append(tc.args, "--reason", "synthetic keychain refusal")...)
 		require.Error(t, err, "%v accepted", tc.args)

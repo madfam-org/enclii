@@ -698,10 +698,15 @@ printed id as `janua_client.client_id` of its platform in both registry copies
 later runs reconcile the client instead of creating a twin, and use the same
 id in the platform binding below.
 
-**`--keychain` (the ops agents' Karafiel and Dhanam pairs only).** Owner
-ruling 2026-11-22: these two pairs also go to the ops agents' macOS login
-Keychain. Run their two commands on that workstation, in its logged-in user
-session, with a CLI built from `main` that has the flag. Before Janua is
+**`--keychain` (the ops agents' reviewed pairs only).** Owner ruling
+2026-11-22: the Karafiel and Dhanam pairs also go to the ops agents' macOS login
+Keychain; owner ruling 2026-11-23 (wave 2) adds `ops-agents-converge-dash-cogs`,
+`ops-agents-pravara-cogs`, `ops-agents-nauta-cogs` and
+`ops-agents-phynd-crm-pipeline` (each declares its `local_delivery.macos_keychain`
+service). Run their commands on that workstation, in its logged-in user
+session, with a CLI built from `main` that has the flag. The owner-run recovery
+script (`scripts/deliver-ops-agents-keychain.sh`) still covers Karafiel and
+Dhanam only. Before Janua is
 touched, the CLI writes, reads back and deletes a throwaway item
 (`<service>-preflight`) to prove the login Keychain is unlocked and writable;
 a locked Keychain (for example from an SSH session: "User interaction is not
