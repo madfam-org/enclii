@@ -34,12 +34,12 @@ func (r *OneOffJobRepository) Create(ctx context.Context, job *types.OneOffJob) 
 	query := `
 		INSERT INTO one_off_jobs (
 			id, project_id, service_id, name, command, image,
-			timeout, run_at, status, created_at
-		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+			timeout, run_at, status, created_at, network_identity
+		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
 	`
 	_, err := r.db.ExecContext(ctx, query,
 		job.ID, job.ProjectID, job.ServiceID, job.Name, job.Command, job.Image,
-		job.Timeout, job.RunAt, job.Status, job.CreatedAt,
+		job.Timeout, job.RunAt, job.Status, job.CreatedAt, job.NetworkIdentity,
 	)
 	return err
 }
@@ -54,13 +54,13 @@ func (r *OneOffJobRepository) GetByID(ctx context.Context, id uuid.UUID) (*types
 	query := `
 		SELECT id, project_id, service_id, name, command, image,
 		       timeout, run_at, status, exit_code, failure_reason,
-		       created_at, started_at, ended_at
+		       created_at, started_at, ended_at, network_identity
 		FROM one_off_jobs WHERE id = $1
 	`
 	err := r.db.QueryRowContext(ctx, query, id).Scan(
 		&job.ID, &job.ProjectID, &job.ServiceID, &job.Name, &job.Command, &image,
 		&job.Timeout, &runAt, &job.Status, &exitCode, &job.FailureReason,
-		&job.CreatedAt, &startedAt, &endedAt,
+		&job.CreatedAt, &startedAt, &endedAt, &job.NetworkIdentity,
 	)
 	if err != nil {
 		return nil, err
@@ -109,7 +109,7 @@ func (r *OneOffJobRepository) ListByProjectPage(ctx context.Context, projectID u
 	query := `
 		SELECT id, project_id, service_id, name, command, image,
 		       timeout, run_at, status, exit_code, failure_reason,
-		       created_at, started_at, ended_at
+		       created_at, started_at, ended_at, network_identity
 		FROM one_off_jobs
 		WHERE project_id = $1
 		ORDER BY created_at DESC, id DESC
@@ -130,7 +130,7 @@ func (r *OneOffJobRepository) ListPending(ctx context.Context) ([]*types.OneOffJ
 	query := `
 		SELECT id, project_id, service_id, name, command, image,
 		       timeout, run_at, status, exit_code, failure_reason,
-		       created_at, started_at, ended_at
+		       created_at, started_at, ended_at, network_identity
 		FROM one_off_jobs
 		WHERE status = 'pending' AND (run_at IS NULL OR run_at <= NOW())
 		ORDER BY created_at ASC
@@ -214,7 +214,7 @@ func (r *OneOffJobRepository) scanOneOffJobs(rows *sql.Rows) ([]*types.OneOffJob
 		err := rows.Scan(
 			&job.ID, &job.ProjectID, &job.ServiceID, &job.Name, &job.Command, &image,
 			&job.Timeout, &runAt, &job.Status, &exitCode, &job.FailureReason,
-			&job.CreatedAt, &startedAt, &endedAt,
+			&job.CreatedAt, &startedAt, &endedAt, &job.NetworkIdentity,
 		)
 		if err != nil {
 			return nil, fmt.Errorf("failed to scan one-off job: %w", err)

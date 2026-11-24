@@ -1,6 +1,6 @@
 # MADFAM ecosystem OIDC auto-provision registry
 # Consumed by: enclii secrets provision oidc
-# Last Updated: 2026-11-02
+# Last Updated: 2026-11-22
 #
 # TWO COPIES, ONE CONTENT. The CLI embeds
 # packages/cli/internal/ecosystemoidc/data/ecosystem-oidc-provision.yaml (go:embed
@@ -316,6 +316,46 @@ platforms:
         - refresh_token
 
   # ---------------------------------------------------------------------------
+  # CEQ CPU worker (2026-11-19, RFC 0061 wave 1; owner: "proceed with
+  # provisioning the worker's Janua client"). The machine identity of the
+  # in-cluster pod that leases `capture.page` and `export` jobs from ceq-api
+  # over HTTPS (`POST /v1/worker/*`). One edge, one client, one scope.
+  #
+  # ceq-api accepts a worker token only when it is a client_credentials token
+  # with aud `ceq-api` and scope `ceq:worker` (ceq apps/api
+  # src/ceq_api/auth/janua.py, get_worker_principal). `ceq:worker` is a
+  # different capability from `ceq:render` (submit) and `ceq:produce` (submit a
+  # production): this client holds neither.
+  #
+  # Org-bound to madfam-ecosystem, like every other MADFAM machine edge: a
+  # machine identity with no tenant is platform authority in Janua.
+  #
+  # NOT pinned with a client_id: the first provision run CREATES the client and
+  # prints its jnc_… id; pin it here (both copies) so later runs reconcile.
+  #
+  # The pair lands at Vault secret/ceq through ceq/cpu-worker-oauth (LOWERCASE
+  # keys, a MERGE alongside ceq's other properties), read by ceq's DEDICATED
+  # `ceq-cpu-worker-credentials` ExternalSecret. That pod opens web pages, so it
+  # mounts this one Secret and nothing else of ceq's.
+  # ---------------------------------------------------------------------------
+  ceq-cpu-worker:
+    intake_target: ceq/cpu-worker-oauth
+    intake_key_map:
+      cpu_worker_client_id: client_id
+      cpu_worker_client_secret: client_secret  # pragma: allowlist secret
+    janua_client:
+      name: CEQ CPU worker (service)
+      client_key: ceq-cpu-worker  # pragma: allowlist secret
+      audience: ceq-api
+      description: Machine identity (client_credentials) of CEQ's in-cluster CPU worker, which leases capture and export jobs from ceq-api. Org-bound to madfam-ecosystem, scope ceq:worker only. Holds neither ceq:render nor ceq:produce. Never a browser login.
+      is_confidential: true
+      organization_id: 1a6233ef-185f-43ee-9181-e2591fbb2643
+      allowed_scopes:
+        - ceq:worker
+      grant_types:
+        - client_credentials
+
+  # ---------------------------------------------------------------------------
   # Nauta → Symbiosis-HCM (service). The ecosystem's FIRST client_credentials
   # machine edge — every entry above is an authorization_code LOGIN client.
   #
@@ -357,6 +397,96 @@ platforms:
       organization_id: e6cbd51d-8329-4c4e-8c74-aba643ab4575
       allowed_scopes:
         - hcm:hr
+      grant_types:
+        - client_credentials
+
+  # ---------------------------------------------------------------------------
+  # nauta → phynd-crm CRM reads (2026-11-09, machine edge). Replaces phynd's
+  # static FEDERATION_API_TOKEN for nauta: that bearer carries write scopes for
+  # any tenant, and nauta only reads. One edge, one client, one scope.
+  #
+  # phynd-crm (apps/web/src/lib/trpc/machine-auth.ts) accepts an RS256 token
+  # with aud `phynd-crm` (PHYND_CRM_MACHINE_AUDIENCE), token_use
+  # client_credentials and scope `phynd-crm-engagements:read`, which it maps to
+  # engagements:read + contacts:read only (MACHINE_SCOPE_GRANTS). It pins the
+  # token's org_id to PHYND_CRM_MACHINE_JANUA_ORG_ID and the tenant to
+  # PHYND_CRM_MACHINE_TENANT_ID, so this client MUST be org-bound to that same
+  # organization (madfam-ecosystem). Off in phynd until both are set.
+  #
+  # Janua reserves the audience and the scope (janua
+  # reserved_oauth_boundaries.py, PHYND_CRM_SCOPES). Provision only after the
+  # Janua image that reserves them is promoted.
+  #
+  # The pair lands at secret/nauta through nauta/phynd-crm-oauth (LOWERCASE
+  # keys), read by nauta's DEDICATED nauta-phynd-crm-oauth ExternalSecret.
+  # NOT pinned yet: the first provision run CREATES the client and prints its
+  # jnc_… id; pin it here (both copies).
+  # ---------------------------------------------------------------------------
+  nauta-phynd-crm:
+    intake_target: nauta/phynd-crm-oauth
+    intake_key_map:
+      phynd_crm_oauth_client_id: client_id
+      phynd_crm_oauth_client_secret: client_secret  # pragma: allowlist secret
+    janua_client:
+      name: Nauta → Phynd CRM (service)
+      client_key: nauta-phynd-crm  # pragma: allowlist secret
+      audience: phynd-crm
+      description: Machine edge (client_credentials) from nauta's cockpit CRM reads to phynd-crm tRPC. Org-bound to madfam-ecosystem, scope phynd-crm-engagements:read only (engagements + contacts read). Replaces the static federation bearer for nauta. Never a browser login.
+      is_confidential: true
+      organization_id: 1a6233ef-185f-43ee-9181-e2591fbb2643
+      allowed_scopes:
+        - phynd-crm-engagements:read
+      grant_types:
+        - client_credentials
+
+  # ---------------------------------------------------------------------------
+  # PhyndCRM native MCP reader (2026-11-14, RFC 0051 ruling M3; owner ruling V2:
+  # the ops agents ONLY, Selva gets no client until it has a concrete need). Same shape and naming as
+  # the COGS MCP consumers (<consumer>-<scope namespace>): one edge, one client, one
+  # scope, client_credentials only.
+  #
+  # PhyndCRM's `POST /mcp` (phynd-crm#131, apps/web/src/lib/mcp/) is read-only:
+  # contacts, leads, open tasks, deals and pipelines. It accepts an RS256 token
+  # with aud `phynd-crm` (PHYND_CRM_MACHINE_AUDIENCE) only when ALL hold:
+  #   - scope `phynd-crm-pipeline:read`, matched exactly. It is a different
+  #     scope from nauta's `phynd-crm-engagements:read` on purpose: neither
+  #     opens the other's surface, so never add one to the other's client;
+  #   - org_id = PHYND_CRM_MACHINE_JANUA_ORG_ID, so the client MUST be
+  #     org-bound to that organization (madfam-ecosystem);
+  #   - the client id is listed as `client-id@org-id` in phynd-crm's
+  #     PHYND_CRM_MCP_READ_CLIENTS, and PHYND_CRM_MCP_ENABLED is exactly `true`.
+  #     Both are the owner's switches on the phynd-crm web deployment: a
+  #     provisioned client reads nothing until the owner lists it.
+  #
+  # Janua reserves the audience and, from janua#799, the scope
+  # (reserved_oauth_boundaries.py, PHYND_CRM_SCOPES). Provision only after the
+  # Janua image that reserves `phynd-crm-pipeline:read` is promoted.
+  #
+  # Ops agents: the pair lands at the path secret/ops-agents (proposed with the
+  # COGS consumers in enclii#946; the owner decides), with no namespace and no
+  # ExternalSecret, because no ops-agent runtime reads Vault today. Re-apply the
+  # Vault policy (ASSERT_PATH=ops-agents
+  # scripts/apply-switchyard-vault-policy-remote.sh) before the first ops-agents
+  # run, or the run rotates the Janua secret and then 403s on the Vault merge.
+  #
+  # NOT pinned yet: the first provision run of each CREATES the client and
+  # prints its jnc_… id; pin it here (both copies) and use the same id in
+  # PHYND_CRM_MCP_READ_CLIENTS.
+  # ---------------------------------------------------------------------------
+  ops-agents-phynd-crm-pipeline:
+    intake_target: ops-agents/phynd-crm-pipeline-client
+    intake_key_map:
+      phynd_crm_pipeline_client_id: client_id
+      phynd_crm_pipeline_client_secret: client_secret  # pragma: allowlist secret
+    janua_client:
+      name: ops-agents-phynd-crm-pipeline
+      client_key: ops-agents-phynd-crm-pipeline  # pragma: allowlist secret
+      audience: phynd-crm
+      description: Machine client (client_credentials) for the MADFAM ops agents to read PhyndCRM's native MCP (POST /mcp, phynd-crm#131), read-only tools contacts_search, contacts_get, leads_list, tasks_list_open, deals_list and pipelines_list (RFC 0051 M3). Org-bound to madfam-ecosystem, scope phynd-crm-pipeline:read only. Reads nothing until phynd-crm lists the client in PHYND_CRM_MCP_READ_CLIENTS. Never a browser login.
+      is_confidential: true
+      organization_id: 1a6233ef-185f-43ee-9181-e2591fbb2643
+      allowed_scopes:
+        - phynd-crm-pipeline:read
       grant_types:
         - client_credentials
 
@@ -750,6 +880,66 @@ platforms:
         - refresh_token
 
   # ---------------------------------------------------------------------------
+  # forj-web — the Forj storefront at forj.design (API api.forj.design,
+  # repository and namespace forj). A CONFIDENTIAL login client: the Next.js
+  # route handlers /auth/login and /auth/callback (forj apps/web/src/lib/
+  # janua-oidc.ts) run authorization_code + PKCE (S256) server-side and send
+  # the secret as client_secret_post, so browsers never see it. PKCE is a
+  # per-request property of the flow, not a client field, so nothing here
+  # declares it. refresh_token is granted because the callback keeps Janua's
+  # refresh token in an httpOnly cookie.
+  #
+  # ONE redirect URI, exact byte for byte (Janua compares scheme, host, port
+  # and path): `${FORJ_PUBLIC_URL}/auth/callback` on the production origin.
+  # Deliberately NO localhost callback (the family-history-web rule): local
+  # development registers its own client.
+  #
+  # audience `forj` is what forj's API verifies (apps/api/src/lib/janua.ts,
+  # JANUA_AUDIENCE default `forj`): Janua stamps the client's audience as
+  # `aud` on the authorization-code tokens, and the web hands the access token
+  # to api.forj.design as the `session_token` cookie.
+  #
+  # allowed_scopes is the web's request, `openid profile email`, plus the
+  # first-party silent-SSO scope (owner decision D2).
+  #
+  # BOTH the id and the secret go to Vault (target forj/web-oidc, lowercase,
+  # as Vault stores them), cotiza-web-style: the forj-web-oidc ExternalSecret
+  # maps `property: janua_client_id` -> JANUA_CLIENT_ID and
+  # `property: janua_client_secret` -> JANUA_CLIENT_SECRET, both read by the
+  # web server at runtime. A dedicated ExternalSecret, not forj-secrets (the
+  # onboarding Secret, out of the intake's reach) and not forj-service-clients
+  # (the Pravara intake pair), so an unprovisioned client holds nothing else's
+  # sync.
+  #
+  # NOT pinned with a client_id: the client does not exist yet, so the first
+  # run CREATES it, as a Janua admin (`--profile admin`). Pin the printed jnc_…
+  # id here (both copies) after that run so later runs reconcile instead of
+  # creating a duplicate.
+  # ---------------------------------------------------------------------------
+  forj-web:
+    intake_target: forj/web-oidc
+    intake_key_map:
+      janua_client_id: client_id
+      janua_client_secret: client_secret  # pragma: allowlist secret
+    janua_client:
+      name: forj-web
+      client_key: forj-web  # pragma: allowlist secret
+      audience: forj
+      description: Forj storefront (forj.design) — confidential OIDC authorization-code + PKCE client for the Next.js route handlers
+      is_confidential: true
+      website_url: https://forj.design
+      redirect_uris:
+        - https://forj.design/auth/callback
+      allowed_scopes:
+        - openid
+        - profile
+        - email
+        - madfam:silent_auth
+      grant_types:
+        - authorization_code
+        - refresh_token
+
+  # ---------------------------------------------------------------------------
   # Digital-twins machine edges (2026-10-03). Nine client_credentials clients,
   # each one edge, one client, the narrowest scope set. Eight are defined in
   # janua apps/api/scripts/seed_service_clients.py (SERVICE_CLIENTS and the
@@ -1106,6 +1296,16 @@ platforms:
   # scope per token (core/janua_service_token.py caches per client and scope),
   # so a drafts token never carries fiscal:invoice and vice versa.
   #
+  # fiscal:csf-intake (2026-11-11): Mi ficha in HCM lets a contractor upload
+  # their constancia de situación fiscal; HCM forwards it to Karafiel's
+  # POST /api/v1/fiscal/csf/extract/, which returns a proposal the person
+  # confirms field by field and keeps the PDF as evidence. Karafiel already
+  # gates that path on this scope (core/middleware/active_rfc.py) and Janua
+  # already reserves it. Adding it to this EXISTING client is a reviewed
+  # widening: `provision oidc` PATCHes allowed_scopes only (it refuses any
+  # other drift) and then needs --rotate-secret, because the secret of an
+  # existing client cannot be read back.
+  #
   # audience `karafiel-api` is Karafiel's JANUA_AUDIENCE (core/janua_audience.py),
   # the audience zavlo-cfdi-emitter already holds. HCM's token
   # request names no audience: Janua stamps the client's. Karafiel admits the
@@ -1135,12 +1335,13 @@ platforms:
       client_id: jnc_gWbJCFfVZsv6J7cJXcieW7VJrCsNmvPp  # pragma: allowlist secret -- public OAuth client id
       client_key: symbiosis-hcm-karafiel  # pragma: allowlist secret
       audience: karafiel-api
-      description: Machine edge (client_credentials) from Symbiosis-HCM's API and worker to Karafiel. Platform-admin, scopes legal:contractor-draft and legal:employment-draft (contract drafts) and fiscal:invoice (CFDI); HCM requests one scope per token.
+      description: Machine edge (client_credentials) from Symbiosis-HCM's API and worker to Karafiel. Platform-admin, scopes legal:contractor-draft and legal:employment-draft (contract drafts), fiscal:invoice (CFDI) and fiscal:csf-intake (reading a contractor's constancia de situación fiscal); HCM requests one scope per token.
       is_confidential: true
       allowed_scopes:
         - legal:contractor-draft
         - legal:employment-draft
         - fiscal:invoice
+        - fiscal:csf-intake
       grant_types:
         - client_credentials
 
@@ -1196,6 +1397,141 @@ platforms:
         - client_credentials
 
   # ---------------------------------------------------------------------------
+  # symbiosis-hcm → Nauta labor hours (2026-11-08, RFC 0050 ruling C10). HCM's
+  # Celery worker closes each month's labor cost per engagement: it reads the
+  # logged minutes from Nauta's GET /api/internal/labor-hours?month=YYYY-MM
+  # (nauta#359, merged) and allocates each person's actual period cost by their
+  # share of hours (symbiosis-hcm#232, costeo/nauta.py). Hours travel from Nauta
+  # to HCM; rates never leave HCM. One edge, one client, one scope,
+  # client_credentials only, no browser leg.
+  #
+  # audience `nauta-api` is Nauta's inbound machine audience (lib/machine-token.ts,
+  # the one /api/internal/engagements verifies). SCOPE `nauta-labor-hours:read`,
+  # ONE colon, matched exactly. ONLY this client may hold it: every row names
+  # the Janua subject who logged the time. Nauta's MCP scope nauta-cogs:read
+  # does not open the route, and this scope opens nothing else.
+  #
+  # ORG-BOUND to madfam-ecosystem, like the other COGS edges. Nauta accepts a
+  # token with an org_id only when it equals NAUTA_MADFAM_JANUA_ORG_ID, which
+  # production does not set today (and nauta's cockpit staff check reads the
+  # same variable); the owner sets it once for this and the COGS MCP clients.
+  #
+  # Provision only after the Janua image that RESERVES nauta-labor-hours:read
+  # is promoted (janua apps/api/app/core/reserved_oauth_boundaries.py): until
+  # then any organization admin may register a client carrying it.
+  #
+  # The pair lands at secret/symbiosis-hcm through
+  # symbiosis-hcm/nauta-labor-hours-client (LOWERCASE keys), read by HCM's
+  # DEDICATED, planned hcm-nauta-labor-hours ExternalSecret, which maps them to
+  # NAUTA_LABOR_HOURS_CLIENT_ID / NAUTA_LABOR_HOURS_CLIENT_SECRET. HCM ignores
+  # the pair until HCM_LABOR_EVENTS_ENABLED=true.
+  #
+  # NOT pinned yet: the first provision run CREATES the client and prints its
+  # jnc_… id; pin it here (both copies).
+  # ---------------------------------------------------------------------------
+  symbiosis-hcm-nauta-labor-hours:
+    intake_target: symbiosis-hcm/nauta-labor-hours-client
+    intake_key_map:
+      nauta_labor_hours_client_id: client_id
+      nauta_labor_hours_client_secret: client_secret  # pragma: allowlist secret
+    janua_client:
+      name: symbiosis-hcm-nauta-labor-hours
+      client_key: symbiosis-hcm-nauta-labor-hours  # pragma: allowlist secret
+      audience: nauta-api
+      description: Machine edge (client_credentials) from Symbiosis-HCM's worker to Nauta's monthly labor-hours read (GET /api/internal/labor-hours, symbiosis-hcm#232), the hours half of the labor cost close (RFC 0050 C10). Org-bound to madfam-ecosystem, scope nauta-labor-hours:read only; Nauta admits the org only when it is NAUTA_MADFAM_JANUA_ORG_ID.
+      is_confidential: true
+      organization_id: 1a6233ef-185f-43ee-9181-e2591fbb2643
+      allowed_scopes:
+        - nauta-labor-hours:read
+      grant_types:
+        - client_credentials
+
+  # ---------------------------------------------------------------------------
+  # symbiosis-hcm → Dhanam cost events (2026-11-08, RFC 0050 ruling C10). HCM
+  # writes the labor cost events: per engagement and month, `cost.event.v1`
+  # with source `symbiosis-hcm` and `allocates` (Dhanam contract v1.1,
+  # dhanam#944), pushed as a MACHINE to POST /v1/cost-events
+  # (symbiosis-hcm#232, costeo/dhanam.py). No person, minutes or rate in any
+  # field. Same shape as karafiel-dhanam-cost-events: one edge, one client, one
+  # scope, client_credentials only. NOT symbiosis-hcm-dhanam-writer: that
+  # client holds dhanam-scheduled-payments:write and a different grant.
+  #
+  # audience `dhanam-api` is what Dhanam's cost-events writer strategy checks.
+  # ORG-BOUND to madfam-ecosystem: the strategy refuses a token without
+  # org_id. The token alone authorizes nothing: Dhanam's CostEventWriterGrant
+  # binds THIS client id and organization to one business space and the source
+  # `symbiosis-hcm` (apps/api/scripts/provision-cost-event-writer-grant.ts).
+  # Janua already reserves dhanam-cost-events:write.
+  #
+  # The pair lands at secret/symbiosis-hcm through
+  # symbiosis-hcm/dhanam-cost-events-client (LOWERCASE keys), read by HCM's
+  # DEDICATED, planned hcm-dhanam-cost-events ExternalSecret, which maps them
+  # to DHANAM_COST_EVENTS_CLIENT_ID / DHANAM_COST_EVENTS_CLIENT_SECRET. HCM
+  # ignores the pair until HCM_LABOR_EVENTS_ENABLED=true.
+  #
+  # NOT pinned yet: pin the printed jnc_… id here (both copies) and use the
+  # same id in the Dhanam writer grant.
+  # ---------------------------------------------------------------------------
+  symbiosis-hcm-dhanam-cost-events:
+    intake_target: symbiosis-hcm/dhanam-cost-events-client
+    intake_key_map:
+      dhanam_cost_events_client_id: client_id
+      dhanam_cost_events_client_secret: client_secret  # pragma: allowlist secret
+    janua_client:
+      name: symbiosis-hcm-dhanam-cost-events
+      client_key: symbiosis-hcm-dhanam-cost-events  # pragma: allowlist secret
+      audience: dhanam-api
+      description: Machine edge (client_credentials) from Symbiosis-HCM's worker to Dhanam's cost-events ingest route (monthly labor cost.event.v1 per engagement with allocates, symbiosis-hcm#232, RFC 0050 C10). Org-bound to madfam-ecosystem, scope dhanam-cost-events:write only; Dhanam's writer grant binds it to one space and the source symbiosis-hcm.
+      is_confidential: true
+      organization_id: 1a6233ef-185f-43ee-9181-e2591fbb2643
+      allowed_scopes:
+        - dhanam-cost-events:write
+      grant_types:
+        - client_credentials
+
+  # ---------------------------------------------------------------------------
+  # Pravara MES → Dhanam cost events (2026-11-08, RFC 0050 ruling C12).
+  # pravara-api pushes each completed job's material consumption as
+  # QUANTITY-ONLY `consumption` events (source `pravara`; never an amount,
+  # currency or FX: Dhanam values consumption) to POST /v1/cost-events, from a
+  # durable tenant-scoped outbox (pravara-mes#71, internal/costevents). Same
+  # shape as karafiel-dhanam-cost-events: one edge, one client, one scope,
+  # client_credentials only.
+  #
+  # audience `dhanam-api`, ORG-BOUND to madfam-ecosystem (Dhanam's writer
+  # strategy refuses a token without org_id). Dhanam's CostEventWriterGrant
+  # binds THIS client id and organization to one business space and the source
+  # `pravara`. Janua already reserves dhanam-cost-events:write.
+  #
+  # The pair lands at secret/pravara-mes through
+  # pravara-mes/dhanam-cost-events-client (LOWERCASE keys), read by Pravara's
+  # DEDICATED, planned pravara-dhanam-cost-events ExternalSecret (never the
+  # shared pravara-service-clients: ESO is all-or-nothing per ExternalSecret),
+  # which maps them to PRAVARA_COST_EVENTS_CLIENT_ID /
+  # PRAVARA_COST_EVENTS_CLIENT_SECRET. Pravara ignores the pair until
+  # PRAVARA_COST_EVENTS_ENABLED=true (or uses none in its dry run).
+  #
+  # NOT pinned yet: pin the printed jnc_… id here (both copies) and use the
+  # same id in the Dhanam writer grant.
+  # ---------------------------------------------------------------------------
+  pravara-dhanam-cost-events:
+    intake_target: pravara-mes/dhanam-cost-events-client
+    intake_key_map:
+      pravara_cost_events_client_id: client_id
+      pravara_cost_events_client_secret: client_secret  # pragma: allowlist secret
+    janua_client:
+      name: pravara-dhanam-cost-events
+      client_key: pravara-dhanam-cost-events  # pragma: allowlist secret
+      audience: dhanam-api
+      description: Machine edge (client_credentials) from pravara-api to Dhanam's cost-events ingest route (quantity-only consumption cost.event.v1 per completed job, pravara-mes#71, RFC 0050 C12). Org-bound to madfam-ecosystem, scope dhanam-cost-events:write only; Dhanam's writer grant binds it to one space and the source pravara.
+      is_confidential: true
+      organization_id: 1a6233ef-185f-43ee-9181-e2591fbb2643
+      allowed_scopes:
+        - dhanam-cost-events:write
+      grant_types:
+        - client_credentials
+
+  # ---------------------------------------------------------------------------
   # Karafiel → Dhanam cost events (2026-11-05, RFC 0050 Phase 1). Karafiel's
   # worker turns received CFDI into `cost.event.v1` purchase events (one per
   # concepto) and issued CFDI into accrual revenue events, and pushes them as a
@@ -1237,6 +1573,507 @@ platforms:
       organization_id: 1a6233ef-185f-43ee-9181-e2591fbb2643
       allowed_scopes:
         - dhanam-cost-events:write
+      grant_types:
+        - client_credentials
+
+  # ---------------------------------------------------------------------------
+  # Karafiel → Dhanam bank ledger (2026-11-11, owner ruling 2026-11-10: SAT
+  # catch-up readiness). Karafiel's worker pulls the company's bank movements
+  # into its bank mirror (integrations/dhanam_sync.py, karafiel#383) from
+  # Dhanam's machine-only route GET /v1/bank-ledger/spaces/:spaceId/transactions
+  # (dhanam#969, bank-ledger-reader.strategy.ts). RESICO PM is taxed on cash
+  # flow (LISR arts. 206-215), so collection and payment dates come from the
+  # bank. One edge, one client, one READ scope, client_credentials only.
+  #
+  # audience `dhanam-api`, ORG-BOUND to madfam-ecosystem: the strategy refuses
+  # a token without org_id. The token alone reads nothing: Dhanam's
+  # operator-reviewed BankLedgerReaderGrant binds THIS client id and THIS
+  # organization to ONE live business space (apps/api/scripts/
+  # provision-bank-ledger-reader-grant.ts); any other space is 403.
+  #
+  # SCOPE `dhanam-bank-ledger:read`, ONE colon. Provision only after the Janua
+  # image that RESERVES it (janua apps/api/app/core/reserved_oauth_boundaries.py
+  # DHANAM_SCOPES) is promoted: until then any organization admin may register
+  # a client carrying it.
+  #
+  # The pair lands at secret/karafiel through karafiel/dhanam-bank-ledger-client
+  # (LOWERCASE keys), read by Karafiel's DEDICATED karafiel-dhanam-bank-ledger
+  # ExternalSecret (mounted optional on the worker only), which maps them to
+  # DHANAM_BANK_LEDGER_CLIENT_ID / DHANAM_BANK_LEDGER_CLIENT_SECRET. Without
+  # the pair Karafiel keeps its legacy route.
+  #
+  # NOT pinned yet: the first provision run CREATES the client and prints its
+  # jnc_… id; pin it here (both copies) and use the same id in the Dhanam
+  # reader grant.
+  # ---------------------------------------------------------------------------
+  karafiel-dhanam-bank-ledger:
+    intake_target: karafiel/dhanam-bank-ledger-client
+    intake_key_map:
+      dhanam_bank_ledger_client_id: client_id
+      dhanam_bank_ledger_client_secret: client_secret  # pragma: allowlist secret
+    janua_client:
+      name: karafiel-dhanam-bank-ledger
+      client_key: karafiel-dhanam-bank-ledger  # pragma: allowlist secret
+      audience: dhanam-api
+      description: Machine edge (client_credentials) from Karafiel's worker to Dhanam's bank-ledger read route (one business space's bank movements for the bank mirror, karafiel#383, dhanam#969). Org-bound to madfam-ecosystem, scope dhanam-bank-ledger:read only; Dhanam's reader grant binds it to one space.
+      is_confidential: true
+      organization_id: 1a6233ef-185f-43ee-9181-e2591fbb2643
+      allowed_scopes:
+        - dhanam-bank-ledger:read
+      grant_types:
+        - client_credentials
+
+  # ---------------------------------------------------------------------------
+  # Karafiel → Dhanam scheduled payments (2026-11-11, RFC 0055 Phase 1.5,
+  # owner-adopted ruling O4). Karafiel pushes each tax obligation (the monthly
+  # and annual enteros it computes) into Dhanam as a PLANNED payment through
+  # Dhanam's EXISTING scheduled-payments machine writer route (PUT/GET
+  # /v1/scheduled-payments/external/<source>/<id>, Dhanam #924), the route
+  # symbiosis-hcm-dhanam-writer already uses. One edge, one client, one scope,
+  # client_credentials only, no browser leg. The Karafiel pusher is a later
+  # change; this entry only declares the client.
+  #
+  # audience `dhanam-api`, ORG-BOUND to madfam-ecosystem: the writer strategy
+  # refuses a token without org_id. The token alone authorizes nothing:
+  # Dhanam's operator-reviewed ScheduledPaymentWriterGrant binds THIS client id
+  # and organization to one business space and the source system `karafiel`
+  # (apps/api/scripts/provision-scheduled-payment-writer-grant.ts). Janua
+  # already reserves dhanam-scheduled-payments:write (janua#758).
+  #
+  # The pair lands at secret/karafiel through
+  # karafiel/dhanam-scheduled-payments-client (LOWERCASE keys), for Karafiel's
+  # DEDICATED, planned karafiel-dhanam-scheduled-payments ExternalSecret. Not
+  # karafiel-dhanam-cost-events (another scope and grant).
+  #
+  # NOT pinned yet: pin the printed jnc_… id here (both copies) and use the
+  # same id in the Dhanam writer grant.
+  # ---------------------------------------------------------------------------
+  karafiel-dhanam-scheduled-payments:
+    intake_target: karafiel/dhanam-scheduled-payments-client
+    intake_key_map:
+      dhanam_scheduled_payments_client_id: client_id
+      dhanam_scheduled_payments_client_secret: client_secret  # pragma: allowlist secret
+    janua_client:
+      name: karafiel-dhanam-scheduled-payments
+      client_key: karafiel-dhanam-scheduled-payments  # pragma: allowlist secret
+      audience: dhanam-api
+      description: Machine edge (client_credentials) from Karafiel to Dhanam's scheduled-payments machine writer route (tax obligations as planned payments, RFC 0055 Phase 1.5, ruling O4). Org-bound to madfam-ecosystem, scope dhanam-scheduled-payments:write only; Dhanam's writer grant binds it to one space and the source karafiel.
+      is_confidential: true
+      organization_id: 1a6233ef-185f-43ee-9181-e2591fbb2643
+      allowed_scopes:
+        - dhanam-scheduled-payments:write
+      grant_types:
+        - client_credentials
+
+  # ---------------------------------------------------------------------------
+  # Selva → Dhanam cost events (2026-11-11, RFC 0050 ruling C13). Selva's
+  # nexus-api sweep (selva-office#363, nexus_api/cost_events) rolls
+  # compute_token_ledger up into daily `cost.event.v1` inference events,
+  # source `selva`, every one `basis: estimate`, and pushes them as a MACHINE
+  # to POST /v1/cost-events. Same shape as karafiel-dhanam-cost-events: one
+  # edge, one client, one scope, client_credentials only.
+  #
+  # audience `dhanam-api`, ORG-BOUND to madfam-ecosystem (Dhanam's writer
+  # strategy refuses a token without org_id). Dhanam's CostEventWriterGrant
+  # binds THIS client id and organization to one business space and the source
+  # `selva`. Janua already reserves dhanam-cost-events:write. Distinct from any
+  # Selva READ client of Dhanam's COGS MCP (dhanam-cogs:read): never widen one
+  # into the other.
+  #
+  # The pair lands at secret/selva through selva/dhanam-cost-events-client
+  # (LOWERCASE keys), read by Selva's DEDICATED selva-dhanam-cost-events
+  # ExternalSecret (parked in selva-office infra/k8s/production/optional/ until
+  # this pair exists), which maps them to SELVA_DHANAM_COST_EVENTS_CLIENT_ID /
+  # SELVA_DHANAM_COST_EVENTS_CLIENT_SECRET. Selva ignores the pair until
+  # SELVA_COST_EVENTS_EMIT_ENABLED=true and its CronJob is unsuspended.
+  #
+  # NOT pinned yet: pin the printed jnc_… id here (both copies) and use the
+  # same id in the Dhanam writer grant.
+  # ---------------------------------------------------------------------------
+  selva-dhanam-cost-events:
+    intake_target: selva/dhanam-cost-events-client
+    intake_key_map:
+      dhanam_cost_events_client_id: client_id
+      dhanam_cost_events_client_secret: client_secret  # pragma: allowlist secret
+    janua_client:
+      name: selva-dhanam-cost-events
+      client_key: selva-dhanam-cost-events  # pragma: allowlist secret
+      audience: dhanam-api
+      description: Machine edge (client_credentials) from Selva's nexus-api cost-events sweep to Dhanam's cost-events ingest route (daily inference cost.event.v1, basis estimate, selva-office#363, RFC 0050 C13). Org-bound to madfam-ecosystem, scope dhanam-cost-events:write only; Dhanam's writer grant binds it to one space and the source selva.
+      is_confidential: true
+      organization_id: 1a6233ef-185f-43ee-9181-e2591fbb2643
+      allowed_scopes:
+        - dhanam-cost-events:write
+      grant_types:
+        - client_credentials
+
+  # ---------------------------------------------------------------------------
+  # Tulana → Dhanam COGS MCP reader (2026-11-17, tulana#151, dhanam#1002).
+  # Tulana's API reads Dhanam's native COGS MCP (POST /mcp on Dhanam's API),
+  # tool `cogs_sku_floors`, for the internal catalogue's measured cost per
+  # offer. READ ONLY: one edge, one client, one scope, client_credentials
+  # only, no browser leg. Never widen this client into a writer: a Tulana
+  # write to Dhanam is a separate client with its own scope and grant.
+  #
+  # audience `dhanam-api`, what the MCP's machine strategy checks (the
+  # audience every Dhanam machine edge here holds). ORG-BOUND to
+  # madfam-ecosystem: Dhanam refuses a token without org_id, and Janua stamps
+  # org_id only on an org-bound client. The token alone reads nothing: Dhanam
+  # also requires `<client_id>@<organization_id>` in DHANAM_MCP_READ_CLIENTS
+  # on dhanam-api (owner-run, after the first provision).
+  #
+  # SCOPE `dhanam-cogs:read`, ONE colon (Janua registers only
+  # `namespace:action`). It never reaches cogs_submit_cost_events, which
+  # needs dhanam-cost-events:write and a CostEventWriterGrant. Provision only
+  # after the Janua image that RESERVES the scope is promoted (janua
+  # apps/api/app/core/reserved_oauth_boundaries.py): until then any
+  # organization admin may register a client carrying it.
+  #
+  # The pair lands at secret/tulana through tulana/dhanam-cogs-client
+  # (LOWERCASE keys), read by Tulana's DEDICATED, planned
+  # tulana-dhanam-cogs-client ExternalSecret (namespace tulana; tulana's
+  # infra/k8s/production/dhanam-cogs-external-secret.yaml, parked outside its
+  # kustomization until this pair exists), which maps them to
+  # DHANAM_COGS_CLIENT_ID / DHANAM_COGS_CLIENT_SECRET. Not tulana-secrets:
+  # ESO is all-or-nothing per ExternalSecret. Tulana ignores the pair until
+  # TULANA_LEDGER_COSTS_ENABLED=true.
+  #
+  # NOT pinned yet: the first provision run CREATES the client and prints its
+  # jnc_… id; pin it here (both copies) and use the same id in
+  # DHANAM_MCP_READ_CLIENTS.
+  # ---------------------------------------------------------------------------
+  tulana-dhanam-cogs:
+    intake_target: tulana/dhanam-cogs-client
+    intake_key_map:
+      dhanam_cogs_client_id: client_id
+      dhanam_cogs_client_secret: client_secret  # pragma: allowlist secret
+    janua_client:
+      name: tulana-dhanam-cogs
+      client_key: tulana-dhanam-cogs  # pragma: allowlist secret
+      audience: dhanam-api
+      description: Machine client (client_credentials) for Tulana's API to read Dhanam's native COGS MCP (POST /mcp on Dhanam's API), tool cogs_sku_floors, the measured cost per offer for Tulana's internal catalogue (tulana#151, dhanam#1002). Read only, scope dhanam-cogs:read only, so never cogs_submit_cost_events. Org-bound to madfam-ecosystem; Dhanam also requires this client@org in DHANAM_MCP_READ_CLIENTS.
+      is_confidential: true
+      organization_id: 1a6233ef-185f-43ee-9181-e2591fbb2643
+      allowed_scopes:
+        - dhanam-cogs:read
+      grant_types:
+        - client_credentials
+
+  # ---------------------------------------------------------------------------
+  # COGS MCP consumers (2026-11-06, RFC 0051 ruling M3). Every platform serves a
+  # native COGS MCP at POST /mcp on its own API host, read only in Phase A and
+  # off until the owner flips its switch (M6). The first consumers are Selva's
+  # agent fleet and the ops agents, ONE Janua machine client each per platform:
+  # thirteen clients (twelve for six platforms, plus ops-agents-selva-cogs for
+  # Selva's own MCP, added 2026-11-08), client_credentials only, confidential,
+  # no browser leg,
+  # exactly one scope each (the platform's `<platform>-cogs:read`, ONE colon,
+  # because Janua registers only `namespace:action`).
+  #
+  # Audience = the platform's EXISTING API audience. Janua refuses
+  # client_credentials for a protected resource (`invalid_target`), so these
+  # are not Phase B's RFC 8707 `https://<api-host>/mcp` resources.
+  #
+  # ORG-BOUND to madfam-ecosystem (like karafiel-dhanam-cost-events): Pravara
+  # reads the tenant from tenant_id, Dhanam, Enclii and Selva refuse a token
+  # without org_id, Nauta admits only MADFAM's org, and Janua stamps those
+  # claims only on an org-bound client.
+  #
+  # The token alone is not enough on four of the seven. After the first
+  # provision the owner binds the printed client id on the platform, then flips
+  # its switch (docs/runbooks/SECRET_INTAKE.md has the thirteen commands, the
+  # pins, the bindings and the switches):
+  #   dhanam         DHANAM_MCP_READ_CLIENTS += <client_id>@<organization_id>
+  #   karafiel       SERVICE_CLIENT_RFC_BINDINGS += {"<client_id>": "<RFC>"}
+  #   converge-dash  nothing more
+  #   pravara        nothing more (tenant = the token's organization)
+  #   nauta          NAUTA_MADFAM_JANUA_ORG_ID = <organization_id>
+  #   enclii         ENCLII_MCP_ORG_IDS += <organization_id>
+  #   selva          nothing more (org = the token's org_id)
+  #
+  # Provision only after the Janua image that RESERVES the seven scopes is
+  # promoted (janua apps/api/app/core/reserved_oauth_boundaries.py): until
+  # then any organization admin may register a client carrying them.
+  #
+  # Delivery. Selva's pairs land at secret/selva through
+  # selva/<platform>-cogs-client, each read by its own DEDICATED, planned
+  # ExternalSecret selva-<platform>-cogs-client: ESO is all-or-nothing per
+  # ExternalSecret and the platforms are provisioned wave by wave, so an
+  # unprovisioned pair never holds another one. The ops agents' pairs land at
+  # secret/ops-agents (shared with ops-agents-phynd-crm-pipeline) through
+  # ops-agents/<platform>-cogs-client, with no ExternalSecret: no ops-agent
+  # runtime runs in the cluster. Owner ruling 2026-11-22 (internal-devops
+  # decisions/2026-11-22-ops-agents-ecosystem-mcp-access.md): the Karafiel and
+  # Dhanam pairs go to the ops agents' macOS Keychain, never through chat, a
+  # repository or a log. LOWERCASE keys
+  # `<platform>_cogs_client_id` / `<platform>_cogs_client_secret`.
+  #
+  # NOT pinned: the first provision run of each CREATES the client and prints
+  # its jnc_… id; pin it here (both copies) and use the same id in the binding.
+  # ---------------------------------------------------------------------------
+
+  # Dhanam (dhanam#942). Audience dhanam-api, what the MCP's machine strategy
+  # checks (shared with the cost-events writer). It refuses a token without
+  # org_id, and reads only when DHANAM_MCP_READ_CLIENTS lists <client>@<org>.
+  # The read scope never reaches cogs_submit_cost_events, which needs
+  # dhanam-cost-events:write and a CostEventWriterGrant.
+  selva-dhanam-cogs:
+    intake_target: selva/dhanam-cogs-client
+    intake_key_map:
+      dhanam_cogs_client_id: client_id
+      dhanam_cogs_client_secret: client_secret  # pragma: allowlist secret
+    janua_client:
+      name: selva-dhanam-cogs
+      client_key: selva-dhanam-cogs  # pragma: allowlist secret
+      audience: dhanam-api
+      description: Machine client (client_credentials) for Selva's agent fleet to read Dhanam's native COGS MCP (POST /mcp on Dhanam's API), tools cogs_ledger_summary, cogs_reconciliation, cogs_cost_events, cogs_unclassified_spend and cogs_by_engagement over the ledger spaces. Scope dhanam-cogs:read only, so never cogs_submit_cost_events. Org-bound to madfam-ecosystem; Dhanam also requires this client@org in DHANAM_MCP_READ_CLIENTS.
+      is_confidential: true
+      organization_id: 1a6233ef-185f-43ee-9181-e2591fbb2643
+      allowed_scopes:
+        - dhanam-cogs:read
+      grant_types:
+        - client_credentials
+
+  ops-agents-dhanam-cogs:
+    intake_target: ops-agents/dhanam-cogs-client
+    intake_key_map:
+      dhanam_cogs_client_id: client_id
+      dhanam_cogs_client_secret: client_secret  # pragma: allowlist secret
+    # Owner ruling 2026-11-22: `provision oidc --keychain` also files the pair
+    # in the ops agents' macOS login Keychain, after the Vault intake.
+    local_delivery:
+      macos_keychain: madfam-ops-agents-dhanam-cogs
+    janua_client:
+      name: ops-agents-dhanam-cogs
+      client_key: ops-agents-dhanam-cogs  # pragma: allowlist secret
+      audience: dhanam-api
+      client_id: jnc_UKr7YJz_XitxYTrSyQKEeAOUjUch636d
+      description: Machine client (client_credentials) for the MADFAM ops agents to read Dhanam's native COGS MCP (POST /mcp on Dhanam's API), tools cogs_ledger_summary, cogs_reconciliation, cogs_cost_events, cogs_unclassified_spend and cogs_by_engagement over the ledger spaces. Scope dhanam-cogs:read only, so never cogs_submit_cost_events. Org-bound to madfam-ecosystem; Dhanam also requires this client@org in DHANAM_MCP_READ_CLIENTS.
+      is_confidential: true
+      organization_id: 1a6233ef-185f-43ee-9181-e2591fbb2643
+      allowed_scopes:
+        - dhanam-cogs:read
+      grant_types:
+        - client_credentials
+
+  # Karafiel (karafiel#356, merged). Audience karafiel-api, Karafiel's
+  # JANUA_AUDIENCE (default karafiel-api; the audience symbiosis-hcm-karafiel
+  # already holds). The tenant is never the token's org. Until Karafiel's
+  # SERVICE_CLIENT_RFC_BINDINGS cutover it is the legacy LEGAL_SERVICE_RFC pin,
+  # MADFAM's own RFC, for every machine client; after it, it is the client's
+  # reviewed binding, and an unbound client gets 403.
+  selva-karafiel-cogs:
+    intake_target: selva/karafiel-cogs-client
+    intake_key_map:
+      karafiel_cogs_client_id: client_id
+      karafiel_cogs_client_secret: client_secret  # pragma: allowlist secret
+    janua_client:
+      name: selva-karafiel-cogs
+      client_key: selva-karafiel-cogs  # pragma: allowlist secret
+      audience: karafiel-api
+      description: Machine client (client_credentials) for Selva's agent fleet to read Karafiel's native COGS MCP (POST /mcp on api.karafiel.mx), tools cfdi_received_totals, cogs_emission_status, cogs_preview (dry run), fiscal_credential_status (types and expiry, never material) and sat_download_status. Read only, scope karafiel-cogs:read only. Org-bound to madfam-ecosystem; the tenant is Karafiel's legacy LEGAL_SERVICE_RFC pin (MADFAM's own RFC) until its SERVICE_CLIENT_RFC_BINDINGS cutover, then this client's reviewed binding (an unbound client gets 403); the cost tools answer only for CFDI_EMISOR_RFC.
+      is_confidential: true
+      organization_id: 1a6233ef-185f-43ee-9181-e2591fbb2643
+      allowed_scopes:
+        - karafiel-cogs:read
+      grant_types:
+        - client_credentials
+
+  ops-agents-karafiel-cogs:
+    intake_target: ops-agents/karafiel-cogs-client
+    intake_key_map:
+      karafiel_cogs_client_id: client_id
+      karafiel_cogs_client_secret: client_secret  # pragma: allowlist secret
+    # Owner ruling 2026-11-22: `provision oidc --keychain` also files the pair
+    # in the ops agents' macOS login Keychain, after the Vault intake.
+    local_delivery:
+      macos_keychain: madfam-ops-agents-karafiel-cogs
+    janua_client:
+      name: ops-agents-karafiel-cogs
+      client_key: ops-agents-karafiel-cogs  # pragma: allowlist secret
+      audience: karafiel-api
+      client_id: jnc_j9jqWOJfi7nzQYv2QY-4xAJVu7eWNN4I
+      description: Machine client (client_credentials) for the MADFAM ops agents to read Karafiel's native COGS MCP (POST /mcp on api.karafiel.mx), tools cfdi_received_totals, cogs_emission_status, cogs_preview (dry run), fiscal_credential_status (types and expiry, never material), sat_download_status and fiscal_tenant_identity (the bound tenant's own fiscal identity, karafiel#466). Read only, scope karafiel-cogs:read only. Org-bound to madfam-ecosystem; the tenant is Karafiel's legacy LEGAL_SERVICE_RFC pin (MADFAM's own RFC) until its SERVICE_CLIENT_RFC_BINDINGS cutover, then this client's reviewed binding (an unbound client gets 403); the cost tools answer only for CFDI_EMISOR_RFC.
+      is_confidential: true
+      organization_id: 1a6233ef-185f-43ee-9181-e2591fbb2643
+      allowed_scopes:
+        - karafiel-cogs:read
+      grant_types:
+        - client_credentials
+
+  # converge-dash (converge-dash#42, merged). Audience converge-dash, the API's
+  # JANUA_AUDIENCE (the audience converge-dash-web already holds). The scope
+  # and audience are the whole gate; its switch is DASH_MCP_ENABLED.
+  selva-converge-dash-cogs:
+    intake_target: selva/converge-dash-cogs-client
+    intake_key_map:
+      converge_dash_cogs_client_id: client_id
+      converge_dash_cogs_client_secret: client_secret  # pragma: allowlist secret
+    janua_client:
+      name: selva-converge-dash-cogs
+      client_key: selva-converge-dash-cogs  # pragma: allowlist secret
+      audience: converge-dash
+      description: Machine client (client_credentials) for Selva's agent fleet to read converge-dash's native COGS MCP (POST /mcp on its API), tools metrics_value, metrics_gaps and sources_health; the scope reads financial.revenue and financial.gross_margin with their parts, up to confidential, never restricted. Scope converge-dash-cogs:read only. Org-bound to madfam-ecosystem.
+      is_confidential: true
+      organization_id: 1a6233ef-185f-43ee-9181-e2591fbb2643
+      allowed_scopes:
+        - converge-dash-cogs:read
+      grant_types:
+        - client_credentials
+
+  ops-agents-converge-dash-cogs:
+    intake_target: ops-agents/converge-dash-cogs-client
+    intake_key_map:
+      converge_dash_cogs_client_id: client_id
+      converge_dash_cogs_client_secret: client_secret  # pragma: allowlist secret
+    janua_client:
+      name: ops-agents-converge-dash-cogs
+      client_key: ops-agents-converge-dash-cogs  # pragma: allowlist secret
+      audience: converge-dash
+      description: Machine client (client_credentials) for the MADFAM ops agents to read converge-dash's native COGS MCP (POST /mcp on its API), tools metrics_value, metrics_gaps and sources_health; the scope reads financial.revenue and financial.gross_margin with their parts, up to confidential, never restricted. Scope converge-dash-cogs:read only. Org-bound to madfam-ecosystem.
+      is_confidential: true
+      organization_id: 1a6233ef-185f-43ee-9181-e2591fbb2643
+      allowed_scopes:
+        - converge-dash-cogs:read
+      grant_types:
+        - client_credentials
+
+  # Pravara MES (pravara-mes#69, merged). Audience pravara-api, like
+  # selva-pravara-mes. Pravara answers 403 to a token without tenant_id and
+  # runs each tool in that tenant's transaction under RLS, so the org binding
+  # IS the tenant: these clients read the madfam-ecosystem tenant only.
+  selva-pravara-cogs:
+    intake_target: selva/pravara-cogs-client
+    intake_key_map:
+      pravara_cogs_client_id: client_id
+      pravara_cogs_client_secret: client_secret  # pragma: allowlist secret
+    janua_client:
+      name: selva-pravara-cogs
+      client_key: selva-pravara-cogs  # pragma: allowlist secret
+      audience: pravara-api
+      description: Machine client (client_credentials) for Selva's agent fleet to read Pravara MES's native COGS MCP (POST /mcp on pravara-api), tools mes_job_consumption and mes_inventory_levels (quantities, no unit cost), in the madfam-ecosystem tenant under RLS. Scope pravara-cogs:read only (also admitted on GET /v1/jobs/consumption). Org-bound to madfam-ecosystem, which is the tenant Pravara reads from tenant_id.
+      is_confidential: true
+      organization_id: 1a6233ef-185f-43ee-9181-e2591fbb2643
+      allowed_scopes:
+        - pravara-cogs:read
+      grant_types:
+        - client_credentials
+
+  ops-agents-pravara-cogs:
+    intake_target: ops-agents/pravara-cogs-client
+    intake_key_map:
+      pravara_cogs_client_id: client_id
+      pravara_cogs_client_secret: client_secret  # pragma: allowlist secret
+    janua_client:
+      name: ops-agents-pravara-cogs
+      client_key: ops-agents-pravara-cogs  # pragma: allowlist secret
+      audience: pravara-api
+      description: Machine client (client_credentials) for the MADFAM ops agents to read Pravara MES's native COGS MCP (POST /mcp on pravara-api), tools mes_job_consumption and mes_inventory_levels (quantities, no unit cost), in the madfam-ecosystem tenant under RLS. Scope pravara-cogs:read only (also admitted on GET /v1/jobs/consumption). Org-bound to madfam-ecosystem, which is the tenant Pravara reads from tenant_id.
+      is_confidential: true
+      organization_id: 1a6233ef-185f-43ee-9181-e2591fbb2643
+      allowed_scopes:
+        - pravara-cogs:read
+      grant_types:
+        - client_credentials
+
+  # Nauta (nauta#360). Audience nauta-api, Nauta's inbound machine audience
+  # (the one /api/internal/engagements verifies). A token whose org_id is not
+  # NAUTA_MADFAM_JANUA_ORG_ID gets 403 foreign_organization.
+  selva-nauta-cogs:
+    intake_target: selva/nauta-cogs-client
+    intake_key_map:
+      nauta_cogs_client_id: client_id
+      nauta_cogs_client_secret: client_secret  # pragma: allowlist secret
+    janua_client:
+      name: selva-nauta-cogs
+      client_key: selva-nauta-cogs  # pragma: allowlist secret
+      audience: nauta-api
+      description: Machine client (client_credentials) for Selva's agent fleet to read Nauta's native COGS MCP (POST /mcp, audience nauta-api), tools engagements_list, engagements_get and time_summary (hours by kind per CDMX month, no performers). Scope nauta-cogs:read only. Org-bound to madfam-ecosystem; Nauta admits an org-bound token only when its org is NAUTA_MADFAM_JANUA_ORG_ID.
+      is_confidential: true
+      organization_id: 1a6233ef-185f-43ee-9181-e2591fbb2643
+      allowed_scopes:
+        - nauta-cogs:read
+      grant_types:
+        - client_credentials
+
+  ops-agents-nauta-cogs:
+    intake_target: ops-agents/nauta-cogs-client
+    intake_key_map:
+      nauta_cogs_client_id: client_id
+      nauta_cogs_client_secret: client_secret  # pragma: allowlist secret
+    janua_client:
+      name: ops-agents-nauta-cogs
+      client_key: ops-agents-nauta-cogs  # pragma: allowlist secret
+      audience: nauta-api
+      description: Machine client (client_credentials) for the MADFAM ops agents to read Nauta's native COGS MCP (POST /mcp, audience nauta-api), tools engagements_list, engagements_get and time_summary (hours by kind per CDMX month, no performers). Scope nauta-cogs:read only. Org-bound to madfam-ecosystem; Nauta admits an org-bound token only when its org is NAUTA_MADFAM_JANUA_ORG_ID.
+      is_confidential: true
+      organization_id: 1a6233ef-185f-43ee-9181-e2591fbb2643
+      allowed_scopes:
+        - nauta-cogs:read
+      grant_types:
+        - client_credentials
+
+  # Enclii / Waybill (enclii#945). Audience janua.dev: production
+  # ENCLII_JANUA_AUDIENCE is Janua's global default audience, so the audience
+  # check alone does not isolate Enclii; ENCLII_MCP_ORG_IDS and the exact
+  # reserved scope do. A dedicated Enclii audience is enclii#945's follow-up;
+  # when it lands, both audiences here change with it.
+  selva-enclii-cogs:
+    intake_target: selva/enclii-cogs-client
+    intake_key_map:
+      enclii_cogs_client_id: client_id
+      enclii_cogs_client_secret: client_secret  # pragma: allowlist secret
+    janua_client:
+      name: selva-enclii-cogs
+      client_key: selva-enclii-cogs  # pragma: allowlist secret
+      audience: janua.dev
+      description: Machine client (client_credentials) for Selva's agent fleet to read Enclii's native COGS MCP (POST /mcp on api.enclii.dev), tools usage_resource_daily and usage_node_daily from Waybill's daily resource ledger. Scope enclii-cogs:read only. Org-bound to madfam-ecosystem; Enclii also requires the org in ENCLII_MCP_ORG_IDS. Audience janua.dev is Enclii's ENCLII_JANUA_AUDIENCE (Janua's global default), so the org allow-list and the exact scope are what isolate it.
+      is_confidential: true
+      organization_id: 1a6233ef-185f-43ee-9181-e2591fbb2643
+      allowed_scopes:
+        - enclii-cogs:read
+      grant_types:
+        - client_credentials
+
+  ops-agents-enclii-cogs:
+    intake_target: ops-agents/enclii-cogs-client
+    intake_key_map:
+      enclii_cogs_client_id: client_id
+      enclii_cogs_client_secret: client_secret  # pragma: allowlist secret
+    janua_client:
+      name: ops-agents-enclii-cogs
+      client_key: ops-agents-enclii-cogs  # pragma: allowlist secret
+      audience: janua.dev
+      description: Machine client (client_credentials) for the MADFAM ops agents to read Enclii's native COGS MCP (POST /mcp on api.enclii.dev), tools usage_resource_daily and usage_node_daily from Waybill's daily resource ledger. Scope enclii-cogs:read only. Org-bound to madfam-ecosystem; Enclii also requires the org in ENCLII_MCP_ORG_IDS. Audience janua.dev is Enclii's ENCLII_JANUA_AUDIENCE (Janua's global default), so the org allow-list and the exact scope are what isolate it.
+      is_confidential: true
+      organization_id: 1a6233ef-185f-43ee-9181-e2591fbb2643
+      allowed_scopes:
+        - enclii-cogs:read
+      grant_types:
+        - client_credentials
+
+  # Selva (selva-office#362). Audience selva-office, what nexus-api's
+  # verify_jwt checks (JANUA_CLIENT_ID; converge-dash-selva holds the same).
+  # The MCP admits a machine token only with selva-cogs:read AND an org_id
+  # claim, and reads the token's own org (any other `org` argument is
+  # refused), so org-bound to madfam-ecosystem reads MADFAM's inference usage.
+  # Ops agents ONLY: whether Selva's own fleet should read its own ledger
+  # (a selva-selva-cogs client) is an open owner question, so it is not
+  # declared here.
+  ops-agents-selva-cogs:
+    intake_target: ops-agents/selva-cogs-client
+    intake_key_map:
+      selva_cogs_client_id: client_id
+      selva_cogs_client_secret: client_secret  # pragma: allowlist secret
+    janua_client:
+      name: ops-agents-selva-cogs
+      client_key: ops-agents-selva-cogs  # pragma: allowlist secret
+      audience: selva-office
+      description: Machine client (client_credentials) for the MADFAM ops agents to read Selva's native COGS MCP (POST /mcp on Selva's nexus-api, selva-office#362), tool inference_usage (per-org monthly inference usage with a list-price estimate, never cost). Scope selva-cogs:read only. Org-bound to madfam-ecosystem; Selva requires an org_id claim and reads only that org.
+      is_confidential: true
+      organization_id: 1a6233ef-185f-43ee-9181-e2591fbb2643
+      allowed_scopes:
+        - selva-cogs:read
       grant_types:
         - client_credentials
 

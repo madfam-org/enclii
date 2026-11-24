@@ -15,7 +15,6 @@ import (
 	"github.com/madfam-org/enclii/apps/switchyard-api/internal/k8s"
 	"github.com/madfam-org/enclii/apps/switchyard-api/internal/logging"
 	"github.com/madfam-org/enclii/apps/switchyard-api/internal/manifest"
-	"github.com/madfam-org/enclii/apps/switchyard-api/internal/netpolicy"
 	"github.com/madfam-org/enclii/packages/sdk-go/pkg/types"
 )
 
@@ -211,21 +210,9 @@ func (h *Handler) EnsureOnboarding(c *gin.Context) {
 	argocdCommitSHA := argocdRegistration.CommitSHA
 	h.recordStep(ctx, &steps, "argocd_config", true, argocdRegistrationErr)
 
+	var networkPolicyPlan *networkPolicyPlanView
 	if mergedNetwork := manifest.MergedNetwork(encliiDocs); mergedNetwork != nil {
-		npSpec := convertNetworkSpec(mergedNetwork)
-		npYAML, npGenErr := netpolicy.GeneratePolicies(namespace, req.ProjectName, npSpec)
-		if npGenErr != nil {
-			h.recordStep(ctx, &steps, "network_policies", false, npGenErr)
-		} else if h.k8sClient != nil && h.k8sClient.IsValid() {
-			npCount, npErr := h.k8sClient.ApplyNetworkPolicies(ctx, namespace, npYAML)
-			if npErr != nil {
-				h.recordStep(ctx, &steps, "network_policies", false, fmt.Errorf("applied %d policies before error: %w", npCount, npErr))
-			} else {
-				h.recordStep(ctx, &steps, "network_policies", false, nil)
-			}
-		} else {
-			h.recordStep(ctx, &steps, "network_policies", false, fmt.Errorf("k8s client not available for NetworkPolicy apply"))
-		}
+		networkPolicyPlan = h.runNetworkPolicyStep(ctx, &steps, namespace, req.ProjectName, mergedNetwork, req.AllowNetpolNarrowing)
 	}
 
 	var statusEntries []statusServiceEntry
@@ -352,6 +339,9 @@ func (h *Handler) EnsureOnboarding(c *gin.Context) {
 		"manifest_path":          manifestPath,
 		"services":               serviceNames,
 		"domains":                domainResults,
+	}
+	if networkPolicyPlan != nil {
+		response["network_policy_plan"] = networkPolicyPlan
 	}
 	if req.ProvisionPostgres != nil {
 		response["postgres_database"] = req.ProvisionPostgres.DatabaseName

@@ -51,6 +51,8 @@ func parseJanuaStagingIntent(raw []byte) (januaStagingIntentRequest, bool) {
 	return r, len(keys) == 4 && januaStagingIntentHash.MatchString(r.Expected) && r.Reason != "" && strings.TrimSpace(r.Reason) == r.Reason && len(r.Reason) <= 512 && strings.IndexFunc(r.Reason, unicode.IsControl) < 0
 }
 func registerJanuaStagingIntentRoutes(platform *gin.RouterGroup, h *Handler) {
+	registerJanuaInertMaterializationRoutes(platform, h)
+	registerJanuaNetworkPreparationRoutes(platform, h)
 	platform.POST("/projects/:slug/environments/staging/preregistration-intents", h.RequirePlatformOperator(), h.JanuaStagingIntent)
 	platform.GET("/projects/:slug/environments/staging/preregistration-intents/:operation_id", h.RequirePlatformOperator(), h.ReadJanuaStagingIntent)
 }

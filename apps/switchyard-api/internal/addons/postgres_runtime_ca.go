@@ -82,3 +82,9 @@ func (p *PostgresProvisioner) runtimeServerCA(ctx context.Context, addon *sdktyp
 	}
 	return publicCABundle(ca.Data["ca.crt"], time.Now())
 }
+
+// ValidatePublicCABundle exposes only the strict public-certificate parser to
+// fixed native adapters. It neither reads custody nor relaxes runtime profiles.
+func ValidatePublicCABundle(raw []byte, now time.Time) (string, error) {
+	return publicCABundle(raw, now)
+}

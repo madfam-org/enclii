@@ -70,9 +70,18 @@ expect public-ip 1 1
 d=$(new_repo ip-in-source); echo 'const p = "198.18.7.9"' > "$d/app.ts"
 expect ip-in-source 0 1
 
-# 6. a hardware SKU is a finding wherever it appears
-d=$(new_repo hardware-sku); echo 'ordered an EX44 for the cluster' > "$d/CAPACITY.md"
-expect hardware-sku 1 1
+# 6. a hardware SKU is a finding wherever it appears, in any case. The SKU
+# needles live in the private pattern file, never in the guard, so the case
+# uses a synthetic SKU-shaped needle written the way the private file writes
+# them (every letter as a bracket pair, so a lower-case spelling matches).
+printf '# hardware class\n\\b[Zz][Zz][Xx]99\\b\n' > "$TMPROOT/sku-patterns.txt"
+d=$(new_repo hardware-sku); echo 'ordered a zzx99 for the cluster' > "$d/CAPACITY.md"
+expect hardware-sku 1 0 "$TMPROOT/sku-patterns.txt"
+
+# 6b. without the private file the guard holds no SKU needle of its own: the
+# same tree passes, and the run says the class was SKIPPED, not checked.
+d=$(new_repo hardware-sku-no-feed); echo 'ordered a zzx99 for the cluster' > "$d/CAPACITY.md"
+expect hardware-sku-no-feed 0 1
 
 # 7. an npm registry auth value with a concrete secret is a finding
 d=$(new_repo npm-auth); echo '//npm.example.com/:_auth=YWJjZGVmZ2hpamtsbW5vcA==' > "$d/.npmrc"

@@ -24,7 +24,7 @@ on:
         type: string
 
 env:
-  GO_VERSION: '1.26.10'
+  GO_VERSION: '1.26.11'
   NODE_VERSION: '22'
 
 # Keep only the newest proof for a PR. Non-PR runs have distinct groups so
@@ -317,11 +317,18 @@ jobs:
         with:
           python-version: '3.11'
 
-      - name: Install PyYAML
-        run: pip install pyyaml
+      - name: Install PyYAML and pytest
+        run: pip install pyyaml pytest
 
       - name: Run Dependabot secret-trap lint
         run: python3 scripts/check-dependabot-secret-traps.py .github/workflows/
+
+      # The label merge train runs its github-script body under node against an
+      # in-memory GitHub. It must merge with the App token (or the legacy PAT),
+      # and with neither it must go red and comment instead of a quiet notice
+      # (enclii#980/#981 sat approved and unmerged on 2026-11-19).
+      - name: Run merge-train tests (fusionar-aprobado.yml)
+        run: pytest tests/scripts/test_fusionar_aprobado_train.py -v
 
   externalsecret-writer-lint:
     name: ExternalSecret multi-writer policy
@@ -448,6 +455,13 @@ jobs:
       # drill on one pgBackRest version (#785).
       - name: Run pgBackRest restore drill tests
         run: pytest tests/scripts/test_pgbackrest_restore_drill.py tests/scripts/test_pgbackrest_version_parity.py -v
+
+      # switchyard-api and roundhouse both build cosign from source and raise
+      # its vulnerable dependencies with `go get` floors. The two copies must
+      # stay identical and every floor must meet its advisory's fixed version
+      # (the roundhouse copy drifted; the compress floor lagged enclii#942).
+      - name: Run bundled cosign dependency floor guard
+        run: pytest tests/scripts/test_bundled_cosign_floors.py -v
 
       # Managed-Postgres addon backups: the intake target, ExternalSecret,
       # switchyard-api env and ScheduledBackup RBAC must agree with each other
@@ -687,6 +701,35 @@ jobs:
       - name: Run capacity scrape tests
         run: pytest tests/scripts/test_capacity_scrapes.py -v -rs
 
+  synthetic-journeys-test:
+    name: Synthetic buyer manifests and rules
+    runs-on: ubuntu-24.04
+    # Cheap. The S-Gate 1 synthetic buyer: infra/k8s/production/synthetics,
+    # its Argo Application, its pushgateway ingress and intake target, and the
+    # synthetic-journeys rule group in prometheus.yaml. The structural tests
+    # pin the wiring, kustomize renders the directory, promtool checks and
+    # evaluates the rules (and proves the legacy synthetic-flow-probe rule no
+    # longer pages on the runner's series). test_journeys_image_digest_is_published
+    # keeps the all-zero placeholder from ever coming back.
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Set up Python
+        uses: actions/setup-python@v7
+        with:
+          python-version: '3.11'
+
+      - name: Install deps
+        run: pip install --quiet pyyaml pytest
+
+      - name: Run synthetic buyer tests
+        env:
+          ENCLII_PROMTOOL: >-
+            docker run --rm --entrypoint /bin/promtool -v {dir}:/w:ro
+            docker.io/prom/prometheus:v2.53.3
+            test rules /w/{name}
+        run: pytest tests/scripts/test_synthetic_journeys.py -v -rs
+
   courier-envelope-lint:
     name: Courier envelope shape (ops scripts)
     runs-on: ubuntu-24.04
@@ -796,6 +839,21 @@ jobs:
 
       - name: Run intake/policy parity check
         run: ./scripts/check-intake-policy-parity.sh
+
+      # The owner-run Vault -> Keychain recovery for `provision oidc
+      # --keychain`, against fake ssh, kubectl, vault and security: no network,
+      # no cluster. Also keeps its platform list equal to the registry's
+      # local_delivery entries.
+      - name: Set up Python
+        uses: actions/setup-python@v7
+        with:
+          python-version: '3.11'
+
+      - name: Install deps
+        run: pip install --quiet pyyaml pytest
+
+      - name: Run ops-agents Keychain delivery self-tests (stubbed, no network)
+        run: pytest tests/scripts/test_deliver_ops_agents_keychain.py -v
 
   status-configmap-drift:
     name: Status Configmap Drift (ST-3)

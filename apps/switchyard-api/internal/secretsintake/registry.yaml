@@ -59,6 +59,18 @@ targets:
     keys:
       - JANUA_CLIENT_SECRET
 
+  ceq/cpu-worker-oauth:
+    label: CEQ CPU worker OAuth client (client_credentials)
+    description: Id+secret pair of the machine client (audience ceq-api, scope ceq:worker) the in-cluster CPU worker mints lease tokens with; written by `enclii secrets provision oidc --platform ceq-cpu-worker`
+    vault_path: secret/ceq
+    namespace: ceq
+    external_secret: ceq-cpu-worker-credentials  # pragma: allowlist secret -- Kubernetes ExternalSecret object name; not a credential
+    keys:
+      - cpu_worker_client_id
+      - cpu_worker_client_secret
+    generate:
+      disabled: true
+
   lexidrop/oidc-janua:
     label: LexiDrop Janua OAuth client
     description: LexiDrop dashboard (ld-app.madfam.io) OIDC confidential client — id + secret for the api-side callback
@@ -450,7 +462,7 @@ targets:
   # symbiosis-hcm → Karafiel machine edge (2026-11-02). The client_credentials
   # pair of ecosystem-oidc platform symbiosis-hcm-karafiel (audience
   # karafiel-api; scopes legal:contractor-draft, legal:employment-draft,
-  # fiscal:invoice), written ONLY by
+  # fiscal:invoice, fiscal:csf-intake), written ONLY by
   # `enclii secrets provision oidc --platform symbiosis-hcm-karafiel`; no human
   # types either value. Same path as symbiosis-hcm/map-absence-feed
   # (secret/symbiosis-hcm, a merge), but delivered by HCM's DEDICATED
@@ -460,7 +472,7 @@ targets:
   # stores them; the ExternalSecret maps these `property:` names byte for byte.
   symbiosis-hcm/karafiel-client:
     label: Symbiosis-HCM → Karafiel service client
-    description: Janua client_credentials pair (symbiosis-hcm-karafiel; scopes legal:contractor-draft, legal:employment-draft, fiscal:invoice) HCM's API and worker use for Karafiel contract drafts and CFDI. Filed by `enclii secrets provision oidc --platform symbiosis-hcm-karafiel`.
+    description: Janua client_credentials pair (symbiosis-hcm-karafiel; scopes legal:contractor-draft, legal:employment-draft, fiscal:invoice, fiscal:csf-intake) HCM's API and worker use for Karafiel contract drafts, CFDI and constancia (CSF) intake. Filed by `enclii secrets provision oidc --platform symbiosis-hcm-karafiel`.
     vault_path: secret/symbiosis-hcm
     namespace: symbiosis-hcm
     external_secret: hcm-service-clients  # pragma: allowlist secret
@@ -488,6 +500,47 @@ targets:
     keys:
       - dhanam_writer_client_id
       - dhanam_writer_client_secret
+    generate:
+      disabled: true
+
+  # symbiosis-hcm → Nauta labor hours (2026-11-08, RFC 0050 C10). The pair of
+  # ecosystem-oidc platform symbiosis-hcm-nauta-labor-hours (audience
+  # nauta-api, scope nauta-labor-hours:read, org-bound to madfam-ecosystem),
+  # written ONLY by `enclii secrets provision oidc --platform
+  # symbiosis-hcm-nauta-labor-hours`. Its OWN planned ExternalSecret,
+  # hcm-nauta-labor-hours (symbiosis-hcm#232 declares none yet): ESO is
+  # all-or-nothing per ExternalSecret and each edge is provisioned on its own
+  # day, so one missing pair never holds another's Secret. LOWERCASE keys,
+  # mapped to NAUTA_LABOR_HOURS_CLIENT_ID / NAUTA_LABOR_HOURS_CLIENT_SECRET.
+  symbiosis-hcm/nauta-labor-hours-client:
+    label: Symbiosis-HCM → Nauta labor-hours reader client
+    description: Janua client_credentials pair (symbiosis-hcm-nauta-labor-hours, scope nauta-labor-hours:read, org-bound) HCM's worker uses to read Nauta's monthly logged hours for the labor cost close (symbiosis-hcm#232, RFC 0050 C10). Filed by `enclii secrets provision oidc --platform symbiosis-hcm-nauta-labor-hours`.
+    vault_path: secret/symbiosis-hcm
+    namespace: symbiosis-hcm
+    external_secret: hcm-nauta-labor-hours  # pragma: allowlist secret
+    keys:
+      - nauta_labor_hours_client_id
+      - nauta_labor_hours_client_secret
+    generate:
+      disabled: true
+
+  # symbiosis-hcm → Dhanam cost events (2026-11-08, RFC 0050 C10). The pair of
+  # ecosystem-oidc platform symbiosis-hcm-dhanam-cost-events (audience
+  # dhanam-api, scope dhanam-cost-events:write, org-bound to madfam-ecosystem),
+  # written ONLY by `enclii secrets provision oidc --platform
+  # symbiosis-hcm-dhanam-cost-events`. Its OWN planned ExternalSecret,
+  # hcm-dhanam-cost-events, not hcm-dhanam-writer (the scheduled-payments
+  # pair). LOWERCASE keys, mapped to DHANAM_COST_EVENTS_CLIENT_ID /
+  # DHANAM_COST_EVENTS_CLIENT_SECRET.
+  symbiosis-hcm/dhanam-cost-events-client:
+    label: Symbiosis-HCM → Dhanam cost-events writer client
+    description: Janua client_credentials pair (symbiosis-hcm-dhanam-cost-events, scope dhanam-cost-events:write, org-bound) HCM's worker uses to push the monthly labor cost.event.v1 events per engagement into Dhanam (symbiosis-hcm#232, RFC 0050 C10). Filed by `enclii secrets provision oidc --platform symbiosis-hcm-dhanam-cost-events`.
+    vault_path: secret/symbiosis-hcm
+    namespace: symbiosis-hcm
+    external_secret: hcm-dhanam-cost-events  # pragma: allowlist secret
+    keys:
+      - dhanam_cost_events_client_id
+      - dhanam_cost_events_client_secret
     generate:
       disabled: true
 
@@ -548,6 +601,24 @@ targets:
     keys:
       - symbiosis_hcm_oauth_client_id
       - symbiosis_hcm_oauth_client_secret
+
+  # nauta → phynd-crm CRM reads (2026-11-09): the client_credentials pair for
+  # the nauta-phynd-crm edge (config/ecosystem-oidc-provision.yaml), written
+  # ONLY by `enclii secrets provision oidc --platform nauta-phynd-crm`. Its own
+  # ExternalSecret nauta-phynd-crm-oauth (nauta repo, spec only until this pair
+  # exists), so the unprovisioned pair never blocks another nauta Secret.
+  # Generation stays off: a random value here would not be a Janua credential.
+  nauta/phynd-crm-oauth:
+    label: Nauta cliente OAuth de phynd-crm (client_credentials)
+    description: Par id+secreto del cliente máquina org-bound (audience phynd-crm, scope phynd-crm-engagements:read) con el que nauta acuña tokens de lectura del CRM; lo escribe `enclii secrets provision oidc --platform nauta-phynd-crm`
+    vault_path: secret/nauta
+    namespace: nauta
+    external_secret: nauta-phynd-crm-oauth  # pragma: allowlist secret -- Kubernetes ExternalSecret object name; not a credential
+    keys:
+      - phynd_crm_oauth_client_id
+      - phynd_crm_oauth_client_secret
+    generate:
+      disabled: true
 
   janua/internal-api-key:
     label: Janua internal API key
@@ -964,6 +1035,28 @@ targets:
       - fabrication_prep_client_id
       - fabrication_prep_client_secret
 
+  # Pravara MES → Dhanam cost events (2026-11-08, RFC 0050 C12). The pair of
+  # ecosystem-oidc platform pravara-dhanam-cost-events (audience dhanam-api,
+  # scope dhanam-cost-events:write, org-bound to madfam-ecosystem), written
+  # ONLY by `enclii secrets provision oidc --platform
+  # pravara-dhanam-cost-events`. Unlike the targets above, NOT
+  # pravara-service-clients: its OWN planned ExternalSecret,
+  # pravara-dhanam-cost-events (pravara-mes#71 declares none yet), so an
+  # unprovisioned pair never holds the phygital tools' Secret, nor the other
+  # way round. LOWERCASE keys, mapped to PRAVARA_COST_EVENTS_CLIENT_ID /
+  # PRAVARA_COST_EVENTS_CLIENT_SECRET.
+  pravara-mes/dhanam-cost-events-client:
+    label: Pravara MES → Dhanam cost-events writer client
+    description: Janua client_credentials pair (pravara-dhanam-cost-events, scope dhanam-cost-events:write, org-bound) pravara-api uses to push quantity-only consumption cost.event.v1 events into Dhanam (pravara-mes#71, RFC 0050 C12). Filed by `enclii secrets provision oidc --platform pravara-dhanam-cost-events`.
+    vault_path: secret/pravara-mes
+    namespace: pravara-mes
+    external_secret: pravara-dhanam-cost-events  # pragma: allowlist secret
+    keys:
+      - pravara_cost_events_client_id
+      - pravara_cost_events_client_secret
+    generate:
+      disabled: true
+
   yantra4d/asset-shells-publisher:
     label: Yantra4D → asset-shells type publisher client
     description: Janua client_credentials pair (yantra4d-asset-shells-publisher, scope asset-shells:publish-types). Filed by `enclii secrets provision oidc --platform yantra4d-asset-shells-publisher`.
@@ -995,6 +1088,25 @@ targets:
     keys:
       - pravara_intake_client_id
       - pravara_intake_client_secret
+
+  # Forj web Janua login client (2026-11-16). forj.design's /auth/login and
+  # /auth/callback route handlers read JANUA_CLIENT_ID / JANUA_CLIENT_SECRET at
+  # runtime (forj apps/web/src/lib/janua-oidc.ts). forj-secrets is the
+  # onboarding Secret, out of the intake's reach, and forj-service-clients
+  # carries the Pravara intake pair, so the login pair gets its own
+  # ExternalSecret, forj-web-oidc, in forj's infra/k8s/production (property
+  # janua_client_id -> JANUA_CLIENT_ID, janua_client_secret ->
+  # JANUA_CLIENT_SECRET). Written only by `enclii secrets provision oidc
+  # --platform forj-web`; no human types either value.
+  forj/web-oidc:
+    label: Forj web Janua OAuth client
+    description: Forj web (forj.design) Janua confidential client id + secret, filed by `enclii secrets provision oidc --platform forj-web`. No human types either value.
+    vault_path: secret/forj
+    namespace: forj
+    external_secret: forj-web-oidc  # pragma: allowlist secret
+    keys:
+      - janua_client_id
+      - janua_client_secret
 
   # Cotiza's repository and namespace are both digifab-quoting.
   digifab-quoting/pravara-intake:
@@ -1202,6 +1314,30 @@ targets:
     keys:
       - tulana_selva_webhook_secret
 
+  # Tulana → Dhanam COGS MCP reader (2026-11-17, tulana#151, dhanam#1002). The
+  # pair of ecosystem-oidc platform tulana-dhanam-cogs (audience dhanam-api,
+  # scope dhanam-cogs:read, org-bound to madfam-ecosystem), written ONLY by
+  # `enclii secrets provision oidc --platform tulana-dhanam-cogs`; no human
+  # types either value and nothing is generated here, so this target is NOT
+  # one of the self-generated keys above. Its OWN ExternalSecret,
+  # tulana-dhanam-cogs-client (tulana parks it outside its kustomization until
+  # this pair exists), NOT tulana-secrets: ESO is all-or-nothing per
+  # ExternalSecret, so an unprovisioned pair never freezes tulana's other
+  # secrets. LOWERCASE keys, mapped to DHANAM_COGS_CLIENT_ID /
+  # DHANAM_COGS_CLIENT_SECRET. Until that ExternalSecret is applied, intake
+  # reports external_secret_refreshed=false, which is expected.
+  tulana/dhanam-cogs-client:
+    label: Tulana → Dhanam COGS MCP read client
+    description: Janua client_credentials pair (tulana-dhanam-cogs, scope dhanam-cogs:read, org-bound to madfam-ecosystem) Tulana's API uses to read Dhanam's native COGS MCP (POST /mcp, tool cogs_sku_floors, tulana#151, dhanam#1002) for the internal catalogue's measured cost per offer. Filed by `enclii secrets provision oidc --platform tulana-dhanam-cogs`.
+    vault_path: secret/tulana
+    namespace: tulana
+    external_secret: tulana-dhanam-cogs-client  # pragma: allowlist secret
+    keys:
+      - dhanam_cogs_client_id
+      - dhanam_cogs_client_secret
+    generate:
+      disabled: true
+
   # converge-dash (2026-10-05) — the two values converge-dash both mints and
   # verifies, at secret/converge-dash, projected by the ExternalSecret
   # converge-dash-secrets (converge-dash repo,
@@ -1272,6 +1408,38 @@ targets:
     external_secret: phynd-crm-convergence-secrets  # pragma: allowlist secret
     keys:
       - convergence_api_token
+    generate:
+      disabled: true
+
+  # phynd-crm staff access (2026-11-16, phynd-crm#141): two configuration
+  # values, not credentials, held in Vault only so identity subjects stay out
+  # of the public repo. PHYND_BOOTSTRAP_STAFF names which identity subjects
+  # get which CRM role on sign-in; PHYND_CRM_DEFAULT_TASK_OWNER_ID owns tasks
+  # the system creates for a contact with no owner (ruling V5).
+  #
+  # Two targets and two dedicated ExternalSecrets (both mounted optional) so a
+  # missing property parks only its own Secret, never phynd-crm-secrets.
+  # Supplied-only: a random value would name nobody. After a change, wait for
+  # the sync and restart phynd-crm-web (env is read at container start).
+  phynd-crm/staff-bootstrap:
+    label: phynd-crm staff bootstrap (role per identity subject)
+    description: PHYND_BOOTSTRAP_STAFF, comma-separated role:sub:<subject> entries that link or create CRM users with that role at sign-in. Configuration, not a credential. Supplied-only.
+    vault_path: secret/phynd-crm
+    namespace: phynd-crm
+    external_secret: phynd-crm-staff-bootstrap  # pragma: allowlist secret
+    keys:
+      - bootstrap_staff
+    generate:
+      disabled: true
+
+  phynd-crm/default-task-owner:
+    label: phynd-crm default owner for system-created tasks
+    description: PHYND_CRM_DEFAULT_TASK_OWNER_ID, the CRM owner id given to tasks the system creates when the contact has no owner. Configuration, not a credential. Supplied-only.
+    vault_path: secret/phynd-crm
+    namespace: phynd-crm
+    external_secret: phynd-crm-default-task-owner  # pragma: allowlist secret
+    keys:
+      - default_task_owner_id
     generate:
       disabled: true
 
@@ -1350,6 +1518,68 @@ targets:
       - selva_service_client_secret
     generate:
       disabled: true
+
+  # phynd-crm lead-intake HMAC key (2026-11-15): the one value three senders
+  # (Kalya bookings, the madfam-site contact forms, Cotiza quote requests) sign
+  # their lead events with and phynd-crm verifies on
+  # POST /api/webhooks/lead-intake. phynd-crm's copy is secret/phynd-crm
+  # lead_intake_secret, projected by the dedicated ExternalSecret
+  # phynd-crm-lead-intake as PHYND_CRM_LEAD_INTAKE_SECRET; each sender holds the
+  # SAME value at its own path, property phynd_crm_lead_intake_secret, through
+  # its own dedicated ExternalSecret.
+  #
+  # Four targets because intake writes one Vault path per target, and four
+  # dedicated ExternalSecrets because ESO is all-or-nothing: a property missing
+  # from Vault would otherwise park a Secret a running service already reads.
+  # No human holds the value: the shared group phynd-crm/lead-intake-hmac
+  # (groups: at the end of this file) mints it once and writes it to all four
+  # (`enclii secrets intake group phynd-crm/lead-intake-hmac`). Each member
+  # refuses a single-target submit, generated or supplied, so the copies cannot
+  # drift. Rotation is the same command with --rotate, then a restart of every
+  # service (env is read at container start).
+  phynd-crm/lead-intake:
+    label: phynd-crm lead-intake HMAC key (verifier copy)
+    description: PHYND_CRM_LEAD_INTAKE_SECRET, the HMAC key phynd-crm checks on POST /api/webhooks/lead-intake. Holds the same value as kalya/phynd-crm-lead-intake, madfam-site/phynd-crm-lead-intake and digifab-quoting/phynd-crm-lead-intake; written only by the shared group phynd-crm/lead-intake-hmac (`enclii secrets intake group phynd-crm/lead-intake-hmac`), never by a single-target submit.
+    vault_path: secret/phynd-crm
+    namespace: phynd-crm
+    external_secret: phynd-crm-lead-intake  # pragma: allowlist secret
+    keys:
+      - lead_intake_secret
+    generate:
+      group: phynd-crm/lead-intake-hmac
+
+  kalya/phynd-crm-lead-intake:
+    label: Kalya phynd-crm lead-intake HMAC key (sender copy)
+    description: PHYND_CRM_LEAD_INTAKE_SECRET, the HMAC key Kalya signs its lead events to phynd-crm with. Holds the same value as phynd-crm/lead-intake, madfam-site/phynd-crm-lead-intake and digifab-quoting/phynd-crm-lead-intake; written only by the shared group phynd-crm/lead-intake-hmac (`enclii secrets intake group phynd-crm/lead-intake-hmac`), never by a single-target submit.
+    vault_path: secret/kalya
+    namespace: kalya
+    external_secret: kalya-phynd-crm-lead-intake  # pragma: allowlist secret
+    keys:
+      - phynd_crm_lead_intake_secret
+    generate:
+      group: phynd-crm/lead-intake-hmac
+
+  madfam-site/phynd-crm-lead-intake:
+    label: madfam-site phynd-crm lead-intake HMAC key (sender copy)
+    description: PHYND_CRM_LEAD_INTAKE_SECRET, the HMAC key the madfam-site contact forms sign their lead events to phynd-crm with. Holds the same value as phynd-crm/lead-intake, kalya/phynd-crm-lead-intake and digifab-quoting/phynd-crm-lead-intake; written only by the shared group phynd-crm/lead-intake-hmac (`enclii secrets intake group phynd-crm/lead-intake-hmac`), never by a single-target submit.
+    vault_path: secret/madfam-site
+    namespace: madfam-site
+    external_secret: madfam-site-phynd-crm-lead-intake  # pragma: allowlist secret
+    keys:
+      - phynd_crm_lead_intake_secret
+    generate:
+      group: phynd-crm/lead-intake-hmac
+
+  digifab-quoting/phynd-crm-lead-intake:
+    label: Cotiza phynd-crm lead-intake HMAC key (sender copy)
+    description: PHYNDCRM_LEAD_INTAKE_SECRET, the HMAC key Cotiza signs its quote-request lead events to phynd-crm with. Holds the same value as phynd-crm/lead-intake, kalya/phynd-crm-lead-intake and madfam-site/phynd-crm-lead-intake; written only by the shared group phynd-crm/lead-intake-hmac (`enclii secrets intake group phynd-crm/lead-intake-hmac`), never by a single-target submit.
+    vault_path: secret/digifab-quoting
+    namespace: digifab-quoting
+    external_secret: digifab-quoting-phynd-crm-lead-intake  # pragma: allowlist secret
+    keys:
+      - phynd_crm_lead_intake_secret
+    generate:
+      group: phynd-crm/lead-intake-hmac
 
   # Avala Janua client (SSO wave 1, 2026-10-27): the confidential pair of
   # ecosystem-oidc platform avala. Avala still reads its pair from a hand-made
@@ -1523,6 +1753,52 @@ targets:
       - pravara_mes_client_id
       - pravara_mes_client_secret
 
+  # Selva → Dhanam cost events (2026-11-11, RFC 0050 C13). The pair of
+  # ecosystem-oidc platform selva-dhanam-cost-events (audience dhanam-api,
+  # scope dhanam-cost-events:write, org-bound to madfam-ecosystem), written
+  # ONLY by `enclii secrets provision oidc --platform selva-dhanam-cost-events`.
+  # Its OWN ExternalSecret, selva-dhanam-cost-events (selva-office#363 parks it
+  # under infra/k8s/production/optional/), NOT selva-service-clients: ESO is
+  # all-or-nothing per ExternalSecret, so this pair never holds the phygital
+  # tools' Secret. LOWERCASE keys, mapped to SELVA_DHANAM_COST_EVENTS_CLIENT_ID /
+  # SELVA_DHANAM_COST_EVENTS_CLIENT_SECRET.
+  selva/dhanam-cost-events-client:
+    label: Selva → Dhanam cost-events writer client
+    description: Janua client_credentials pair (selva-dhanam-cost-events, scope dhanam-cost-events:write, org-bound) Selva's nexus-api sweep uses to push daily inference cost.event.v1 events (basis estimate) into Dhanam (selva-office#363, RFC 0050 C13). Filed by `enclii secrets provision oidc --platform selva-dhanam-cost-events`.
+    vault_path: secret/selva
+    namespace: selva
+    external_secret: selva-dhanam-cost-events  # pragma: allowlist secret
+    keys:
+      - dhanam_cost_events_client_id
+      - dhanam_cost_events_client_secret
+    generate:
+      disabled: true
+
+  # PhyndCRM native MCP reader (2026-11-14, RFC 0051 ruling M3; owner ruling V2:
+  # ops agents only, Selva gets no client until it has a concrete need). The pair
+  # of the ecosystem-oidc platform ops-agents-phynd-crm-pipeline (audience
+  # phynd-crm, scope phynd-crm-pipeline:read, org-bound to madfam-ecosystem),
+  # written ONLY by `enclii secrets provision oidc --platform <id>`; no human
+  # types either value and nothing is generated here. LOWERCASE keys
+  # phynd_crm_pipeline_client_id / _client_secret. Same layout as the COGS MCP
+  # consumers (enclii#946).
+  #
+  # Ops agents: the path secret/ops-agents (proposed in enclii#946; the owner
+  # decides), with no namespace and no ExternalSecret, because no ops-agent
+  # runtime reads Vault today. The pair is held in Vault until the owner decides
+  # how the ops agents receive it. Re-apply the Vault policy (ASSERT_PATH=ops-agents
+  # scripts/apply-switchyard-vault-policy-remote.sh) before the first ops-agents
+  # run, or the run rotates the Janua secret and then 403s on the Vault merge.
+  ops-agents/phynd-crm-pipeline-client:
+    label: Ops agents → PhyndCRM MCP read client
+    description: Janua client_credentials pair (ops-agents-phynd-crm-pipeline, scope phynd-crm-pipeline:read, org-bound to madfam-ecosystem) the MADFAM ops agents use to read PhyndCRM's native MCP (POST /mcp, read-only pipeline tools, phynd-crm#131, RFC 0051). Filed by `enclii secrets provision oidc --platform ops-agents-phynd-crm-pipeline`.
+    vault_path: secret/ops-agents
+    keys:
+      - phynd_crm_pipeline_client_id
+      - phynd_crm_pipeline_client_secret
+    generate:
+      disabled: true
+
   # Isolated training/staging custody: values never stored in source.
   crea-sim/ui-oidc:
     label: Training UI human OAuth client
@@ -1675,6 +1951,24 @@ targets:
     keys:
       - map03_database_ca_pem
 
+  # Kernel 01's usage telemetry (RFC 0057) under the simulator's own custody:
+  # the kernel never reads the production gate path. `telemetry_gate_token` is
+  # the training-scoped bearer the kernel presents to the internal telemetry
+  # gate; the gate reads that one property from this path through its own
+  # ExternalSecret and accepts it only for synthetic (`sim`) events.
+  # `telemetry_hmac_key` is the kernel's pseudonym key and reaches only the
+  # kernel. Both are at least 32 characters for their consumers, so the generic
+  # generator's unpadded base64url fits: create both with --generate.
+  crea-sim/kernel01-telemetry:
+    label: Isolated synthetic kernel telemetry
+    description: Governed isolated runtime custody; no owner, provider or production credential. Training-scoped gate token and pseudonym key for kernel 01; generate both with --generate
+    vault_path: secret/crea-sim-map01
+    namespace: crea-sim
+    external_secret: crea-sim-map01 # pragma: allowlist secret -- ExternalSecret resource name; not a credential
+    keys:
+      - telemetry_gate_token
+      - telemetry_hmac_key
+
   janua-staging/runtime-crypto:
     label: Fresh isolated staging identity crypto
     description: Initialize all five fresh staging crypto keys together with --generate; matched RSA pair and padded Fernet key, no overwrite or production credential
@@ -1766,6 +2060,214 @@ targets:
     generate:
       disabled: true
 
+  # COGS MCP consumers (2026-11-06, RFC 0051 ruling M3). The pairs of the
+  # thirteen ecosystem-oidc platforms selva-<platform>-cogs and
+  # ops-agents-<platform>-cogs (ops-agents-selva-cogs added 2026-11-08, with no
+  # selva-selva-cogs; scope <platform>-cogs:read, org-bound to
+  # madfam-ecosystem), written ONLY by `enclii secrets provision oidc
+  # --platform <id>`; no human types either value and nothing is generated
+  # here. LOWERCASE keys <platform>_cogs_client_id / _client_secret.
+  #
+  # Selva: secret/selva (the path selva/yantra4d-client already writes), one
+  # DEDICATED planned ExternalSecret per pair in namespace selva,
+  # selva-<platform>-cogs-client, so an unprovisioned platform never holds
+  # another pair's Secret (ESO is all-or-nothing per ExternalSecret). selva-office
+  # does not declare these ExternalSecrets yet; until it does, intake reports
+  # external_secret_refreshed=false, which is expected.
+  #
+  # Ops agents: the path secret/ops-agents (shared with
+  # ops-agents/phynd-crm-pipeline-client since 2026-11-14), with no namespace
+  # and no ExternalSecret, because no ops-agent runtime runs in the cluster.
+  # Owner ruling 2026-11-22 (internal-devops decisions/2026-11-22-ops-agents-
+  # ecosystem-mcp-access.md): the Karafiel and Dhanam pairs go to the ops
+  # agents' macOS Keychain, never through chat, a repository or a log. Re-apply
+  # the Vault policy (ASSERT_PATH=ops-agents
+  # scripts/apply-switchyard-vault-policy-remote.sh) before the first ops-agents
+  # run, or the run rotates the Janua secret and then 403s on the Vault merge.
+  selva/dhanam-cogs-client:
+    label: Selva → Dhanam COGS MCP read client
+    description: Janua client_credentials pair (selva-dhanam-cogs, scope dhanam-cogs:read, org-bound to madfam-ecosystem) Selva's agent fleet uses to read Dhanam's native COGS MCP (POST /mcp, RFC 0051). Filed by `enclii secrets provision oidc --platform selva-dhanam-cogs`.
+    vault_path: secret/selva
+    namespace: selva
+    external_secret: selva-dhanam-cogs-client  # pragma: allowlist secret
+    keys:
+      - dhanam_cogs_client_id
+      - dhanam_cogs_client_secret
+    generate:
+      disabled: true
+
+  selva/karafiel-cogs-client:
+    label: Selva → Karafiel COGS MCP read client
+    description: Janua client_credentials pair (selva-karafiel-cogs, scope karafiel-cogs:read, org-bound to madfam-ecosystem) Selva's agent fleet uses to read Karafiel's native COGS MCP (POST /mcp, RFC 0051). Filed by `enclii secrets provision oidc --platform selva-karafiel-cogs`.
+    vault_path: secret/selva
+    namespace: selva
+    external_secret: selva-karafiel-cogs-client  # pragma: allowlist secret
+    keys:
+      - karafiel_cogs_client_id
+      - karafiel_cogs_client_secret
+    generate:
+      disabled: true
+
+  selva/converge-dash-cogs-client:
+    label: Selva → converge-dash COGS MCP read client
+    description: Janua client_credentials pair (selva-converge-dash-cogs, scope converge-dash-cogs:read, org-bound to madfam-ecosystem) Selva's agent fleet uses to read converge-dash's native COGS MCP (POST /mcp, RFC 0051). Filed by `enclii secrets provision oidc --platform selva-converge-dash-cogs`.
+    vault_path: secret/selva
+    namespace: selva
+    external_secret: selva-converge-dash-cogs-client  # pragma: allowlist secret
+    keys:
+      - converge_dash_cogs_client_id
+      - converge_dash_cogs_client_secret
+    generate:
+      disabled: true
+
+  selva/pravara-cogs-client:
+    label: Selva → Pravara MES COGS MCP read client
+    description: Janua client_credentials pair (selva-pravara-cogs, scope pravara-cogs:read, org-bound to madfam-ecosystem) Selva's agent fleet uses to read Pravara MES's native COGS MCP (POST /mcp, RFC 0051). Filed by `enclii secrets provision oidc --platform selva-pravara-cogs`.
+    vault_path: secret/selva
+    namespace: selva
+    external_secret: selva-pravara-cogs-client  # pragma: allowlist secret
+    keys:
+      - pravara_cogs_client_id
+      - pravara_cogs_client_secret
+    generate:
+      disabled: true
+
+  selva/nauta-cogs-client:
+    label: Selva → Nauta COGS MCP read client
+    description: Janua client_credentials pair (selva-nauta-cogs, scope nauta-cogs:read, org-bound to madfam-ecosystem) Selva's agent fleet uses to read Nauta's native COGS MCP (POST /mcp, RFC 0051). Filed by `enclii secrets provision oidc --platform selva-nauta-cogs`.
+    vault_path: secret/selva
+    namespace: selva
+    external_secret: selva-nauta-cogs-client  # pragma: allowlist secret
+    keys:
+      - nauta_cogs_client_id
+      - nauta_cogs_client_secret
+    generate:
+      disabled: true
+
+  selva/enclii-cogs-client:
+    label: Selva → Enclii COGS MCP read client
+    description: Janua client_credentials pair (selva-enclii-cogs, scope enclii-cogs:read, org-bound to madfam-ecosystem) Selva's agent fleet uses to read Enclii's native COGS MCP (POST /mcp, RFC 0051). Filed by `enclii secrets provision oidc --platform selva-enclii-cogs`.
+    vault_path: secret/selva
+    namespace: selva
+    external_secret: selva-enclii-cogs-client  # pragma: allowlist secret
+    keys:
+      - enclii_cogs_client_id
+      - enclii_cogs_client_secret
+    generate:
+      disabled: true
+
+  ops-agents/dhanam-cogs-client:
+    label: Ops agents → Dhanam COGS MCP read client
+    description: Janua client_credentials pair (ops-agents-dhanam-cogs, scope dhanam-cogs:read, org-bound to madfam-ecosystem) the MADFAM ops agents use to read Dhanam's native COGS MCP (POST /mcp, RFC 0051). Filed by `enclii secrets provision oidc --platform ops-agents-dhanam-cogs`.
+    vault_path: secret/ops-agents
+    keys:
+      - dhanam_cogs_client_id
+      - dhanam_cogs_client_secret
+    generate:
+      disabled: true
+
+  ops-agents/karafiel-cogs-client:
+    label: Ops agents → Karafiel COGS MCP read client
+    description: Janua client_credentials pair (ops-agents-karafiel-cogs, scope karafiel-cogs:read, org-bound to madfam-ecosystem) the MADFAM ops agents use to read Karafiel's native COGS MCP (POST /mcp, RFC 0051). Filed by `enclii secrets provision oidc --platform ops-agents-karafiel-cogs`.
+    vault_path: secret/ops-agents
+    keys:
+      - karafiel_cogs_client_id
+      - karafiel_cogs_client_secret
+    generate:
+      disabled: true
+
+  ops-agents/converge-dash-cogs-client:
+    label: Ops agents → converge-dash COGS MCP read client
+    description: Janua client_credentials pair (ops-agents-converge-dash-cogs, scope converge-dash-cogs:read, org-bound to madfam-ecosystem) the MADFAM ops agents use to read converge-dash's native COGS MCP (POST /mcp, RFC 0051). Filed by `enclii secrets provision oidc --platform ops-agents-converge-dash-cogs`.
+    vault_path: secret/ops-agents
+    keys:
+      - converge_dash_cogs_client_id
+      - converge_dash_cogs_client_secret
+    generate:
+      disabled: true
+
+  ops-agents/pravara-cogs-client:
+    label: Ops agents → Pravara MES COGS MCP read client
+    description: Janua client_credentials pair (ops-agents-pravara-cogs, scope pravara-cogs:read, org-bound to madfam-ecosystem) the MADFAM ops agents use to read Pravara MES's native COGS MCP (POST /mcp, RFC 0051). Filed by `enclii secrets provision oidc --platform ops-agents-pravara-cogs`.
+    vault_path: secret/ops-agents
+    keys:
+      - pravara_cogs_client_id
+      - pravara_cogs_client_secret
+    generate:
+      disabled: true
+
+  ops-agents/nauta-cogs-client:
+    label: Ops agents → Nauta COGS MCP read client
+    description: Janua client_credentials pair (ops-agents-nauta-cogs, scope nauta-cogs:read, org-bound to madfam-ecosystem) the MADFAM ops agents use to read Nauta's native COGS MCP (POST /mcp, RFC 0051). Filed by `enclii secrets provision oidc --platform ops-agents-nauta-cogs`.
+    vault_path: secret/ops-agents
+    keys:
+      - nauta_cogs_client_id
+      - nauta_cogs_client_secret
+    generate:
+      disabled: true
+
+  ops-agents/enclii-cogs-client:
+    label: Ops agents → Enclii COGS MCP read client
+    description: Janua client_credentials pair (ops-agents-enclii-cogs, scope enclii-cogs:read, org-bound to madfam-ecosystem) the MADFAM ops agents use to read Enclii's native COGS MCP (POST /mcp, RFC 0051). Filed by `enclii secrets provision oidc --platform ops-agents-enclii-cogs`.
+    vault_path: secret/ops-agents
+    keys:
+      - enclii_cogs_client_id
+      - enclii_cogs_client_secret
+    generate:
+      disabled: true
+
+  # Ops agents → Selva (selva-office#362). Ops agents only: no selva/selva-cogs
+  # target until the owner rules whether Selva's own fleet reads its ledger.
+  ops-agents/selva-cogs-client:
+    label: Ops agents → Selva COGS MCP read client
+    description: Janua client_credentials pair (ops-agents-selva-cogs, scope selva-cogs:read, org-bound to madfam-ecosystem) the MADFAM ops agents use to read Selva's native COGS MCP (POST /mcp, RFC 0051). Filed by `enclii secrets provision oidc --platform ops-agents-selva-cogs`.
+    vault_path: secret/ops-agents
+    keys:
+      - selva_cogs_client_id
+      - selva_cogs_client_secret
+    generate:
+      disabled: true
+
+  # Karafiel → Dhanam bank ledger (2026-11-11). The pair of ecosystem-oidc
+  # platform karafiel-dhanam-bank-ledger (audience dhanam-api, scope
+  # dhanam-bank-ledger:read, org-bound to madfam-ecosystem), written ONLY by
+  # `enclii secrets provision oidc --platform karafiel-dhanam-bank-ledger`. Its
+  # OWN ExternalSecret, karafiel-dhanam-bank-ledger (karafiel#383, mounted
+  # optional on the worker only): ESO is all-or-nothing per ExternalSecret, so
+  # an unprovisioned pair never holds another Karafiel Secret. LOWERCASE keys,
+  # mapped to DHANAM_BANK_LEDGER_CLIENT_ID / DHANAM_BANK_LEDGER_CLIENT_SECRET.
+  karafiel/dhanam-bank-ledger-client:
+    label: Karafiel → Dhanam bank-ledger reader client
+    description: Janua client_credentials pair (karafiel-dhanam-bank-ledger, scope dhanam-bank-ledger:read, org-bound) Karafiel's worker uses to read one business space's bank movements from Dhanam for its bank mirror. Filed by `enclii secrets provision oidc --platform karafiel-dhanam-bank-ledger`.
+    vault_path: secret/karafiel
+    namespace: karafiel
+    external_secret: karafiel-dhanam-bank-ledger  # pragma: allowlist secret
+    keys:
+      - dhanam_bank_ledger_client_id
+      - dhanam_bank_ledger_client_secret
+    generate:
+      disabled: true
+
+  # Karafiel → Dhanam scheduled payments (2026-11-11, RFC 0055 Phase 1.5,
+  # ruling O4). The pair of ecosystem-oidc platform
+  # karafiel-dhanam-scheduled-payments (audience dhanam-api, scope
+  # dhanam-scheduled-payments:write, org-bound to madfam-ecosystem), written
+  # ONLY by `enclii secrets provision oidc --platform
+  # karafiel-dhanam-scheduled-payments`. Its OWN planned ExternalSecret,
+  # karafiel-dhanam-scheduled-payments: ESO is all-or-nothing per
+  # ExternalSecret. LOWERCASE keys.
+  karafiel/dhanam-scheduled-payments-client:
+    label: Karafiel → Dhanam scheduled-payments writer client
+    description: Janua client_credentials pair (karafiel-dhanam-scheduled-payments, scope dhanam-scheduled-payments:write, org-bound) Karafiel uses to push tax obligations into Dhanam as planned payments (RFC 0055 Phase 1.5). Filed by `enclii secrets provision oidc --platform karafiel-dhanam-scheduled-payments`.
+    vault_path: secret/karafiel
+    namespace: karafiel
+    external_secret: karafiel-dhanam-scheduled-payments  # pragma: allowlist secret
+    keys:
+      - dhanam_scheduled_payments_client_id
+      - dhanam_scheduled_payments_client_secret
+    generate:
+      disabled: true
+
   dhanam/karafiel-callback-secret:
     label: Dhanam callback key for Karafiel
     description: HMAC key Karafiel's worker signs its cfdi-issued callback to Dhanam with (X-Dhanam-Timestamp + X-Dhanam-Signature-V2) and Dhanam's api verifies, projected by dhanam-secrets-karafiel-callback. Karafiel holds a read-only copy through its own ExternalSecret karafiel-dhanam-callback-signing (namespace karafiel). Mint server-side with --generate karafiel_dhanam_signing_secret.
@@ -1774,6 +2276,96 @@ targets:
     external_secret: dhanam-secrets-karafiel-callback  # pragma: allowlist secret
     keys:
       - karafiel_dhanam_signing_secret
+
+  # Dhanam credit-metering key (DHC-07, 2026-11-09). Dhanam verifies it, so it
+  # owns the one canonical copy at secret/dhanam; signers read it cross-path.
+  # Generation stays ON (default entropy): no person ever handles the value.
+  dhanam/billing-webhook-secret:
+    label: Dhanam credit-metering key
+    description: HMAC key for POST /v1/billing/credits/usage (X-Billing-Signature, hex HMAC-SHA256 of the raw body). Dhanam's api verifies it, first as BILLING_WEBHOOK_SECRET_NEXT and after promotion as BILLING_WEBHOOK_SECRET, projected by dhanam-billing-webhook. Signers read it cross-path through their own ExternalSecret (Karafiel through karafiel-dhanam-credit-signing, namespace karafiel). Mint server-side with --generate billing_webhook_secret, ONCE; a re-run rotates it.
+    vault_path: secret/dhanam
+    namespace: dhanam
+    external_secret: dhanam-billing-webhook  # pragma: allowlist secret
+    keys:
+      - billing_webhook_secret
+
+  # Dhanam referral reward key (2026-11-10). Until now ReferralHmacGuard fell
+  # back to BILLING_WEBHOOK_SECRET, so referral rewards shared the
+  # credit-metering key. Dhanam verifies this one, so it owns the one
+  # canonical copy, on its own sub-path secret/dhanam/referral (already
+  # writable through secret/data/dhanam/*). Generation stays ON (default
+  # entropy): no person ever handles the value.
+  dhanam/referral-webhook-secret:
+    label: Dhanam referral reward key
+    description: HMAC key for POST /v1/referral/reward (X-Referral-Signature or X-PhyndCRM-Signature, hex HMAC-SHA256 of the raw body). Dhanam's api verifies it as REFERRAL_WEBHOOK_SECRET, projected by dhanam-referral-webhook; while that is unset the guard falls back to BILLING_WEBHOOK_SECRET. A signer reads it cross-path through its own ExternalSecret; none is wired yet. Mint server-side with --generate referral_webhook_secret, ONCE; a re-run rotates it.
+    vault_path: secret/dhanam/referral
+    namespace: dhanam
+    external_secret: dhanam-referral-webhook  # pragma: allowlist secret
+    keys:
+      - referral_webhook_secret
+
+  # madfam-crawler per-caller API keys (2026-11-09, verifier-owns, cross-path
+  # read). madfam-crawler verifies these keys, so it owns the one canonical
+  # copy per caller at secret/madfam-crawler; each caller reads ITS OWN
+  # property cross-path through its own ExternalSecret. One key per target so
+  # `--generate api_key_<caller>` runs with no prompt. One ExternalSecret per
+  # caller on the madfam-crawler side (madfam-crawler-caller-key-<caller>,
+  # spec only until its key is minted) so a missing key for one caller never
+  # blocks another. LOWERCASE properties, to match the ExternalSecrets'
+  # `property:` fields. Generation stays ON (default entropy).
+  madfam-crawler/api-key-forgesight:
+    label: madfam-crawler API key for forgesight
+    description: Per-caller key crawler-api verifies for forgesight (CALLER_KEY_FORGESIGHT, attributed caller=forgesight). forgesight reads it cross-path via forgesight-crawler-credentials (namespace forgesight), so that copy changes in the same window. Mint server-side with --generate api_key_forgesight.
+    vault_path: secret/madfam-crawler
+    namespace: madfam-crawler
+    external_secret: madfam-crawler-caller-key-forgesight # pragma: allowlist secret -- Kubernetes ExternalSecret object name; not a credential
+    keys:
+      - api_key_forgesight
+
+  madfam-crawler/api-key-fortuna:
+    label: madfam-crawler API key for fortuna
+    description: Per-caller key crawler-api verifies for fortuna (CALLER_KEY_FORTUNA, attributed caller=fortuna). fortuna reads it cross-path via fortuna-secrets (namespace fortuna) once it moves off secret/fortuna:madfam_crawler_token. Mint server-side with --generate api_key_fortuna.
+    vault_path: secret/madfam-crawler
+    namespace: madfam-crawler
+    external_secret: madfam-crawler-caller-key-fortuna # pragma: allowlist secret -- Kubernetes ExternalSecret object name; not a credential
+    keys:
+      - api_key_fortuna
+
+  madfam-crawler/api-key-tulana:
+    label: madfam-crawler API key for tulana
+    description: Per-caller key crawler-api verifies for tulana (CALLER_KEY_TULANA, attributed caller=tulana). tulana reads it cross-path via tulana-secrets (namespace tulana) once it moves off secret/tulana:crawler_api_token / crawler_api_key. Mint server-side with --generate api_key_tulana.
+    vault_path: secret/madfam-crawler
+    namespace: madfam-crawler
+    external_secret: madfam-crawler-caller-key-tulana # pragma: allowlist secret -- Kubernetes ExternalSecret object name; not a credential
+    keys:
+      - api_key_tulana
+
+  madfam-crawler/api-key-rondelio:
+    label: madfam-crawler API key for rondelio
+    description: Per-caller key crawler-api verifies for rondelio (CALLER_KEY_RONDELIO, attributed caller=rondelio). rondelio reads it cross-path via rondelio-secrets (namespace rondelio, MADFAM_CRAWLER_TOKEN) once it moves off secret/rondelio:madfam_crawler_token. Mint server-side with --generate api_key_rondelio.
+    vault_path: secret/madfam-crawler
+    namespace: madfam-crawler
+    external_secret: madfam-crawler-caller-key-rondelio # pragma: allowlist secret -- Kubernetes ExternalSecret object name; not a credential
+    keys:
+      - api_key_rondelio
+
+  madfam-crawler/api-key-avala:
+    label: madfam-crawler API key for avala
+    description: Per-caller key crawler-api verifies for avala (CALLER_KEY_AVALA, attributed caller=avala). avala reads it cross-path through an ExternalSecret of its own (namespace avala, MADFAM_CRAWLER_TOKEN in avala-secrets today, no ExternalSecret yet). Mint server-side with --generate api_key_avala.
+    vault_path: secret/madfam-crawler
+    namespace: madfam-crawler
+    external_secret: madfam-crawler-caller-key-avala # pragma: allowlist secret -- Kubernetes ExternalSecret object name; not a credential
+    keys:
+      - api_key_avala
+
+  madfam-crawler/api-key-tezca:
+    label: madfam-crawler API key for tezca
+    description: Per-caller key crawler-api verifies for tezca (CALLER_KEY_TEZCA, attributed caller=tezca). tezca's worker reads it cross-path through an ExternalSecret of its own (namespace tezca, MADFAM_CRAWLER_TOKEN in tezca-secrets today, no ExternalSecret yet). Mint server-side with --generate api_key_tezca.
+    vault_path: secret/madfam-crawler
+    namespace: madfam-crawler
+    external_secret: madfam-crawler-caller-key-tezca # pragma: allowlist secret -- Kubernetes ExternalSecret object name; not a credential
+    keys:
+      - api_key_tezca
 
   # zavlo on Enclii (2026-10-21). zavlo-api (namespace zavlo) projects one
   # ExternalSecret per target below (zavlo repo, infra/k8s/production/
@@ -1828,3 +2420,37 @@ targets:
     external_secret: zavlo-api-karafiel  # pragma: allowlist secret
     keys:
       - zavlo_karafiel_hmac_secret
+
+  # telemetry (2026-11-12) — RFC 0057, owner rulings T1–T10 and direction G1.
+  # The product telemetry gate in namespace `telemetry`. `crea_map_token` is the
+  # bearer the MAP presents to the gate. `postgres_password` is the gate's own
+  # Postgres. Both with --generate. The training kernel no longer reads this
+  # path: its telemetry credentials are the training target
+  # crea-sim/kernel01-telemetry on the kernel's own path, and the gate reads the
+  # kernel's token from there. A property filed here earlier for the kernel is
+  # no longer accepted by this target and is mapped by nobody.
+  telemetry-gate/runtime:
+    label: Telemetry gate runtime (product tokens, own Postgres)
+    description: Bearer token per product for the telemetry gate (crea_map_token) and the gate's Postgres password. Generate both with --generate; the gate keeps only the token's sha256 in memory.
+    vault_path: secret/telemetry-gate
+    namespace: telemetry
+    external_secret: telemetry-gate-secrets # pragma: allowlist secret -- ExternalSecret resource name; not a credential
+    keys:
+      - crea_map_token
+      - postgres_password
+
+# Shared groups: one server-generated value that several targets must hold
+# identically. `enclii secrets intake group <id>` mints it once (crypto/rand,
+# hex-encoded, never returned) and writes it to every member with a
+# compare-and-set per path; a re-run keeps the value, --rotate replaces it on
+# every member. See docs/runbooks/SECRET_INTAKE.md ("Shared groups").
+groups:
+  phynd-crm/lead-intake-hmac:
+    label: phynd-crm lead-intake HMAC key
+    description: The HMAC key phynd-crm verifies on POST /api/webhooks/lead-intake and Kalya, madfam-site and Cotiza sign their lead events with. Restart phynd-crm-web, kalya-web, madfam-web and digifab-quoting-api after it is written or rotated.
+    bytes: 32
+    members:
+      - phynd-crm/lead-intake
+      - kalya/phynd-crm-lead-intake
+      - madfam-site/phynd-crm-lead-intake
+      - digifab-quoting/phynd-crm-lead-intake

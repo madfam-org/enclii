@@ -141,6 +141,7 @@ back as listed. Pass the ones whose fallback is wrong for your repo.
 | Secret | Purpose | When not passed |
 |---|---|---|
 | `NPM_MADFAM_TOKEN` | npm.madfam.io auth, mounted as the BuildKit secret `npmrc` | Empty token; any `pnpm install` of `@janua`/`@madfam`/`@forj`/`@cotiza` packages fails |
+| `NEXT_SERVER_ACTIONS_ENCRYPTION_KEY` | Next.js Server Actions key (base64 of 16/24/32 bytes), mounted as the BuildKit secret `next_server_actions_encryption_key` so action ids stay the same across builds; the Dockerfile must read it (see the `build-publish.yml` header) | Not forwarded at all; the build runs as before (Next draws a new key, every action id changes) |
 | `ENCLII_CALLBACK_TOKEN` | Lifecycle-callback bearer (matches the server's `ENCLII_ARGOCD_WEBHOOK_SECRET`) | Warning, no Release registered: a new service stays at 0 replicas |
 | `ENCLII_DEPLOY_TOKEN` | Legacy name for the callback bearer | Unused when `ENCLII_CALLBACK_TOKEN` is set |
 | `ENCLII_API_URL` | Callback endpoint | `https://api.enclii.dev` |

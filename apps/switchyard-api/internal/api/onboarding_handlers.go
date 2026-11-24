@@ -257,24 +257,9 @@ func (h *Handler) OnboardRepo(c *gin.Context) {
 	h.recordStep(ctx, &steps, "argocd_config", true, argocdRegistrationErr)
 
 	// Step: Generate and apply NetworkPolicies via K8s API (non-critical)
+	var networkPolicyPlan *networkPolicyPlanView
 	if mergedNetwork := manifest.MergedNetwork(encliiDocs); mergedNetwork != nil {
-		npSpec := convertNetworkSpec(mergedNetwork)
-		npYAML, npGenErr := netpolicy.GeneratePolicies(namespace, req.ProjectName, npSpec)
-		if npGenErr != nil {
-			h.recordStep(ctx, &steps, "network_policies", false, npGenErr)
-		} else if h.k8sClient != nil && h.k8sClient.IsValid() {
-			npCount, npErr := h.k8sClient.ApplyNetworkPolicies(ctx, namespace, npYAML)
-			if npErr != nil {
-				h.recordStep(ctx, &steps, "network_policies", false, fmt.Errorf("applied %d policies before error: %w", npCount, npErr))
-			} else {
-				h.recordStep(ctx, &steps, "network_policies", false, nil)
-				h.logger.Info(ctx, "Applied NetworkPolicies via K8s API",
-					logging.String("namespace", namespace),
-					logging.Int("policy_count", npCount))
-			}
-		} else {
-			h.recordStep(ctx, &steps, "network_policies", false, fmt.Errorf("k8s client not available for NetworkPolicy apply"))
-		}
+		networkPolicyPlan = h.runNetworkPolicyStep(ctx, &steps, namespace, req.ProjectName, mergedNetwork, req.AllowNetpolNarrowing)
 	}
 
 	// Step: Register status page entries (non-critical)
@@ -410,6 +395,9 @@ func (h *Handler) OnboardRepo(c *gin.Context) {
 		"manifest_path":  manifestPath,
 		"services":       serviceNames,
 		"domains":        domainResults,
+	}
+	if networkPolicyPlan != nil {
+		response["network_policy_plan"] = networkPolicyPlan
 	}
 	if req.ProvisionPostgres != nil {
 		response["postgres_database"] = req.ProvisionPostgres.DatabaseName

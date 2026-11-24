@@ -306,7 +306,7 @@ func TestTrainingCapabilitiesRegistryDriftAndConfigurationAreClosed(t *testing.T
 func TestTrainingCapabilitiesKeepFiveDestinationsWithThreeKernels(t *testing.T) {
 	registry, err := secretsintake.LoadRegistry()
 	require.NoError(t, err)
-	for _, id := range []string{"crea-sim/kernel01-runtime", "crea-sim/kernel02-runtime", "crea-sim/kernel03-runtime", "crea-sim/kernel01-ca", "crea-sim/kernel02-ca", "crea-sim/kernel03-ca"} {
+	for _, id := range []string{"crea-sim/kernel01-runtime", "crea-sim/kernel02-runtime", "crea-sim/kernel03-runtime", "crea-sim/kernel01-ca", "crea-sim/kernel02-ca", "crea-sim/kernel03-ca", "crea-sim/kernel01-telemetry"} {
 		require.Equal(t, "secret/crea-sim-map01", registry[id].VaultPath, id)
 		require.Equal(t, "crea-sim", registry[id].Namespace, id)
 	}

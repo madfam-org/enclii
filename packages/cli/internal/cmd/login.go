@@ -310,7 +310,7 @@ func runLogin(cmd *cobra.Command, cfg *config.Config, issuer, clientID, prompt s
 		AccessToken:  tokens.AccessToken,
 		RefreshToken: tokens.RefreshToken,
 		TokenType:    tokens.TokenType,
-		ExpiresAt:    time.Now().Add(time.Duration(tokens.ExpiresIn) * time.Second),
+		ExpiresAt:    config.TokenExpiry(tokens.AccessToken, tokens.ExpiresIn),
 		Issuer:       issuer,
 	}
 

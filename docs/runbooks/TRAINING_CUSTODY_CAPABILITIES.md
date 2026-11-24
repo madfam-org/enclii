@@ -1,6 +1,6 @@
 # Training custody capability proof
 
-Last Updated: 2026-10-20
+Last Updated: 2026-11-12
 
 > **Boundary checkpoint (2026-10-14, platform engineering):** Public-safe
 > mechanism and capability contracts only. Private custody identities, values
@@ -30,11 +30,13 @@ validated metadata and never prints raw upstream errors. Only the verified
 required-capability status exits zero. Valid negative evidence remains
 inspectable with a nonzero exit; it is not authority to initialize custody.
 
-All seventeen reviewed intake IDs must retain their exact path and namespace;
+All eighteen reviewed intake IDs must retain their exact path and namespace;
 missing IDs, new training-prefix IDs and reroutes within the same destination
 set fail closed. The five registry destinations are `crea-sim-gateway`, `crea-sim-captura`,
 `crea-sim-map01`, `crea-sim-selva`, and `janua-staging`. The three MAP kernels
-all file into `crea-sim-map01` under their own keys. The probe verifies the
+all file into `crea-sim-map01` under their own keys. Kernel 01's telemetry target
+(`crea-sim/kernel01-telemetry`, 2026-11-12) also files into `crea-sim-map01`, so
+the destination set stays at five. The probe verifies the
 reviewed registry paths/namespaces and queries only their five `secret/data/`
 and five `secret/metadata/` paths. Data requires create/update/patch/read;
 metadata requires read/list. Known additional authority, including root/sudo,
