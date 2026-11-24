@@ -139,6 +139,13 @@ and token issuer remain the canonical public Janua origin. Generic `https`
 permits all TCP 443 destinations, so it cannot establish a restricted external
 API allowlist. `network.custom` remains same-namespace only.
 
+`postgres` and `pgbouncer` are different ports (TCP 5432 to `app: postgres`,
+TCP 6432 to `app: pgbouncer`). A service whose `DATABASE_URL` points at
+PgBouncer needs `pgbouncer`. Re-running onboarding or `onboard ensure` diffs
+the live policies against the generated ones and refuses a change that
+narrows live access; see the
+[narrowing guard](../cli/commands/onboard.md#networkpolicy-narrowing-guard).
+
 For intra-namespace communication (e.g., nginx proxy → backend), use `network.custom`:
 
 ```yaml

@@ -1,14 +1,17 @@
 package config
 
 import (
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"net/url"
 	"os"
 	"path/filepath"
 	"regexp"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/sirupsen/logrus"
@@ -74,6 +77,10 @@ type Config struct {
 	// OAuth Credentials (loaded from the active profile's credentials file;
 	// see GetCredentialsPath)
 	Credentials *Credentials
+
+	// RefreshError is why the last ReloadCredentials could not renew the
+	// session, or nil. It never contains a token.
+	RefreshError error
 
 	// apiTokenExplicit records that APIToken came from the environment or a
 	// flag, so reloading a profile's credentials never overrides it.
@@ -148,19 +155,20 @@ func (c *Config) ReloadCredentials() {
 		c.APIToken = ""
 	}
 
+	c.RefreshError = nil
+
 	creds, err := loadCredentials()
 	if err != nil || creds == nil {
 		return
 	}
 	// If the access token is within the refresh window and we have a
-	// refresh token, swap in a fresh access token before the API
-	// rejects the old one. Failures here are non-fatal — fall back to
-	// whatever token we already have and let the API surface 401s.
-	if shouldRefresh(creds) && creds.RefreshToken != "" {
-		if refreshed, rerr := refreshAccessToken(creds); rerr == nil {
-			creds = refreshed
-			_ = saveCredentials(creds)
-		}
+	// refresh token, swap in a fresh access token before the API rejects
+	// the old one. A failed refresh is not fatal — the token we hold is
+	// used for as long as it is valid — but it is never silent: once the
+	// session can no longer be used, the reason goes to stderr.
+	creds, c.RefreshError = renewIfDue(activeProfile, creds)
+	if c.RefreshError != nil && !time.Now().Before(creds.ExpiresAt) {
+		warnRefreshFailed(activeProfile, c.RefreshError)
 	}
 	c.Credentials = creds
 	if c.APIToken == "" && creds.AccessToken != "" {
@@ -189,6 +197,136 @@ func shouldRefresh(c *Credentials) bool {
 	return time.Now().Add(refreshLeeway).After(c.ExpiresAt)
 }
 
+// TokenExpiry is when an access token stops working. A JWT's own `exp` is what
+// the API enforces, so it wins; `expires_in` is only the issuer's announcement
+// and is used when the token is opaque. The two have disagreed in production:
+// Janua announced 3600 s for tokens whose `exp` was eight hours away, so the
+// CLI dropped a working token after one hour whenever its refresh was refused.
+func TokenExpiry(accessToken string, expiresIn int) time.Time {
+	if exp, ok := jwtExpiry(accessToken); ok {
+		return exp
+	}
+	return time.Now().Add(time.Duration(expiresIn) * time.Second)
+}
+
+// jwtExpiry reads the `exp` claim of a JWT without verifying it. That is safe
+// here: the claim only decides when the CLI stops offering the token; the API
+// verifies the signature and the expiry on every request.
+func jwtExpiry(token string) (time.Time, bool) {
+	parts := strings.Split(token, ".")
+	if len(parts) != 3 {
+		return time.Time{}, false
+	}
+	payload, err := base64.RawURLEncoding.DecodeString(strings.TrimRight(parts[1], "="))
+	if err != nil {
+		return time.Time{}, false
+	}
+	var claims struct {
+		Exp *float64 `json:"exp"`
+	}
+	if err := json.Unmarshal(payload, &claims); err != nil || claims.Exp == nil || *claims.Exp <= 0 {
+		return time.Time{}, false
+	}
+	return time.Unix(int64(*claims.Exp), 0), true
+}
+
+// renewIfDue returns the credentials to use for profile. It first corrects a
+// stored expiry that disagrees with the access token's own `exp` (files
+// written before TokenExpiry existed say "one hour"), then refreshes when the
+// token is inside the refresh window. A refused or failed refresh returns the
+// credentials it was given together with the reason.
+func renewIfDue(profile string, creds *Credentials) (*Credentials, error) {
+	corrected := false
+	if exp, ok := jwtExpiry(creds.AccessToken); ok && !exp.Equal(creds.ExpiresAt) {
+		creds.ExpiresAt = exp
+		corrected = true
+	}
+	if shouldRefresh(creds) && creds.RefreshToken != "" {
+		refreshed, err := refreshAccessToken(creds)
+		if err != nil {
+			return creds, err
+		}
+		_ = saveCredentialsFor(profile, refreshed)
+		return refreshed, nil
+	}
+	if corrected {
+		// Other readers of the file (scripts) see the real expiry too.
+		_ = saveCredentialsFor(profile, creds)
+	}
+	return creds, nil
+}
+
+// warnOut receives the one-line refresh failure notice; tests replace it.
+var warnOut io.Writer = os.Stderr
+
+var (
+	warnedMu sync.Mutex
+	warned   = map[string]bool{}
+)
+
+// warnRefreshFailed says, once per process and profile, why an expired
+// session could not be renewed. The text is built from the HTTP status and
+// the identity provider's own error message only — never from a token.
+func warnRefreshFailed(profile string, reason error) {
+	line := fmt.Sprintf("enclii: the session of profile %q expired and could not be renewed: %v. Run `%s`.",
+		profile, reason, loginCommand(profile))
+	warnedMu.Lock()
+	defer warnedMu.Unlock()
+	if warned[line] {
+		return
+	}
+	warned[line] = true
+	_, _ = fmt.Fprintln(warnOut, line)
+}
+
+func loginCommand(profile string) string {
+	if profile == "" || profile == DefaultProfile {
+		return "enclii login"
+	}
+	return fmt.Sprintf("enclii --profile %s login", profile)
+}
+
+// maxRefreshReason bounds how much of an identity provider's error text is
+// repeated to the terminal.
+const maxRefreshReason = 200
+
+// refreshRefusal describes a non-2xx answer from the token endpoint: the
+// status and, when the body carries one, the provider's stated reason
+// (FastAPI `detail`, or OAuth `error` / `error_description`, RFC 6749 §5.2).
+func refreshRefusal(status int, body []byte, redact ...string) error {
+	var parsed struct {
+		Detail           json.RawMessage `json:"detail"`
+		Error            string          `json:"error"`
+		ErrorDescription string          `json:"error_description"`
+	}
+	reason := ""
+	if json.Unmarshal(body, &parsed) == nil {
+		var detail string
+		_ = json.Unmarshal(parsed.Detail, &detail)
+		switch {
+		case detail != "":
+			reason = detail
+		case parsed.Error != "" && parsed.ErrorDescription != "":
+			reason = parsed.Error + ": " + parsed.ErrorDescription
+		default:
+			reason = parsed.Error + parsed.ErrorDescription
+		}
+	}
+	reason = strings.Join(strings.Fields(reason), " ")
+	for _, value := range redact {
+		if value != "" {
+			reason = strings.ReplaceAll(reason, value, "[redacted]")
+		}
+	}
+	if runes := []rune(reason); len(runes) > maxRefreshReason {
+		reason = string(runes[:maxRefreshReason]) + "…"
+	}
+	if reason == "" {
+		return fmt.Errorf("the identity provider answered HTTP %d", status)
+	}
+	return fmt.Errorf("the identity provider answered HTTP %d (%s)", status, reason)
+}
+
 // CLI public OAuth client — must match the one in internal/cmd/login.go.
 // Duplicated here to avoid a config→cmd import cycle. Override with
 // ENCLII_OIDC_CLIENT_ID for self-hosted deployments.
@@ -215,12 +353,15 @@ func refreshAccessToken(creds *Credentials) (*Credentials, error) {
 	httpClient := &http.Client{Timeout: 10 * time.Second}
 	resp, err := httpClient.PostForm(creds.Issuer+"/api/v1/oauth/token", form)
 	if err != nil {
-		return nil, fmt.Errorf("refresh request: %w", err)
+		// A *url.Error names the endpoint and the cause; the form (and so
+		// the refresh token) is in the request body, never in the URL.
+		return nil, fmt.Errorf("the identity provider could not be reached: %w", err)
 	}
 	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode >= 400 {
-		return nil, fmt.Errorf("refresh: HTTP %d", resp.StatusCode)
+		raw, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
+		return nil, refreshRefusal(resp.StatusCode, raw, creds.RefreshToken, creds.AccessToken)
 	}
 
 	var body struct {
@@ -240,7 +381,7 @@ func refreshAccessToken(creds *Credentials) (*Credentials, error) {
 		AccessToken:  body.AccessToken,
 		RefreshToken: creds.RefreshToken,
 		TokenType:    body.TokenType,
-		ExpiresAt:    time.Now().Add(time.Duration(body.ExpiresIn) * time.Second),
+		ExpiresAt:    TokenExpiry(body.AccessToken, body.ExpiresIn),
 		Issuer:       creds.Issuer,
 	}
 	// Some IdPs rotate the refresh token; honor that if present.
@@ -327,13 +468,11 @@ func ProfileAPIToken(name string) (string, error) {
 	if err != nil || creds == nil || creds.AccessToken == "" {
 		return "", fmt.Errorf("profile %q is not logged in — run `enclii --profile %s login`", profile, profile)
 	}
-	if shouldRefresh(creds) && creds.RefreshToken != "" {
-		if refreshed, rerr := refreshAccessToken(creds); rerr == nil {
-			creds = refreshed
-			_ = saveCredentialsFor(profile, creds)
-		}
-	}
+	creds, refreshErr := renewIfDue(profile, creds)
 	if !time.Now().Before(creds.ExpiresAt) {
+		if refreshErr != nil {
+			return "", fmt.Errorf("profile %q login has expired and could not be renewed: %v — run `enclii --profile %s login`", profile, refreshErr, profile)
+		}
 		return "", fmt.Errorf("profile %q login has expired — run `enclii --profile %s login`", profile, profile)
 	}
 	return creds.AccessToken, nil

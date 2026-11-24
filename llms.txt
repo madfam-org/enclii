@@ -14,7 +14,10 @@ Compact LLM context index for this repository.
 - One-off jobs (`enclii jobs run-once`): the dispatcher resolves the service's
   Deployment as `<name>`, `<name>-web`, then `<namespace>-web`; deterministic
   admission denials mark the job **failed** with a stored `failure_reason`
-  (surfaced by `jobs logs`) instead of pending forever. Full contract:
+  (surfaced by `jobs logs`) instead of pending forever. One-off pods carry no
+  service labels unless the run asks for `--network-identity service`, which
+  copies only the labels the namespace's NetworkPolicies select on, and only for
+  the service's deployed image (anything else fails the job). Full contract:
   `docs/cli/commands/jobs.md`. There is NO `enclii exec` and NO `enclii jobs run <task>`.
 - Tunnel routes: switchyard refuses to write or replace an ingress rule whose
   backend Service does not exist with that port, canaries every changed rule and

@@ -45,6 +45,7 @@ func TestIsolatedTrainingRoutesRequireOperatorDuringTenantRollback(t *testing.T)
 					{http.MethodPost, "/v1/admin/projects/crea-sim/environments/staging/bootstrap", `{"repo_full_name":"madfam-org/crea-sim"}`, http.StatusServiceUnavailable},
 					{http.MethodGet, "/v1/secrets/intake/targets", "", http.StatusOK},
 					{http.MethodPost, "/v1/secrets/intake", `{}`, http.StatusServiceUnavailable},
+					{http.MethodPost, "/v1/secrets/intake/groups", `{}`, http.StatusServiceUnavailable},
 					{http.MethodGet, "/v1/secrets/intake/int_operator_rank_fixture_missing", "", http.StatusNotFound},
 				} {
 					name := "tenant_admin/" + route.method + route.path

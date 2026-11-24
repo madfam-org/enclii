@@ -116,6 +116,13 @@ export async function detectAndManageIncidents(
   return { created, resolved }
 }
 
+/**
+ * A service checked by any status site within this window is still monitored,
+ * so its auto-incidents are not orphans even if this site's catalog lacks it.
+ * The recorders run every minute; 15 minutes tolerates a few missed runs.
+ */
+const ORPHAN_RECENT_CHECK_MINUTES = 15
+
 async function resolveOrphanedAutoIncidents(
   results: HealthCheckResult[],
   resolved: string[],
@@ -144,6 +151,23 @@ async function resolveOrphanedAutoIncidents(
       affectedServices.every((service) => !currentServices.has(service))
 
     if (!isOrphaned) continue
+
+    // "Not in THIS site's catalog" is not "orphaned". status-enclii and
+    // status-madfam share one incidents table, so each site saw the other's
+    // auto-incidents as orphans: status-madfam created them, status-enclii
+    // resolved them a minute later, and the pair churned four incidents a
+    // minute. Only resolve when no site has recorded a check for any of the
+    // affected services recently.
+    if (affectedServices.length > 0) {
+      const stillMonitored = await query<{ service: string }>(
+        `SELECT service FROM status_checks
+         WHERE service = ANY($1)
+           AND checked_at > NOW() - INTERVAL '${ORPHAN_RECENT_CHECK_MINUTES} minutes'
+         LIMIT 1`,
+        [affectedServices],
+      )
+      if (stillMonitored && stillMonitored.rows.length > 0) continue
+    }
 
     try {
       await updateIncident(row.id, {

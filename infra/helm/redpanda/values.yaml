@@ -16,11 +16,20 @@ image:
 # replication.factor=3 on topics without squeezing the scheduler.
 statefulset:
   replicas: 3
-  # Spread brokers across nodes (one per node) so a node failure
-  # never loses quorum.
+  # Soft spread, as in the live Application: one node is tainted for CI, so
+  # hard antiaffinity would leave a broker unschedulable.
   podAntiAffinity:
     topologyKey: kubernetes.io/hostname
-    type: hard
+    type: soft
+    weight: 100
+  # CPU request (2026-11-01): see `resources` below.
+  podTemplate:
+    spec:
+      containers:
+      - name: redpanda
+        resources:
+          requests:
+            cpu: 200m
   # NodePort tunnel routes are provisioned via NetworkPolicy + Service,
   # not via host networking.
 
@@ -71,22 +80,20 @@ storage:
     size: 50Gi
   tieredConfig: {}  # No S3 offload for now.
 
-# Per-broker resources. Right-sized against MEASURED usage (2026-08-17
-# capacity audit): each broker requested a full core but uses ~55m — an 18x
-# over-reservation, and three brokers were reserving 3 cores of the cluster's
-# scheduling budget while the CPUs sat at ~12% actual. `overprovisioned: true`
-# drops the Redpanda CPU *request* to a fractional share (broker still runs;
-# it simply stops reserving a whole idle core each), which is what frees the
-# scheduling headroom that had pods Pending on an idle cluster. Memory
+# Per-broker resources. The chart renders limits only, so Kubernetes sets the
+# CPU request equal to the `cores` limit. The 2026-08-17 change here
+# (`overprovisioned: true`, #413) never lowered the request: it only adds the
+# `--overprovisioned` flag, and it never reached the live Application, which
+# keeps `false`. On 2026-11-01 the brokers still requested 1000m each against
+# a 7-day max of 80m. The request is now set in `statefulset.podTemplate`
+# above, which the chart merges into the PodSpec by container name. Memory
 # reservation is realistic (~440Mi used vs 2Gi cap) and kept as burst room.
 #
-# NOTE: `cpu.cores` MUST stay an integer — the Redpanda chart schema rejects a
-# fractional value. The knob that lowers the request is `overprovisioned`, not
-# a fractional `cores`.
+# NOTE: `cpu.cores` MUST stay an integer (the chart schema rejects fractions).
 resources:
   cpu:
     cores: 1
-    overprovisioned: true
+    overprovisioned: false
   memory:
     enable_memory_locking: false
     container:

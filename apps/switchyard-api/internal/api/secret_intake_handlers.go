@@ -42,6 +42,10 @@ type secretIntakeStatus struct {
 	CreatedAt               time.Time `json:"created_at"`
 	ExpiresAt               time.Time `json:"expires_at"`
 	Message                 string    `json:"message,omitempty"`
+	// Shared-group runs only: whether the value was generated, kept or
+	// rotated, and what happened at each member. Never the value itself.
+	ValueSource string                    `json:"value_source,omitempty"`
+	Members     []sharedGroupMemberStatus `json:"members,omitempty"`
 }
 
 type secretIntakeSubmitRequest struct {
@@ -72,6 +76,11 @@ func (h *Handler) ListSecretIntakeTargets(c *gin.Context) {
 		Keys        []string                      `json:"keys"`
 		Generation  *secretsintake.GeneratePolicy `json:"generation,omitempty"`
 	}
+	groups, err := secretsintake.ListGroups()
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to load intake registry"})
+		return
+	}
 	out := make([]row, 0, len(targets))
 	for _, t := range targets {
 		out = append(out, row{
@@ -84,7 +93,7 @@ func (h *Handler) ListSecretIntakeTargets(c *gin.Context) {
 			Generation:  t.Generate,
 		})
 	}
-	c.JSON(http.StatusOK, gin.H{"targets": out})
+	c.JSON(http.StatusOK, gin.H{"targets": out, "groups": groups})
 }
 
 // SubmitSecretIntake POST /v1/secrets/intake — write-only; values never returned.
@@ -123,6 +132,16 @@ func (h *Handler) SubmitSecretIntake(c *gin.Context) {
 		return
 	}
 
+	// A shared-group member holds the value its group minted for every member;
+	// a single-target write, generated or supplied, would split the copies.
+	if target.Generate != nil && target.Generate.Group != "" {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"error":   "shared_group_member",
+			"message": fmt.Sprintf("target %q is written only by its shared group: enclii secrets intake group %s", target.ID, target.Generate.Group),
+		})
+		return
+	}
+
 	updates, keysWritten, err := validateIntakeValues(target, req.Values)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid_values", "message": err.Error()})
@@ -150,10 +169,11 @@ func (h *Handler) SubmitSecretIntake(c *gin.Context) {
 		return
 	}
 	var vaultVersion int
-	if target.Generate != nil && target.Generate.Profile != "" {
+	signingAuthority := target.ID == "karafiel/hcm-signing-bindings" || target.ID == "symbiosis-hcm/signing-bindings"
+	if signingAuthority || (target.Generate != nil && target.Generate.Profile != "") {
 		initializer, ok := h.vaultClient.(vaultSecretInitializer)
 		if !ok {
-			c.JSON(http.StatusServiceUnavailable, gin.H{"error": "vault_initializer_disabled", "message": "atomic staging initialization is unavailable"})
+			c.JSON(http.StatusServiceUnavailable, gin.H{"error": "vault_initializer_disabled", "message": "atomic secret initialization is unavailable"})
 			return
 		}
 		vaultVersion, err = initializer.InitializeSecretData(ctx, target.VaultPath, updates)
@@ -166,6 +186,10 @@ func (h *Handler) SubmitSecretIntake(c *gin.Context) {
 			return
 		}
 		if errors.Is(err, lockbox.ErrSecretInitializationConflict) {
+			if signingAuthority {
+				c.JSON(http.StatusConflict, gin.H{"error": "vault_initialization_conflict", "message": "signing authority already exists or changed; inspect and review the existing binding, do not retry blindly"})
+				return
+			}
 			c.JSON(http.StatusConflict, gin.H{"error": "vault_initialization_conflict", "message": "staging custody already exists or changed; no retry or rotation was performed"})
 			return
 		}

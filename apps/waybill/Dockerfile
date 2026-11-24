@@ -1,5 +1,5 @@
 # Build stage
-FROM mirror.gcr.io/library/golang:1.26.10-alpine AS builder
+FROM mirror.gcr.io/library/golang:1.26.11-alpine AS builder
 
 WORKDIR /app
 

@@ -12,9 +12,15 @@ export interface UsageMetric {
   type: string;
   label: string;
   used: number;
+  /** -1: no plan allowance applies (every metric, since the RFC 0049 truth pass). */
   included: number;
   unit: string;
+  /** Always 0: Enclii has no price list. */
   cost: number;
+  /** Nothing measured this metric; `used` is then 0 and means nothing. */
+  unavailable?: boolean;
+  note?: string;
+  source?: string;
 }
 
 export interface UsageSummary {

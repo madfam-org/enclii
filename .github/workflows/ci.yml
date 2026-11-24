@@ -24,7 +24,7 @@ on:
         type: string
 
 env:
-  GO_VERSION: '1.26.10'
+  GO_VERSION: '1.26.11'
   NODE_VERSION: '22'
 
 # Keep only the newest proof for a PR. Non-PR runs have distinct groups so
@@ -317,11 +317,18 @@ jobs:
         with:
           python-version: '3.11'
 
-      - name: Install PyYAML
-        run: pip install pyyaml
+      - name: Install PyYAML and pytest
+        run: pip install pyyaml pytest
 
       - name: Run Dependabot secret-trap lint
         run: python3 scripts/check-dependabot-secret-traps.py .github/workflows/
+
+      # The label merge train runs its github-script body under node against an
+      # in-memory GitHub. It must merge with the App token (or the legacy PAT),
+      # and with neither it must go red and comment instead of a quiet notice
+      # (enclii#980/#981 sat approved and unmerged on 2026-11-19).
+      - name: Run merge-train tests (fusionar-aprobado.yml)
+        run: pytest tests/scripts/test_fusionar_aprobado_train.py -v
 
   externalsecret-writer-lint:
     name: ExternalSecret multi-writer policy
@@ -449,6 +456,13 @@ jobs:
       - name: Run pgBackRest restore drill tests
         run: pytest tests/scripts/test_pgbackrest_restore_drill.py tests/scripts/test_pgbackrest_version_parity.py -v
 
+      # switchyard-api and roundhouse both build cosign from source and raise
+      # its vulnerable dependencies with `go get` floors. The two copies must
+      # stay identical and every floor must meet its advisory's fixed version
+      # (the roundhouse copy drifted; the compress floor lagged enclii#942).
+      - name: Run bundled cosign dependency floor guard
+        run: pytest tests/scripts/test_bundled_cosign_floors.py -v
+
       # Managed-Postgres addon backups: the intake target, ExternalSecret,
       # switchyard-api env and ScheduledBackup RBAC must agree with each other
       # and with the provisioner (no addon was ever backed up while any one was
@@ -456,6 +470,13 @@ jobs:
       # --expect-plan binding, run in restore-drill-lint.
       - name: Run addon backup wiring tests
         run: pytest tests/scripts/test_addon_backup_wiring.py -v
+
+      # The Redpanda chart renders a limit and no request, so the request
+      # defaulted to a full core per broker (3000m reserved, 80m used). The
+      # request is set through statefulset.podTemplate; this keeps it in the
+      # live Application and its mirror, below the limit.
+      - name: Run Redpanda CPU request guard
+        run: pytest tests/scripts/test_redpanda_cpu_request.py -v
 
       # Runs scripts/commercial-ga-proof.sh against a local stub. A 404/5xx on
       # signup or checkout must fail; a checkout that lands on the sales
@@ -525,7 +546,7 @@ jobs:
     # the Job's Failed condition). And the per-project CNPG health rules
     # (test_cnpg_project_rules.py: every kube_cnpg_cluster_* series they read
     # is one kube-state-metrics' custom-resource config publishes; hibernated
-    # clusters excluded only once CNPG confirms). promtool evaluates the real
+    # clusters excluded only once CNPG confirms). And test_critical_coverage_rules.py. promtool evaluates the real
     # rules with the image production runs; a failed pull skips with a reason.
     steps:
       - uses: actions/checkout@v7
@@ -544,7 +565,36 @@ jobs:
             docker run --rm --entrypoint /bin/promtool -v {dir}:/w:ro
             docker.io/prom/prometheus:v2.53.3
             test rules /w/{name}
-        run: pytest tests/scripts/test_alert_noise_rules.py tests/scripts/test_pager_path_drill.py tests/scripts/test_retainer_cycle_rules.py tests/scripts/test_cv_rules.py tests/scripts/test_cnpg_project_rules.py -v -rs
+        run: pytest tests/scripts/test_alert_noise_rules.py tests/scripts/test_pager_path_drill.py tests/scripts/test_retainer_cycle_rules.py tests/scripts/test_cv_rules.py tests/scripts/test_cnpg_project_rules.py tests/scripts/test_critical_coverage_rules.py -v -rs
+
+  prometheus-storage-budget-test:
+    name: Prometheus storage budget
+    runs-on: ubuntu-24.04
+    # Cheap. The main Prometheus must hold 7-9 days inside its 16GB cap
+    # (RFC 0049 D6). Until 2026-11-04 the size cap fired first and history was
+    # about 56 hours. Pins the retention flags and the volume headroom, that
+    # every exporter is scraped by one job only, and that no bucket drop
+    # removes a metric a rule or a git-provisioned dashboard reads. promtool
+    # parses the rendered prometheus.yml with the image production runs; a
+    # failed pull skips with a reason.
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Set up Python
+        uses: actions/setup-python@v7
+        with:
+          python-version: '3.11'
+
+      - name: Install deps
+        run: pip install --quiet pyyaml pytest
+
+      - name: Run Prometheus storage budget tests
+        env:
+          ENCLII_PROMTOOL_CHECK_CONFIG: >-
+            docker run --rm --entrypoint /bin/promtool -v {dir}:/w:ro
+            docker.io/prom/prometheus:v2.53.3
+            check config --syntax-only /w/{name}
+        run: pytest tests/scripts/test_prometheus_storage_budget.py -v -rs
 
   client-slo-rules-test:
     name: Client SLO rule coverage
@@ -628,6 +678,57 @@ jobs:
           chmod -R a+rX "$dir"
           image="$(python3 -c 'import yaml; d=[x for x in yaml.safe_load_all(open("infra/k8s/production/monitoring/blackbox-exporter.yaml")) if x and x.get("kind")=="Deployment"][0]; print(d["spec"]["template"]["spec"]["containers"][0]["image"])')"
           docker run --rm -v "$dir":/w:ro "$image" --config.file=/w/config.yml --config.check
+
+  capacity-scrapes-test:
+    name: Capacity plane scrapes
+    runs-on: ubuntu-24.04
+    # Cheap. The Longhorn, ARC controller and Selva grant scrape jobs (RFC
+    # 0049 Phase 1) select their targets by port name and keep a bounded set
+    # of series. A port name the target does not serve, or a keep regex that
+    # misses, gives an empty job that looks configured. Pins the selectors,
+    # the kept/dropped metric names and the egress path to each target.
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Set up Python
+        uses: actions/setup-python@v7
+        with:
+          python-version: '3.11'
+
+      - name: Install deps
+        run: pip install --quiet pyyaml pytest
+
+      - name: Run capacity scrape tests
+        run: pytest tests/scripts/test_capacity_scrapes.py -v -rs
+
+  synthetic-journeys-test:
+    name: Synthetic buyer manifests and rules
+    runs-on: ubuntu-24.04
+    # Cheap. The S-Gate 1 synthetic buyer: infra/k8s/production/synthetics,
+    # its Argo Application, its pushgateway ingress and intake target, and the
+    # synthetic-journeys rule group in prometheus.yaml. The structural tests
+    # pin the wiring, kustomize renders the directory, promtool checks and
+    # evaluates the rules (and proves the legacy synthetic-flow-probe rule no
+    # longer pages on the runner's series). test_journeys_image_digest_is_published
+    # keeps the all-zero placeholder from ever coming back.
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Set up Python
+        uses: actions/setup-python@v7
+        with:
+          python-version: '3.11'
+
+      - name: Install deps
+        run: pip install --quiet pyyaml pytest
+
+      - name: Run synthetic buyer tests
+        env:
+          ENCLII_PROMTOOL: >-
+            docker run --rm --entrypoint /bin/promtool -v {dir}:/w:ro
+            docker.io/prom/prometheus:v2.53.3
+            test rules /w/{name}
+        run: pytest tests/scripts/test_synthetic_journeys.py -v -rs
 
   courier-envelope-lint:
     name: Courier envelope shape (ops scripts)
@@ -738,6 +839,21 @@ jobs:
 
       - name: Run intake/policy parity check
         run: ./scripts/check-intake-policy-parity.sh
+
+      # The owner-run Vault -> Keychain recovery for `provision oidc
+      # --keychain`, against fake ssh, kubectl, vault and security: no network,
+      # no cluster. Also keeps its platform list equal to the registry's
+      # local_delivery entries.
+      - name: Set up Python
+        uses: actions/setup-python@v7
+        with:
+          python-version: '3.11'
+
+      - name: Install deps
+        run: pip install --quiet pyyaml pytest
+
+      - name: Run ops-agents Keychain delivery self-tests (stubbed, no network)
+        run: pytest tests/scripts/test_deliver_ops_agents_keychain.py -v
 
   status-configmap-drift:
     name: Status Configmap Drift (ST-3)
@@ -2595,6 +2711,12 @@ jobs:
       - name: Install Python test deps
         run: pip install --quiet pyyaml pytest
 
+      # `"lifecycle": "retired"` in a project's config.json drops that one
+      # Application's auto-sync and resources finalizer; every other project
+      # must render unchanged. Deleting a config.json instead would cascade.
+      - name: Run project ApplicationSet lifecycle guard
+        run: pytest tests/scripts/test_project_appset_lifecycle.py -v
+
       - name: Verify actual Trivy image command parser
         run: |
           set -euo pipefail
@@ -2617,5 +2739,11 @@ jobs:
           python3 tests/scripts/check_build_publish_trivy_image_cli.py \
             --trivy "$parser_fixture/trivy" --archive "$archive"
 
+      # The descheduler evicts pods on a schedule. Pins what it may never
+      # evict (local storage, PVCs, DaemonSets, excluded namespaces, builder
+      # nodes), its 5-per-run cap and its least-privilege RBAC.
+      - name: Run descheduler policy guard
+        run: pytest tests/scripts/test_descheduler_policy.py -v
+
       - name: Run workflow contract tests
-        run: pytest tests/scripts/test_digest_pin_push_retry.py tests/scripts/test_arc_runner_image_promotion.py tests/scripts/test_commit_digests_unpinned_gate.py tests/scripts/test_arc_control_scheduling.py tests/scripts/test_check_arc_runner_render_env.py tests/scripts/test_conservation_root_dependencies.py tests/scripts/test_build_publish_scan_gate.py -v -rs
+        run: pytest tests/scripts/test_digest_pin_push_retry.py tests/scripts/test_arc_runner_image_promotion.py tests/scripts/test_commit_digests_unpinned_gate.py tests/scripts/test_arc_control_scheduling.py tests/scripts/test_arc_runner_requests.py tests/scripts/test_check_arc_runner_render_env.py tests/scripts/test_conservation_root_dependencies.py tests/scripts/test_build_publish_scan_gate.py -v -rs

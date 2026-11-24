@@ -18,6 +18,7 @@ type fakeBackupConverger struct {
 	seen     []uuid.UUID
 	outcomes map[uuid.UUID]error
 	wired    map[uuid.UUID]bool
+	unwedged map[uuid.UUID][]string
 }
 
 func (f *fakeBackupConverger) ConvergeAddonBackups(_ context.Context, addon *types.DatabaseAddon) (addons.BackupConvergence, error) {
@@ -25,7 +26,7 @@ func (f *fakeBackupConverger) ConvergeAddonBackups(_ context.Context, addon *typ
 	if err := f.outcomes[addon.ID]; err != nil {
 		return addons.BackupConvergence{}, err
 	}
-	return addons.BackupConvergence{StanzaPatched: f.wired[addon.ID], ScheduledBackupCreated: f.wired[addon.ID]}, nil
+	return addons.BackupConvergence{StanzaPatched: f.wired[addon.ID], ScheduledBackupCreated: f.wired[addon.ID], WedgedBackupsDeleted: f.unwedged[addon.ID]}, nil
 }
 
 const liveQuery = `(?s)WHERE type = 'postgres' AND status IN \('ready', 'provisioning'\).*deleted_at IS NULL`
@@ -49,6 +50,19 @@ func TestSweepAddonBackupsTalliesEveryOutcomeAndNeverStopsEarly(t *testing.T) {
 
 	require.Equal(t, []uuid.UUID{broken, wired, steady, hibernated, drifted}, conv.seen, "a failure never stops the others")
 	require.Equal(t, backupSweepResult{Live: 5, Wired: 1, Skipped: 1, Drifted: 1, Failed: 1}, res)
+	require.NoError(t, mock.ExpectationsWereMet())
+}
+
+func TestSweepAddonBackupsCountsTheWedgedBackupsItDeleted(t *testing.T) {
+	r, mock, cleanup := newSweepReconciler(t, nil)
+	defer cleanup()
+	wedged, steady := uuid.New(), uuid.New()
+	r.SetBackupConverger(&fakeBackupConverger{unwedged: map[uuid.UUID][]string{wedged: {"pg-a-daily-20261028040000"}}})
+	mock.ExpectQuery(liveQuery).WillReturnRows(liveAddonRows(wedged, steady))
+
+	res := r.sweepAddonBackups(context.Background())
+
+	require.Equal(t, backupSweepResult{Live: 2, Unwedged: 1}, res, "an un-wedged schedule is a repair, not a new wiring")
 	require.NoError(t, mock.ExpectationsWereMet())
 }
 

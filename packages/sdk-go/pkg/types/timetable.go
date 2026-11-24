@@ -27,6 +27,10 @@ type CronJob struct {
 	NextRunAt   *time.Time `json:"next_run_at,omitempty" db:"next_run_at"`
 }
 
+// OneOffJobNetworkIdentityService is the one opt-in value of
+// OneOffJob.NetworkIdentity: run the pod with its service's network identity.
+const OneOffJobNetworkIdentityService = "service"
+
 // OneOffJob represents a single-execution scheduled job.
 type OneOffJob struct {
 	ID        uuid.UUID  `json:"id" db:"id"`
@@ -43,10 +47,17 @@ type OneOffJob struct {
 	// most importantly a Kubernetes admission webhook denial, which otherwise
 	// leaves the operator staring at "no pods scheduled" with no cause. Empty
 	// for jobs that ran (their outcome is ExitCode plus pod logs).
-	FailureReason string     `json:"failure_reason,omitempty" db:"failure_reason"`
-	CreatedAt     time.Time  `json:"created_at" db:"created_at"`
-	StartedAt     *time.Time `json:"started_at,omitempty" db:"started_at"`
-	EndedAt       *time.Time `json:"ended_at,omitempty" db:"ended_at"`
+	FailureReason string `json:"failure_reason,omitempty" db:"failure_reason"`
+	// NetworkIdentity is the network identity the job pod asked for. Empty
+	// (the default) gives the pod no service labels, so the namespace's
+	// NetworkPolicies treat it as an unlabelled pod. OneOffJobNetworkIdentityService
+	// copies onto the pod only the labels those policies select on, taken from
+	// the service's Deployment, and only when the job runs the service's
+	// deployed image; any other image is refused before a pod exists.
+	NetworkIdentity string     `json:"network_identity,omitempty" db:"network_identity"`
+	CreatedAt       time.Time  `json:"created_at" db:"created_at"`
+	StartedAt       *time.Time `json:"started_at,omitempty" db:"started_at"`
+	EndedAt         *time.Time `json:"ended_at,omitempty" db:"ended_at"`
 }
 
 // CronJobRun represents a single execution of a cron job.

@@ -94,6 +94,26 @@ name: Reusable — Build, sign, publish, pin
 #   into the build context — the committed `.npmrc` only carries scope
 #   mappings and the auth token must come from the secret mount.
 #
+# BuildKit secret: next_server_actions_encryption_key (optional)
+#   When the caller has a `NEXT_SERVER_ACTIONS_ENCRYPTION_KEY` secret, it is
+#   forwarded as a BuildKit secret with this id. Next.js salts every Server
+#   Action id with the key present at BUILD time (sha1(key + file + ":" +
+#   export)); without it each build draws a new key, every id changes, and a
+#   tab opened before a deploy can no longer run any action ("Failed to find
+#   Server Action"). A Next.js Dockerfile reads it in the RUN that builds:
+#
+#       RUN --mount=type=secret,id=next_server_actions_encryption_key,required=false \
+#           if [ -s /run/secrets/next_server_actions_encryption_key ]; then \
+#             export NEXT_SERVER_ACTIONS_ENCRYPTION_KEY="$(cat /run/secrets/next_server_actions_encryption_key)"; \
+#           fi; next build
+#
+#   Never pass it as a build-arg: it would show in `docker history`. Next
+#   writes it into the server bundle (server-reference-manifest.json), so
+#   whoever can read the private image holds it. Without the secret the line
+#   below expands to an empty line, which docker/build-push-action drops
+#   silently (csv `skipEmptyLines`): such repos build exactly as before.
+#   Reference consumer: madfam-org/crea-map (Dockerfile + scripts/acciones-estables.ts).
+#
 # Why this is safe:
 #   - Base-image-mirror preference lives in each repo's Dockerfiles
 #     (use `public.ecr.aws/docker/library/...` to sidestep Docker Hub
@@ -238,6 +258,12 @@ on:
         required: false
       NPM_MADFAM_TOKEN:
         description: npm.madfam.io auth, forwarded to the build as the BuildKit secret `npmrc`.
+        required: false
+      NEXT_SERVER_ACTIONS_ENCRYPTION_KEY:
+        description: >-
+          Next.js Server Actions key (base64 of 16, 24 or 32 bytes), forwarded to the build as the
+          BuildKit secret `next_server_actions_encryption_key` only when set. Keeps Server Action
+          ids identical across builds. Only Dockerfiles that mount it see it.
         required: false
       ENCLII_COMMIT_TOKEN:
         description: Token the digest-pin commit pushes with (to pass branch protection). Falls back to github.token.
@@ -492,8 +518,18 @@ jobs:
           # (@janua, @madfam, @forj, @cotiza). Never lands in an image layer.
           # Repos that don't consume private packages can still receive the
           # secret harmlessly — it's only read when a Dockerfile mounts it.
+          #
+          # The second line is CONDITIONAL on purpose. An unconditional
+          # `next_server_actions_encryption_key=<the secret>` line becomes
+          # `next_server_actions_encryption_key=` in repos without the secret;
+          # @docker/actions-toolkit 0.100.0 (`Build.parseSecretKvp`) throws
+          # "… is not a valid secret" for an empty value, and build-push-action
+          # v7.4.0 (`src/context.ts`) catches it as a `core.warning` on every
+          # build. An empty line instead is dropped by `Util.getList`
+          # (`skipEmptyLines: true`) with no warning.
           secrets: |
             npmrc=//npm.madfam.io/:_authToken=${{ secrets.NPM_MADFAM_TOKEN }}
+            ${{ secrets.NEXT_SERVER_ACTIONS_ENCRYPTION_KEY != '' && format('next_server_actions_encryption_key={0}', secrets.NEXT_SERVER_ACTIONS_ENCRYPTION_KEY) || '' }}
 
       # Keyless signing depends on THREE remote services at once — GitHub's
       # ambient OIDC endpoint, Fulcio, and Rekor — and a hiccup in any of them

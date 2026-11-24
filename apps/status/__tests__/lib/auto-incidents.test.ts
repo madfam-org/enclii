@@ -518,6 +518,62 @@ describe('detectAndManageIncidents', () => {
     expect(mockUpdateIncident).not.toHaveBeenCalled()
   })
 
+  it("does not resolve another site's auto-incident while that site still checks the service", async () => {
+    // status-enclii's catalog lacks "Karafiel API", but status-madfam (same
+    // incidents table) recorded a check for it a minute ago.
+    const results = [makeResult('API', 'operational')]
+
+    mockQuery
+      .mockResolvedValueOnce({
+        rows: [
+          { status: 'operational' },
+          { status: 'operational' },
+          { status: 'operational' },
+          { status: 'operational' },
+        ],
+        command: 'SELECT',
+        rowCount: 4,
+        oid: 0,
+        fields: [],
+      })
+      .mockResolvedValueOnce({
+        rows: [],
+        command: 'SELECT',
+        rowCount: 0,
+        oid: 0,
+        fields: [],
+      })
+      .mockResolvedValueOnce({
+        rows: [
+          {
+            id: 'other-site-inc',
+            title: '[Auto] Karafiel API Outage',
+            affected_services: ['Karafiel API'],
+          },
+        ],
+        command: 'SELECT',
+        rowCount: 1,
+        oid: 0,
+        fields: [],
+      })
+      // Recent status_checks row from the other site.
+      .mockResolvedValueOnce({
+        rows: [{ service: 'Karafiel API' }],
+        command: 'SELECT',
+        rowCount: 1,
+        oid: 0,
+        fields: [],
+      })
+
+    const result = await detectAndManageIncidents(results, 2)
+
+    expect(result.resolved).toEqual([])
+    expect(mockUpdateIncident).not.toHaveBeenCalled()
+    const recentCheckQuery = mockQuery.mock.calls[3]
+    expect(recentCheckQuery[0]).toContain('FROM status_checks')
+    expect(recentCheckQuery[1]).toEqual([['Karafiel API']])
+  })
+
   it('does not resolve orphaned manual incidents', async () => {
     const results = [makeResult('API', 'operational')]
 

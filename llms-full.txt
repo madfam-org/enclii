@@ -264,6 +264,11 @@ enforces it and documents how to add npm back. Baseline: `README.md` ->
 - Shared Postgres: `max_connections=200`, `shared_buffers=1GB`, pgBackRest
   2.59.1 in the init container, sidecar and drill (#785, live 2026-10-18);
   `tests/scripts/test_pgbackrest_version_parity.py` keeps the pins together.
+- switchyard-api and roundhouse build cosign v3.1.3 from source with one set
+  of `go get` dependency floors (x/net v0.62.0, x/text v0.43.0, x/mod v0.41.0,
+  grpc v1.83.2, klauspost/compress v1.20.2, go-jose/v4 v4.1.6);
+  `tests/scripts/test_bundled_cosign_floors.py` keeps the two Dockerfiles
+  identical and every floor at or above its fixed version.
 - ARC pools are pinned to the actions-runner 2.338.0 digest and deploy through
   the auto-sync Argo apps `arc-runners-blue` / `arc-runners-deploy`, not through
   `arc-self-deploy.yml`: `infra/k8s/production/arc/README.md`.

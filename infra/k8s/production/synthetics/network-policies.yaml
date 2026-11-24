@@ -1,0 +1,74 @@
+---
+# Default deny in the synthetics namespace: nothing reaches a journey pod, and
+# a journey pod reaches only what the egress policy below names.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: default-deny-all
+spec:
+  podSelector: {}
+  policyTypes:
+    - Ingress
+    - Egress
+---
+# Journey runner egress: DNS, public HTTPS, and the pushgateway.
+#
+#   - DNS to kube-dns (UDP and TCP 53).
+#   - TCP 443 to public addresses only: the staging hosts, Stripe and the
+#     identity provider are reached through their public edges, as a buyer
+#     reaches them. Private ranges (the pod and Service networks among them)
+#     are excluded, so the runner cannot reach an in-cluster service on 443.
+#   - TCP 9091 to the pushgateway in `monitoring` (metrics push and the
+#     read-back of the previous run). The Service-network ipBlock is the same
+#     workaround deploy-pipeline-monitor-egress and arc-pool-health-egress
+#     carry: some CNIs do not treat a Service IP as in-namespace pod traffic,
+#     and a silently dropped push looks exactly like a healthy one from here.
+#     The matching ingress is `pushgateway-ingress-synthetics` in
+#     monitoring/network-policies.yaml.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: journeys-egress
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: journeys
+  policyTypes:
+    - Egress
+  egress:
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: kube-system
+          podSelector:
+            matchLabels:
+              k8s-app: kube-dns
+      ports:
+        - protocol: UDP
+          port: 53
+        - protocol: TCP
+          port: 53
+    - to:
+        - ipBlock:
+            cidr: 0.0.0.0/0
+            except:
+              - 10.0.0.0/8
+              - 172.16.0.0/12
+              - 192.168.0.0/16
+              - 169.254.0.0/16
+              - 100.64.0.0/10
+      ports:
+        - protocol: TCP
+          port: 443
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: monitoring
+          podSelector:
+            matchLabels:
+              app: pushgateway
+        - ipBlock:
+            cidr: 10.43.0.0/16
+      ports:
+        - protocol: TCP
+          port: 9091

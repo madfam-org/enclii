@@ -14,8 +14,8 @@ spec:
       - name: switchyard-api
         resources:
           requests:
-            memory: "256Mi"
-            cpu: "200m"
+            memory: "144Mi"
+            cpu: "100m"
           limits:
             memory: "1Gi"
             cpu: "1000m"

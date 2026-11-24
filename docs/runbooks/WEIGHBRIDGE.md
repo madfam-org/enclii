@@ -149,17 +149,18 @@ total for a window in which this counter moved.
 ### `weighbridge_runners_unattributed_total` is climbing
 
 Runner pods carry no `enclii.dev/project-id` label and no
-`WEIGHBRIDGE_DEFAULT_PROJECT_ID` is configured. This is the expected state on
-the shared org-wide pool today: the minutes are dropped rather than filed under
-a placeholder project that somebody would eventually be invoiced for.
+`WEIGHBRIDGE_DEFAULT_PROJECT_ID` is configured.
 
-Two ways out, both deliberate decisions rather than fixes:
+Since 2026-11-04 (RFC 0049 Phase 1) the Deployment sets
+`WEIGHBRIDGE_DEFAULT_PROJECT_ID` to the `platform-ci` project, created by
+switchyard-api migration 046. The shared org-wide pool runs MADFAM's own CI, so
+filing all of its minutes under that one internal project is true, and no
+tenant is invoiced for it. A climbing counter therefore means the env var was
+lost, or the project id no longer matches the migration's.
 
-- stamp `enclii.dev/project-id` on the scale set's runner pod template (the
-  Wave 2 per-tenant path); or
-- set `WEIGHBRIDGE_DEFAULT_PROJECT_ID` on the Deployment, which files **all**
-  shared-pool minutes under one project. Only do this when that is actually
-  true.
+Per-tenant attribution is still the Wave 2 path: stamp `enclii.dev/project-id`
+on a tenant scale set's runner pod template, and those pods are filed under
+their own project instead of `platform-ci`.
 
 ### `weighbridge_events_duplicate_total` is large
 

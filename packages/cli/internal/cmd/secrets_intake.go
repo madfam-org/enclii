@@ -5,8 +5,10 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
+	"net/http"
 	"os"
 	"strings"
 	"text/tabwriter"
@@ -32,6 +34,7 @@ Examples:
   enclii secrets intake submit ceq/vast-api-key --reason "orchestrator bootstrap"
   enclii secrets intake submit ceq/vast-api-key --value-file ~/.config/madfam/vast.key
   enclii secrets intake submit crea-map/internal-api-key --generate internal_api_key --reason "smoke gate"
+  enclii secrets intake group phynd-crm/lead-intake-hmac --reason "lead-intake HMAC key"
   enclii secrets intake status int_1234567890`,
 	}
 
@@ -39,6 +42,97 @@ Examples:
 	cmd.AddCommand(newSecretsTrainingCapabilitiesCommand(cfg))
 	cmd.AddCommand(newSecretsIntakeStatusCommand(cfg))
 	cmd.AddCommand(newSecretsIntakeSubmitCommand(cfg))
+	cmd.AddCommand(newSecretsIntakeGroupCommand(cfg))
+	return cmd
+}
+
+// newSecretsIntakeGroupCommand writes one server-generated value to every
+// member of a shared group. Nothing is prompted, read or printed: the value
+// exists only in Vault.
+func newSecretsIntakeGroupCommand(cfg *config.Config) *cobra.Command {
+	var reason string
+	var rotate, jsonOut bool
+	cmd := &cobra.Command{
+		Use:   "group GROUP",
+		Short: "Write one server-generated value to every member of a shared group",
+		Long: `Switchyard mints one random value and writes it to every member target of
+GROUP (see: enclii secrets intake targets), so services that must share a key
+(an HMAC key one verifies and others sign with) hold the same value without any
+person, terminal or file holding it. The value is never returned or printed.
+
+Without --rotate a run never changes a value the members already hold: it
+copies the held value to any member that lacks it (completing an interrupted
+run) or, when no member holds one, mints a new one. A complete group is left
+unchanged. --rotate mints a new value and writes it to every member. Members
+holding different values are refused until a run with --rotate.
+
+Each service reads the value at start: restart every member service after a
+write.`,
+		Args: cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			if strings.TrimSpace(reason) == "" {
+				return fmt.Errorf("--reason is required")
+			}
+			payload := map[string]interface{}{
+				"group":  strings.TrimSpace(args[0]),
+				"reason": reason,
+			}
+			if rotate {
+				payload["rotate"] = true
+			}
+			raw, err := json.Marshal(payload)
+			if err != nil {
+				return err
+			}
+			apiClient := client.NewAPIClient(cfg.APIEndpoint, cfg.APIToken)
+			body, err := apiClient.PostRawOnce(context.Background(), "/v1/secrets/intake/groups", bytes.NewReader(raw))
+			if err != nil {
+				var apiErr client.APIError
+				if errors.As(err, &apiErr) && apiErr.StatusCode == http.StatusConflict {
+					return fmt.Errorf("the group's members hold different values (an interrupted rotation or a hand edit); nothing was written. Re-run with --rotate to give every member one new value")
+				}
+				return err
+			}
+			if jsonOut {
+				fmt.Println(string(body))
+			}
+			var resp struct {
+				IntakeID    string `json:"intake_id"`
+				Status      string `json:"status"`
+				ValueSource string `json:"value_source"`
+				Message     string `json:"message"`
+				Members     []struct {
+					TargetID                string `json:"target_id"`
+					Result                  string `json:"result"`
+					ExternalSecretRefreshed bool   `json:"external_secret_refreshed"`
+				} `json:"members"`
+			}
+			if err := json.Unmarshal(body, &resp); err != nil {
+				return err
+			}
+			if !jsonOut {
+				fmt.Printf("intake_id: %s\n", resp.IntakeID)
+				fmt.Printf("status: %s\n", resp.Status)
+				fmt.Printf("value: %s (never shown)\n", resp.ValueSource)
+				w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
+				fmt.Fprintln(w, "MEMBER\tRESULT\tEXTERNALSECRET_REFRESHED")
+				for _, m := range resp.Members {
+					fmt.Fprintf(w, "%s\t%s\t%v\n", m.TargetID, m.Result, m.ExternalSecretRefreshed)
+				}
+				if err := w.Flush(); err != nil {
+					return err
+				}
+				fmt.Fprintln(os.Stderr, resp.Message)
+			}
+			if resp.Status != "ready" {
+				return fmt.Errorf("shared group not complete: %s", resp.Message)
+			}
+			return nil
+		},
+	}
+	cmd.Flags().StringVar(&reason, "reason", "", "Audit reason (required)")
+	cmd.Flags().BoolVar(&rotate, "rotate", false, "Replace the value on every member (default: keep the value the group holds)")
+	cmd.Flags().BoolVar(&jsonOut, "json", false, "JSON output")
 	return cmd
 }
 
@@ -244,6 +338,7 @@ func collectIntakeValues(cfg *config.Config, target, valueFile string, fromStdin
 			Generation *struct {
 				Profile  string `json:"profile"`
 				Disabled bool   `json:"disabled"`
+				Group    string `json:"group"`
 			} `json:"generation"`
 		} `json:"targets"`
 	}
@@ -251,19 +346,25 @@ func collectIntakeValues(cfg *config.Config, target, valueFile string, fromStdin
 		return nil, err
 	}
 	var keys []string
-	var generationProfile string
+	var generationProfile, generationGroup string
 	var generationDisabled bool
 	for _, t := range reg.Targets {
 		if t.ID == target {
 			keys = t.Keys
 			if t.Generation != nil {
 				generationProfile, generationDisabled = t.Generation.Profile, t.Generation.Disabled
+				generationGroup = t.Generation.Group
 			}
 			break
 		}
 	}
 	if len(keys) == 0 {
 		return nil, fmt.Errorf("unknown target %q (run: enclii secrets intake targets)", target)
+	}
+	// Refuse before any prompt or file read: a shared-group member holds the
+	// value its group minted, and nobody should type or pipe one.
+	if generationGroup != "" {
+		return nil, fmt.Errorf("target %q is written only by its shared group: enclii secrets intake group %s --reason \"...\"", target, generationGroup)
 	}
 	// A new CLI must not send typed staging generation to an old server that
 	// would interpret it as independent random strings. Other targets retain

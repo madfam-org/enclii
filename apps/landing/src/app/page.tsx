@@ -301,6 +301,7 @@ export default function Home() {
 
           <div className="grid lg:grid-cols-3 gap-8">
             <PlannedLineCard
+              id="fragua"
               icon={<Cpu className="w-6 h-6" />}
               line="Runners"
               name={NAMES.runners}
@@ -321,6 +322,7 @@ export default function Home() {
             />
 
             <PlannedLineCard
+              id="depot"
               icon={<Database className="w-6 h-6" />}
               line="Data"
               name={NAMES.data}
@@ -340,6 +342,7 @@ export default function Home() {
             />
 
             <PlannedLineCard
+              id="publica"
               icon={<FileText className="w-6 h-6" />}
               line="Content"
               name={NAMES.content}

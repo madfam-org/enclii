@@ -2,6 +2,7 @@ package ecosystemoidc
 
 import (
 	"os"
+	"sort"
 	"strings"
 	"testing"
 
@@ -494,6 +495,50 @@ func TestLoadRegistry_cvAppLoginClient(t *testing.T) {
 	}, buildIntakeValues(reg.Issuer, "jnc_cv", "s3cr3t", p))
 }
 
+// forj-web (2026-11-16). A confidential login client for forj.design's
+// Next.js route handlers (forj apps/web/src/lib/janua-oidc.ts), shaped like
+// cotiza-web: BOTH the id and the secret are filed in Vault (the forj-web-oidc
+// ExternalSecret maps them to JANUA_CLIENT_ID / JANUA_CLIENT_SECRET), one exact
+// production callback and no localhost twin. Audience forj is what forj's API
+// verifies. Scopes are the web's request plus the first-party silent-SSO scope.
+// client_id is deliberately NOT asserted: pinning the printed jnc_… id after
+// the first run must not break this.
+func TestLoadRegistry_forjWebLoginClient(t *testing.T) {
+	reg, err := LoadRegistry("")
+	require.NoError(t, err)
+
+	p, ok := reg.Platforms["forj-web"]
+	require.True(t, ok, "forj-web platform missing")
+	require.NoError(t, validatePlatform(p))
+
+	assert.Equal(t, "forj/web-oidc", p.IntakeTarget)
+	assert.Empty(t, p.SessionIntakeTarget)
+	require.Equal(t, map[string]string{
+		"janua_client_id":     "client_id",
+		"janua_client_secret": "client_secret",
+	}, p.IntakeKeyMap)
+
+	jc := p.JanuaClient
+	assert.Equal(t, "forj-web", jc.Name)
+	assert.Equal(t, "forj-web", jc.ClientKey)
+	assert.Equal(t, "forj", jc.Audience, "forj's API verifies this audience (JANUA_AUDIENCE default)")
+	assert.Equal(t, "https://forj.design", jc.WebsiteURL)
+	assert.True(t, jc.confidential(), "the route handlers hold the secret server-side; the client must be confidential")
+	assert.False(t, p.publicLogin())
+	assert.Empty(t, jc.OrganizationID)
+	assert.Equal(t, []string{"https://forj.design/auth/callback"}, jc.RedirectURIs)
+	for _, u := range jc.RedirectURIs {
+		assert.NotContains(t, u, "localhost", "production client must not accept a localhost callback")
+	}
+	assert.ElementsMatch(t, []string{"openid", "profile", "email", "madfam:silent_auth"}, jc.AllowedScopes)
+	assert.ElementsMatch(t, []string{"authorization_code", "refresh_token"}, jc.GrantTypes)
+
+	assert.Equal(t, map[string]string{
+		"janua_client_id":     "jnc_forj",
+		"janua_client_secret": "s3cr3t",
+	}, buildIntakeValues(reg.Issuer, "jnc_forj", "s3cr3t", p))
+}
+
 // Digital-twins machine edges (2026-10-03). Nine client_credentials clients:
 // eight copy janua's seed_service_clients.py (SERVICE_CLIENTS and the
 // ORG_BOUND_SERVICE_CLIENTS templates, named `<template>.<org slug>`), the
@@ -743,6 +788,294 @@ func TestLoadRegistry_cvHCMBenchmarksMachineEdge(t *testing.T) {
 	}, buildIntakeValues(reg.Issuer, "jnc_fixture", "fixture-secret", p))
 }
 
+// symbiosis-hcm-karafiel: HCM's API and worker calling Karafiel for contract
+// drafts (legal:contractor-draft, legal:employment-draft) and, later, CFDI
+// (fiscal:invoice), and a contractor's constancia de situación fiscal
+// (fiscal:csf-intake). A confidential client_credentials edge with no browser
+// leg, audience karafiel-api (Karafiel's JANUA_AUDIENCE), platform-admin like
+// zavlo-cfdi-emitter: Karafiel pins machine tokens to its own service RFC and
+// reads no org. The pair lands at symbiosis-hcm/karafiel-client as the two
+// lowercase properties HCM's hcm-service-clients ExternalSecret maps.
+// client_id is deliberately NOT asserted: it is pinned after the first run.
+func TestLoadRegistry_symbiosisHCMKarafielMachineEdge(t *testing.T) {
+	reg, err := LoadRegistry("")
+	require.NoError(t, err)
+
+	p, ok := reg.Platforms["symbiosis-hcm-karafiel"]
+	require.True(t, ok, "platform symbiosis-hcm-karafiel missing")
+	assert.Equal(t, "symbiosis-hcm/karafiel-client", p.IntakeTarget)
+	assert.Empty(t, p.SessionIntakeTarget, "a machine edge has no session secret")
+	require.Equal(t, map[string]string{
+		"karafiel_service_client_id":     "client_id",
+		"karafiel_service_client_secret": "client_secret",
+	}, p.IntakeKeyMap)
+	for k := range p.IntakeKeyMap {
+		assert.Equal(t, strings.ToLower(k), k,
+			"intake key %q must be lowercase to match HCM's hcm-service-clients ExternalSecret property", k)
+	}
+
+	jc := p.JanuaClient
+	assert.Equal(t, "symbiosis-hcm-karafiel", jc.Name)
+	assert.Equal(t, "symbiosis-hcm-karafiel", jc.ClientKey)
+	assert.Equal(t, "karafiel-api", jc.Audience, "Karafiel's JANUA_AUDIENCE")
+	assert.Empty(t, jc.OrganizationID, "Karafiel reads no org from machine tokens; the edge is platform-admin")
+	assert.Equal(t, []string{"legal:contractor-draft", "legal:employment-draft", "fiscal:invoice", "fiscal:csf-intake"}, jc.AllowedScopes)
+	for _, scope := range jc.AllowedScopes {
+		assert.Regexp(t, `^[a-z][a-z0-9._-]*:[a-z][a-z0-9_-]*$`, scope,
+			"Janua registers only namespace:action scopes")
+	}
+	assert.Equal(t, []string{"client_credentials"}, jc.GrantTypes)
+	assert.Empty(t, jc.RedirectURIs, "a client_credentials client has no browser leg")
+	require.NotNil(t, jc.IsConfidential)
+	assert.True(t, jc.confidential())
+	assert.False(t, p.publicLogin())
+	assert.NotEmpty(t, jc.Description)
+	require.NoError(t, validatePlatform(p))
+
+	kind, err := jc.kind()
+	require.NoError(t, err)
+	assert.Equal(t, machineClient, kind)
+
+	assert.Equal(t, map[string]string{
+		"karafiel_service_client_id":     "jnc_fixture",
+		"karafiel_service_client_secret": "fixture-secret",
+	}, buildIntakeValues(reg.Issuer, "jnc_fixture", "fixture-secret", p))
+}
+
+// symbiosis-hcm-dhanam-writer: HCM pushing contractor retainer plans into
+// Dhanam. Org-bound to madfam-ecosystem because Dhanam's writer strategy
+// refuses a token without org_id; one scope, one colon (Janua's grammar).
+func TestLoadRegistry_symbiosisHCMDhanamWriterMachineEdge(t *testing.T) {
+	reg, err := LoadRegistry("")
+	require.NoError(t, err)
+
+	p, ok := reg.Platforms["symbiosis-hcm-dhanam-writer"]
+	require.True(t, ok, "platform symbiosis-hcm-dhanam-writer missing")
+	assert.Equal(t, "symbiosis-hcm/dhanam-writer-client", p.IntakeTarget)
+	assert.Empty(t, p.SessionIntakeTarget, "a machine edge has no session secret")
+	require.Equal(t, map[string]string{
+		"dhanam_writer_client_id":     "client_id",
+		"dhanam_writer_client_secret": "client_secret",
+	}, p.IntakeKeyMap)
+
+	jc := p.JanuaClient
+	assert.Equal(t, "symbiosis-hcm-dhanam-writer", jc.Name)
+	assert.Equal(t, "symbiosis-hcm-dhanam-writer", jc.ClientKey)
+	assert.Equal(t, "dhanam-api", jc.Audience)
+	assert.Equal(t, "1a6233ef-185f-43ee-9181-e2591fbb2643", jc.OrganizationID,
+		"Dhanam's writer strategy requires org_id; Janua sets it only for org-bound clients")
+	assert.Equal(t, []string{"dhanam-scheduled-payments:write"}, jc.AllowedScopes)
+	assert.Regexp(t, `^[a-z][a-z0-9._-]*:[a-z][a-z0-9_-]*$`, jc.AllowedScopes[0],
+		"Janua registers only namespace:action scopes")
+	assert.Equal(t, []string{"client_credentials"}, jc.GrantTypes)
+	assert.Empty(t, jc.RedirectURIs)
+	require.NotNil(t, jc.IsConfidential)
+	assert.True(t, jc.confidential())
+	require.NoError(t, validatePlatform(p))
+
+	assert.Equal(t, map[string]string{
+		"dhanam_writer_client_id":     "jnc_fixture",
+		"dhanam_writer_client_secret": "fixture-secret",
+	}, buildIntakeValues(reg.Issuer, "jnc_fixture", "fixture-secret", p))
+}
+
+// karafiel-dhanam-cost-events: Karafiel pushing cost.event.v1 events (received
+// and issued CFDI) into Dhanam's ledger (RFC 0050 Phase 1). Same shape as the
+// HCM writer: org-bound, one scope with one colon, client_credentials only.
+func TestLoadRegistry_karafielDhanamCostEventsMachineEdge(t *testing.T) {
+	reg, err := LoadRegistry("")
+	require.NoError(t, err)
+
+	p, ok := reg.Platforms["karafiel-dhanam-cost-events"]
+	require.True(t, ok, "platform karafiel-dhanam-cost-events missing")
+	assert.Equal(t, "karafiel/dhanam-cost-events-client", p.IntakeTarget)
+	assert.Empty(t, p.SessionIntakeTarget, "a machine edge has no session secret")
+	require.Equal(t, map[string]string{
+		"dhanam_cost_events_client_id":     "client_id",
+		"dhanam_cost_events_client_secret": "client_secret",
+	}, p.IntakeKeyMap)
+
+	jc := p.JanuaClient
+	assert.Equal(t, "karafiel-dhanam-cost-events", jc.Name)
+	assert.Equal(t, "karafiel-dhanam-cost-events", jc.ClientKey)
+	assert.Equal(t, "dhanam-api", jc.Audience)
+	assert.Equal(t, "1a6233ef-185f-43ee-9181-e2591fbb2643", jc.OrganizationID,
+		"Dhanam's cost-events strategy requires org_id; Janua sets it only for org-bound clients")
+	assert.Equal(t, []string{"dhanam-cost-events:write"}, jc.AllowedScopes)
+	assert.Regexp(t, `^[a-z][a-z0-9._-]*:[a-z][a-z0-9_-]*$`, jc.AllowedScopes[0],
+		"Janua registers only namespace:action scopes")
+	assert.Equal(t, []string{"client_credentials"}, jc.GrantTypes)
+	assert.Empty(t, jc.RedirectURIs)
+	require.NotNil(t, jc.IsConfidential)
+	assert.True(t, jc.confidential())
+	require.NoError(t, validatePlatform(p))
+
+	assert.Equal(t, map[string]string{
+		"dhanam_cost_events_client_id":     "jnc_fixture",
+		"dhanam_cost_events_client_secret": "fixture-secret",
+	}, buildIntakeValues(reg.Issuer, "jnc_fixture", "fixture-secret", p))
+}
+
+// Every machine client whose tokens Dhanam accepts (audience dhanam-api), as a
+// sorted list: adding or removing a Dhanam machine edge must change this test.
+func TestLoadRegistry_dhanamMachineEdgesSorted(t *testing.T) {
+	reg, err := LoadRegistry("")
+	require.NoError(t, err)
+	var names []string
+	for name, p := range reg.Platforms {
+		kind, err := p.JanuaClient.kind()
+		require.NoError(t, err)
+		if kind == machineClient && p.JanuaClient.Audience == "dhanam-api" {
+			names = append(names, name)
+		}
+	}
+	sort.Strings(names)
+	assert.Equal(t, []string{
+		"karafiel-dhanam-bank-ledger",
+		"karafiel-dhanam-cost-events",
+		"karafiel-dhanam-scheduled-payments",
+		"ops-agents-dhanam-cogs",
+		"pravara-dhanam-cost-events",
+		"routecraft-billing-relay",
+		"selva-dhanam-cogs",
+		"selva-dhanam-cost-events",
+		"symbiosis-hcm-dhanam-cost-events",
+		"symbiosis-hcm-dhanam-writer",
+		"tulana-dhanam-cogs",
+	}, names)
+}
+
+// COGS MCP consumers (2026-11-06, RFC 0051 ruling M3): Selva's agent fleet and
+// the ops agents get ONE machine client each per platform with a native COGS
+// MCP. Each is org-bound to madfam-ecosystem, holds exactly the platform's
+// <platform>-cogs:read scope (one colon), and uses the platform's EXISTING API
+// audience, since Janua refuses client_credentials for a protected resource.
+func TestLoadRegistry_cogsMCPConsumerClients(t *testing.T) {
+	reg, err := LoadRegistry("")
+	require.NoError(t, err)
+
+	audiences := map[string]string{
+		"converge-dash": "converge-dash",
+		"dhanam":        "dhanam-api",
+		"enclii":        "janua.dev", // switchyard-api's ENCLII_JANUA_AUDIENCE (infra/k8s/production/environment-patch.yaml)
+		"karafiel":      "karafiel-api",
+		"nauta":         "nauta-api",
+		"pravara":       "pravara-api",
+	}
+	for platform, audience := range audiences {
+		key := strings.ReplaceAll(platform, "-", "_")
+		for _, consumer := range []string{"selva", "ops-agents"} {
+			id := consumer + "-" + platform + "-cogs"
+			p, ok := reg.Platforms[id]
+			require.True(t, ok, "platform %s missing", id)
+			assert.Equal(t, consumer+"/"+platform+"-cogs-client", p.IntakeTarget, id)
+			assert.Empty(t, p.SessionIntakeTarget, "%s: a machine edge has no session secret", id)
+			require.Equal(t, map[string]string{
+				key + "_cogs_client_id":     "client_id",
+				key + "_cogs_client_secret": "client_secret",
+			}, p.IntakeKeyMap, id)
+
+			jc := p.JanuaClient
+			assert.Equal(t, id, jc.Name)
+			assert.Equal(t, id, jc.ClientKey)
+			// Pinned after the first provision run (2026-11-22); every other
+			// consumer stays unpinned until its own provision prints its id.
+			if pinned, ok := map[string]string{
+				"ops-agents-karafiel-cogs": "jnc_j9jqWOJfi7nzQYv2QY-4xAJVu7eWNN4I",
+				"ops-agents-dhanam-cogs":   "jnc_UKr7YJz_XitxYTrSyQKEeAOUjUch636d",
+			}[id]; ok {
+				assert.Equal(t, pinned, jc.ClientID,
+					"%s: pinned after the first provision; an unpinned re-run registers a duplicate", id)
+			} else {
+				assert.Empty(t, jc.ClientID, "%s: not pinned until the first provision prints it", id)
+			}
+			assert.Equal(t, audience, jc.Audience, id)
+			assert.Equal(t, "1a6233ef-185f-43ee-9181-e2591fbb2643", jc.OrganizationID,
+				"%s: org-bound to madfam-ecosystem so the token carries org_id and tenant_id", id)
+			assert.Equal(t, []string{platform + "-cogs:read"}, jc.AllowedScopes, id)
+			assert.Regexp(t, `^[a-z][a-z0-9._-]*:[a-z][a-z0-9_-]*$`, jc.AllowedScopes[0],
+				"Janua registers only namespace:action scopes")
+			assert.Equal(t, []string{"client_credentials"}, jc.GrantTypes, id)
+			assert.Empty(t, jc.RedirectURIs, id)
+			require.NotNil(t, jc.IsConfidential, id)
+			assert.True(t, jc.confidential(), id)
+			assert.Contains(t, jc.Description, platform+"-cogs:read only", id)
+			// RFC 0051 §6 as amended 2026-11-22: only the ops agents' Karafiel
+			// client lists the bound tenant's fiscal identity tool.
+			assert.Equal(t, id == "ops-agents-karafiel-cogs", strings.Contains(jc.Description, "fiscal_tenant_identity"), id)
+			if platform == "karafiel" {
+				assert.Contains(t, jc.Description, "LEGAL_SERVICE_RFC", "%s: production resolves the tenant from the legacy pin until the bindings cutover", id)
+			}
+			require.NoError(t, validatePlatform(p), id)
+
+			assert.Equal(t, map[string]string{
+				key + "_cogs_client_id":     "jnc_fixture",
+				key + "_cogs_client_secret": "fixture-secret",
+			}, buildIntakeValues(reg.Issuer, "jnc_fixture", "fixture-secret", p), id)
+		}
+	}
+
+	// Selva's own MCP (selva-office#362, audience selva-office): the ops agents
+	// only. A selva-selva-cogs client awaits an owner ruling.
+	p, ok := reg.Platforms["ops-agents-selva-cogs"]
+	require.True(t, ok, "platform ops-agents-selva-cogs missing")
+	assert.Equal(t, "ops-agents/selva-cogs-client", p.IntakeTarget)
+	assert.Empty(t, p.SessionIntakeTarget)
+	require.Equal(t, map[string]string{
+		"selva_cogs_client_id":     "client_id",
+		"selva_cogs_client_secret": "client_secret",
+	}, p.IntakeKeyMap)
+	jc := p.JanuaClient
+	assert.Equal(t, "ops-agents-selva-cogs", jc.Name)
+	assert.Equal(t, "ops-agents-selva-cogs", jc.ClientKey)
+	assert.Empty(t, jc.ClientID, "not pinned until the first provision prints it")
+	assert.Equal(t, "selva-office", jc.Audience, "nexus-api verify_jwt checks aud = JANUA_CLIENT_ID = selva-office")
+	assert.Equal(t, "1a6233ef-185f-43ee-9181-e2591fbb2643", jc.OrganizationID,
+		"Selva's MCP refuses a machine token without org_id")
+	assert.Equal(t, []string{"selva-cogs:read"}, jc.AllowedScopes)
+	assert.Equal(t, []string{"client_credentials"}, jc.GrantTypes)
+	assert.Empty(t, jc.RedirectURIs)
+	require.NotNil(t, jc.IsConfidential)
+	assert.True(t, jc.confidential())
+	assert.Contains(t, jc.Description, "selva-cogs:read only")
+	require.NoError(t, validatePlatform(p))
+	assert.Equal(t, map[string]string{
+		"selva_cogs_client_id":     "jnc_fixture",
+		"selva_cogs_client_secret": "fixture-secret",
+	}, buildIntakeValues(reg.Issuer, "jnc_fixture", "fixture-secret", p))
+	_, ok = reg.Platforms["selva-selva-cogs"]
+	assert.False(t, ok, "selva-selva-cogs awaits an owner ruling")
+
+	// Every client holding a COGS MCP read scope, as a sorted list: adding or
+	// removing a consumer must change this test.
+	var names []string
+	for name, p := range reg.Platforms {
+		for _, scope := range p.JanuaClient.AllowedScopes {
+			if strings.HasSuffix(scope, "-cogs:read") {
+				names = append(names, name)
+				break
+			}
+		}
+	}
+	sort.Strings(names)
+	assert.Equal(t, []string{
+		"ops-agents-converge-dash-cogs",
+		"ops-agents-dhanam-cogs",
+		"ops-agents-enclii-cogs",
+		"ops-agents-karafiel-cogs",
+		"ops-agents-nauta-cogs",
+		"ops-agents-pravara-cogs",
+		"ops-agents-selva-cogs",
+		"selva-converge-dash-cogs",
+		"selva-dhanam-cogs",
+		"selva-enclii-cogs",
+		"selva-karafiel-cogs",
+		"selva-nauta-cogs",
+		"selva-pravara-cogs",
+		"tulana-dhanam-cogs",
+	}, names)
+}
+
 func TestReviewedRegistryGrantKindsDoNotDependOnTenant(t *testing.T) {
 	reg, err := LoadRegistry("")
 	require.NoError(t, err)
@@ -758,8 +1091,8 @@ func TestReviewedRegistryGrantKindsDoNotDependOnTenant(t *testing.T) {
 			machines++
 		}
 	}
-	require.Equal(t, 25, humans) // Includes the two isolated Karafiel staging login clients and the eight SSO wave 1 clients.
-	require.Equal(t, 15, machines)
+	require.Equal(t, 26, humans)   // Includes the two isolated Karafiel staging login clients, the eight SSO wave 1 clients and forj-web.
+	require.Equal(t, 42, machines) // Includes the CEQ CPU worker (RFC 0061). Includes the three RFC 0050 COGS writer/reader edges (HCM → Nauta, HCM → Dhanam, Pravara → Dhanam), Karafiel's bank-ledger reader and scheduled-payments writer, Selva's cost-events writer, the two PhyndCRM native MCP readers (Selva, ops agents), Tulana's Dhanam COGS MCP reader and the thirteen RFC 0051 COGS MCP consumer clients.
 	p := reg.Platforms["selva-yantra4d"]
 	require.Empty(t, p.JanuaClient.OrganizationID)
 	kind, err := p.JanuaClient.kind()

@@ -4,9 +4,9 @@ set -euo pipefail
 # Public-repo hygiene guard for enclii.
 #
 # Scans every tracked TEXT file (not just docs) for material that must not live
-# in a public repository: unresolved secret placeholders, public IPv4 literals,
-# Cloudflare tunnel UUIDs, hardware SKUs that identify the estate's topology,
-# and — through a private pattern file — production node hostnames.
+# in a public repository: unresolved secret placeholders and public IPv4
+# literals, and — through a private pattern file — production node hostnames
+# and the hardware SKUs that identify the estate's topology.
 #
 # It also runs one STRUCTURAL class that a grep cannot express: committed
 # `kind: Secret` documents that carry real credential material. That rule lives
@@ -14,8 +14,8 @@ set -euo pipefail
 # YAML structure, not a line match. See docs/PUBLIC_REPO_BOUNDARY.md for what
 # it does and does not catch.
 #
-# WHY THE NODE HOSTNAMES ARE NOT IN THIS FILE
-# ===========================================
+# WHY THE NODE HOSTNAMES AND HARDWARE SKUS ARE NOT IN THIS FILE
+# ==============================================================
 # They are the exact strings that must not appear in this repo; shipping them
 # here would publish the answer key. Hashing them was considered and rejected:
 # `<prefix>-<role>-NN` is a dozen guesses and IPv4 is 2^32, so a hash buys
@@ -102,8 +102,9 @@ check_pattern 'Unresolved secret placeholder' 'CHANGEME[^A-Za-z0-9_-]|REPLACE_WI
 
 # Hardware class strings. On their own these identify the estate's topology
 # (2026-07-16 exposure class 1): public docs get a CLASS ("dedicated
-# bare-metal", "cloud compute instance"), never a provider SKU.
-check_pattern 'Server hardware SKU (use a hardware class instead)' '\b(EX44|AX41|CCX[0-9]*)\b'
+# bare-metal", "cloud compute instance"), never a provider SKU. The SKU
+# needles are read from the private pattern file with the node hostnames
+# (see below), for the same reason: listing them here would publish them.
 
 # Public IPv4 literals, over the OPS file set only (docs, manifests, workflows,
 # scripts, env samples — not application source or tests). Measured 2026-09-04:
@@ -151,7 +152,7 @@ elif [[ -f "$SECRET_CHECKER" ]]; then
   echo 'committed-Secret class SKIPPED — PyYAML not available (pip install pyyaml)' >&2
 fi
 
-# --- node identity class (private needles) ----------------------------------
+# --- node identity class: hostnames, IPs, hardware SKUs (private needles) ---
 PATTERN_FILE="${MADFAM_HYGIENE_PATTERNS:-../internal-devops/security/public-hygiene-private-patterns.txt}"
 if [[ -r "$PATTERN_FILE" ]]; then
   while IFS= read -r pattern; do

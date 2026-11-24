@@ -18,7 +18,7 @@
 
 
 > **Created**: 2026-03-13 | **Audit Baseline**: ~150 pods, 22 namespaces, 46 endpoints (37 operational)
-> **Cluster**: 3-node k3s v1.33.7+k3s3 (1 control-plane + 1 worker + 1 builder)
+> **Cluster**: 5-node k3s v1.33.7+k3s3 (1 control-plane + 2 workers + 2 builders) since 2026-11-04. The utilization tables below are the 2026-04-08 three-node baseline; current per-node capacity lives in `internal-devops`.
 > **Last Updated**: 2026-04-08 — Control-plane migrated onto dedicated bare-metal; the former control-plane node was re-roled as the Longhorn replica worker
 
 ## Current Utilization Summary
