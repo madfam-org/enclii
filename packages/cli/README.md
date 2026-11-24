@@ -180,7 +180,7 @@ OAuth credentials are stored per profile (mode `0600`): `~/.enclii/credentials.j
 }
 ```
 
-Tokens auto-refresh on the next CLI invocation when within 60 seconds of expiry, provided a refresh token is present; the new token is written back to the same profile's file (see `internal/config/config.go`).
+Tokens auto-refresh on the next CLI invocation when within 60 seconds of expiry, provided a refresh token is present; the new token is written back to the same profile's file (see `internal/config/config.go`). `expires_at` is the access token's own `exp` when it is a JWT (`config.TokenExpiry`). A refused refresh is kept in `Config.RefreshError` and, once the session is unusable, reported as one stderr line with the HTTP status and the identity provider's message, never a token.
 
 Other defaults come from environment variables (`ENCLII_API_ENDPOINT`, `ENCLII_API_TOKEN` (or legacy `ENCLII_TOKEN`), `ENCLII_OIDC_ISSUER`, `ENCLII_OIDC_CLIENT_ID`, `ENCLII_PROFILE`, `ENCLII_BROWSER`, `ENCLII_LOG_LEVEL`, `ENCLII_PROJECT`) or the global flags (`--api-endpoint`, `--api-token`, `--log-level`, `--profile`).
 

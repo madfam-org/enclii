@@ -223,7 +223,17 @@ Most read subcommands across the CLI accept a `--json` flag for stable, machine-
 }
 ```
 
-Tokens are auto-refreshed on the next CLI invocation when within 60 seconds of expiry, provided a refresh token is present, and the new token is written back to the same profile's file. Refresh uses the built-in CLI client unless `ENCLII_OIDC_CLIENT_ID` is set. Run `enclii login` again (with the same `--profile`) if the refresh token has been revoked.
+Tokens are auto-refreshed on the next CLI invocation when within 60 seconds of expiry, provided a refresh token is present, and the new token is written back to the same profile's file. Refresh uses the built-in CLI client unless `ENCLII_OIDC_CLIENT_ID` is set.
+
+`expires_at` is the access token's own `exp` claim when the token is a JWT (the API enforces `exp`), and `now + expires_in` otherwise. A file written by an older CLI is corrected the next time it is read.
+
+When a refresh is refused and the session can no longer be used, the CLI writes one line to stderr with the reason and the command to run, for example:
+
+```text
+enclii: the session of profile "default" expired and could not be renewed: the identity provider answered HTTP 401 (Authentication session is no longer active). Run `enclii login`.
+```
+
+The line holds the HTTP status and the identity provider's own message, never a token. A command that still has a working token prints nothing extra. Run `enclii login` again (with the same `--profile`) when you see it.
 
 ## Exit Codes
 
