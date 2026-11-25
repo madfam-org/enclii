@@ -1,3 +1,4 @@
+<!-- Boundary checkpoint (2026-11-24, platform ops): public-safe operator doc; `enclii` commands checked against the CLI's command tree. Node identity, secret values and client data stay out; private detail lives in internal-devops. Policy: docs/PUBLIC_REPO_BOUNDARY.md. -->
 # Commercial GA — execution roadmap to 100%
 
 > **Master plan:** [COMMERCIAL_GA_MASTER_PLAN.md](./COMMERCIAL_GA_MASTER_PLAN.md) — full remediation blueprint  

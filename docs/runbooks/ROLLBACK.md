@@ -1,3 +1,4 @@
+<!-- Boundary checkpoint (2026-11-24, platform ops): public-safe operator doc; `enclii` commands checked against the CLI's command tree. Node identity, secret values and client data stay out; private detail lives in internal-devops. Policy: docs/PUBLIC_REPO_BOUNDARY.md. -->
 # Rollback Runbook
 
 > [!IMPORTANT]
