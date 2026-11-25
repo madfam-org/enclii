@@ -8,7 +8,7 @@
 > missing Enclii adapter gap.
 
 
-**Last Updated:** 2026-10-05
+**Last Updated:** 2026-11-24
 **Status:** Operational (Vault-backed)
 **Active Providers:** `vault-store` (HashiCorp Vault KV v2) + `kubernetes-store` (legacy, cross-namespace)
 
@@ -402,7 +402,7 @@ green, and the key did **not** appear in `janua/janua-secrets`. It was made live
 by a raw JSON patch against the live ExternalSecret object.
 
 Until [#539](https://github.com/madfam-org/enclii/issues/539) lands a sanctioned
-path (an `enclii secrets es-apply <app>` op, or reconciling the manifests to
+path (a proposed per-app apply op — `enclii secrets es-apply` does not exist — or reconciling the manifests to
 live and widening the allowlist), that patch **is** the break-glass — and like
 any break-glass it must record actor, reason, target, commands and result. Note
 what it costs: the cluster and the repo now agree only by coincidence. Nothing
@@ -447,9 +447,10 @@ patch is invisible to the next reader of the repo; a git-only change is a no-op.
    index.
 5. **Force a reconcile through Enclii**, not a raw annotation:
 
-   ```bash
+   **Usage** (`enclii ops secrets sync` with `-n` is the same operation):
+
+   ```usage
    enclii secrets sync <name> --namespace <namespace> --apply --reason "<why>"
-   # same operation: enclii ops secrets sync <name> -n <namespace> --apply --reason "<why>"
    ```
 
    It merge-patches the `force-sync` annotation plus `enclii.dev/last-ops-*`
@@ -460,8 +461,9 @@ patch is invisible to the next reader of the repo; a git-only change is a no-op.
 7. **Roll the consumer.** Env vars sourced from the Secret are read at pod
    start, so the running pods keep the old environment until they restart.
    Roll the consuming workload with
-   `enclii ops pods restart deployment/<name> -n <namespace>` (dry run, then
-   `--expect-uid <uid> --apply --reason "..."`; platform_admin rank, and the
+   `enclii ops pods restart`, given `deployment/` plus the workload's name and
+   `-n` with its namespace (dry run, then the same with `--expect-uid` set to
+   the UID it printed, `--apply` and `--reason`; platform_admin rank, and the
    namespace must be in the API's restart allowlist — see
    [ops.md](../cli/commands/ops.md#ops-pods-restart)). The Enclii service
    restart API (`POST /v1/services/{id}/restart`, SDK `services.restart()`)
@@ -511,7 +513,9 @@ kubectl get secret <name> -n <namespace> -o jsonpath='{.data}' | jq 'keys'
 
 Enclii-first (audited; annotations only, no secret values):
 
-```bash
+**Usage**
+
+```usage
 enclii secrets sync <name> --namespace <namespace> --apply --reason "<why>"
 ```
 

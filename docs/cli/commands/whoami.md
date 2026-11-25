@@ -4,7 +4,7 @@ Display information about the currently authenticated user.
 
 ## Synopsis
 
-```bash
+```usage
 enclii [--profile NAME] whoami
 ```
 

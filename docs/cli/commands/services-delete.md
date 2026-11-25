@@ -4,7 +4,7 @@ Delete a service from a project.
 
 ## Synopsis
 
-```bash
+```usage
 enclii services-delete [flags]
 ```
 

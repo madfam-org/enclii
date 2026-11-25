@@ -1,5 +1,10 @@
 # Enclii junction route reconciliation
 
+> **2026-11-24:** this is a dated record, kept as evidence of its date. Some
+> `enclii` commands below do not exist in the current CLI, or carry blanks to
+> fill in, so they are not runnable as written. The current command forms are
+> in the [CLI reference](../cli/README.md).
+
 > **Boundary checkpoint (2026-10-01, platform on-call):** Public-safe runbook:
 > reconcile semantics, guard behaviour and generic example commands only, with
 > no tunnel ids, node identity or production output. Incident timelines and

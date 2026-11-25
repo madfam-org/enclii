@@ -1,6 +1,6 @@
 # Secrets Management Strategy
 
-**Last Updated:** 2026-06-15
+**Last Updated:** 2026-11-24
 **Current Approach:** HashiCorp Vault (self-hosted) + ESO vault-store
 **Provider:** Self-hosted HashiCorp Vault (Community Edition), in-cluster at `vault.vault.svc.cluster.local:8200` (not published)
 **Coverage:** ~160 secrets across 16 namespaces via 19 ExternalSecret resources
@@ -194,8 +194,8 @@ to git.
 
 | Surface | Role |
 |---------|------|
-| `enclii secrets intake submit <target> --reason "..."` | Masked CLI / file / stdin → Vault |
-| `enclii secrets intake status <intake_id>` | Agent-safe poll (no values) |
+| `enclii secrets intake submit` with a registered target and `--reason` | Masked CLI / file / stdin → Vault |
+| `enclii secrets intake status` with the intake id | Agent-safe poll (no values) |
 | `POST /v1/secrets/intake` | Same via API (admin JWT) |
 
 **P0 prerequisite:** `vault-credentials` K8s secret in `enclii` namespace with a

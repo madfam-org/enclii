@@ -1,6 +1,6 @@
 # Held Janua staging preregistration design
 
-Last Updated: 2026-10-20
+Last Updated: 2026-11-24
 
 Status: held-intent source implemented; deployment and native qualification are
 separate. Migration `045` adds inert intent history only. Its API/CLI records no
@@ -121,9 +121,12 @@ the held environment slot refuses. Source ownership may later drift; historical
 GET and exact replay never claim that their old identities remain current.
 
 After deployment of the reviewed API/CLI and native schema proof, use a managed
-existing operator login. The default command plans without writing:
+existing operator login. The default command plans without writing, with a
+canonical operation UUID you choose:
 
-```bash
+**Usage**
+
+```usage
 enclii ops apps staging-intent --project janua --operation-id <OPERATION_UUID> --json
 ```
 
@@ -132,7 +135,9 @@ arguments with `--record --expect-plan <PLAN_SHA256> --reason "staging intention
 There is no apply, activation or materialization flag. Inspect an uncertain
 outcome with:
 
-```bash
+**Usage**
+
+```usage
 enclii ops apps staging-intent read <OPERATION_UUID> --project janua --json
 ```
 

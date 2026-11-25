@@ -91,11 +91,12 @@ while IFS= read -r line; do
 done < .env.production
 ```
 
-Or set them one at a time:
+Or set them one at a time, from variables already exported in your shell, so
+no value appears in a document or your shell history:
 
 ```bash
-enclii secrets set DATABASE_URL="postgresql://..." --secret
-enclii secrets set STRIPE_SECRET_KEY="sk_live_..." --secret
+enclii secrets set DATABASE_URL="$DATABASE_URL" --secret
+enclii secrets set STRIPE_SECRET_KEY="$STRIPE_SECRET_KEY" --secret
 ```
 
 ### 4. Add a `/health` endpoint (2 min)

@@ -234,9 +234,10 @@ Just update connection strings in Enclii environment variables.
 
 ### How do I migrate my domain?
 
-1. **Add domain to Enclii**:
+1. **Add domain to Enclii** (in the service's directory: without `--service`
+   the command uses the service in `./service.yaml`):
    ```bash
-   enclii domains add example.com --service <service-name>
+   enclii domains add example.com
    ```
    The command prints the CNAME target and a TXT verification record.
 
@@ -249,7 +250,7 @@ Just update connection strings in Enclii environment variables.
 
 3. **Verify ownership** once the TXT record is live:
    ```bash
-   enclii domains verify example.com --service <service-name>
+   enclii domains verify example.com
    ```
 
 4. **SSL is automatic** via Cloudflare

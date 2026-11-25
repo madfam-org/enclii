@@ -1,5 +1,10 @@
 # Timetable and provider remediation
 
+> **2026-11-24:** this is a dated record, kept as evidence of its date. Some
+> `enclii` commands below do not exist in the current CLI, or carry blanks to
+> fill in, so they are not runnable as written. The current command forms are
+> in the [CLI reference](../cli/README.md).
+
 <!-- Boundary checkpoint (2026-10-04, platform ops): public-facing remediation
 runbook. Public-safe summary: the Enclii-first steps that cleared the jobs API and
 Porkbun adapter blockers; client names are omitted. Private sink for omitted

@@ -30,10 +30,12 @@ The GitHub integration enables:
 
 ### 2. Link Repository to Service
 
-There is no per-service link command. Link the GitHub App installation to your account once, check which repositories it can see, then declare the repository in the service spec:
+There is no per-service link command. Link the GitHub App installation to your account once, check which repositories it can see, then declare the repository in the service spec. Link with
+`enclii integrations github link`, `--installation-id` set to the
+installation's numeric id (the last part of the installation's settings URL in
+GitHub), then check it:
 
 ```bash
-enclii integrations github link --installation-id <installation-id>
 enclii integrations github status
 enclii integrations github repos
 ```
@@ -71,7 +73,7 @@ If using self-hosted GitHub Enterprise or need manual webhook setup:
 
 ### 2. Verify Webhook
 
-The CLI has no webhook verification command. Check **Settings → Webhooks → Recent Deliveries** in GitHub for a `2xx` response from Enclii, then confirm the push produced a build with `enclii releases <service>`.
+The CLI has no webhook verification command. Check **Settings → Webhooks → Recent Deliveries** in GitHub for a `2xx` response from Enclii, then confirm the push produced a build with `enclii releases` and the service's name.
 
 ---
 
@@ -104,10 +106,8 @@ Enclii posts build status as GitHub commit status checks:
 - **failure**: Build failed
 - **error**: Infrastructure error
 
-View build status (and the error message of failed builds):
-```bash
-enclii releases <service>
-```
+View build status (and the error message of failed builds) with
+`enclii releases` and the service's name.
 
 ---
 
@@ -384,15 +384,11 @@ Enclii automatically prevents committing secrets in `enclii.yaml`:
    enclii integrations github repos
    ```
 
-2. Check the branch configuration in the service spec and confirm the service is registered:
-   ```bash
-   enclii projects services <project-slug>
-   ```
+2. Check the branch configuration in the service spec and confirm the service
+   is registered: `enclii projects services` with the project slug lists it.
 
-3. Check recent builds and GitHub's **Recent Deliveries** for the webhook:
-   ```bash
-   enclii releases <service>
-   ```
+3. Check recent builds (`enclii releases` with the service's name) and
+   GitHub's **Recent Deliveries** for the webhook.
 
 ### Preview Environment Not Created
 

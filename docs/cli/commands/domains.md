@@ -4,7 +4,7 @@ Manage custom domains for services.
 
 ## Synopsis
 
-```bash
+```usage
 enclii domains <subcommand> [flags]
 ```
 
@@ -31,8 +31,7 @@ the result with `enclii domains list` and `enclii ops pods diagnose`.
 > resolves manifest-relative paths — `spec.build.dockerfile` above all — against
 > `os.Getwd()`, not against the directory the `-f` file lives in
 > (`packages/cli/internal/spec/parser.go`). Running
-> `enclii domains add <host> --service <svc> -f enclii.yaml` from a
-> subdirectory fails validation with
+> `enclii domains add` with `-f enclii.yaml` from a subdirectory fails validation with
 > `spec.build.dockerfile: file does not exist: <path>` for a Dockerfile that is
 > plainly there. **Run it from the repo root.**
 
@@ -249,9 +248,11 @@ declared in a service's `enclii.yaml` — DNS record, junction, tunnel route, TL
 
 ```bash
 enclii domains reconcile nauta-web
-enclii domains reconcile nauta-web --domain <client>-erp.madfam.io \
-  --apply --reason "route the declared ERP host"
 ```
+
+The dry run lists every hostname `nauta-web` declares and what is missing for
+each. To provision one of them and leave the others untouched, run it again
+with `--domain` set to that hostname, plus `--apply` and a `--reason`.
 
 Use this when a hostname was added to `enclii.yaml` and never became live.
 

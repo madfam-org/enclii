@@ -1,3 +1,4 @@
+<!-- Boundary checkpoint (2026-11-24, platform ops): public-safe operator doc; `enclii` commands checked against the CLI's command tree. Node identity, secret values and client data stay out; private detail lives in internal-devops. Policy: docs/PUBLIC_REPO_BOUNDARY.md. -->
 # Rollback Runbook
 
 > [!IMPORTANT]
@@ -8,7 +9,7 @@
 > missing Enclii adapter gap.
 
 
-_Last updated: 2026-04-17 — P0.5 instant rollback shipped_
+_Last updated: 2026-11-24 — commands below run as written once the variables are set_
 
 Enclii supports two rollback strategies. They coexist; pick based on urgency
 and whether the change needs to be durably captured in git.
@@ -17,6 +18,16 @@ and whether the change needs to be durably captured in git.
 | --------------------------- | ------- | ---------------- | ------------------------------------------------------- |
 | **Instant (selector flip)** | <30–90s | K8s Service spec | Bad prod push, error rate spiking, need traffic away NOW |
 | **Manifest commit (ArgoCD)**| 2–3 min | git repo         | Durable rollback, DR reversion, compliance-audited prod |
+
+The CLI commands below read the service, environment and change ticket from
+shell variables, so each one runs as written once they are set (for example
+`export SERVICE=` followed by the service's name):
+
+| Variable | Set it to | Where to find it |
+|---|---|---|
+| `SERVICE` | the service's name | `enclii projects services` with the project slug |
+| `ENVIRONMENT` | the environment, for example `production` | `enclii projects environments` with the project slug |
+| `CHANGE_TICKET` | the change ticket's URL (required for production) | your tracker |
 
 ## Strategy 1: Instant rollback (Service-selector flip)
 
@@ -46,14 +57,13 @@ ticket URL for prod) → "Flip traffic".
 
 ```bash
 # Roll back to the previous running deployment (auto-detected)
-enclii rollback <service> --instant --env production \
-  --change-ticket https://linear.app/...
-
-# Roll back to a specific deployment UUID
-enclii rollback <service> --instant --to <deployment-uuid> \
-  --reason "500s after checkout refactor" \
-  --change-ticket https://linear.app/...
+enclii rollback "$SERVICE" --instant --env "$ENVIRONMENT" \
+  --change-ticket "$CHANGE_TICKET"
 ```
+
+To roll back to a specific deployment instead, add `--to` with its UUID (or its
+v-number, as `enclii deploy ls` lists them) and a `--reason`, for example
+`--reason "500s after checkout refactor"`.
 
 **API:**
 
@@ -126,7 +136,7 @@ the ecosystem repo's kustomization.yaml) and lets the Deployment controller
 do a rolling update. ArgoCD treats this as the state-of-record.
 
 ```bash
-enclii rollback <service> --env production
+enclii rollback "$SERVICE" --env "$ENVIRONMENT"
 ```
 
 Takes 2–3 minutes because it's a full rolling update: new pods have to
@@ -147,10 +157,10 @@ kubectl get svc <service> -n <namespace> -o jsonpath='{.spec.selector.enclii\.de
 kubectl get pods -n <namespace> -l enclii.dev/deployment=<uuid> -o wide
 
 # Watch logs
-enclii logs <service> -f --env <env>
+enclii logs "$SERVICE" -f --env "$ENVIRONMENT"
 
-# Re-check service health
-enclii ps --env <env>
+# Re-check service health (in the service's directory, or with --project)
+enclii ps --env "$ENVIRONMENT"
 ```
 
 ## Recovery from failed rollback

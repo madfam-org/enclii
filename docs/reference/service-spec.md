@@ -391,8 +391,9 @@ spec:
 For sensitive values, use the Enclii dashboard or CLI to manage secrets:
 
 ```bash
-# Add a secret via CLI
-enclii secrets set DATABASE_URL="postgresql://..." --secret --env production
+# Add a secret via CLI (the value is read from DATABASE_URL in your shell, so it
+# never appears in a document or your shell history)
+enclii secrets set DATABASE_URL="$DATABASE_URL" --secret --env production
 ```
 
 Secrets are:
@@ -664,7 +665,8 @@ Validate your configuration before deploying:
 
 ```bash
 # Show what services-sync would register or change, without writing
-enclii services-sync --dir . --project <project-slug> --dry-run
+# (--project is metadata.project in this directory's service.yaml)
+enclii services-sync --dir . --project "$(awk '/^  project:/{print $2; exit}' service.yaml)" --dry-run
 ```
 
 `enclii deploy` has no dry-run mode: it parses the spec before building and exits `1` if the file cannot be parsed.

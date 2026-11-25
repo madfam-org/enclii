@@ -6,7 +6,7 @@ Provision a whole client from one manifest — the Janua organization that is it
 
 ## Usage
 
-```bash
+```usage
 enclii tenant apply -f <manifest>
 enclii tenant validate -f <manifest>
 ```

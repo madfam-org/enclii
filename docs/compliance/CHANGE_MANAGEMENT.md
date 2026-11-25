@@ -189,15 +189,15 @@ ArgoCD self-heal is enabled. When detected:
 | Strategy | When Used | Configuration |
 |----------|-----------|---------------|
 | RollingUpdate | Default for all services | Zero-downtime, managed by ArgoCD |
-| Canary | Production releases of critical services | `enclii deploy --canary 10 --change-ticket <url>` |
+| Canary | Production releases of critical services | `enclii deploy --canary 10`, with `--change-ticket` set to the change ticket's URL |
 | Blue-Green | Database migrations or breaking changes | Manual cutover after validation (no Enclii blue-green strategy; there is no CLI flag for it) |
 
 ### Canary Deployment Process
 
-1. Deploy the new version as a canary: `enclii deploy --env production --canary 10 --change-ticket <url>` (5-50% of traffic, by replica proportion; production canaries require `--change-ticket`).
+1. Deploy the new version as a canary: `enclii deploy --env production --canary 10`, with `--change-ticket` set to the change ticket's URL (5-50% of traffic, by replica proportion; production canaries require `--change-ticket`).
 2. The canary holds for the validation window (`--validation-window`, default `10m`), optionally probing `--smoke-endpoint`.
 3. If it stays healthy it is promoted to 100% automatically; if not it is rolled back automatically and `enclii deploy` exits with code `30`.
-4. Operators can end the window early with `enclii canary promote <rollout_id>` or abort with `enclii canary rollback <rollout_id> --reason "..."`.
+4. Operators can end the window early with `enclii canary promote` or abort with `enclii canary rollback` and a `--reason`, each given the rollout id the deploy printed (`Canary rollout started:`).
 
 ---
 
@@ -213,9 +213,9 @@ Triggers automatically when:
 ### Manual Rollback
 
 ```bash
-# Via CLI (previous deployment; add a v-number such as v42 for a specific one,
-# or --instant to flip traffic at the routing layer)
-enclii rollback <service> --env production
+# Via CLI: `enclii rollback` with the service name and --env production rolls
+# back to the previous deployment; add a v-number for a specific one, or
+# --instant to flip traffic at the routing layer.
 
 # Via kubectl
 kubectl rollout undo deployment/<service> -n <namespace>

@@ -1,4 +1,10 @@
+<!-- Boundary checkpoint (2026-11-24, platform ops): public-safe operator doc; `enclii` commands checked against the CLI's command tree. Node identity, secret values and client data stay out; private detail lives in internal-devops. Policy: docs/PUBLIC_REPO_BOUNDARY.md. -->
 # Full Remediation Plan — Session 106 Ecosystem Audit
+
+> **2026-11-24:** this is a dated record, kept as evidence of its date. Some
+> `enclii` commands below do not exist in the current CLI, or carry blanks to
+> fill in, so they are not runnable as written. The current command forms are
+> in the [CLI reference](../cli/README.md).
 
 > [!IMPORTANT]
 > MADFAM-ENCLII-FIRST-LEGACY-RAW v1: This document contains legacy raw infrastructure command examples.

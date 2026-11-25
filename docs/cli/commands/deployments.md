@@ -4,7 +4,7 @@ Query deployment runs across services.
 
 ## Synopsis
 
-```bash
+```usage
 enclii deployments <subcommand> [flags]
 ```
 
@@ -28,7 +28,9 @@ This command mirrors the `/deployments` page in the consumer web UI. All subcomm
 
 List deployments. Without `--service`, returns the cross-service feed; with `--service`, scoped to one service.
 
-```bash
+**Usage**
+
+```usage
 enclii deployments list [flags]
 ```
 
@@ -42,7 +44,9 @@ enclii deployments list [flags]
 
 Show full details for a single deployment.
 
-```bash
+**Usage**
+
+```usage
 enclii deployments get <deployment_id> [flags]
 ```
 
@@ -54,7 +58,9 @@ enclii deployments get <deployment_id> [flags]
 
 Show the latest deployment for a service, including the resolved release image URI.
 
-```bash
+**Usage**
+
+```usage
 enclii deployments latest --service <id> [flags]
 ```
 
@@ -67,7 +73,9 @@ enclii deployments latest --service <id> [flags]
 
 Resolve a deployment by Enclii version number (`v1`, `v2`, ...). Pass the integer without the `v` prefix.
 
-```bash
+**Usage**
+
+```usage
 enclii deployments by-version --service <id> --version <n> [flags]
 ```
 

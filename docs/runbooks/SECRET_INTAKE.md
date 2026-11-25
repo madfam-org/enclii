@@ -1,6 +1,6 @@
 # Secret Intake (chat-safe credential handoff)
 
-**Last Updated:** 2026-11-22
+**Last Updated:** 2026-11-24
 
 Isolated training and API-only Janua staging targets are documented in
 [Isolated training custody](ISOLATED_TRAINING_CUSTODY.md). These declarations
@@ -123,8 +123,8 @@ ESO sources: `enclii-secrets`, `janua-secrets`, `madfam-site-secrets`, `phynd-cr
 | `symbiosis-hcm/dhanam-cost-events-client` | `secret/symbiosis-hcm` | `dhanam_cost_events_client_id`, `dhanam_cost_events_client_secret`: **provisioned, never submitted** (`enclii secrets provision oidc --platform symbiosis-hcm-dhanam-cost-events`; same section) |
 | `pravara-mes/dhanam-cost-events-client` | `secret/pravara-mes` | `pravara_cost_events_client_id`, `pravara_cost_events_client_secret`: **provisioned, never submitted** (`enclii secrets provision oidc --platform pravara-dhanam-cost-events`; same section) |
 | `karafiel/dhanam-cost-events-client` | `secret/karafiel` | `dhanam_cost_events_client_id`, `dhanam_cost_events_client_secret`: **provisioned, never submitted** (`enclii secrets provision oidc --platform karafiel-dhanam-cost-events`) |
-| `selva/<platform>-cogs-client` (six: `converge-dash`, `dhanam`, `enclii`, `karafiel`, `nauta`, `pravara`) | `secret/selva` | `<platform>_cogs_client_id`, `<platform>_cogs_client_secret` (`converge-dash` → `converge_dash_…`): **provisioned, never submitted** (`enclii secrets provision oidc --platform selva-<platform>-cogs`; see [COGS MCP consumer clients](#cogs-mcp-consumer-clients-2026-11-06)) |
-| `ops-agents/<platform>-cogs-client` (the same six, plus `selva`) | `secret/ops-agents` | the same keys (`selva` → `selva_cogs_client_id`, `selva_cogs_client_secret`): **provisioned, never submitted** (`enclii secrets provision oidc --platform ops-agents-<platform>-cogs`; same section) |
+| `selva/<platform>-cogs-client` (six: `converge-dash`, `dhanam`, `enclii`, `karafiel`, `nauta`, `pravara`) | `secret/selva` | `<platform>_cogs_client_id`, `<platform>_cogs_client_secret` (`converge-dash` → `converge_dash_…`): **provisioned, never submitted** (`enclii secrets provision oidc` with `--platform selva-` plus the platform and `-cogs`, for example `--platform selva-dhanam-cogs`; see [COGS MCP consumer clients](#cogs-mcp-consumer-clients-2026-11-06)) |
+| `ops-agents/<platform>-cogs-client` (the same six, plus `selva`) | `secret/ops-agents` | the same keys (`selva` → `selva_cogs_client_id`, `selva_cogs_client_secret`): **provisioned, never submitted** (`enclii secrets provision oidc` with `--platform ops-agents-` plus the platform and `-cogs`, for example `--platform ops-agents-selva-cogs`; same section) |
 | `karafiel/dhanam-bank-ledger-client` | `secret/karafiel` | `dhanam_bank_ledger_client_id`, `dhanam_bank_ledger_client_secret`: **provisioned, never submitted** (`enclii secrets provision oidc --platform karafiel-dhanam-bank-ledger`; see [Karafiel bank-ledger reader and Selva cost events](#karafiel-bank-ledger-reader-and-selva-cost-events-2026-11-11)) |
 | `karafiel/dhanam-scheduled-payments-client` | `secret/karafiel` | `dhanam_scheduled_payments_client_id`, `dhanam_scheduled_payments_client_secret`: **provisioned, never submitted** (`enclii secrets provision oidc --platform karafiel-dhanam-scheduled-payments`; same section) |
 | `selva/dhanam-cost-events-client` | `secret/selva` | `dhanam_cost_events_client_id`, `dhanam_cost_events_client_secret`: **provisioned, never submitted** (`enclii secrets provision oidc --platform selva-dhanam-cost-events`; same section) |
@@ -238,9 +238,9 @@ enclii secrets provision oidc --platform creator-census-web \
   --registry config/ecosystem-oidc-provision.yaml \
   --reason "creator-census web sign-in"
 # prints: ✓ creator-census-web client_id=jnc_… created=true intake=int_…
-enclii secrets intake submit creator-census/web-session \
-  --generate session_secret --reason "creator-census web session secret"
-enclii secrets intake status int_<id>
+INTAKE_ID=$(enclii secrets intake submit creator-census/web-session \
+  --generate session_secret --reason "creator-census web session secret" | awk '/^intake_id:/{print $2}')
+enclii secrets intake status "$INTAKE_ID"
 ```
 
 Janua generates the client id (`jnc_` plus a random suffix) on the first run.
@@ -294,9 +294,10 @@ enclii --profile admin secrets provision oidc --platform family-history-web \
 # prints: ✓ family-history-web client_id=jnc_… created=true intake=int_…
 enclii secrets intake submit family-history/web-session \
   --generate fh_session_secret --reason "family-history web session secret"
-enclii secrets intake submit family-history/api-access \
-  --reason "family-history early-access allowlist"   # masked prompt
-enclii secrets intake status int_<id>
+# masked prompt
+INTAKE_ID=$(enclii secrets intake submit family-history/api-access \
+  --reason "family-history early-access allowlist" | awk '/^intake_id:/{print $2}')
+enclii secrets intake status "$INTAKE_ID"
 ```
 
 Then pin the printed `jnc_…` id as `janua_client.client_id` for
@@ -775,7 +776,7 @@ never shared between the two.
 
 | Property | Targets | Written by | ExternalSecret | Env var |
 |---|---|---|---|---|
-| `auth_secret` | `voxa/web-session`, `voxa-staging/web-session` | `enclii secrets intake submit <target> --generate auth_secret` | `voxa-web-session` | `AUTH_SECRET` |
+| `auth_secret` | `voxa/web-session`, `voxa-staging/web-session` | `enclii secrets intake submit` with each target and `--generate auth_secret` | `voxa-web-session` | `AUTH_SECRET` |
 | `redis_url` | `voxa/api-runtime`, `voxa-staging/api-runtime` | operator, masked prompt | `voxa-api-runtime` | `REDIS_URL` |
 
 `auth_secret` is Auth.js's own session secret (ruling R42), never the Janua
@@ -799,8 +800,8 @@ enclii secrets intake submit voxa/web-session --generate auth_secret --reason "v
 enclii secrets intake submit voxa-staging/web-session --generate auth_secret --reason "voxa staging web session secret (Auth.js AUTH_SECRET)"
 # Only when cross-pod co-editing is turned on; each prompts (masked) for the URL composed on the host:
 enclii secrets intake submit voxa/api-runtime --reason "voxa co-editing redis (own DB index)"
-enclii secrets intake submit voxa-staging/api-runtime --reason "voxa staging co-editing redis (own DB index)"
-enclii secrets intake status int_<id>
+INTAKE_ID=$(enclii secrets intake submit voxa-staging/api-runtime --reason "voxa staging co-editing redis (own DB index)" | awk '/^intake_id:/{print $2}')
+enclii secrets intake status "$INTAKE_ID"
 ```
 
 ### Cotiza web NextAuth secret (2026-10-11)
@@ -827,8 +828,8 @@ bump) and from an up-to-date checkout:
 ```bash
 cd ~/labspace/enclii && ASSERT_PATH=digifab-quoting bash scripts/apply-switchyard-vault-policy-remote.sh < ~/.config/madfam/vault-admin.token
 # expect: APPLIED_OK_asserted_path_present
-enclii secrets intake submit digifab-quoting/web-session --generate nextauth_secret --reason "cotiza web NextAuth secret"
-enclii secrets intake status int_<id>
+INTAKE_ID=$(enclii secrets intake submit digifab-quoting/web-session --generate nextauth_secret --reason "cotiza web NextAuth secret" | awk '/^intake_id:/{print $2}')
+enclii secrets intake status "$INTAKE_ID"
 ```
 
 Until the digifab-quoting ExternalSecret exists, intake reports
@@ -872,7 +873,8 @@ enclii --profile admin secrets provision oidc --platform cotiza-web \
   --reason "cotiza web sign-in"
 # prints: ✓ cotiza-web client_id=jnc_… created=true intake=int_…
 # "exists without retrievable secret": re-run with --rotate-secret --grace-hours 0
-enclii secrets intake status int_<id>
+# The intake is confirmed by `enclii secrets intake status` with the id after
+# intake= on the line above.
 ```
 
 Then pin the printed `jnc_…` id as `janua_client.client_id` for `cotiza-web`
@@ -915,7 +917,7 @@ enclii --profile admin secrets provision oidc --platform forj-web \
 enclii --profile admin secrets provision oidc --platform forj-web \
   --intake-profile default --reason "forj web sign-in"
 # prints: ✓ forj-web client_id=jnc_… created=true intake=int_…
-enclii secrets intake status int_<id>
+# The intake is confirmed by `enclii secrets intake status` with that intake= id.
 ```
 
 Then pin the printed `jnc_…` id as `janua_client.client_id` for `forj-web`
@@ -976,9 +978,9 @@ Type the 16 characters at the masked prompt, without the spaces Google shows
 between groups: Alertmanager sends the file's bytes as they are.
 
 ```bash
-enclii secrets intake submit monitoring/alertmanager-smtp --reason "alertmanager smtp via intake (owner action 24, option A)"
 # prompts (masked): Enter value for alertmanager_smtp_password
-enclii secrets intake status int_<id>
+INTAKE_ID=$(enclii secrets intake submit monitoring/alertmanager-smtp --reason "alertmanager smtp via intake (owner action 24, option A)" | awk '/^intake_id:/{print $2}')
+enclii secrets intake status "$INTAKE_ID"
 # expect: external_secret_refreshed: true
 ```
 
@@ -1044,7 +1046,9 @@ ExternalSecret at 02:26, and after the restart the pod logged
   Because the old pod is already gone (above), Grafana is **down** until the
   value is fixed and the pod restarted; Argo shows the rollout stalled. Read
   the reason with
-  `enclii ops pods logs <pod> -n monitoring --container admin-password-sync`.
+  `enclii ops pods logs` with the Grafana pod's name, `-n monitoring` and
+  `--container admin-password-sync` (`enclii ops pods diagnose grafana -n monitoring`
+  names the pod).
 - **`--generate` or typed.** Nothing outside Grafana holds this password, so
   `--generate grafana_admin_password` mints it (32 bytes, 43 base64url
   characters) and no operator handles it. The catch: a generated password is
@@ -1066,14 +1070,15 @@ cd ~/labspace/enclii && ASSERT_PATH=monitoring bash scripts/apply-switchyard-vau
 ```
 
 ```bash
-enclii secrets intake submit monitoring/grafana-admin --generate grafana_admin_password --reason "grafana admin credential via intake"
-enclii secrets intake status int_<id>
+INTAKE_ID=$(enclii secrets intake submit monitoring/grafana-admin --generate grafana_admin_password --reason "grafana admin credential via intake" | awk '/^intake_id:/{print $2}')
+enclii secrets intake status "$INTAKE_ID"
 # expect: external_secret_refreshed: true
 enclii ops secrets external -n monitoring
 # expect: grafana-admin Ready
 enclii ops pods restart deployment/grafana -n monitoring
-enclii ops pods restart deployment/grafana -n monitoring --expect-uid <reviewed-uid> \
-  --apply --reason "apply the intake-submitted Grafana admin password"
+# Review that dry run, then run the same command again with --expect-uid set to
+# the UID it printed, plus:
+#   --apply --reason "apply the intake-submitted Grafana admin password"
 ```
 
 `--expect-uid` on `ops pods restart` needs a CLI built from `main` at or after
@@ -1081,8 +1086,8 @@ enclii ops pods restart deployment/grafana -n monitoring --expect-uid <reviewed-
 rejects the flag. With an older CLI, run the same apply without it (see
 [ops pods restart](../cli/commands/ops.md#ops-pods-restart)).
 
-Then verify read-only: `enclii ops pods logs <new-grafana-pod> -n monitoring --container admin-password-sync`
-prints `stored admin password set from Secret grafana-admin`, and the pod is
+Then verify read-only: `enclii ops pods logs` with the new Grafana pod's name,
+`-n monitoring` and `--container admin-password-sync` prints `stored admin password set from Secret grafana-admin`, and the pod is
 Ready. After that, `grafana-credentials` is only read for Grafana's first-run
 bootstrap of an empty database; retiring it is a follow-up change.
 
@@ -1121,9 +1126,9 @@ the registry), from an up-to-date checkout:
 cd ~/labspace/enclii && git pull --ff-only
 cd ~/labspace/enclii && ASSERT_PATH=synthetics bash scripts/apply-switchyard-vault-policy-remote.sh < ~/.config/madfam/vault-admin.token
 # expect: APPLIED_OK_asserted_path_present
-enclii secrets intake submit synthetics/dhanam-staging-checkout --reason "S-Gate 1 synthetic buyer identity (staging, Stripe test mode)"
 # prompts (masked): dhanam_staging_synth_email, dhanam_staging_synth_password
-enclii secrets intake status int_<id>
+INTAKE_ID=$(enclii secrets intake submit synthetics/dhanam-staging-checkout --reason "S-Gate 1 synthetic buyer identity (staging, Stripe test mode)" | awk '/^intake_id:/{print $2}')
+enclii secrets intake status "$INTAKE_ID"
 # expect: external_secret_refreshed: false until the CronJob change (and its
 # ExternalSecret) is deployed; ESO then syncs the stored values on its own
 ```
@@ -1187,8 +1192,8 @@ deployed (switchyard-api digest bump) and from an up-to-date checkout:
 cd ~/labspace/enclii && git pull --ff-only
 make -C ~/labspace/enclii install-cli CLI_INSTALL_DIR=$HOME/.local/bin
 enclii secrets intake submit karafiel/dhanam-webhook-secret --generate dhanam_karafiel_signing_secret --reason "dhanam to karafiel webhook key"
-enclii secrets intake submit dhanam/karafiel-callback-secret --generate karafiel_dhanam_signing_secret --reason "karafiel to dhanam callback key"
-enclii secrets intake status int_<id>
+INTAKE_ID=$(enclii secrets intake submit dhanam/karafiel-callback-secret --generate karafiel_dhanam_signing_secret --reason "karafiel to dhanam callback key" | awk '/^intake_id:/{print $2}')
+enclii secrets intake status "$INTAKE_ID"
 ```
 
 Both values are minted server-side (32 bytes, never returned). Until the dhanam
@@ -1368,9 +1373,9 @@ which syncs on creation because the property already exists; (4) restart.
 
 ```bash
 make -C ~/labspace/enclii install-cli CLI_INSTALL_DIR=$HOME/.local/bin
-enclii secrets intake group phynd-crm/lead-intake-hmac --reason "phynd-crm lead-intake HMAC key"
 # prints each member: written | unchanged | failed | not_attempted; exit 0 only when all four hold the value
-enclii secrets intake status int_<id>
+INTAKE_ID=$(enclii secrets intake group phynd-crm/lead-intake-hmac --reason "phynd-crm lead-intake HMAC key" | awk '/^intake_id:/{print $2}')
+enclii secrets intake status "$INTAKE_ID"
 ```
 
 - **A member failed** (exit nonzero, `status: partial`): fix the cause and
@@ -1384,7 +1389,7 @@ enclii secrets intake status int_<id>
 
 **Restart every service after its Secret syncs:** each reads the key from its
 environment at container start, so a running pod keeps the old value (or none).
-Check `enclii ops secrets external -n <namespace>` until the ExternalSecret is
+Check `enclii ops secrets external` with `-n` and each service's namespace until the ExternalSecret is
 Ready, then restart phynd-crm first and the senders after it (deployments in
 the table). `enclii ops pods restart` reaches only namespaces in
 `ENCLII_OPS_RESTART_NAMESPACES`; today that covers `digifab-quoting` and not
@@ -1393,8 +1398,9 @@ redeploy until the allowlist gains them (an Enclii adapter gap):
 
 ```bash
 enclii ops pods restart deployment/digifab-quoting-api -n digifab-quoting
-enclii ops pods restart deployment/digifab-quoting-api -n digifab-quoting --expect-uid <reviewed-uid> \
-  --apply --reason "pick up the phynd-crm lead-intake key"
+# Review that dry run, then run the same command again with --expect-uid set to
+# the UID it printed, plus:
+#   --apply --reason "pick up the phynd-crm lead-intake key"
 ```
 
 Add targets via PR to the registry — do not hardcode paths in runbooks. A new
@@ -1423,7 +1429,9 @@ For a shared internal key that **no human needs to read** — a smoke-gate key, 
 service-to-service token — do not generate it yourself and paste it. Ask
 Switchyard to mint it:
 
-```bash
+**Usage** (the client portal's registered target):
+
+```usage
 enclii secrets intake submit <client-portal>/internal-api-key \
   --generate internal_api_key \
   --reason "client portal smoke gate bootstrap"
@@ -1444,7 +1452,9 @@ formats, and refuse existing custody atomically instead of rotating it.
 Mix generated and supplied keys on one target when only some values are secrets
 nobody should see:
 
-```bash
+**Usage** (the portal's registered target):
+
+```usage
 enclii secrets intake submit symbiosis-hcm/<portal>-absence-feed \
   --generate <portal>_absence_feed_key \
   --reason "HCM absence feed bootstrap"
@@ -1499,16 +1509,16 @@ export ENCLII_API_ENDPOINT=https://api.enclii.dev
 enclii login   # admin@madfam.io — single Janua SSO session
 enclii secrets provision oidc --platform dhanam --reason "post-rebuild oidc"
 # Optional: auto-generates session-auth + intakes OIDC trio to Vault
-enclii secrets intake status int_<id>
+# Confirm with `enclii secrets intake status` and the intake= id it printed.
 ```
 
 Manual per-key intake (when a provider secret is not Janua-derived):
 
 ```bash
 enclii secrets intake targets
-enclii secrets intake submit ceq/vast-api-key --reason "orchestrator bootstrap"
 # masked prompt, or --value-file / --stdin (KEY=VALUE lines)
-enclii secrets intake status int_<id>
+INTAKE_ID=$(enclii secrets intake submit ceq/vast-api-key --reason "orchestrator bootstrap" | awk '/^intake_id:/{print $2}')
+enclii secrets intake status "$INTAKE_ID"
 ```
 
 Tell agents only the `intake_id` — never the secret value.
@@ -1529,7 +1539,7 @@ listed both in `values` and `generate`).
 ## Agent flow
 
 1. Request operator run intake for a registry target.
-2. Poll `enclii secrets intake status <id>` or `GET /v1/secrets/intake/:id`.
+2. Poll `enclii secrets intake status` with the intake id, or `GET /v1/secrets/intake/:id`.
 3. Run downstream ops (ESO sync, bootstrap scripts) — never request the value.
 
 ## Related

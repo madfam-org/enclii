@@ -1,5 +1,10 @@
 # Enclii Codebase: Comprehensive Audit & Inventory
 
+> **2026-11-24:** this is a dated record, kept as evidence of its date. Some
+> `enclii` commands below do not exist in the current CLI, or carry blanks to
+> fill in, so they are not runnable as written. The current command forms are
+> in the [CLI reference](../../../cli/README.md).
+
 **Date:** November 20, 2025  
 **Repository:** madfam-org/enclii  
 **Status:** Alpha (70% production-ready)  

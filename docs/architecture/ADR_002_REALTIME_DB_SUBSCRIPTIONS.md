@@ -1,5 +1,10 @@
 # ADR-002: Realtime Database Change Subscriptions over WebSockets
 
+> **2026-11-24:** this is a dated record, kept as evidence of its date. Some
+> `enclii` commands below do not exist in the current CLI, or carry blanks to
+> fill in, so they are not runnable as written. The current command forms are
+> in the [CLI reference](../cli/README.md).
+
 > **Status**: Accepted (v1 — LISTEN/NOTIFY)
 > **Date**: 2026-08-17
 > **Authors**: Backend / control-plane

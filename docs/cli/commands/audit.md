@@ -4,7 +4,7 @@ Query the consolidated audit log (auth, deploys, secrets, RFCs).
 
 ## Synopsis
 
-```bash
+```usage
 enclii audit <subcommand> [flags]
 ```
 
@@ -20,7 +20,9 @@ Use `audit` for forensic queries (who did what, when, to which resource) and com
 
 List audit log entries with optional filters.
 
-```bash
+**Usage**
+
+```usage
 enclii audit list [flags]
 ```
 
@@ -40,7 +42,9 @@ enclii audit list [flags]
 
 Export audit log entries as **CSV**. This is admin-gated server-side; non-admin callers receive a `403` surfaced as a validation error. With `--out`, the CSV is written to the given file; without it, CSV is streamed to stdout.
 
-```bash
+**Usage**
+
+```usage
 enclii audit export [flags]
 ```
 

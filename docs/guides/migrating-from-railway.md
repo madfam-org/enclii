@@ -96,9 +96,13 @@ spec:
 ### 3. Port env vars (2 min)
 
 ```bash
+# Read the project and service names `enclii init` wrote to ./service.yaml
+PROJECT=$(awk '/^  project:/{print $2; exit}' service.yaml)
+SERVICE=$(awk '/^  name:/{print $2; exit}' service.yaml)
+
 # Register the service from ./service.yaml so the variables have a target
 # (--project must match metadata.project in service.yaml)
-enclii services-sync --project <project>
+enclii services-sync --project "$PROJECT"
 
 # `enclii secrets set` takes KEY=VALUE pairs for the service in ./service.yaml.
 # Without --env the values apply to all environments (--env prod only works
@@ -120,7 +124,8 @@ railway run pg_dump "$DATABASE_URL" > dump.sql
 # Create a managed Postgres addon bound to the service; its connection
 # string is injected into the service as DATABASE_URL.
 enclii addon plans
-enclii addon create my-app-db --plan standard-0 --service <service-id>
+SERVICE_ID=$(enclii projects services "$PROJECT" --json | jq -r --arg s "$SERVICE" '.[] | select(.name == $s) | .id')
+enclii addon create my-app-db --plan standard-0 --project "$PROJECT" --service "$SERVICE_ID"
 
 # Restore. DATABASE_URL is the addon's connection string; run this from a host
 # that can reach the addon (the CLI has no port-forward command).

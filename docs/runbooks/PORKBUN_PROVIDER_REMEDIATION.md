@@ -94,12 +94,10 @@ Current semantics:
 Use this only if the registrar apex needs to be delegated or repaired. Do not
 change nameservers when the current delegation is already correct.
 
-```bash
-enclii providers porkbun nameservers-apply phynd.app \
-  --nameservers <cloudflare-ns-1>,<cloudflare-ns-2> \
-  --apply \
-  --reason "delegate phynd.app to Enclii-managed Cloudflare"
-```
+Run `enclii providers porkbun nameservers-apply phynd.app` with `--nameservers`
+set to the two nameservers Cloudflare assigned to the `phynd.app` zone
+(comma-separated, as the Cloudflare zone lists them), plus `--apply` and
+`--reason "delegate phynd.app to Enclii-managed Cloudflare"`.
 
 After delegation, rerun:
 

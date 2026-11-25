@@ -4,7 +4,7 @@ Manage outbound lifecycle webhook subscriptions.
 
 ## Synopsis
 
-```bash
+```usage
 enclii webhooks <subcommand> [flags]
 ```
 
@@ -28,7 +28,9 @@ Compute `v1` as `HMAC_SHA256(secret, t + "." + raw_body)`. **Signing secrets are
 
 List outbound webhook subscriptions for a project.
 
-```bash
+**Usage**
+
+```usage
 enclii webhooks list [flags]
 ```
 
@@ -40,7 +42,9 @@ enclii webhooks list [flags]
 
 Create a new webhook subscription.
 
-```bash
+**Usage**
+
+```usage
 enclii webhooks create [flags]
 ```
 
@@ -57,7 +61,9 @@ The signing secret is printed to stdout exactly once on success.
 
 Show details of a webhook subscription (does **not** include the signing secret).
 
-```bash
+**Usage**
+
+```usage
 enclii webhooks show <sub_id>
 ```
 
@@ -65,7 +71,9 @@ enclii webhooks show <sub_id>
 
 Generate a new signing secret. The new secret is printed once and immediately becomes the authoritative secret for all subsequent deliveries.
 
-```bash
+**Usage**
+
+```usage
 enclii webhooks rotate <sub_id>
 ```
 
@@ -73,7 +81,9 @@ enclii webhooks rotate <sub_id>
 
 Delete a webhook subscription (soft-delete).
 
-```bash
+**Usage**
+
+```usage
 enclii webhooks delete <sub_id> [flags]
 ```
 
@@ -85,7 +95,9 @@ enclii webhooks delete <sub_id> [flags]
 
 Enqueue a synthetic `test.ping` event so you can verify signature validation end-to-end. The response includes the delivery id.
 
-```bash
+**Usage**
+
+```usage
 enclii webhooks test <sub_id>
 ```
 
@@ -93,7 +105,9 @@ enclii webhooks test <sub_id>
 
 List recent deliveries for a subscription.
 
-```bash
+**Usage**
+
+```usage
 enclii webhooks deliveries <sub_id> [flags]
 ```
 

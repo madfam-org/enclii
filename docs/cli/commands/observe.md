@@ -4,7 +4,7 @@ Read service observability data (metrics, health, errors, alerts).
 
 ## Synopsis
 
-```bash
+```usage
 enclii observe <subcommand> [flags]
 ```
 
@@ -22,7 +22,9 @@ Most subcommands require `--service <id>` to scope the query. All subcommands ar
 
 Show a current metrics snapshot for a service: cpu, memory, requests-per-second, latency p50/p95/p99.
 
-```bash
+**Usage**
+
+```usage
 enclii observe metrics --service <id> [flags]
 ```
 
@@ -35,7 +37,9 @@ enclii observe metrics --service <id> [flags]
 
 Show time-series metrics history for a service over a window.
 
-```bash
+**Usage**
+
+```usage
 enclii observe history --service <id> [--window <window>] [flags]
 ```
 
@@ -49,7 +53,9 @@ enclii observe history --service <id> [--window <window>] [flags]
 
 Show service health status. Omit `--service` for cluster-wide health.
 
-```bash
+**Usage**
+
+```usage
 enclii observe health [--service <id>] [flags]
 ```
 
@@ -62,7 +68,9 @@ enclii observe health [--service <id>] [flags]
 
 List recent error events for a service. Backed by Sentry on the server side.
 
-```bash
+**Usage**
+
+```usage
 enclii observe errors [--service <id>] [--limit <n>] [flags]
 ```
 
@@ -76,7 +84,9 @@ enclii observe errors [--service <id>] [--limit <n>] [flags]
 
 List active alerts for a service.
 
-```bash
+**Usage**
+
+```usage
 enclii observe alerts [--service <id>] [flags]
 ```
 

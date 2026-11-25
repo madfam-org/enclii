@@ -4,7 +4,7 @@ Manage the local MADFAM development environment.
 
 ## Synopsis
 
-```bash
+```usage
 enclii local <subcommand> [flags]
 ```
 
@@ -36,7 +36,7 @@ The infrastructure is started with `docker compose` from `ops/local/docker-compo
 Start the local development environment. Without arguments, it starts the shared infrastructure and then both known services, `janua` and `enclii`. With service names, it starts only those services (infrastructure still starts first unless `--skip-infra` is set). Unknown service names are skipped with a warning.
 
 ### Synopsis
-```bash
+```usage
 enclii local up [services...] [flags]
 ```
 
@@ -98,7 +98,7 @@ enclii local up enclii --skip-infra
 Stop the local development environment. It stops the application processes (`uvicorn`, `next-server`, `switchyard`), then runs `docker compose down` for the infrastructure unless `--keep-infra` is set. Named volumes are not removed.
 
 ### Synopsis
-```bash
+```usage
 enclii local down [flags]
 ```
 
@@ -137,7 +137,7 @@ This command has no flags; there is no JSON output mode.
 View logs for the infrastructure containers through `docker compose logs`. Pass a compose service name (for example `postgres`) to limit the output to one container.
 
 ### Synopsis
-```bash
+```usage
 enclii local logs [service] [flags]
 ```
 

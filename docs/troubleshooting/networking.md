@@ -22,20 +22,33 @@ This guide helps resolve DNS, SSL, Cloudflare tunnel, and service routing issues
 - Domain configured for your service
 - Access to DNS provider (Porkbun, Cloudflare, etc.)
 
+## Before You Start
+
+The commands below read your project, service and domain from shell
+variables, so each one runs as written once they are set. Set them once per
+terminal session:
+
+| Variable | Set it to | Where to find it |
+|---|---|---|
+| `PROJECT` | your project's slug | `enclii projects list` |
+| `SERVICE` | the service's name | `enclii projects services "$PROJECT"` |
+| `ENVIRONMENT` | the environment, for example `production` | `enclii projects environments "$PROJECT"` |
+| `DOMAIN` | the custom domain, for example `api.example.com` | your DNS records |
+
 ## Quick Diagnosis
 
 ```bash
 # Check DNS resolution
-dig <your-domain>
+dig "$DOMAIN"
 
 # Test HTTPS connectivity
-curl -vI https://<your-domain>
+curl -vI "https://$DOMAIN"
 
 # Check certificate
-openssl s_client -connect <your-domain>:443 -servername <your-domain>
+openssl s_client -connect "$DOMAIN:443" -servername "$DOMAIN"
 
-# Via CLI
-enclii domains verify <domain>
+# Via CLI (run in the service's directory, or pass -f path/to/service.yaml)
+enclii domains verify "$DOMAIN" --env "$ENVIRONMENT"
 ```
 
 ## Common Networking Issues
@@ -176,7 +189,7 @@ kubectl run test --rm -it --image=curlimages/curl -- \
 
 1. **Verify service is running**:
 ```bash
-enclii ps --env <env> --project <project-slug>
+enclii ps --env "$ENVIRONMENT" --project "$PROJECT"
 kubectl get pods -n <namespace> -l app=<service>
 ```
 
@@ -226,7 +239,7 @@ kubectl get pod <pod-name> -n <namespace> --show-labels
 
 1. **Check backend health**:
 ```bash
-enclii logs <service> -f
+enclii logs "$SERVICE" --env "$ENVIRONMENT" -f
 kubectl logs -n <namespace> -l app=<service> --tail=100
 ```
 
@@ -272,7 +285,7 @@ time curl http://<internal-service-url>/api/slow-endpoint
 
 1. **Add domain to service**:
 ```bash
-enclii domains add <your-domain> --service <service-name> --env production
+enclii domains add "$DOMAIN" --service "$SERVICE" --env "$ENVIRONMENT"
 ```
 
 2. **Configure DNS** (CNAME to tunnel):
@@ -292,7 +305,7 @@ ingress:
 
 4. **Verify domain**:
 ```bash
-enclii domains verify <your-domain>
+enclii domains verify "$DOMAIN" --service "$SERVICE" --env "$ENVIRONMENT"
 ```
 
 ## Port Configuration

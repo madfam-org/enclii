@@ -15,7 +15,7 @@ For apps that require authentication, run Janua OAuth bootstrap from the product
 
 ## Usage
 
-```bash
+```usage
 enclii onboard --repo <org/repo> [flags]
 enclii onboard ensure --repo <org/repo> [flags]
 ```

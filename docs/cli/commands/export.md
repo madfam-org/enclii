@@ -4,7 +4,7 @@ Export everything Enclii holds about your project.
 
 ## Synopsis
 
-```bash
+```usage
 enclii export --project <slug> [--wait --out <path>]
 enclii export <list|status|download|approve> [flags]
 ```
@@ -40,7 +40,9 @@ The default invocation initiates an export and prints the export id; pass `--wai
 
 List recent tenant exports for a project.
 
-```bash
+**Usage**
+
+```usage
 enclii export list [flags]
 ```
 
@@ -52,7 +54,9 @@ enclii export list [flags]
 
 Show the status of a tenant export.
 
-```bash
+**Usage**
+
+```usage
 enclii export status <export_id>
 ```
 
@@ -60,7 +64,9 @@ enclii export status <export_id>
 
 Download a previously-ready tenant export.
 
-```bash
+**Usage**
+
+```usage
 enclii export download <export_id> [flags]
 ```
 
@@ -72,7 +78,9 @@ enclii export download <export_id> [flags]
 
 Approve a pending production export as the second project admin (the HITL approver). It can also be approved from the dashboard. On success it prints `Export <export_id> approved.`
 
-```bash
+**Usage**
+
+```usage
 enclii export approve <export_id>
 ```
 

@@ -4,7 +4,7 @@ Manage in-flight canary rollouts.
 
 ## Synopsis
 
-```bash
+```usage
 enclii canary <subcommand> [flags]
 ```
 
@@ -27,7 +27,9 @@ Canary rollouts are scoped per service; pass `--service` to identify the target 
 
 Show canary rollout status, optionally tailing until the rollout reaches a terminal state.
 
-```bash
+**Usage**
+
+```usage
 enclii canary status <rollout_id> [flags]
 ```
 
@@ -40,7 +42,9 @@ enclii canary status <rollout_id> [flags]
 
 Manually promote a canary, short-circuiting the validation window.
 
-```bash
+**Usage**
+
+```usage
 enclii canary promote <rollout_id> [flags]
 ```
 
@@ -52,7 +56,9 @@ enclii canary promote <rollout_id> [flags]
 
 Manually abort a canary rollout. The previous stable revision continues serving 100% of traffic.
 
-```bash
+**Usage**
+
+```usage
 enclii canary rollback <rollout_id> [flags]
 ```
 
@@ -86,9 +92,11 @@ enclii canary rollback rol_abc123 --service my-api --reason "error rate spiked >
 ```bash
 # run from the service's directory: deploy reads ./service.yaml (or --file)
 enclii deploy --env prod --canary 10 --change-ticket https://tracker.example.com/CHG-1234
-# prints "Canary rollout started: <rollout_id> ..." and tails the rollout
-enclii canary status <rollout_id> --service my-api -f
 ```
+
+The deploy prints `Canary rollout started:` followed by the rollout id, then
+tails the rollout. To follow the same rollout from another terminal, run
+`enclii canary status` with that rollout id and `--service my-api -f`.
 
 ## Notes
 

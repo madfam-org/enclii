@@ -8,7 +8,7 @@
 > missing Enclii adapter gap.
 
 
-**Last Updated:** August 7, 2026
+**Last Updated:** November 24, 2026
 **Status:** Tunnel + zone/CNAME provisioning operational (single unified tunnel, 28+ domains, 2 replicas, HTTPS enforced on all zones). Cloudflare for SaaS custom hostnames implemented in code; **not yet exercised against a live client domain** and inert until `ENCLII_CLOUDFLARE_FALLBACK_ORIGIN_ZONE_ID` / `ENCLII_CLOUDFLARE_FALLBACK_ORIGIN_HOSTNAME` are set.
 
 > [!WARNING]
@@ -453,7 +453,8 @@ with a port, rewriting the API and admin routes onto the web app on every push.
 
 To make an ambiguous manifest reconcile on push, split it into one
 `kind: Service` document per service. To provision one hostname explicitly,
-use `enclii ops domains reconcile <service> --domain <host>`.
+use `enclii ops domains reconcile` with the service name and `--domain` set to
+that hostname.
 
 **Multi-Zone Support:** `FindZoneForDomain()` uses longest-suffix matching — `api.qubic.quest` matches zone `qubic.quest` rather than `quest`.
 
@@ -618,14 +619,13 @@ kubectl exec -n cloudflare-tunnel <cloudflared-pod> -- \
 For Cloudflare for SaaS custom domains, ask Enclii first — it stores the
 Cloudflare-reported state and the outstanding client action:
 
-```bash
-# Re-reads the live state from Cloudflare and updates the record
-# (calls POST /v1/services/<service-id>/domains/<domain-id>/verify).
-enclii domains verify <hostname> --service <service>
-# 200 => Cloudflare reports hostname + certificate active
-# 400 => not yet: response carries `pending_dns_records` for the client
-# 502 => we could not reach Cloudflare (this is our problem, not the client's)
-```
+Run `enclii domains verify` with the hostname and `--service` set to the
+service's name. It re-reads the live state from Cloudflare and updates the
+record (it calls `POST /v1/services/<service-id>/domains/<domain-id>/verify`):
+
+- `200`: Cloudflare reports hostname + certificate active
+- `400`: not yet; the response carries `pending_dns_records` for the client
+- `502`: we could not reach Cloudflare (this is our problem, not the client's)
 
 When a domain never reaches Cloudflare at all — an unconfigured fallback
 origin, an ownership conflict with another project, an undecidable zone
@@ -638,7 +638,7 @@ curl -s -H "Authorization: Bearer $ENCLII_API_TOKEN" \
   | jq '.domains[] | {domain, status, provisioning_error, provisioning_checked_at}'
 ```
 
-`enclii domains status <hostname> --service <service>` shows the domain's status and DNS instructions.
+`enclii domains status`, with the hostname and `--service` set to the service's name, shows the domain's status and DNS instructions.
 
 Break-glass, when the API is unavailable (raw provider access — see the banner
 at the top of this file):

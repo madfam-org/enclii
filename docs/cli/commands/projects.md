@@ -4,7 +4,7 @@ Manage projects.
 
 ## Synopsis
 
-```bash
+```usage
 enclii projects <subcommand> [flags]
 ```
 
@@ -22,7 +22,9 @@ This command mirrors the `/projects` page in the consumer web UI. Read subcomman
 
 List all projects.
 
-```bash
+**Usage**
+
+```usage
 enclii projects list [flags]
 ```
 
@@ -36,7 +38,9 @@ enclii projects list [flags]
 
 Get project details by slug.
 
-```bash
+**Usage**
+
+```usage
 enclii projects get <slug> [flags]
 ```
 
@@ -48,7 +52,9 @@ enclii projects get <slug> [flags]
 
 Create a new project.
 
-```bash
+**Usage**
+
+```usage
 enclii projects create --name <name> --slug <slug>
 ```
 
@@ -61,7 +67,9 @@ enclii projects create --name <name> --slug <slug>
 
 Delete a project. This removes all services, environments, and secrets owned by the project — irreversibly.
 
-```bash
+**Usage**
+
+```usage
 enclii projects delete <slug> [--force]
 ```
 
@@ -75,7 +83,9 @@ enclii projects delete <slug> [--force]
 
 List environments for a project.
 
-```bash
+**Usage**
+
+```usage
 enclii projects environments <slug> [flags]
 ```
 
@@ -89,7 +99,9 @@ enclii projects environments <slug> [flags]
 
 List services in a project (lightweight summary).
 
-```bash
+**Usage**
+
+```usage
 enclii projects services <slug> [flags]
 ```
 
@@ -101,7 +113,9 @@ enclii projects services <slug> [flags]
 
 Discover Deployments in a project's Kubernetes namespace and ensure the `services` table reflects them. Idempotent recovery for GitOps-onboarded projects missing service rows or `k8s_namespace` values.
 
-```bash
+**Usage**
+
+```usage
 enclii projects reconcile-services <slug> [flags]
 ```
 
@@ -115,7 +129,9 @@ Requires **admin** API token (`POST /v1/admin/projects/:slug/reconcile-services`
 
 Assign a project to a team so it belongs to that tenant, which onboarding a client's app under their team requires. Admin only.
 
-```bash
+**Usage**
+
+```usage
 enclii projects set-team <project-slug> --team <team-slug>
 enclii projects set-team <project-slug> --unparent
 ```

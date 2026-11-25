@@ -128,7 +128,7 @@ When ready, deploy to production:
 enclii deploy --env production --wait
 ```
 
-For a gradual rollout, deploy as a canary instead: `enclii deploy --env production --canary 10 --change-ticket <url>`.
+For a gradual rollout, deploy as a canary instead: `enclii deploy --env production --canary 10`, with `--change-ticket` set to your change ticket's URL (production canaries require one).
 
 ---
 
@@ -147,8 +147,9 @@ enclii domains verify api.example.com
 ### Set Up Environment Variables
 
 ```bash
-# Add a secret (encrypted, masked)
-enclii secrets set DATABASE_URL="postgresql://..." --secret --env production
+# Add a secret (encrypted, masked). The value is read from DATABASE_URL in your
+# shell, so it never appears in a document or your shell history.
+enclii secrets set DATABASE_URL="$DATABASE_URL" --secret --env production
 
 # Add a regular variable
 enclii secrets set LOG_LEVEL=info --env production
@@ -168,10 +169,10 @@ spec:
         autoDeploy: true
 ```
 
-Then sync (`--reconcile-existing` updates a service that is already registered):
+Then sync (`--reconcile-existing` updates a service that is already registered; `--project` is the `metadata.project` of the `service.yaml` above):
 
 ```bash
-enclii services-sync --dir . --project <project-slug> --reconcile-existing
+enclii services-sync --dir . --project my-app --reconcile-existing
 ```
 
 Now every push to `main` builds and deploys automatically. `services-sync` sets the auto-deploy environment to `production`; the CLI has no flag to choose another.

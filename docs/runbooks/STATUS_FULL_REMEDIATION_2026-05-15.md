@@ -1,4 +1,10 @@
+<!-- Boundary checkpoint (2026-11-24, platform ops): public-safe operator doc; `enclii` commands checked against the CLI's command tree. Node identity, secret values and client data stay out; private detail lives in internal-devops. Policy: docs/PUBLIC_REPO_BOUNDARY.md. -->
 # MADFAM Status Full Remediation Plan
+
+> **2026-11-24:** this is a dated record, kept as evidence of its date. Some
+> `enclii` commands below do not exist in the current CLI, or carry blanks to
+> fill in, so they are not runnable as written. The current command forms are
+> in the [CLI reference](../cli/README.md).
 
 Date: 2026-05-15
 Scope: `https://status.madfam.io`, Enclii-managed production surfaces, DNS authority, secret readiness, and release automation.

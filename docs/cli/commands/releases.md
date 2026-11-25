@@ -4,7 +4,7 @@ List releases (builds) for a service.
 
 ## Synopsis
 
-```bash
+```usage
 enclii releases [service-name] [flags]
 ```
 

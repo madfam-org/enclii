@@ -1,5 +1,10 @@
 # Remaining Items — Post Session 106
 
+> **2026-11-24:** this is a dated record, kept as evidence of its date. Some
+> `enclii` commands below do not exist in the current CLI, or carry blanks to
+> fill in, so they are not runnable as written. The current command forms are
+> in the [CLI reference](../cli/README.md).
+
 > **Boundary checkpoint (2026-09-04, platform ops):** node identity — hostnames,
 > IP addresses and hardware SKUs — is private and does not appear in this public
 > repo. Nodes are named by ROLE (control-plane, worker, builder); `<TOKEN>`

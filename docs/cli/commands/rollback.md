@@ -4,7 +4,7 @@ Rollback a service to a previous deployment.
 
 ## Synopsis
 
-```bash
+```usage
 enclii rollback [service] [v{n}|digest] [flags]
 ```
 

@@ -188,7 +188,7 @@ mitigations now stand between a delete request and data destruction:
 (`deleted_at IS NULL`, `status = pending_deletion`). Clearing
 `deletion_scheduled_at` and restoring the prior status un-schedules the
 teardown; the CNPG `Cluster` was never touched. A first-class
-`enclii addon undo-delete <id>` surface is a follow-up (see below).
+undo-delete surface (a proposed `enclii addon undo-delete`, not implemented) is a follow-up (see below).
 
 ## Rollback strategy per state
 
@@ -236,7 +236,8 @@ name as a reference.
    budget line item Sprint 3.
 2. **PITR UX** — Heroku exposes "fork at timestamp." CNPG supports this via
    `Cluster.spec.bootstrap.recovery`. Sprint 2 wires it into
-   `enclii addon clone <src> --at '2026-04-15T14:00Z'`.
+   a clone command taking the source addon and `--at` with a timestamp (a
+   proposed `enclii addon clone`, not implemented).
 3. **Connection pooler** — today each addon binds ~10 connections. For higher
    tiers we want pgBouncer sidecar (already have `provisioning/pgbouncer.go`
    for the shared Postgres; reuse pattern).
@@ -259,7 +260,7 @@ name as a reference.
 - [ ] Audit events table populated on every lifecycle transition, verified in
       integration test.
 - [ ] `enclii addon ls` lists all non-deleted addons for the user's projects.
-- [ ] `enclii addon destroy <id>` soft-deletes row, deletes CNPG Cluster CR,
+- [ ] `enclii addon destroy` (by addon id) soft-deletes row, deletes CNPG Cluster CR,
       emits `addon.destroyed` event.
 - [ ] UI page `/projects/[slug]/addons` renders + create modal + destroy flow.
 - [ ] ≥25 new unit/handler tests, all green.

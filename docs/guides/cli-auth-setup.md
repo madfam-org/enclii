@@ -103,14 +103,15 @@ browser's current account, see
 
 ## Custom Client ID
 
-If using a different client_id than the built-in Enclii CLI client:
+If using a different client_id than the built-in Enclii CLI client, set
+`CLIENT_ID` in your shell to that OAuth client's id, then:
 
 ```bash
 # Login with custom client ID
-enclii login --client-id your-custom-client-id
+enclii login --client-id "$CLIENT_ID"
 
 # Token refresh reads its client ID from the environment, so set the same value
-export ENCLII_OIDC_CLIENT_ID=your-custom-client-id
+export ENCLII_OIDC_CLIENT_ID="$CLIENT_ID"
 ```
 
 ## Troubleshooting

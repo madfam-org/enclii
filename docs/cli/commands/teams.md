@@ -4,7 +4,7 @@ Manage teams, memberships, and invitations.
 
 ## Synopsis
 
-```bash
+```usage
 enclii teams <subcommand> [flags]
 ```
 
@@ -22,7 +22,9 @@ This command mirrors the `/teams` page in the consumer web UI at `enclii.dev`. A
 
 List all teams.
 
-```bash
+**Usage**
+
+```usage
 enclii teams list [flags]
 ```
 
@@ -36,7 +38,9 @@ enclii teams list [flags]
 
 Get team details by slug.
 
-```bash
+**Usage**
+
+```usage
 enclii teams get <slug> [flags]
 ```
 
@@ -48,7 +52,9 @@ enclii teams get <slug> [flags]
 
 Create a new team.
 
-```bash
+**Usage**
+
+```usage
 enclii teams create --name <name> --slug <slug>
 ```
 
@@ -61,7 +67,9 @@ enclii teams create --name <name> --slug <slug>
 
 Update team metadata.
 
-```bash
+**Usage**
+
+```usage
 enclii teams update <slug> --name <name>
 ```
 
@@ -73,7 +81,9 @@ enclii teams update <slug> --name <name>
 
 Delete a team.
 
-```bash
+**Usage**
+
+```usage
 enclii teams delete <slug> [--force]
 ```
 
@@ -87,7 +97,9 @@ enclii teams delete <slug> [--force]
 
 List members of a team.
 
-```bash
+**Usage**
+
+```usage
 enclii teams members <slug> [flags]
 ```
 
@@ -99,7 +111,9 @@ enclii teams members <slug> [flags]
 
 Change a member's role.
 
-```bash
+**Usage**
+
+```usage
 enclii teams members-update <slug> <member_id> --role <role>
 ```
 
@@ -111,7 +125,9 @@ enclii teams members-update <slug> <member_id> --role <role>
 
 Remove a member from a team.
 
-```bash
+**Usage**
+
+```usage
 enclii teams members-remove <slug> <member_id> [--force]
 ```
 
@@ -123,7 +139,9 @@ enclii teams members-remove <slug> <member_id> [--force]
 
 Invite a user to a team via email. The server sends an invitation email with a time-bounded acceptance link. Default role if `--role` is omitted is `member`.
 
-```bash
+**Usage**
+
+```usage
 enclii teams invite <slug> --email <email> [--role <role>]
 ```
 
@@ -136,7 +154,9 @@ enclii teams invite <slug> --email <email> [--role <role>]
 
 List pending invitations for a team.
 
-```bash
+**Usage**
+
+```usage
 enclii teams invitations <slug> [flags]
 ```
 
@@ -148,7 +168,9 @@ enclii teams invitations <slug> [flags]
 
 Cancel a pending invitation.
 
-```bash
+**Usage**
+
+```usage
 enclii teams invitations-cancel <slug> <invitation_id>
 ```
 

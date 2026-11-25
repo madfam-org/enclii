@@ -12,7 +12,7 @@
 > **Status**: Draft — capturing positioning for future scoping
 > **Author**: MADFAM Engineering
 > **Created**: 2026-04-24
-> **Last Updated**: 2026-04-24
+> **Last Updated**: 2026-11-24
 > **Domain**: `console.enclii.dev` (currently unclaimed / orphan DNS)
 
 ---
@@ -40,7 +40,7 @@ Console fills that gap at `console.enclii.dev`.
 | One-off tasks (migrate, seed) via `enclii jobs run-once` — terminal only | One-click task runner with parameterised commands |
 | Live log tailing scattered across Grafana queries | Per-service tail with structured search + replay |
 | Release ops (rollback, promote, pause autoscale) via CLI | One-click per action with audit trail |
-| Database console requires CLI + local tooling | `enclii db psql` via web, read-only default |
+| Database console requires CLI + local tooling | A web database console, read-only by default (proposed; `enclii db psql` does not exist) |
 
 ---
 
@@ -54,7 +54,7 @@ Console fills that gap at `console.enclii.dev`.
 
 3. **Elevated-privilege ops have no audit trail**. Production `kubectl exec` → interactive shell → `DROP TABLE x` is indistinguishable from a sanctioned migration. Audit story is "hope the logs caught it".
 
-4. **Release operations are CLI-gated**. Rolling back a bad deploy is `enclii rollback <service>`. Fine when calm. Hard when stressed at 2am with only your phone.
+4. **Release operations are CLI-gated**. Rolling back a bad deploy is `enclii rollback` with the service name. Fine when calm. Hard when stressed at 2am with only your phone.
 
 5. **Database introspection is local-tooling-dependent**. To `psql` a prod DB, the operator needs: (a) VPN or tunnel, (b) `psql` installed, (c) a credential fetched from a secrets store. High friction → people avoid it → problems linger.
 
@@ -81,7 +81,7 @@ Console fills that gap at `console.enclii.dev`.
 2. **G2**: Parameterised task runner — "run the migration" / "run this arbitrary command with this env" — via a registered catalogue per service.
 3. **G3**: Per-service live log tail with structured search (level, field, time range) — beyond what generic Grafana queries provide.
 4. **G4**: Release operations panel — rollback to digest, promote canary, pause autoscaling, force restart — one click per action, audit-logged.
-5. **G5**: Database console — `enclii db psql <service>` through the browser, read-only by default, elevated-write mode requires re-auth.
+5. **G5**: Database console — a `psql` session per service through the browser (proposed; `enclii db psql` does not exist), read-only by default, elevated-write mode requires re-auth.
 6. **G6**: Every imperative action writes to an append-only audit log visible in Dispatch's governance module.
 
 ### Non-Goals
@@ -193,7 +193,7 @@ Every MADFAM product currently on Enclii has its own ad-hoc admin surface:
 - Dhanam: `admin.dhan.am` (separate app, SSO via Janua)
 - Tezca: `apps/admin` (yet another implementation)
 
-These exist because each product needed *some* way to run one-off ops and most of the admin UIs could not reuse a common surface. **Console could become the uniform fallback** — "I don't have product-specific admin, but I can still `enclii console <service>` to run a task / shell in / query the DB."
+These exist because each product needed *some* way to run one-off ops and most of the admin UIs could not reuse a common surface. **Console could become the uniform fallback** — "I don't have product-specific admin, but I can still open the console for a service to run a task / shell in / query the DB." (An `enclii console` command does not exist.)
 
 That's significant leverage:
 - 10 products × (run_task + shell + db_console + rollback) = 40 ad-hoc features replaced by one shared implementation

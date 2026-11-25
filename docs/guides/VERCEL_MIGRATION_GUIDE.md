@@ -1,7 +1,7 @@
 # Vercel to Enclii Migration Guide
 
 **Version**: 1.1
-**Last Updated**: 2026-01-30
+**Last Updated**: 2026-11-24
 **Estimated Migration Time**: 1-3 hours per project
 
 ---
@@ -410,9 +410,11 @@ enclii services-sync --dir . --project myapp
 
 # Import secrets (see Environment Variables section). Without --env they apply
 # to all environments; the "production" environment is created by the first deploy.
+# DATABASE_URL is read from your shell, so its value never appears in a
+# document or your shell history.
 enclii secrets set -f enclii.yaml --secret \
   NEXTAUTH_SECRET="$(openssl rand -base64 32)" \
-  DATABASE_URL="postgresql://..."
+  DATABASE_URL="$DATABASE_URL"
 
 # Deploy and wait until healthy
 enclii deploy -f enclii.yaml --env production --wait
@@ -950,7 +952,8 @@ curl -H "Host: myapp.com" http://<enclii-ingress-ip>
 
 # Monitor
 enclii logs web-app --env production --follow
-enclii observe metrics --service <service-id>   # ID from `enclii projects services myapp`
+WEB_APP_ID=$(enclii projects services myapp --json | jq -r '.[] | select(.name == "web-app") | .id')
+enclii observe metrics --service "$WEB_APP_ID"
 ```
 
 ### Performance Comparison
@@ -1046,7 +1049,7 @@ spec:
 
 # 4. Register the service, set the secret, deploy
 enclii services-sync --dir . --project myapp
-enclii secrets set DATABASE_URL="postgresql://..." -f enclii.yaml --secret
+enclii secrets set DATABASE_URL="$DATABASE_URL" -f enclii.yaml --secret   # value read from your shell
 enclii deploy -f enclii.yaml --env production --wait
 
 # 5. Configure Cloudflare

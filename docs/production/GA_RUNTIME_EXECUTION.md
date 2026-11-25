@@ -1,3 +1,4 @@
+<!-- Boundary checkpoint (2026-11-24, platform ops): public-safe operator doc; `enclii` commands checked against the CLI's command tree. Node identity, secret values and client data stay out; private detail lives in internal-devops. Policy: docs/PUBLIC_REPO_BOUNDARY.md. -->
 # GA Runtime Execution
 
 This document points operators to the private runtime execution pack and records the Enclii-side command surfaces used for Stability GA and Commercial GA.
@@ -10,10 +11,10 @@ Private execution pack: `internal-devops/runbooks/ga-ops-execution-pack.md`
 |---|---|---|
 | Capabilities | `enclii ops capabilities`, `enclii providers capabilities` | Read-only |
 | Vault readiness | `enclii vault status`, `enclii ops secrets vault` | Read-only |
-| Vault backfill | `enclii secrets vault-backfill <source-secret> --namespace <ns> --vault-path <path>` | Apply-capable with reason when Vault writer is configured |
-| ExternalSecret sync | `enclii secrets sync <name> --namespace <ns>` | Apply-capable with reason |
-| Secret rotation cutover | `enclii secrets rotate <target>` | Apply-capable cutover after provider value/version is staged |
-| Cloudflare DNS | `enclii providers cloudflare dns-apply <domain>` | Apply-capable when provider configured |
+| Vault backfill | `enclii secrets vault-backfill` (a source Secret, `--namespace`, `--vault-path`) | Apply-capable with reason when Vault writer is configured |
+| ExternalSecret sync | `enclii secrets sync` (an ExternalSecret, `--namespace`) | Apply-capable with reason |
+| Secret rotation cutover | `enclii secrets rotate` (a target) | Apply-capable cutover after provider value/version is staged |
+| Cloudflare DNS | `enclii providers cloudflare dns-apply` (a hostname) | Apply-capable when provider configured |
 | Cloudflare credentials | `enclii providers cloudflare credentials` | Contract-read surface |
 | Storage | `enclii ops storage longhorn`, `enclii ops storage volumes` | Read/plan surface |
 | Argo apps | `enclii ops apps status`, `enclii ops apps diff`, `enclii ops apps sync` | Sync apply-capable with reason |

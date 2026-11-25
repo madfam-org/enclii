@@ -8,24 +8,30 @@ so any existing PostgREST / `@supabase/postgrest-js` client works unchanged.
 
 ## TL;DR
 
+You already have a managed Postgres addon (status: ready); `enclii addon ls`
+lists them. The commands below read its name from a shell variable, so each one
+runs as written once it is set:
+
+| Variable | Set it to | Where to find it |
+|---|---|---|
+| `ADDON` | the addon's name | `enclii addon ls` |
+
 ```bash
-# 1. You already have a managed Postgres addon (status: ready).
-enclii addon ls
+# 1. Read the addon's id.
+ADDON_ID=$(enclii addon ls --json | jq -r --arg a "$ADDON" '.addons[] | select(.name == $a) | .id')
 
 # 2. Turn on the REST API for it.
-enclii addon api enable <addon_id>
+enclii addon api enable "$ADDON_ID"
 
-# 3. Check status / get the URL.
-enclii addon api info <addon_id>
-#   Status:  ready
-#   URL:     https://<addon>-<id>.data.enclii.dev
+# 3. Check status / get the URL (once Status reads ready).
+enclii addon api info "$ADDON_ID"
+BASE=$(enclii addon api info "$ADDON_ID" | awk '/^URL:/{print $2}')
 
 # 4. Mint a JWT to call it.
-TOKEN=$(enclii addon api token <addon_id> --role authenticated)
+TOKEN=$(enclii addon api token "$ADDON_ID" --role authenticated)
 
-# 5. Call your API.
-curl https://<addon>-<id>.data.enclii.dev/your_table \
-     -H "Authorization: Bearer $TOKEN"
+# 5. Call your API (todos stands for one of your tables).
+curl "$BASE/todos" -H "Authorization: Bearer $TOKEN"
 ```
 
 ## You are responsible for row-level security (RLS)
@@ -75,10 +81,10 @@ addon is bound to a service).
 
 ```bash
 # Default: role=authenticated, 1h TTL.
-enclii addon api token <addon_id>
+enclii addon api token "$ADDON_ID"
 
 # Custom role, TTL, and extra claims your RLS policies key on.
-enclii addon api token <addon_id> \
+enclii addon api token "$ADDON_ID" \
   --role authenticated \
   --ttl 3600 \
   --claim user_id=42 \
@@ -97,7 +103,7 @@ addon api token` is for testing and bootstrapping.
 ## Calling the API (PostgREST syntax)
 
 ```bash
-BASE=https://<addon>-<id>.data.enclii.dev
+# BASE and TOKEN come from the TL;DR above.
 AUTH="Authorization: Bearer $TOKEN"
 
 # Select specific columns with a filter.
@@ -119,7 +125,7 @@ standard PostgREST API: <https://postgrest.org/en/stable/references/api.html>.
 ## Exposing more than one schema
 
 ```bash
-enclii addon api enable <addon_id> --schemas public,api
+enclii addon api enable "$ADDON_ID" --schemas public,api
 ```
 
 Every exposed schema needs its own `GRANT USAGE` + table grants + RLS, same as
@@ -128,7 +134,7 @@ Every exposed schema needs its own `GRANT USAGE` + table grants + RLS, same as
 ## Disabling
 
 ```bash
-enclii addon api disable <addon_id> --yes
+enclii addon api disable "$ADDON_ID" --yes
 ```
 
 This tears down the PostgREST deployment, service, ingress, and JWT secret. Your

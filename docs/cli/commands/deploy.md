@@ -4,7 +4,7 @@ Build and deploy a service to an environment, optionally as a canary.
 
 ## Synopsis
 
-```bash
+```usage
 enclii deploy [flags]
 enclii deploy ls [service] [flags]
 enclii deploy show <v{n}|uuid> [service]
@@ -21,7 +21,7 @@ The flow is:
 3. Ensure the project, the service, and the target environment exist, creating them if they do not.
 4. Trigger a build for the commit and wait for it to finish (build timeout: 10 minutes).
 5. Deploy the resulting release to the environment with a rolling update.
-6. With `--wait`, poll until the deployment is healthy (deploy timeout: 5 minutes). Without it, the command returns as soon as the deployment is initiated and prints the `enclii logs <service> -f` command to follow it.
+6. With `--wait`, poll until the deployment is healthy (deploy timeout: 5 minutes). Without it, the command returns as soon as the deployment is initiated and prints the `enclii logs` command, with the service name and `-f`, that follows it.
 
 The default strategy is a rolling update. Pass `--canary` to run a canary rollout instead (see [Canary deploys](#canary-deploys)). There are no `--strategy`, `--release`, `--skip-build`, `--timeout`, `--message`, or `--dry-run` flags.
 
@@ -37,7 +37,7 @@ The default strategy is a rolling update. Pass `--canary` to run a canary rollou
 | `--smoke-endpoint` | string | | Optional http(s) URL probed during canary validation (HTTP 200 = healthy) |
 | `--change-ticket` | string | | Change ticket URL (required for production canary rollouts) |
 
-Note that `-f` is `--file` here, not "follow". To follow a deployment's logs, use [`enclii logs <service> -f`](./logs.md).
+Note that `-f` is `--file` here, not "follow". To follow a deployment's logs, use [`enclii logs`](./logs.md) with the service name and `-f`.
 
 ## Subcommands
 

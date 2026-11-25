@@ -1,5 +1,10 @@
 # CLI Commands Implementation - COMPLETED ✅
 
+> **2026-11-24:** this is a dated record, kept as evidence of its date. Some
+> `enclii` commands below do not exist in the current CLI, or carry blanks to
+> fill in, so they are not runnable as written. The current command forms are
+> in the [CLI reference](../cli/README.md).
+
 **Status:** Production Ready
 **Date:** 2025-01-19
 **Commits:** 2 commits, +879 lines

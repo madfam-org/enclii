@@ -4,7 +4,7 @@ Display the CLI version and build information.
 
 ## Synopsis
 
-```bash
+```usage
 enclii version [--json]
 ```
 

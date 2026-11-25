@@ -391,12 +391,13 @@ ENCLII_OIDC_CLIENT_SECRET: secret  # For backend-to-backend if needed
 ### CLI Configuration
 
 The CLI has no configuration file for this; point it at the provider with the
-environment and a client ID:
+environment and a client ID. Set `ISSUER` to your identity provider's issuer
+URL and `CLIENT_ID` to the CLI client's id there, then:
 
 ```bash
-export ENCLII_OIDC_ISSUER=https://your-idp.example.com
-export ENCLII_OIDC_CLIENT_ID=<cli-client-id>   # used for token refresh
-enclii login --client-id <cli-client-id>
+export ENCLII_OIDC_ISSUER="$ISSUER"
+export ENCLII_OIDC_CLIENT_ID="$CLIENT_ID"   # used for token refresh
+enclii login --client-id "$CLIENT_ID"
 ```
 
 Register the client as public (PKCE) with the redirect URIs

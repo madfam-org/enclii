@@ -78,19 +78,24 @@ incident.
    on start and every 10 minutes (enclii #854). **Do not recreate the pod**:
    CNPG recreates it into the same state.
 3. Any other phase: read the instance pod with
-   `enclii ops pods diagnose <cluster>-1 -n <namespace>` and the operator's view
+   `enclii ops pods diagnose`, given the instance pod (the cluster name plus `-1`)
+   and `-n` with the alert's namespace, and the operator's view
    in its events and log.
 
 ## Instance not ready
 
-1. `enclii ops pods diagnose <pod> -n <namespace>`: is the pod Running but not
+1. `enclii ops pods diagnose` with the alert's pod and `-n` with its namespace:
+   is the pod Running but not
    Ready, and does the postgres log show an `Input/output error` on a data
    file?
 2. If the volume mount broke (case 2), recreate the pod through Enclii. CNPG
    brings it back on the same PVCs:
 
-   ```bash
-   enclii ops pods restart pod/<pod> -n <namespace>       # dry run: read the warnings and the UID
+   **Usage** (the first line is the dry run: read the warnings and the UID;
+   the second is the apply, with the UID it printed):
+
+   ```usage
+   enclii ops pods restart pod/<pod> -n <namespace>
    enclii ops pods restart pod/<pod> -n <namespace> --expect-uid <reviewed-uid> \
      --apply --reason "<what the log showed>"
    ```

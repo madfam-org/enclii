@@ -4,7 +4,7 @@ Authenticate with Enclii using SSO (Single Sign-On).
 
 ## Synopsis
 
-```bash
+```usage
 enclii [--profile NAME] login [flags]
 ```
 
@@ -76,7 +76,7 @@ enclii --profile admin whoami   # admin@madfam.io
 enclii whoami                   # your everyday account, unchanged
 
 # Act as admin only where you need it:
-enclii --profile admin secrets provision oidc --platform nauta --intake-profile default --reason "..."
+enclii --profile admin secrets provision oidc --platform nauta --intake-profile default --reason "provision the nauta OIDC client"
 ENCLII_PROFILE=admin enclii ops apps status --json
 ```
 

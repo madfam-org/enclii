@@ -1,3 +1,4 @@
+<!-- Boundary checkpoint (2026-11-24, platform ops): public-safe operator doc; `enclii` commands checked against the CLI's command tree. Node identity, secret values and client data stay out; private detail lives in internal-devops. Policy: docs/PUBLIC_REPO_BOUNDARY.md. -->
 # Commercial GA — execution roadmap to 100%
 
 > **Master plan:** [COMMERCIAL_GA_MASTER_PLAN.md](./COMMERCIAL_GA_MASTER_PLAN.md) — full remediation blueprint  
@@ -125,7 +126,7 @@ Gate 2 (O-13–O-15) is complete. Wave 1 focuses on O-8–O-11.
 | Gap | Wave | Target fix |
 |-----|------|------------|
 | `POST .../reconcile-services` has no CLI | 0–1 | **Done** — `enclii projects reconcile-services` |
-| Tunnel routes read-only in `providers cloudflare tunnels` | 0–1 | **Done** — `enclii providers cloudflare tunnels-apply --project <slug>` |
+| Tunnel routes read-only in `providers cloudflare tunnels` | 0–1 | **Done** — `enclii providers cloudflare tunnels-apply` with `--project` |
 | Longhorn helm CPU upgrade | 0 | **Done** — `enclii ops storage settings-apply` |
 | Prod DB migration verify | 0 | **Done** — `enclii db schema` |
 | Staging proof secrets not in GH environment | 1 | **Workflow wired** — create `commercial-ga-staging` environment |

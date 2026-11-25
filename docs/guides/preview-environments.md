@@ -18,9 +18,10 @@ Open **Services → &lt;service&gt; → Previews** to list active previews, open
 ```bash
 enclii previews list
 enclii previews get --pr 42 --service my-api
-enclii previews close <preview-id>
-enclii previews wake <preview-id>
 ```
+
+`enclii previews close` and `enclii previews wake` each take the preview id
+that `list` and `get` print.
 
 See [previews CLI reference](../cli/commands/previews.md).
 

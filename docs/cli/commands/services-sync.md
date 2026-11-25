@@ -4,7 +4,7 @@ Synchronize checked-in Enclii service specs with the control plane.
 
 ## Synopsis
 
-```bash
+```usage
 enclii services-sync --dir <path> --project <slug> [flags]
 ```
 

@@ -4,7 +4,7 @@ Inspect the cluster-internal HashiCorp Vault deployment.
 
 ## Synopsis
 
-```bash
+```usage
 enclii vault <subcommand> [flags]
 ```
 
@@ -20,7 +20,9 @@ For the operator procedure to initialize Vault after ArgoCD syncs the Applicatio
 
 Print Vault initialization and seal state.
 
-```bash
+**Usage**
+
+```usage
 enclii vault status [flags]
 ```
 

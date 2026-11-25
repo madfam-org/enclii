@@ -4,7 +4,7 @@ Platform operator commands (admin-console parity).
 
 ## Synopsis
 
-```bash
+```usage
 enclii admin <subcommand> [flags]
 ```
 
@@ -35,19 +35,25 @@ The tree:
 
 ### `admin fleet list`
 
-```bash
+**Usage**
+
+```usage
 enclii admin fleet list [--json]
 ```
 
 ### `admin fleet get`
 
-```bash
+**Usage**
+
+```usage
 enclii admin fleet get <id>
 ```
 
 ### `admin fleet register`
 
-```bash
+**Usage**
+
+```usage
 enclii admin fleet register --hostname <h> --region <r> [--role worker|control] --force
 ```
 
@@ -60,13 +66,17 @@ enclii admin fleet register --hostname <h> --region <r> [--role worker|control] 
 
 ### `admin fleet firmware`
 
-```bash
+**Usage**
+
+```usage
 enclii admin fleet firmware <id> --version <v> --force
 ```
 
 ### `admin fleet partition`
 
-```bash
+**Usage**
+
+```usage
 enclii admin fleet partition <id> --layout <name> --force
 ```
 
@@ -74,7 +84,9 @@ enclii admin fleet partition <id> --layout <name> --force
 
 **Irreversible.** Wipes all data on a host. When `--force` is omitted, the CLI prompts for confirmation **twice** — once for `[y/N]` and once for typed `yes` — to make accidental triggering effectively impossible. Passing `--force` skips both prompts.
 
-```bash
+**Usage**
+
+```usage
 enclii admin fleet wipe <id> [--force]
 ```
 
@@ -84,7 +96,9 @@ enclii admin fleet wipe <id> [--force]
 
 ### `admin fleet power`
 
-```bash
+**Usage**
+
+```usage
 enclii admin fleet power <id> --state on|off|reboot --force
 ```
 
@@ -102,7 +116,9 @@ enclii admin topology
 
 ### `admin clusters list` / `get` / `register` / `update` / `deregister`
 
-```bash
+**Usage**
+
+```usage
 enclii admin clusters list [--json]
 enclii admin clusters get <id>
 enclii admin clusters register --name <n> --kubeconfig-file <path> --force
@@ -116,7 +132,9 @@ enclii admin clusters deregister <id> [--force]
 
 ### `admin drift list` / `get` / `resolve`
 
-```bash
+**Usage**
+
+```usage
 enclii admin drift list [--status <s>] [--json]
 enclii admin drift get <id>
 enclii admin drift resolve <id> --reason <text> --force
@@ -128,7 +146,9 @@ enclii admin drift resolve <id> --reason <text> --force
 
 ### `admin propagation list` / `get` / `create` / `delete`
 
-```bash
+**Usage**
+
+```usage
 enclii admin propagation list [--json]
 enclii admin propagation get <id>
 enclii admin propagation create \
@@ -146,7 +166,9 @@ enclii admin propagation delete <id> [--force]
 
 ### `admin governance list-resources` / `get-resource` / `create-resource` / `update-policy` / `delete-resource`
 
-```bash
+**Usage**
+
+```usage
 enclii admin governance list-resources [--json]
 enclii admin governance get-resource <id>
 enclii admin governance create-resource --kind <k> --name <n> --owner <o> --force
@@ -160,7 +182,9 @@ enclii admin governance delete-resource <id> [--force]
 
 ### `admin costs allocations` / `summary` / `allocate`
 
-```bash
+**Usage**
+
+```usage
 enclii admin costs allocations [--from <ts>] [--to <ts>] [--json]
 enclii admin costs summary [--from <ts>] [--to <ts>] [--json]
 enclii admin costs allocate --resource <id> --tenant <id> --amount-cents <n> --force
@@ -172,7 +196,9 @@ enclii admin costs allocate --resource <id> --tenant <id> --amount-cents <n> --f
 
 ### `admin vclusters list` / `get` / `provision` / `teardown` / `kubeconfig`
 
-```bash
+**Usage**
+
+```usage
 enclii admin vclusters list [--json]
 enclii admin vclusters get <id>
 enclii admin vclusters provision --name <n> --node <node_id> --force
@@ -231,7 +257,9 @@ enclii admin fleet wipe host-7
 
 ### `admin ga-verify`
 
-```bash
+**Usage**
+
+```usage
 enclii admin ga-verify [--json]
 enclii admin ga-verify --stability
 ```
@@ -243,7 +271,9 @@ read-only checks (Argo drift, Vault readiness, policy violations). Requires admi
 
 ### `admin provision secrets`
 
-```bash
+**Usage**
+
+```usage
 enclii admin provision secrets --namespace <ns> --secrets-file <file> [--secret-name <name>] [--json] [--force]
 ```
 
@@ -276,7 +306,9 @@ in the `admin_acting_sessions` table and surfaced on `/audit` via
 
 ### `admin tenants list`
 
-```bash
+**Usage**
+
+```usage
 enclii admin tenants list [--json]
 ```
 
@@ -284,7 +316,9 @@ Lists every tenant with its slug, name, and project count.
 
 ### `admin tenants active`
 
-```bash
+**Usage**
+
+```usage
 enclii admin tenants active [--json]
 ```
 
@@ -293,7 +327,9 @@ Always exits `0` — "no active session" is not an error.
 
 ### `admin tenants enter`
 
-```bash
+**Usage**
+
+```usage
 enclii admin tenants enter <slug> [--reason "<text>"] [--duration-seconds <n>] [--json]
 ```
 
@@ -309,7 +345,9 @@ session is bound to your Bearer token's identity.
 
 ### `admin tenants exit`
 
-```bash
+**Usage**
+
+```usage
 enclii admin tenants exit [--json]
 ```
 

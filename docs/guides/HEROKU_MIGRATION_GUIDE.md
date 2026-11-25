@@ -9,7 +9,7 @@
 
 
 **Version**: 1.0
-**Last Updated**: 2026-01-30
+**Last Updated**: 2026-11-24
 **Estimated Migration Time**: 2-4 hours per app
 
 ---
@@ -301,9 +301,10 @@ heroku config -a your-app -s > heroku.env
 `enclii secrets set` takes `KEY=VALUE` pairs and targets the service named in `./service.yaml` (pass `-f <spec>` for another file). The service must already be registered (`enclii services-sync` or a first `enclii deploy`), and an `--env` environment must already exist; omit `--env` to apply the values to all environments.
 
 ```bash
-# Import secrets (several KEY=VALUE pairs per call)
+# Import secrets (several KEY=VALUE pairs per call). DATABASE_URL is read from
+# your shell, so its value never appears in a document or your shell history.
 enclii secrets set --secret --env production \
-  DATABASE_URL="postgresql://..." \
+  DATABASE_URL="$DATABASE_URL" \
   REDIS_URL="redis://redis.enclii.svc.cluster.local:6379" \
   SECRET_KEY_BASE="$(openssl rand -hex 64)"
 ```
@@ -453,20 +454,20 @@ curl https://myapp.com/health
 
 | Heroku CLI | Enclii CLI | Description |
 |------------|------------|-------------|
-| `heroku create` | `enclii projects create --name <name> --slug <slug>` | Create a new project |
+| `heroku create` | `enclii projects create --name myapp --slug myapp` | Create a new project |
 | `heroku apps` | `enclii projects list` | List projects |
 | `heroku ps` | `enclii ps` | Show running services |
-| `heroku logs -t` | `enclii logs <service> -f` | Tail logs |
+| `heroku logs -t` | `enclii logs web -f` | Tail logs |
 | `heroku config` | `enclii secrets list` | List environment variables |
 | `heroku config:set K=V` | `enclii secrets set K=V` | Set environment variable (add `--secret` for sensitive values) |
-| `heroku run <cmd>` | `enclii jobs run-once --name <name> --command "<cmd>" --service-id <id> --project <slug>` | Run a one-off command with the service's image and env (no interactive shell) |
+| `heroku run <cmd>` | `enclii jobs run-once` with `--name`, `--command`, `--service-id` and `--project` ([example](#example-1-rails-app-with-postgres)) | Run a one-off command with the service's image and env (no interactive shell) |
 | `heroku pg:psql` | `kubectl exec ... -- psql` | Connect to database (break-glass; no CLI equivalent) |
 | `heroku domains` | `enclii domains list` | List custom domains |
 | `heroku domains:add` | `enclii domains add` | Add custom domain |
-| `heroku releases` | `enclii deploy ls <service>` | List deployments with v-numbers (`enclii releases <service>` lists builds) |
-| `heroku rollback` | `enclii rollback <service>` | Rollback to previous release |
+| `heroku releases` | `enclii deploy ls web` | List deployments with v-numbers (`enclii releases web` lists builds) |
+| `heroku rollback` | `enclii rollback web` | Rollback to previous release |
 | `heroku maintenance:on` | N/A | No maintenance-mode command |
-| `heroku pg:backups` | `enclii export --project <slug>` | Tenant export includes a `pg_dump` of each bound database addon |
+| `heroku pg:backups` | `enclii export --project myapp` | Tenant export includes a `pg_dump` of each bound database addon |
 | `heroku addons` | `enclii addon ls` | Managed Postgres addons (`enclii addon`) |
 | `git push heroku main` | `git push origin main` | Deploy (auto via webhook) |
 
@@ -493,21 +494,21 @@ curl https://staging.myapp.com/health
 ### Deploy to Production
 
 ```bash
-# Deploy as a canary: 10% of traffic, auto-promoted after the validation
-# window (default 10m) if healthy, auto-rolled-back if not.
-# Prints "Canary rollout started: <rollout_id>" and tails the rollout.
-enclii deploy --env production --canary 10 --change-ticket <change-ticket-url>
-
 # Monitor error rates
 enclii logs web --env production --follow | grep ERROR
 
-# Promote early instead of waiting for the validation window
-enclii canary promote <rollout_id> --service web
-
-# Or abort the canary, or roll back a completed deploy, if issues
-enclii canary rollback <rollout_id> --service web --reason "error rate spiked"
+# Roll back a completed deploy, if issues
 enclii rollback web --env production
 ```
+
+Deploy as a canary with `enclii deploy --env production --canary 10` and
+`--change-ticket` set to your change ticket's URL (production canaries require
+one): 10% of traffic, auto-promoted after the validation window (default 10m)
+if healthy, auto-rolled-back if not. It prints `Canary rollout started:`
+followed by the rollout id, and tails the rollout. With that rollout id,
+`enclii canary promote` (with `--service web`) promotes early instead of
+waiting for the validation window, and `enclii canary rollback` (with
+`--service web` and a `--reason`) aborts the canary.
 
 ### Verification Checklist
 
@@ -515,7 +516,7 @@ enclii rollback web --env production
 - [ ] HTTPS works: `curl https://myapp.com`
 - [ ] Database connectivity: test critical endpoints
 - [ ] Background workers running: `enclii ps --env production`
-- [ ] Cron jobs scheduled: `enclii jobs list --project <slug>`
+- [ ] Cron jobs scheduled: `enclii jobs list --project myapp`
 - [ ] Logs flowing: `enclii logs --env production`
 - [ ] Custom domains resolve: `nslookup myapp.com`
 - [ ] Health checks passing: `curl https://myapp.com/health`
@@ -611,9 +612,9 @@ enclii deploy -f web.yaml --env production --wait
 enclii deploy -f worker.yaml --env production --wait
 
 # 9. Run migrations as a one-off job (web service image, env and secrets)
-enclii projects services myapp    # look up the web service ID
+WEB_ID=$(enclii projects services myapp --json | jq -r '.[] | select(.name == "web") | .id')
 enclii jobs run-once --name db-migrate --command "bundle exec rails db:migrate" \
-  --service-id <web-service-id> --project myapp
+  --service-id "$WEB_ID" --project myapp
 
 # 10. Configure domain and switch DNS
 enclii domains add myapp.com --service web --env production
@@ -664,7 +665,7 @@ EOF
 # 2. Register the service, then import secrets
 enclii services-sync --dir . --project myapp
 enclii secrets set -f enclii.yaml --secret \
-  DATABASE_URL="postgresql://..." \
+  DATABASE_URL="$DATABASE_URL" \
   REDIS_URL="redis://redis.enclii.svc.cluster.local:6379" \
   API_SECRET="$(heroku config:get API_SECRET -a myapp)"
 
@@ -734,10 +735,11 @@ enclii secrets set APP_NAME=myapp --env production
 There is no `enclii exec`; run the check as a one-off job with the worker's environment (`--image` swaps in an image that has `redis-cli`):
 
 ```bash
-# Verify Redis connectivity
-enclii jobs run-once --name redis-ping --command "redis-cli -h redis.enclii.svc.cluster.local ping" \
-  --image redis:7-alpine --service-id <worker-service-id> --project myapp
-enclii jobs logs <job-id>
+# Verify Redis connectivity (the job id is the `  ID:` line run-once prints)
+WORKER_ID=$(enclii projects services myapp --json | jq -r '.[] | select(.name == "worker") | .id')
+JOB_ID=$(enclii jobs run-once --name redis-ping --command "redis-cli -h redis.enclii.svc.cluster.local ping" \
+  --image redis:7-alpine --service-id "$WORKER_ID" --project myapp | awk '/^  ID:/{print $2}')
+enclii jobs logs "$JOB_ID"   # once the job has run
 ```
 
 Update `REDIS_URL` to use Kubernetes service discovery:

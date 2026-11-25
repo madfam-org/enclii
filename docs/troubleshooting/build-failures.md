@@ -14,14 +14,26 @@ This guide helps diagnose and fix issues with the Enclii build pipeline.
 - [CLI installed](/cli/)
 - Service configured and connected to a Git repository
 
+## Before You Start
+
+The commands below read your project and service from shell variables, so
+each one runs as written once they are set. Set them once per terminal
+session:
+
+| Variable | Set it to | Where to find it |
+|---|---|---|
+| `PROJECT` | your project's slug | `enclii projects list` |
+| `SERVICE` | the service's name | `enclii projects services "$PROJECT"` |
+| `ENVIRONMENT` | the environment, for example `production` | `enclii projects environments "$PROJECT"` |
+
 ## Quick Diagnosis
 
 ```bash
 # Recent builds (releases) with version, git SHA, status, and the error message of failed builds
-enclii releases <service-name>
+enclii releases "$SERVICE" --project "$PROJECT"
 
 # All builds, not just the last 10
-enclii releases <service-name> --all
+enclii releases "$SERVICE" --project "$PROJECT" --all
 ```
 
 ## Common Build Errors
@@ -63,7 +75,7 @@ CMD ["npm", "start"]
 3. **Set the root path** if in a monorepo. The CLI has no command that edits a service's root path; it comes from the checked-in service spec (`spec.build.source.git.path`, with `spec.build.context` for the build context). After fixing the spec, repair the stored service metadata (for example a stale `app_path` or `build_config`):
 
 ```bash
-enclii services-sync --dir apps/my-service --project <project> --reconcile-existing
+enclii services-sync --dir apps/my-service --project "$PROJECT" --reconcile-existing
 ```
 
 ### Dependency Installation Failed
@@ -100,9 +112,10 @@ git push
 
 **For private dependencies**, configure authentication:
 ```bash
-# Add npm token for private packages
+# Add npm token for private packages, read from NPM_TOKEN in your shell so the
+# value never appears in this document or your shell history
 # (run in the service's directory, or pass -f path/to/service.yaml)
-enclii secrets set NPM_TOKEN=<token> --secret
+enclii secrets set NPM_TOKEN="$NPM_TOKEN" --secret
 ```
 
 ### Out of Memory During Build
@@ -155,7 +168,7 @@ CMD ["node", "dist/index.js"]
 
 **Solutions**:
 
-1. **Identify slow step** by reviewing the build job's logs (the CLI shows build status and errors via `enclii releases <service-name>`, not step timings; see [Via kubectl](#via-kubectl-admin)):
+1. **Identify slow step** by reviewing the build job's logs (the CLI shows build status and errors via `enclii releases`, not step timings; see [Via kubectl](#via-kubectl-admin)):
 ```bash
 kubectl logs -n enclii-builds job/<job-name> | grep -E "^\d+:\d+:"
 ```
@@ -255,8 +268,8 @@ tests/
 The CLI does not stream build logs. It shows each build's status and, for failed builds, the error message:
 
 ```bash
-enclii releases <service-name>
-enclii releases <service-name> -n 5
+enclii releases "$SERVICE" --project "$PROJECT"
+enclii releases "$SERVICE" --project "$PROJECT" -n 5
 ```
 
 ### Via kubectl (Admin)
@@ -277,7 +290,7 @@ kubectl logs -n enclii -l app=roundhouse -f
 There is no retry command. `enclii deploy` builds the current git commit of the service in `./service.yaml` (or `-f <path>`) and deploys it:
 
 ```bash
-enclii deploy --env <env>
+enclii deploy --env "$ENVIRONMENT"
 ```
 
 ## Related Documentation

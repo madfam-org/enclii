@@ -14,6 +14,17 @@ This guide covers common API errors you may encounter when using the Enclii API.
 - [CLI installed](/cli/) or API client configured
 - [Authentication set up](/guides/cli-auth-setup)
 
+## Before You Start
+
+The commands below read your project and environment from shell variables,
+so each one runs as written once they are set. Set them once per terminal
+session:
+
+| Variable | Set it to | Where to find it |
+|---|---|---|
+| `PROJECT` | your project's slug | `enclii projects list` |
+| `ENVIRONMENT` | the environment, for example `production` | `enclii projects environments "$PROJECT"` |
+
 ## HTTP Status Codes
 
 ### 400 Bad Request
@@ -99,10 +110,10 @@ Contact your organization admin if you need elevated permissions.
 ```bash
 # Verify resource exists (projects are addressed by slug)
 enclii projects list
-enclii projects services <project-slug>
+enclii projects services "$PROJECT"
 
 # Check the correct project details
-enclii projects get <project-slug> --json
+enclii projects get "$PROJECT" --json
 ```
 
 ### 409 Conflict
@@ -118,11 +129,11 @@ enclii projects get <project-slug> --json
 
 ```bash
 # Check for existing resource
-enclii projects services <project-slug> | grep "my-service"
+enclii projects services "$PROJECT" | grep "my-service"
 
 # Use a unique name: change metadata.name in service.yaml, then deploy
 # (enclii deploy creates the service if it does not exist)
-enclii deploy --env <env>
+enclii deploy --env "$ENVIRONMENT"
 ```
 
 ### 422 Unprocessable Entity
@@ -245,8 +256,8 @@ kubectl describe pod -n enclii <pod-name>
 ### Enable Verbose Logging
 
 ```bash
-# CLI verbose mode
-enclii --verbose deploy
+# CLI debug logging (there is no --verbose flag)
+enclii --log-level debug deploy --env "$ENVIRONMENT"
 
 # Check response headers
 curl -v https://api.enclii.dev/v1/users/me

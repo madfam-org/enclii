@@ -4,7 +4,7 @@ Manage object storage buckets (Cloudflare R2) for an existing project.
 
 ## Synopsis
 
-```bash
+```usage
 enclii buckets <subcommand> [flags]
 ```
 
@@ -45,7 +45,9 @@ no domain provisioning. They are safe to run against a live service.
 
 Create or adopt a bucket and mint scoped credentials for it.
 
-```bash
+**Usage**
+
+```usage
 enclii buckets create <bucket> --project <slug> [flags]
 ```
 
@@ -77,7 +79,9 @@ List the object storage bindings a project actually holds, read from the
 cluster rather than from an intent record — so an incomplete or hand-patched
 binding shows up as what it is.
 
-```bash
+**Usage**
+
+```usage
 enclii buckets ls [flags]
 ```
 
@@ -95,7 +99,9 @@ non-zero if any finding is critical**, so it works as a CI gate.
 Revoke the bucket's Cloudflare token and remove the R2 keys from the project's
 Secret.
 
-```bash
+**Usage**
+
+```usage
 enclii buckets destroy <bucket> --project <slug> --yes [flags]
 ```
 
