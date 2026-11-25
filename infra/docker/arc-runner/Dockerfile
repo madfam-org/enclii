@@ -297,6 +297,18 @@ RUN ldconfig -p | grep -q libGL.so.1 \
  && python3 -c "import ctypes; ctypes.CDLL('libGL.so.1')" \
  && xvfb-run -a openscad --version 2>&1 | grep -q "${OPENSCAD_VERSION}"
 
+# The runner's home must not be writable by other users. Upstream
+# actions-runner (images/Dockerfile, v2.338.0) does `chmod 777 /home/runner`,
+# and platformdirs >= 4.14.8 (2026-11-20) refuses to create a cache or config
+# directory under a world-writable, non-sticky ancestor: every `pip-audit` on
+# this pool without an explicit --cache-dir failed with
+# "PermissionError: /home/runner, writable by another user" (blueprint-harvester
+# CI, 2026-11-24). 0755 keeps the home readable and traversable; the job's
+# work and externals directories are emptyDir mounts with their own modes, so
+# nothing the runner writes under them changes. The image workflow's
+# "Smoke-check the runner home" step fails the build if this regresses.
+RUN chown runner:runner /home/runner && chmod 0755 /home/runner
+
 # Drop back to the runner user the upstream image expects.
 USER runner
 
