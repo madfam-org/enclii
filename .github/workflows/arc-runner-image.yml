@@ -177,6 +177,21 @@ jobs:
       # root` section there), while this one inherits the final image's `USER
       # runner`. A squashfs tree extracted root-only would sail through the
       # build and fail every real job; only this step sees that.
+      - name: Smoke-check the runner home
+        env:
+          SMOKE_IMAGE: ${{ env.IMAGE_NAME }}:${{ steps.meta.outputs.tag_sha }}
+        run: |
+          set -euo pipefail
+          # A world-writable /home/runner breaks platformdirs >= 4.14.8 (and
+          # with it pip-audit) on every job of the pool: see the Dockerfile
+          # comment above `USER runner`. Fail the build, not the pool.
+          mode="$(docker run --rm --entrypoint stat "${SMOKE_IMAGE}" -c '%a %U' /home/runner)"
+          echo "/home/runner: ${mode}"
+          if [ "${mode}" != "755 runner" ]; then
+            echo "::error::/home/runner is '${mode}', expected '755 runner'."
+            exit 1
+          fi
+
       - name: Smoke-check the render environment
         env:
           SMOKE_IMAGE: ${{ env.IMAGE_NAME }}:${{ steps.meta.outputs.tag_sha }}
