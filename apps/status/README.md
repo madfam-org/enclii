@@ -144,6 +144,14 @@ its own assertions in its `enclii.yaml` `status.entries[]`.
 | Content & Creative | CEQ, Nuit, Bloom Scroll, Blueprint Harvester, Coforma |
 | MADFAM Corporate | MADFAM Site, Platform |
 
+**Coverage gaps (2026-11-26).** `k8s/madfam/configmap.yaml` has no entry for
+`nauta.quest`, `app.nauta.quest`, `kalya.app`, `cv.madfam.io` or
+`voxa.madfam.io`, so `status.madfam.io` does not show them; the live page
+was checked for the first four on that date. The public `/trust` page is
+rendered from `lib/trust-commitments.ts`, which still carries an April review
+date and targets dated 2026-06-30, including "99.9% by 2026-06-30"; changing
+that text is a code change in that file.
+
 When `family` is set on any service, the UI renders a two-level
 accordion (family → group → services). When every service lacks
 `family`, the page falls back to the existing single-level group

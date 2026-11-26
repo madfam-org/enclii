@@ -1,6 +1,6 @@
 # Secret Intake (chat-safe credential handoff)
 
-**Last Updated:** 2026-11-22
+**Last Updated:** 2026-11-26
 
 Isolated training and API-only Janua staging targets are documented in
 [Isolated training custody](ISOLATED_TRAINING_CUSTODY.md). These declarations
@@ -1203,7 +1203,7 @@ their pods restart.
 ### PhyndCRM native MCP reader (2026-11-14)
 
 One `client_credentials` client for PhyndCRM's read-only `POST /mcp`
-(phynd-crm#131; RFC 0051 M3; owner ruling V2: the ops agents only, Selva gets no
+(phynd-crm#131; RFC 0051 M3; owner ruling of 2026-11-15: the ops agents only, Selva gets no
 client until it has a concrete need). Audience `phynd-crm`, scope `phynd-crm-pipeline:read`, org-bound to
 `madfam-ecosystem`. Same layout as the COGS MCP consumers (enclii#946).
 

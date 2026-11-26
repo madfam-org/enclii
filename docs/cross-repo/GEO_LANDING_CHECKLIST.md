@@ -93,6 +93,12 @@ why).
       them in `public/` fixed it.)
 - [ ] Fast, JS-light first paint: the answer-content is in the initial HTML
       (SSG/SSR), so a crawler that does not run JS still sees it.
+- [ ] **Check the edge, not only the file.** A robots allow-list is not
+      enough: on 2026-11-26 the enclii.dev zone still answered GPTBot and
+      ClaudeBot with 403, `/llms.txt` included, although the pilot's
+      `robots.txt` allows them. Request `/` and `/llms.txt` with an AI-crawler
+      user-agent and confirm a 200 before ticking the first box of this
+      section.
 
 ### 5. SEO stays intact (GEO is added, not substituted)
 
