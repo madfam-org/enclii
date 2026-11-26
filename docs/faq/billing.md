@@ -67,21 +67,21 @@ Enclii's self-hosted model provides significant savings over traditional SaaS st
 
 ## Subscription Tiers
 
-Enclii offers the following tiers via [Dhanam](https://app.dhan.am) billing. This table matches the [enclii.dev](https://enclii.dev) landing pricing and is canonical for GA:
+Enclii offers the following tiers via [Dhanam](https://app.dhan.am) billing. The prices are the ones in Dhanam's catalogue on 2026-11-26. The [enclii.dev](https://enclii.dev) landing page still shows Sovereign at $20 in USD with priority support; this table is the current statement until the landing page is updated.
 
 | Tier | Price | Projects | Services | Description |
 |------|-------|----------|----------|-------------|
 | Community | Free | 1 | 3 | Self-hosted open source (AGPL-3.0), community support |
-| Sovereign | $20/mo | 10 | Unlimited | Managed hosting: custom domains, auto SSL, priority support, zero-downtime deploys |
+| Sovereign | MX$348/mo, IVA included (MX$300 + IVA) | 10 | Unlimited | Managed hosting: custom domains, auto SSL, email support, zero-downtime deploys |
 | Ecosystem | Waitlist, pricing to be announced | Unlimited | Unlimited | Full MADFAM bundle: team management, SSO (Janua), billing (Dhanam). Support and availability terms are published with the tier |
 
 **Naming note:** Sovereign is the public name for the internal tier slug `pro` (entitlement claim `enclii_pro` in Janua tokens). Earlier drafts of this FAQ listed an "Essentials" tier at $20/mo and a separate "Pro" tier at $49/mo — both are superseded by the table above.
 
 The value of Sovereign over Community is the **managed service** (hosting, custom domains, auto SSL, support) plus higher limits. Ecosystem (coming soon) adds team management and SSO integration; no availability number or SLA is published for any tier, on the landing page or here, because none has been measured.
 
-Prices are shown in USD. MXN pricing plus IVA is applied at checkout.
+As of 2026-11-26 plans are sold in MXN only; no USD price is offered. Support for Sovereign is by email, with no response-time commitment.
 
-Upgrade via Dhanam checkout: `https://app.dhan.am/checkout?plan=enclii_pro&product=enclii`
+As of 2026-11-26 self-serve payment is not yet enabled: the Dhanam checkout link for Sovereign (`https://app.dhan.am/checkout?plan=enclii_pro&product=enclii`) opens the MADFAM booking page, and upgrades to Sovereign are arranged with us, as the [quickstart](../quickstart.md) also says.
 
 ### Included with Sovereign
 

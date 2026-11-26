@@ -36,8 +36,9 @@ built-in observability, without vendor lock-in.
 - **Sovereign — $20/month.** Managed hosting: 10 projects, unlimited services,
   custom domains, auto SSL, priority support, zero-downtime deploys. Includes
   entry rungs of managed Postgres and CI (1 slot / 500 build minutes/month).
-- **Ecosystem — waitlist.** Full bundle with team management, SSO (Janua), and
-  billing (Dhanam). **Price not yet announced.**
+- **Ecosystem — waitlist only, not sold today (2026-11-26).** A planned
+  multi-product plan with team management, SSO (Janua), and billing (Dhanam).
+  No price or purchase path exists yet.
 
 Prices are in USD; MXN plus IVA is applied at checkout. Sign-up is open and new
 tenants are provisioned with an operator in the loop; paid self-serve checkout

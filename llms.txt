@@ -173,6 +173,12 @@ Compact LLM context index for this repository.
   Argo (`infra/k8s/production/arc/README.md`); the pin job fails red on an
   unpinned build (#787). Details: `llms-full.txt` "Stability wave".
 
+## Commercial pipeline state (2026-11-26)
+
+- Sovereign (`enclii_pro`) is MX$348/month with IVA, MXN only; self-serve payment is off and the checkout link opens the booking page (`docs/faq/billing.md`). Ecosystem is a waitlist, not sold.
+- `enclii.dev` allows AI crawlers in `robots.txt`, but the edge answers them 403; no analytics loads. `enclii tenant apply` is plan-only, so tenants are finished by an operator.
+- Per-stage detail: `AGENTS.md` § Commercial pipeline state; cross-repo source: `internal-devops/audits/2026-11-26-business-pipeline/README.md` (private).
+
 ## Production operations
 
 Routine production operations are Enclii-first. Use Enclii web, API, or CLI

@@ -6,7 +6,7 @@
 > `kubectl`, `helm`, SSH, provider CLI/API, `docker exec`, and direct container
 > access as platform bootstrap or documented break-glass only, and record any
 > missing Enclii adapter gap.
-> Last Updated: 2026-10-18
+> Last Updated: 2026-11-26
 
 
 <!-- MADFAM-AGENTS-CANONICAL v1 -->
@@ -115,6 +115,47 @@ redirect and should not become the source of truth again.
 - **Skipped tests** are inventoried in
   [`docs/testing/SKIPPED_TESTS.md`](docs/testing/SKIPPED_TESTS.md). Add a
   line there when you add one.
+
+## Commercial pipeline state (2026-11-26)
+
+Boundary checkpoint (2026-11-26, docs change, platform ops): public-safe state
+only; the per-stage evidence is in a private record linked at the end of this
+section. Policy: [docs/PUBLIC_REPO_BOUNDARY.md](docs/PUBLIC_REPO_BOUNDARY.md).
+
+What is true for Enclii at each stage of MADFAM's commercial pipeline, read on
+`main` and against the public hosts on 2026-11-26:
+
+- **Discovery.** `enclii.dev` serves `robots.txt`, `sitemap.xml` and
+  `llms.txt` from `apps/landing/public/`, and the robots file allows AI
+  crawlers by name. The edge still answers GPTBot and ClaudeBot with 403,
+  `llms.txt` included, so that allow-list has no effect yet; see §4 of the
+  [GEO landing checklist](docs/cross-repo/GEO_LANDING_CHECKLIST.md#4-ai-crawler-permissions--fast-first-paint).
+  No visitor analytics loads on the landing.
+- **Conversion.** Dhanam's catalogue sells one Enclii tier, Sovereign
+  (`enclii_pro`), at MX$348 per month with IVA, in MXN only. Self-serve
+  payment is off: the checkout link opens the MADFAM booking page and upgrades
+  are arranged with us. Detail: [docs/faq/billing.md](docs/faq/billing.md#subscription-tiers)
+  and [docs/quickstart.md](docs/quickstart.md). The landing page code still
+  shows $20 in USD and "priority support".
+- **Fulfillment.** `enclii tenant apply` validates a manifest and prints the
+  plan; it executes nothing ([docs/cli/commands/tenant.md](docs/cli/commands/tenant.md)),
+  so new tenants are finished by an operator. The fabrication rows in
+  `docs/templates/ecosystem/metadata_fabrication.py` (Cotiza's downstream
+  Pravara line and Pravara's upstream Cotiza line) do not match the code:
+  Cotiza calls a Pravara route that Pravara does not serve. That file
+  generates other repos' `ECOSYSTEM.md`; correct it there, never in the
+  generated output.
+- **Customer success.** Sovereign support is by email with no response-time
+  commitment. `status.madfam.io` does not list `nauta.quest`, `kalya.app`,
+  `cv.madfam.io` or Voxa, and its `/trust` page still carries targets dated
+  2026-06-30; see [apps/status/README.md](apps/status/README.md#product-families-rfc-0002-s1).
+- **Virality and expansion.** The Ecosystem tier is a waitlist; no
+  multi-product plan or bundle is sold
+  ([apps/landing/public/llms.txt](apps/landing/public/llms.txt)).
+
+Cross-repo source: the
+[2026-11-26 business pipeline audit](https://github.com/madfam-org/internal-devops/blob/main/audits/2026-11-26-business-pipeline/README.md)
+in `internal-devops` (private).
 
 ## Repo entrypoints
 
