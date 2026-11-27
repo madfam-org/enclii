@@ -2439,6 +2439,24 @@ targets:
       - crea_map_token
       - postgres_password
 
+  # telemetry (2026-11-26) — RFC 0057 ruling T1: the public-site engine
+  # candidate, self-hosted Umami, in the same `telemetry` namespace (staging
+  # only, internal, no route) so its database can be checked for stored IPs
+  # and salt rotation. Same Vault path as the gate (the writer policy already
+  # covers it), its own keys and its own ExternalSecret, so the gate's pod
+  # never maps these and Umami's pod never maps the gate's. `umami_app_secret`
+  # is Umami's APP_SECRET (it keys the visitor hash and signs sessions);
+  # `umami_postgres_password` is Umami's own Postgres. Both with --generate.
+  telemetry-umami/runtime:
+    label: Telemetry engine (Umami) runtime, staging check
+    description: Umami's APP_SECRET and its own Postgres password in namespace telemetry, for the RFC 0057 T1 staging check. Generate both with --generate; nobody sees them.
+    vault_path: secret/telemetry-gate
+    namespace: telemetry
+    external_secret: telemetry-umami-secrets # pragma: allowlist secret -- ExternalSecret resource name; not a credential
+    keys:
+      - umami_app_secret
+      - umami_postgres_password
+
 # Shared groups: one server-generated value that several targets must hold
 # identically. `enclii secrets intake group <id>` mints it once (crypto/rand,
 # hex-encoded, never returned) and writes it to every member with a
