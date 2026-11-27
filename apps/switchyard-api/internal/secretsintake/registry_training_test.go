@@ -105,3 +105,23 @@ func TestKernelTelemetryStaysInTrainingCustody(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, []string{"crea_map_token", "postgres_password"}, gate.Keys)
 }
+
+// RFC 0057 T1 (2026-11-26): Umami's staging check shares the gate's Vault path
+// and namespace but not its keys or its ExternalSecret, so neither pod maps the
+// other's values. Generic generation: APP_SECRET and the Postgres password each
+// take a hex string of at least 32 characters (the password sits inside a URL).
+func TestTelemetryUmamiTargetKeepsItsOwnKeys(t *testing.T) {
+	umami, err := GetTarget("telemetry-umami/runtime")
+	require.NoError(t, err)
+	require.Equal(t, "secret/telemetry-gate", umami.VaultPath)
+	require.Equal(t, "telemetry", umami.Namespace)
+	require.Equal(t, "telemetry-umami-secrets", umami.ExternalSecret)
+	require.Equal(t, []string{"umami_app_secret", "umami_postgres_password"}, umami.Keys)
+	require.Nil(t, umami.Generate)
+	gate, err := GetTarget("telemetry-gate/runtime")
+	require.NoError(t, err)
+	require.NotEqual(t, gate.ExternalSecret, umami.ExternalSecret)
+	for _, k := range umami.Keys {
+		require.NotContains(t, gate.Keys, k)
+	}
+}

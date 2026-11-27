@@ -13,7 +13,7 @@ import (
 func TestLoadRegistry(t *testing.T) {
 	reg, err := LoadRegistry()
 	require.NoError(t, err)
-	assert.Len(t, reg, 160)
+	assert.Len(t, reg, 161)
 	assert.Contains(t, reg, "ceq/vast-api-key")
 	assert.Contains(t, reg, "karafiel/web-oidc-janua")
 	adminSession := reg["karafiel/admin-session"]
@@ -38,7 +38,7 @@ func TestGetTarget(t *testing.T) {
 func TestListTargetsSorted(t *testing.T) {
 	list, err := ListTargets()
 	require.NoError(t, err)
-	require.Len(t, list, 160)
+	require.Len(t, list, 161)
 	for i := 1; i < len(list); i++ {
 		assert.Less(t, list[i-1].ID, list[i].ID, "targets should be sorted by id")
 	}
@@ -169,6 +169,7 @@ func TestListTargetsSorted(t *testing.T) {
 		"symbiosis-hcm/signing-bindings",
 		"synthetics/dhanam-staging-checkout",
 		"telemetry-gate/runtime",
+		"telemetry-umami/runtime",
 		"telesia/oidc-janua",
 		"telesia/runtime",
 		"telesia/web-session",
