@@ -18,19 +18,39 @@ export const TRUST_LAST_REVIEWED = '2026-04-17'
 
 export type CommitmentTone = 'current' | 'target' | 'pending'
 
-export interface RangeCommitment {
+/**
+ * When a target is due. `targetDate` is the ISO-8601 due date, or null when a
+ * published date passed with the target unmet and no new date is set; the
+ * lapsed date is then kept in `missedTargetDate` so the page says so. Never
+ * fill `targetDate` with a guess: publish a new date only once the work is
+ * scheduled.
+ */
+export interface TargetTiming {
+  targetDate?: string | null
+  missedTargetDate?: string
+}
+
+export interface RangeCommitment extends TargetTiming {
   current: string
   currentNotes?: string
   target?: string
-  targetDate?: string
   tone: CommitmentTone
 }
 
-export interface UptimeCommitment {
+export interface UptimeCommitment extends TargetTiming {
   monthlyTargetPercent: number
   currentPosture: string
   targetPosture: string
-  targetDate: string
+  targetDate: string | null
+}
+
+/** The text before a target's description: its due date, or that it lapsed. */
+export function targetTimingLabel(timing: TargetTiming): string {
+  if (timing.targetDate) return `By ${timing.targetDate}`
+  if (timing.missedTargetDate) {
+    return `${timing.missedTargetDate} target not met; no new date set`
+  }
+  return 'No date set'
 }
 
 export interface DataStoreCommitment {
@@ -60,7 +80,8 @@ export const uptime: UptimeCommitment = {
     'Single-replica Postgres and Redis; K8s reschedules pods on node failure.',
   targetPosture:
     '99.9% monthly uptime once Postgres streaming replication and Redis Sentinel ship.',
-  targetDate: '2026-06-30',
+  targetDate: null,
+  missedTargetDate: '2026-06-30',
 }
 
 export const rpo = {
@@ -68,14 +89,16 @@ export const rpo = {
     current: '24 hours',
     currentNotes: 'Daily pg_dump → Cloudflare R2 (2 AM UTC CronJob).',
     target: '≤ 15 minutes',
-    targetDate: '2026-06-30',
+    targetDate: null,
+    missedTargetDate: '2026-06-30',
     tone: 'current' as const,
   } satisfies RangeCommitment,
   redis: {
     current: 'Hourly',
     currentNotes: 'RDB snapshots hourly; AOF pending HA deployment.',
     target: '≤ 1 minute',
-    targetDate: '2026-06-30',
+    targetDate: null,
+    missedTargetDate: '2026-06-30',
     tone: 'current' as const,
   } satisfies RangeCommitment,
 }
@@ -205,17 +228,20 @@ export function buildCommitmentsJson() {
       monthly_target_percent_current: uptime.monthlyTargetPercent,
       monthly_target_percent_goal: 99.9,
       goal_target_date: uptime.targetDate,
+      goal_target_date_missed: uptime.missedTargetDate ?? null,
     },
     rpo: {
       postgres: {
         current_minutes: 24 * 60,
         target_minutes: 15,
-        target_date: '2026-06-30',
+        target_date: rpo.postgres.targetDate,
+        target_date_missed: rpo.postgres.missedTargetDate,
       },
       redis: {
         current_minutes: 60,
         target_minutes: 1,
-        target_date: '2026-06-30',
+        target_date: rpo.redis.targetDate,
+        target_date_missed: rpo.redis.missedTargetDate,
       },
     },
     rto: {

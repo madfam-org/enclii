@@ -7,6 +7,7 @@ import {
   rto,
   security,
   slaBreach,
+  targetTimingLabel,
   uptime,
 } from '@/lib/trust-commitments'
 
@@ -25,9 +26,13 @@ describe('trust-commitments', () => {
       expect(uptime.monthlyTargetPercent).toBe(99.5)
     })
 
-    it('includes a future-dated target posture', () => {
-      expect(uptime.targetDate).toMatch(/^\d{4}-\d{2}-\d{2}$/)
+    it('states the lapsed 2026-06-30 goal as missed, with no new date', () => {
+      expect(uptime.targetDate).toBeNull()
+      expect(uptime.missedTargetDate).toBe('2026-06-30')
       expect(uptime.targetPosture.length).toBeGreaterThan(0)
+      expect(targetTimingLabel(uptime)).toBe(
+        '2026-06-30 target not met; no new date set'
+      )
     })
   })
 
@@ -35,12 +40,31 @@ describe('trust-commitments', () => {
     it('exposes current + target values for Postgres', () => {
       expect(rpo.postgres.current).toBe('24 hours')
       expect(rpo.postgres.target).toBeDefined()
-      expect(rpo.postgres.targetDate).toMatch(/^\d{4}-\d{2}-\d{2}$/)
+      expect(rpo.postgres.targetDate).toBeNull()
+      expect(rpo.postgres.missedTargetDate).toBe('2026-06-30')
     })
 
     it('exposes current + target values for Redis', () => {
       expect(rpo.redis.current).toContain('Hourly')
       expect(rpo.redis.target).toBeDefined()
+      expect(rpo.redis.targetDate).toBeNull()
+      expect(rpo.redis.missedTargetDate).toBe('2026-06-30')
+    })
+  })
+
+  describe('targetTimingLabel', () => {
+    it('shows a due date when one is set', () => {
+      expect(targetTimingLabel({ targetDate: '2027-01-31' })).toBe('By 2027-01-31')
+    })
+
+    it('says a lapsed date was missed instead of showing it as due', () => {
+      expect(
+        targetTimingLabel({ targetDate: null, missedTargetDate: '2026-06-30' })
+      ).toBe('2026-06-30 target not met; no new date set')
+    })
+
+    it('says no date is set when there is neither', () => {
+      expect(targetTimingLabel({})).toBe('No date set')
     })
   })
 
@@ -114,6 +138,15 @@ describe('trust-commitments', () => {
       expect(payload.rpo.postgres.current_minutes).toBe(24 * 60)
       expect(payload.rpo.postgres.target_minutes).toBe(15)
       expect(payload.rpo.redis.current_minutes).toBe(60)
+    })
+
+    it('publishes lapsed target dates as null, with the missed date alongside', () => {
+      expect(payload.uptime.goal_target_date).toBeNull()
+      expect(payload.uptime.goal_target_date_missed).toBe('2026-06-30')
+      expect(payload.rpo.postgres.target_date).toBeNull()
+      expect(payload.rpo.postgres.target_date_missed).toBe('2026-06-30')
+      expect(payload.rpo.redis.target_date).toBeNull()
+      expect(payload.rpo.redis.target_date_missed).toBe('2026-06-30')
     })
 
     it('returns RTO values in seconds/minutes', () => {

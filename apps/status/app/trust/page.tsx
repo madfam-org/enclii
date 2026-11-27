@@ -26,6 +26,7 @@ import {
   dataExport,
   lockInPosture,
   slaBreach,
+  targetTimingLabel,
   type CommitmentTone,
 } from '@/lib/trust-commitments'
 
@@ -36,7 +37,7 @@ export const metadata: Metadata = {
   title: 'Trust Center — Reliability and SLA Commitments',
   description:
     'Published uptime targets, RPO/RTO, data-protection posture, and security ' +
-    'commitments for the Enclii platform. Numbers trace to runbooks; targets are dated.',
+    'commitments for the Enclii platform. Numbers trace to runbooks; targets are dated, and a missed date says so.',
 }
 
 function ToneIcon({ tone }: { tone: CommitmentTone }) {
@@ -204,7 +205,7 @@ export default function TrustCenterPage() {
                 <td className="px-4 py-3 align-top">
                   <div className="font-semibold">99.9%</div>
                   <div className="text-xs text-muted-foreground">
-                    By {uptime.targetDate} — {uptime.targetPosture}
+                    {targetTimingLabel(uptime)} — {uptime.targetPosture}
                   </div>
                 </td>
                 <td className="px-4 py-3 align-top">
@@ -224,7 +225,7 @@ export default function TrustCenterPage() {
                 <td className="px-4 py-3 align-top">
                   <div className="font-semibold">{rpo.postgres.target}</div>
                   <div className="text-xs text-muted-foreground">
-                    By {rpo.postgres.targetDate} — WAL archiving to R2.
+                    {targetTimingLabel(rpo.postgres)} — WAL archiving to R2.
                   </div>
                 </td>
                 <td className="px-4 py-3 align-top">
@@ -244,7 +245,7 @@ export default function TrustCenterPage() {
                 <td className="px-4 py-3 align-top">
                   <div className="font-semibold">{rpo.redis.target}</div>
                   <div className="text-xs text-muted-foreground">
-                    By {rpo.redis.targetDate} — AOF + Sentinel HA.
+                    {targetTimingLabel(rpo.redis)} — AOF + Sentinel HA.
                   </div>
                 </td>
                 <td className="px-4 py-3 align-top">
